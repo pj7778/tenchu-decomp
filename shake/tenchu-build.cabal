@@ -1,0 +1,18 @@
+cabal-version:  >= 1.10
+name:           tenchu-build
+version:        0.1.0.0
+build-type:     Simple
+
+executable Build
+  main-is: Build.hs
+  hs-source-dirs: src
+  ghc-options: -Wall -Wcompat -O2
+  build-depends:
+    base
+    , aeson
+    , binary    
+    , directory
+    , hashable
+    , shake
+    , uuid
+  default-language: Haskell2010

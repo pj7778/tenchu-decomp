@@ -9,6 +9,19 @@
       url = "github:edolstra/flake-compat";
       flake = false;
     };
+    splat = {
+      url = "github:Fuuzetsu/splat-overlay";
+    };
+    m2c = {
+      url = "github:Fuuzetsu/m2c-overlay";
+    };
+    spimdisasm = {
+      url = "github:Fuuzetsu/spimdisasm-overlay";
+    };
+    asm-differ = {
+      url = "github:simonlindholm/asm-differ";
+      flake = false;
+    };
   };
 
   outputs =
@@ -16,78 +29,38 @@
     , nixpkgs
     , flake-utils
     , flake-compat
-
+    , splat
+    , m2c
+    , asm-differ
+    , spimdisasm
     }:
     flake-utils.lib.eachDefaultSystem (system:
     let
+      lib = (import nixpkgs { inherit system; }).lib;
       pkgs = import nixpkgs {
         inherit system;
         overlays = [
-
+          inputs.splat.outputs.overlays.default
+          inputs.m2c.outputs.overlays.default
+          inputs.spimdisasm.outputs.overlays.default
         ];
       };
       mipselPkgs = pkgs.pkgsCross.mipsel-linux-gnu;
 
-      rabbitizer = pkgs.python3Packages.buildPythonApplication rec {
-        pname = "rabbitizer";
-        # version = inputs.spimdisasm.rev;
-        version = "1.5.10";
-        # src = inputs.spimdisasm;
-        src = pkgs.python3Packages.fetchPypi {
-          inherit pname;
-          inherit version;
-          sha256 = "sha256-c0dtRm0/YtSNoGQQGpdUi/r7fgKOKGLGgje2XkP3tmE=";
-        };
 
+      asm-differ =
+        let
+          asm-differ = pkgs.poetry2nix.mkPoetryApplication {
+            projectDir = inputs.asm-differ;
+            python = pkgs.python3;
+            poetrylock = ./nix/asm-differ-poetry.lock;
+            preferWheels = true;
 
-        propagatedBuildInputs = [
-          # pkgs.python3Packages.rabbitizer
-        ];
-      };
-
-
-      spimdisasm = pkgs.python3Packages.buildPythonApplication rec {
-        pname = "spimdisasm";
-        format = "pyproject";
-
-        version = "1.11.5";
-
-        src = pkgs.python3Packages.fetchPypi {
-          inherit pname;
-          inherit version;
-          sha256 = "sha256-ACoNbRfW/vkCYc8JVhSKSZ7xDjODgO5yxzRqusSUTvY=";
-        };
-
-
-        propagatedBuildInputs = [
-          rabbitizer
-        ];
-        nativeBuildInputs = [
-          pkgs.python3Packages.setuptools
-        ];
-      };
-      m2c = pkgs.python3Packages.buildPythonApplication rec {
-        pname = "m2c";
-        format = "pyproject";
-
-        version = "0.4.7";
-
-        src = pkgs.python3Packages.fetchPypi {
-          inherit pname;
-          inherit version;
-          sha256 = "sha256-JEgs+vZcmNUaqIbECxRXqzssqTLrLda1iq4OX6GO05U=";
-        };
-
-
-        propagatedBuildInputs = [
-          pkgs.python3Packages.pycparser
-          pkgs.python3Packages.watchdog
-          pkgs.python3Packages.psutil
-        ];
-        nativeBuildInputs = [
-          pkgs.python3Packages.setuptools
-        ];
-      };
+          };
+        in
+        pkgs.writeShellScriptBin "diff.py" '' 
+              ${asm-differ.dependencyEnv}/bin/python ${inputs.asm-differ}/diff.py
+          '';
     in
     {
       legacyPackages = pkgs;
@@ -99,8 +72,19 @@
       devShell = mipselPkgs.mkShell {
         nativeBuildInputs = [
           pkgs.busybox
-          spimdisasm
-          m2c
+          pkgs.spimdisasm
+          pkgs.m2c
+          pkgs.splat
+          (pkgs.runCommand "cpp" { } ''
+            mkdir -p "$out"/bin
+            ln -s "${pkgs.gcc}/bin/cpp" "$out"/bin 
+          '')
+          pkgs.wine
+          pkgs.ghc
+          pkgs.cabal-install
+          pkgs.haskell-language-server
+          # TODO: asm-differ into overlay
+          asm-differ
         ];
         buildInputs = [
 

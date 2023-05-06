@@ -1,0 +1,1 @@
+Please store here your Tenchu disk copy.

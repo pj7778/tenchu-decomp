@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -e
+
+pushd shake > /dev/null
+cabal v2-run tenchu-build:Build -O2 -- "$@"

@@ -1,0 +1,44 @@
+options:
+  platform: psx
+  basename: slps_019.01
+  base_path: ..
+  build_path: build
+  target_path: disks/slps_019.01
+  asm_path: asm/slps_019.01
+  asset_path: assets/slps_019.01
+  src_path: src/slps_019.01
+  compiler: GCC
+  symbol_addrs_path: config/symbols.txt
+  undefined_funcs_auto_path: config/undefined_funcs_auto.slps_019.01.txt
+  undefined_syms_auto_path: config/undefined_syms_auto.slps_019.01.txt
+  find_file_boundaries: yes
+  use_legacy_include_asm: no
+  migrate_rodata_to_functions: no
+  section_order:
+    - ".rodata"
+    - ".text"
+    - ".data"
+segments:
+  # - [0x0, header]
+  # - [0x84, bin]
+  # - name: slps_019.01
+  #   type: code
+  #   start: 0x0000800
+  #   vram: 0x80011000
+  #   subalign: 4
+  #   subsegments:
+  #     - [0x800, c]
+  #     # - [0x800, data] # data?
+  #     # - [0x18B4, c] # first function
+  #     - [0x33190, bin]
+  # - [0x61000]
+
+  - [0x800, header]
+  - name: slps_019.01
+    type: code
+    start: 0x00000800
+    vram: 0x80010000
+    subalign: 4
+    subsegments:
+      - [0x800, c]
+  - [0x3C800]

@@ -1,0 +1,7 @@
+#include "common.h"
+#include "main.exe.h"
+
+
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/62DA4", SsVabTransBody);
+
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/62DA4", SsVabTransCompleted);

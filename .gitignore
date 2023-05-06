@@ -1,0 +1,8 @@
+assets/
+build/
+expected/
+disks/
+.shake
+/dist-newstyle
+dist-newstyle
+__pycache__
