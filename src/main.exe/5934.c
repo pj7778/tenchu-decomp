@@ -1,6 +1,7 @@
 #include "common.h"
 #include "main.exe.h"
 
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_80016134);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", main);
@@ -24,12 +25,6 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_80016d2c)
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_80016d7c);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_80016e80);
-
-// int FUN_80016e80(int param_1)
-
-// {
-//     return *(int *)(param_1 + -8) << 2;
-// }
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_80016e8c);
 
@@ -275,8 +270,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", func_800262B0
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", func_800268BC);
 
-void func_80026F4C(void)
-{
+void func_80026F4C(void) {
 }
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_80026f54);
@@ -305,8 +299,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", func_80027730
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", func_80027818);
 
-void func_800278DC(void)
-{
+void func_800278DC(void) {
 }
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_800278e4);
@@ -334,35 +327,6 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_8002952c)
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_80029660);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_8002972c);
-
-/*
-int FUN_8002972c(int param_1, int param_2, int param_3)
-
-{
-
-    // return 0xBABE;
-
-    long lVar1;
-    int iVar2;
-    short sVar3;
-
-    lVar1 = ratan2(-param_1, -param_2);
-    sVar3 = (short)(lVar1 - param_3);
-    iVar2 = (lVar1 - param_3) * 0x10000 >> 0x10;
-    if (iVar2 < 0x801)
-    {
-        if (-0x800 < iVar2)
-            goto LAB_80029780;
-    }
-    else
-    {
-        sVar3 = -sVar3;
-    }
-    sVar3 = sVar3 + 0x1000;
-LAB_80029780:
-    return (int)sVar3;
-}
-*/
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_80029794);
 
@@ -938,8 +902,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_80051228)
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_8005141c);
 
-void func_800514D0(void)
-{
+void func_800514D0(void) {
 }
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_800514d8);
@@ -1036,86 +999,8 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_8005c2c4)
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_8005c404);
 
-/*
-//
-void FUN_8005c404(int param_1)
-{
-
-    s32 language[10];
-
-    s32 sp38;
-    s32 sp3C;
-    s32 sp40;
-    s32 sp44;
-    s32 sp48;
-    s32 sp4C;
-    s32 sp50;
-    char buffer[1104];
-    char * buffer_pos;
-    char *var_s1;
-    char ***var_v1;
-    s32 temp_a3;
-    s32 var_s3;
-    s32 *var_language;
-    s8 temp_v0_2;
-
-    u8 temp_s0;
-    char *temp_v0;
-    char *temp_v1;
-
-    var_language = &language;
-    var_v1 = &PTR_s_JAPANESE;
-    do
-    {
-        *var_language = *var_v1;
-        var_language[1] = (s32)var_v1[1];
-        var_language[2] = (s32)var_v1[2];
-        var_language[3] = (s32)var_v1[3];
-        var_v1 += 0x10;
-        var_language += 0x10;
-    } while (var_v1 != (&PTR_s_JAPANESE + 0x20));
-    buffer_pos = &buffer;
-    var_s3 = 0;
-    var_s1 = &D_80011f18;
-    *var_language = *var_v1;
-    var_language[1] = (s32)var_v1[1];
-    sp38 = PTR_s_RIKIMARU[0];
-    sp3C = PTR_s_RIKIMARU[1];
-    sp40 = PTR_s_RIKIMARU[2];
-    sp44 = PTR_s_RIKIMARU[3];
-    sp48 = PTR_s_RIKIMARU[4];
-    sp4C = PTR_s_RIKIMARU[5];
-loop_3:
-    if (var_s3 < 0xB)
-    {
-        temp_s0 = var_s1;
-        temp_a3 = var_s1[1];
-        var_s1 += 0x1C;
-        sprintf(buffer_pos, s__2d__s, temp_s0, temp_a3);
-        temp_v0 = &sp50 + (temp_s0 * 8);
-        temp_v0[0] = buffer_pos;
-        buffer_pos += 0x64;
-        temp_v0[1] = var_s3;
-        var_s3 += 1;
-        goto loop_3;
-    }
-    temp_v1 = &sp50 + (var_s3 * 8);
-    temp_v1 = &D_80097dc8;
-    temp_v1[1] = 0xB;
-    *(&sp50 + ((var_s3 + 1) * 8)) = 0;
-    do
-    {
-        *(char *)(param_1 + 0x5e) = FUN_8005fecc(&D_8001420c, &language, 0);
-        *(char *)(param_1 + 4) = FUN_8005fecc(&D_8001421c, &sp38, 0);
-        *(char *)(param_1 + 5) = FUN_8005fecc(&D_8001422c, &sp50, 0);
-        // arg0->unk5 = temp_v0_2;
-    } while ((u32)(temp_v0_2 & 0xFF) >= 0xBU);
-}
-*/
-
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_8005c5a8);
 
-// interesting, accesses kill counters and such
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", debug_menu_stage_option);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_8005cbbc);
@@ -1164,8 +1049,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_8005e834)
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_8005e8f0);
 
-void func_8005E948(void)
-{
+void func_8005E948(void) {
 }
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_8005e950);
