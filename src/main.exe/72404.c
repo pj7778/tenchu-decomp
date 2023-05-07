@@ -22,15 +22,23 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", _card_open);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", _card_start);
 
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", BIOS_OBJ_29C);
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", _card_close);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", _card_stop);
+
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", BIOS_OBJ_370);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", _clr_card_event);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", _get_card_event);
 
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", BIOS_OBJ_494);
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", _get_card_event_x);
+
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", BIOS_OBJ_56C);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72404", _chk_card_event);
 

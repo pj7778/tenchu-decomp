@@ -4,6 +4,11 @@
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/659A4", memset);
 
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/659A4", MEMSET_OBJ_18);
+
+void MEMSET_OBJ_28(void) {
+}
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/659A4", rand);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/659A4", srand);

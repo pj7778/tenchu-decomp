@@ -18,6 +18,13 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72B94", FUN_80083538
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72B94", FUN_800835b0);
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72B94", func_800835E8);
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72B94", D_800835e8);
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72B94", func_80083650);
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72B94", D_80083624);
+
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72B94", D_80083644);
+
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72B94", D_80083650);
+
+void D_80083688(void) {
+}

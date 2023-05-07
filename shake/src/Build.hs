@@ -39,6 +39,10 @@ srcDir = "src"
 buildDir :: FilePath
 buildDir = shakeDir </> "build"
 
+-- C files ran through CPP
+processedDir :: FilePath
+processedDir = shakeDir </> "processed"
+
 mainExe :: FilePath
 mainExe = buildDir </> "tenchu" </> "main.exe"
 
@@ -146,12 +150,12 @@ objRules = do
     need [src]
     liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
     cmd_ as asFlags ["-o"] out src
-  buildDir <//> "*.c.o" %> \out -> do
-    let fileComponent = makeRelative buildDir out
-        target = takeDirectory1 fileComponent
-        src = srcDir </> target </> dropExtension (dropDirectory1 fileComponent)
-        header = srcDir </> target </> target <.> "h"
 
+  processedDir <//> "*.c" %> \out -> do
+    let fileComponent = makeRelative processedDir out
+        target = takeDirectory1 fileComponent
+        src = srcDir </> target </> dropDirectory1 fileComponent
+        header = srcDir </> target </> target <.> "h"
     orderOnly [header]
     -- Make sure we have generated sources. Whether and what we need from them
     -- exactly, we'll find out from the compiler soon enough and we'll `needed`
@@ -163,11 +167,21 @@ objRules = do
     -- anything in mainGen changes.
     need [mainGen, src]
     liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
-    Stdout cppOut <- withTempFile $ \makeOut -> do
-      r <- cmd cpp (cppFlags <> ["-MMD", "-MF", makeOut]) src
+    withTempFile $ \makeOut -> do
+      cmd_ cpp (cppFlags <> ["-MMD", "-MF", makeOut]) src out
       neededMakefileDependencies makeOut
-      pure r
-    Stdout ccOut <- cmd (StdinBS cppOut) cc ccFlags
+
+  buildDir <//> "*.c.o" %> \out -> do
+    let fileComponent = makeRelative buildDir out
+        target = takeDirectory1 fileComponent
+        -- src = srcDir </> target </> dropExtension (dropDirectory1 fileComponent)
+        -- header = srcDir </> target </> target <.> "h"
+        -- source file after cpp was ran
+        processed = processedDir </> target </> dropExtension (dropDirectory1 fileComponent)
+
+    need [processed]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    Stdout ccOut <- cmd cc ccFlags processed
     cmd_ (StdinBS ccOut) as asFlags "-o" out
 
 mainRules :: Rules ()
@@ -202,10 +216,12 @@ mainRules = do
     mainCFiles <- liftIO $ getDirectoryFilesIO (srcDir </> "main.exe") ["//*.c"]
     let mainOFiles = map (\f -> buildDir </> "main.exe" </> f <.> "o") (mainCFiles <> mainSFiles)
         ldFile = mainGenDir </> linkerDir </> "main.exe.ld"
-        autoSymbols = mainGenDir </> metaDir </> "undefined_symbols_auto.main.exe.txt"
+        definedSymbols = configDir </> "symbols.main.exe.txt"
+        undefinedSymbols = mainGenDir </> metaDir </> "undefined_symbols_auto.main.exe.txt"
+        undefinedFunctions = mainGenDir </> metaDir </> "undefined_functions_auto.main.exe.txt"
         mainSFilesExp = map (\f -> mainGenDir </> asmDir </> f) mainSFiles
         mainCFilesExp = map (\f -> srcDir </> "main.exe" </> f) mainCFiles
-    need (mainSFilesExp <> mainCFilesExp <> mainOFiles <> [ldFile, autoSymbols])
+    need (mainSFilesExp <> mainCFilesExp <> mainOFiles <> [ldFile, undefinedSymbols, undefinedFunctions])
     -- need [mainCFilesExp]
     -- putInfo $ show mainOFiles
     liftIO $ IO.createDirectoryIfMissing True (buildDir </> "tenchu")
@@ -220,7 +236,11 @@ mainRules = do
         ldFile,
         -- -T <( cut -d '/' -f1 $(CONFIG_DIR)/symbols.main.exe.txt ) \
         "-T",
-        autoSymbols,
+        definedSymbols,
+        "-T",
+        undefinedSymbols,
+        "-T",
+        undefinedFunctions,
         "--no-check-sections",
         "-nostdlib",
         "-s"

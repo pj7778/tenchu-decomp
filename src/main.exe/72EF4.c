@@ -7,3 +7,5 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72EF4", EnablePAD);
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72EF4", DisablePAD);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72EF4", _patch_pad);
+
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/72EF4", PATCH_OBJ_68);

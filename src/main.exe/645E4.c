@@ -3,3 +3,5 @@
 
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/645E4", SpuSetNoiseClock);
+
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/645E4", S_SNC_OBJ_20);

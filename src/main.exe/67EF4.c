@@ -2,4 +2,4 @@
 #include "main.exe.h"
 
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/67EF4", FUN_800786f4);
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/67EF4", SetGeomScreen);
