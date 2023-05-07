@@ -71,6 +71,8 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/73024", D_80083cc4);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/73024", D_80083cd0);
 
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/73024", FUN_80083ce8);
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/73024", D_80083d20);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/73024", switchD_80083d60__switchD);
@@ -85,7 +87,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/73024", switchD_8008
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/73024", switchD_80083d60__caseD_5);
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/73024", switchD_80083d60__caseD_5);
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/73024", D_80083da4);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/73024", D_80083df4);
 

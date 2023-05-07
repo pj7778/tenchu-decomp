@@ -9594,6 +9594,8 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", D_800565cc);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", D_800565d4);
 
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", FUN_800565f0);
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", D_80056600);
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/5934", clear_picked_shop_item_quantities);
