@@ -3,6 +3,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TypeFamilies #-}
 
+import Control.Monad (when)
 import qualified Data.Aeson as A
 import Data.Binary (Binary)
 import Data.Hashable (Hashable)
@@ -269,6 +270,16 @@ phonyRules = do
 
   phony "extract_main.exe" $ do
     need [mainGen]
+
+  phony "check" $ do
+    let reference = "disks" </> "tenchu" </> "main.exe"
+    need [mainExe, reference]
+    StdoutTrim ref <- cmd "sha256sum" reference
+    StdoutTrim ours <- cmd "sha256sum" mainExe
+    let refSha = head $ words ref
+        ourSha = head $ words ours
+    when (refSha /= ourSha) $ do
+      fail $ unwords ["Expected", mainExe, "to have sha256 of", refSha, "but it's", ourSha]
 
 -- | Gets the absolute root directory of the project. Errors on
 -- failure. Assumes we're somewhere inside the project.
