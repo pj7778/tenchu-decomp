@@ -152,10 +152,10 @@ objRules = do
     liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
     cmd_ as asFlags ["-o"] out src
 
-  processedDir <//> "*.c" %> \out -> do
+  [processedDir <//> "*.c", processedDir <//> "*.s"] |%> \out -> do
     let fileComponent = makeRelative processedDir out
         target = takeDirectory1 fileComponent
-        src = srcDir </> target </> dropDirectory1 fileComponent
+        src = srcDir </> target </> replaceExtension (dropDirectory1 fileComponent) "c"
         header = srcDir </> target </> target <.> "h"
     orderOnly [header]
     -- Make sure we have generated sources. Whether and what we need from them
@@ -175,9 +175,6 @@ objRules = do
   buildDir <//> "*.c.o" %> \out -> do
     let fileComponent = makeRelative buildDir out
         target = takeDirectory1 fileComponent
-        -- src = srcDir </> target </> dropExtension (dropDirectory1 fileComponent)
-        -- header = srcDir </> target </> target <.> "h"
-        -- source file after cpp was ran
         processed = processedDir </> target </> dropExtension (dropDirectory1 fileComponent)
 
     need [processed]
