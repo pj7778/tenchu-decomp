@@ -152,7 +152,7 @@ objRules = do
     liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
     cmd_ as asFlags ["-o"] out src
 
-  [processedDir <//> "*.c", processedDir <//> "*.s"] |%> \out -> do
+  processedDir <//> "*.c" %> \out -> do
     let fileComponent = makeRelative processedDir out
         target = takeDirectory1 fileComponent
         src = srcDir </> target </> replaceExtension (dropDirectory1 fileComponent) "c"
@@ -172,15 +172,22 @@ objRules = do
       cmd_ cpp (cppFlags <> ["-MMD", "-MF", makeOut]) src out
       neededMakefileDependencies makeOut
 
+  processedDir <//> "*.s" %> \out -> do
+    let processed = replaceExtension out "c"
+    need [processed]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    putInfo $ "Feeding " <> processed <> " to cc"
+    cmd_ (FileStdin processed) (FileStdout out) cc ccFlags
+
   buildDir <//> "*.c.o" %> \out -> do
     let fileComponent = makeRelative buildDir out
         target = takeDirectory1 fileComponent
-        processed = processedDir </> target </> dropExtension (dropDirectory1 fileComponent)
+        processed = processedDir </> target </> replaceExtension (dropExtension (dropDirectory1 fileComponent)) "s"
 
     need [processed]
     liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
-    Stdout ccOut <- cmd cc ccFlags processed
-    cmd_ (StdinBS ccOut) as asFlags "-o" out
+    putInfo $ "Feeding " <> processed <> " to as"
+    cmd_ (FileStdin processed) as asFlags "-o" out
 
   buildDir <//> "*.bin.o" %> \out -> do
     let fileComponent = makeRelative buildDir out
