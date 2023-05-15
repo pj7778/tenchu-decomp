@@ -42,10 +42,10 @@ segments:
     subalign: 4
     subsegments:
       - [0x800, data] # ?
-      - [0x5934, c]
-
-      # - [0x4C8D4, c]
-      - [0x75F64, data]
+      - [0x5934, data]
+      - [0xAA60, c, get_held_buttons]
+      - [0xAAB8, data]
+      # - [0x75F64, data]
       - [0x86E98, sdata]
       - [0x87788, sbss]
       # Ghidra says there's bss starting from 0x87790 but it's all zero. bss is
