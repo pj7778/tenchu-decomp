@@ -170,8 +170,6 @@ objRules = do
         True -> srcPath
         False -> genPath
 
-    putInfo $ show (src, header)
-
     orderOnly [header]
     -- Make sure we have generated sources. Whether and what we need from them
     -- exactly, we'll find out from the compiler soon enough and we'll `needed`
@@ -252,7 +250,6 @@ mainRules = do
         mainSFilesExp = map (\f -> mainGenDir </> asmDir </> f) mainSFiles
         -- mainCFilesExp = map (\f -> srcDir </> "main.exe" </> f) mainCFiles
         mainAssetFilesExp = map (\f -> mainGenDir </> assetsDir </> f) mainAssetFiles
-    putInfo $ show cFiles
     need (mainSFilesExp <> mainAssetFilesExp <> mainOFiles <> [ldFile, undefinedSymbols, undefinedFunctions])
     -- need [mainCFilesExp]
 
