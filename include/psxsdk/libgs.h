@@ -35,4 +35,20 @@ struct GsDOBJ2
     u_long id;
 };
 
+typedef struct GsIMAGE GsIMAGE;
+struct GsIMAGE
+{
+    u_long pmode;
+    short px;
+    short py;
+    u_short pw;
+    u_short ph;
+    u_long *pixel;
+    short cx;
+    short cy;
+    u_short cw;
+    u_short ch;
+    u_long *clut;
+};
+
 #endif
