@@ -97,7 +97,22 @@ ldFlags =
   ]
 
 ccFlags :: [String]
-ccFlags = ["-mcpu=3000", "-quiet", "-G0", "-w", "-O2", "-funsigned-char", "-fpeephole", "-ffunction-cse", "-fpcc-struct-return", "-fcommon", "-fverbose-asm", "-fgnu-linker", "-mgas", "-msoft-float"]
+ccFlags =
+  [ "-mcpu=3000",
+    "-quiet",
+    "-G0",
+    "-w",
+    "-O2",
+    "-funsigned-char",
+    "-fpeephole",
+    "-ffunction-cse",
+    "-fpcc-struct-return",
+    "-fcommon",
+    "-fverbose-asm",
+    "-fgnu-linker",
+    "-mgas",
+    "-msoft-float"
+  ]
 
 cppFlags :: [String]
 cppFlags =
