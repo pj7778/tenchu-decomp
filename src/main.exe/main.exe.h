@@ -1,5 +1,6 @@
 typedef u16 buttons_held;
 
+extern void FUN_8001ada4(void);
 extern buttons_held HELD_BUTTONS;
 
 typedef struct
