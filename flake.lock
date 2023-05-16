@@ -212,11 +212,11 @@
         "poetry2nix": "poetry2nix"
       },
       "locked": {
-        "lastModified": 1684058589,
-        "narHash": "sha256-rLNhmAeBsyTCntj9+l7zteYWzNpNg2Elb+XdIBXR8TQ=",
+        "lastModified": 1684278194,
+        "narHash": "sha256-Yz9ixaBtuQUKhlvZmCU72W4QWDkhlnCicSGM+XYlMJc=",
         "owner": "Fuuzetsu",
         "repo": "m2c-overlay",
-        "rev": "a47bd2e6a4e4bcd0498d45381e47cba78de53e96",
+        "rev": "749e1f1070edee1144fe02c3aff101fdba79b08a",
         "type": "github"
       },
       "original": {
@@ -228,11 +228,11 @@
     "m2c_2": {
       "flake": false,
       "locked": {
-        "lastModified": 1684055012,
-        "narHash": "sha256-Y3Y5q2wLNHMt80cjyHeP/DP8xs5ULrzxlGn+91a/hP4=",
+        "lastModified": 1684271027,
+        "narHash": "sha256-hOCxgFh7GjtFy6yRFixRkq1oHsrtruAYcBhkBTyC86w=",
         "owner": "matt-kempster",
         "repo": "m2c",
-        "rev": "bfd28c1a4e95de01e5547a3fc2e861e65d31c4f1",
+        "rev": "496919d6306b084f601e7d6e0a222d48b163e55a",
         "type": "github"
       },
       "original": {
