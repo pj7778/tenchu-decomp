@@ -48,8 +48,8 @@ segments:
       - [0x1F198, c, think_setting_sleep]
       - [0x1F224, data]
       # - [0x75F64, data]
-      - [0x86E98, sdata]
-      - [0x87788, sbss]
+      # - [0x86E98, sdata]
+      # - [0x87788, sbss]
       # Ghidra says there's bss starting from 0x87790 but it's all zero. bss is
       # by definition uninitialised memory so linker won't put anything here.
       # Yet then original binary has zeroes here. So we just remove this

@@ -592,3 +592,9 @@ struct character_state
     u8 field83_0xcf;
 };
 // s32 debug_menu_choose(char *screen_header, debug_menu_choice *choices, char *param_3);
+
+extern int turn_towards_player_(int x_diff, int z_diff);
+extern character_state *CHARACTER_BEING_UPDATED_;
+extern s16 ALERT_STATUS_;
+extern s16 ACTUALLY_ALERT_STATUS_;
+extern s32 FRAMES_UNTIL_END_OF_ALERT;
