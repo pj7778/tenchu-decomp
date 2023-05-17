@@ -65,7 +65,7 @@ cpp :: FilePath
 cpp = cross "cpp"
 
 cc :: FilePath
-cc = "tools/cc1-26"
+cc = "tools/cc1-281"
 
 as :: FilePath
 as = cross "as"
