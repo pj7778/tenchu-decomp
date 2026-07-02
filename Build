@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
 set -e
 
-pushd shake > /dev/null
-cabal v2-run tenchu-build:Build -O2 -- "$@"
+# Compile the Shake build driver directly with the devShell's GHC (which has
+# shake/aeson/uuid/hashable baked into its package DB via ghcWithPackages), then
+# run it. No cabal / Hackage / network needed — works offline on a fresh
+# checkout. Build.hs chdirs to the project root itself (via .project.root), so
+# it can be invoked from anywhere inside the tree.
+root=$(dirname "$(readlink -f "$0")")
+outdir="$root/shake/dist-direct"
+mkdir -p "$outdir"
+
+ghc -O2 -threaded -rtsopts --make \
+    -outputdir "$outdir" \
+    -o "$outdir/Build" \
+    "$root/shake/src/Build.hs"
+
+exec "$outdir/Build" "$@"

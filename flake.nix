@@ -81,7 +81,15 @@
             ln -s "${pkgs.gcc}/bin/cpp" "$out"/bin 
           '')
           pkgs.wine
-          pkgs.ghc
+          # GHC with the Shake build tool's deps baked into its global package
+          # DB, so `./Build` compiles shake/src/Build.hs with plain `ghc` fully
+          # offline — no `cabal update`/Hackage fetch on a fresh checkout.
+          (pkgs.haskellPackages.ghcWithPackages (p: [
+            p.shake
+            p.aeson
+            p.uuid
+            p.hashable
+          ]))
           pkgs.cabal-install
           pkgs.haskell-language-server
           # TODO: asm-differ into overlay

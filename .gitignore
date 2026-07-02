@@ -6,3 +6,4 @@ disks/
 /dist-newstyle
 dist-newstyle
 __pycache__
+shake/dist-direct
