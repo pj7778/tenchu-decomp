@@ -1,15 +1,15 @@
 #include "common.h"
 #include "main.exe.h"
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/think_setting_sleep", think_setting_sleep_);
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/think_setting_sleep", Think1sleep);
 
 /*
  * WIP. The body below (from m2c) is functionally correct and, with maspsx now in
  * the pipeline, compiles VERY close to the target. Remaining, precisely
  * identified blockers before it byte-matches (see docs/toolchain.md "gp globals"):
  *
- *  1. gp addressing: CHARACTER_BEING_UPDATED_, ALERT_STATUS_,
- *     ACTUALLY_ALERT_STATUS_, FRAMES_UNTIL_END_OF_ALERT must be $gp-relative in
+ *  1. gp addressing: Me_THINK_C, SR,
+ *     Attrib, FRAMES_UNTIL_END_OF_ALERT must be $gp-relative in
  *     the output (target uses %gp_rel). maspsx only gp-converts symbols it sees
  *     as small-data (.comm/.sdata/.sbss), NOT `.extern`. Fix: declare these
  *     globals as tentative definitions (drop `extern` in main.exe.h) so cc1 emits
@@ -24,25 +24,25 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/think_setting_sleep"
  *  3. something_about_current_animation.frames_since_animation_start must be s16
  *     (target uses `lh`), not u16 (`lhu`).
  *  4. After 1-3, any residual register-allocation diff is a decomp-permuter job
- *     (as with get_held_buttons).
+ *     (as with GetRealPad).
  *
- * s32 think_setting_sleep_(void)
+ * s32 Think1sleep(void)
  * {
  *     something_about_current_animation *temp_a0;
  *     s32 var_a1;
  *     s32 var_v0;
  *
- *     temp_a0 = CHARACTER_BEING_UPDATED_->something_about_current_animation;
+ *     temp_a0 = Me_THINK_C->something_about_current_animation;
  *     var_a1 = 0;
  *     if (temp_a0->animation_state_perhaps == 0x100)
  *     {
- *         ALERT_STATUS_ = -1;
+ *         SR = -1;
  *     }
  *     else if (temp_a0->frames_since_animation_start == 0)
  *     {
  *         var_a1 = 0x1001;
  *     }
- *     if ((FRAMES_UNTIL_END_OF_ALERT != 0) || (var_v0 = var_a1 << 0x10, ((ACTUALLY_ALERT_STATUS_ & 0x8000) != 0)))
+ *     if ((FRAMES_UNTIL_END_OF_ALERT != 0) || (var_v0 = var_a1 << 0x10, ((Attrib & 0x8000) != 0)))
  *     {
  *         var_v0 = (turn_towards_player_(0, 0) & 0xA000) << 0x10;
  *     }

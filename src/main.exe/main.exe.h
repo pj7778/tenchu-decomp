@@ -2,7 +2,7 @@
 
 typedef u16 buttons_held;
 
-// One controller's input state; 14 bytes. get_held_buttons indexes a
+// One controller's input state; 14 bytes. GetRealPad indexes a
 // [port][slot] table of these and reads the first (held) field.
 typedef struct
 {
@@ -10,8 +10,8 @@ typedef struct
     u16 unk_2[6];
 } controller_input;
 
-extern void FUN_8001ada4(void);
-extern controller_input HELD_BUTTONS[][4];
+extern void PadProc(void);
+extern controller_input PadPort[][4];
 
 typedef struct
 {
@@ -599,17 +599,17 @@ struct character_state
     u8 field82_0xce;
     u8 field83_0xcf;
 };
-// s32 debug_menu_choose(char *screen_header, debug_menu_choice *choices, char *param_3);
+// s32 AdtSelect(char *screen_header, debug_menu_choice *choices, char *param_3);
 
 extern int turn_towards_player_(int x_diff, int z_diff);
-extern character_state *CHARACTER_BEING_UPDATED_;
-extern s16 ALERT_STATUS_;
-extern s16 ACTUALLY_ALERT_STATUS_;
+extern character_state *Me_THINK_C;
+extern s16 SR;
+extern s16 Attrib;
 extern s32 FRAMES_UNTIL_END_OF_ALERT;
 extern char FONT_FILE_NAME;
 extern char IMAGES_PREFIX_STR;
 
-extern void *load_resource_from(char *resource_prefix, char *resource_name);
-extern void *tenchu_GsGetTimInfo(u_long *tim, GsIMAGE *im);
-extern void load_image_from_tim_to_gpu_and_dealloc_data_(u_long *tim);
+extern void *PathFileRead(char *resource_prefix, char *resource_name);
+extern void *GetTIMInfo(u_long *tim, GsIMAGE *im);
+extern void LoadTIMAndFree(u_long *tim);
 extern void load_font_image_into_global(GsIMAGE *image);
