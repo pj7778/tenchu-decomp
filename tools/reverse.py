@@ -26,6 +26,7 @@ os.chdir(ROOT)
 VRAM = 0x80011000       # main.exe load address
 FILE_OFF = 0x800        # file offset of vram base (segment start)
 YAML = "config/splat.main.exe.yaml"
+SYMBOLS = "config/symbols.main.exe.txt"
 SRC_DIR = "src/main.exe"
 
 
@@ -100,6 +101,35 @@ def split_config(fstart, fend, name):
     print(f"reverse: split config -> [0x{fstart:X}, c, {name}]")
 
 
+DEFAULT_NAME = re.compile(r"^(FUN_|func_|sub_|D_|LAB_|loc_|jtbl_)", re.IGNORECASE)
+
+
+def add_symbol(name, vram):
+    """Define <name> at vram in config/symbols so splat names the function it
+    generates <name> (otherwise the generated INCLUDE_ASM path won't match).
+    If the address already has a *default* placeholder (FUN_…), replace it with
+    <name>; if it has a real name, keep that."""
+    text = open(SYMBOLS).read()
+    m = re.search(rf"(?mi)^([ \t]*)(\w+)([ \t]*=[ \t]*0x0*{vram:x}[ \t]*;.*)$", text)
+    if m:
+        existing = m.group(2)
+        if existing == name:
+            return name
+        if DEFAULT_NAME.match(existing):
+            text = text[:m.start()] + m.group(1) + name + m.group(3) + text[m.end():]
+            open(SYMBOLS, "w").write(text)
+            print(f"reverse: renamed placeholder {existing} -> {name} at 0x{vram:x}")
+            return name
+        print(f"reverse: 0x{vram:x} already named `{existing}` in {SYMBOLS} "
+              f"(not a placeholder) — keeping it, ignoring `{name}`")
+        return existing
+    if not text.endswith("\n"):
+        text += "\n"
+    open(SYMBOLS, "w").write(text + f"{name} = 0x{vram:x};\n")
+    print(f"reverse: added symbol {name} = 0x{vram:x}")
+    return name
+
+
 INCLUDE_TMPL = (
     '#include "common.h"\n#include "main.exe.h"\n\n'
     'INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/{name}", {name});\n')
@@ -145,12 +175,17 @@ def main():
     fstart, fend = file_offset(vram), file_offset(vram) + size
     print(f"reverse: {args.name} @ vram 0x{vram:x} size 0x{size:x} "
           f"-> file [0x{fstart:X}, 0x{fend:X})")
-    split_config(fstart, fend, args.name)
-    write_src(args.name, ghidra_c)
+    name = add_symbol(args.name, vram)      # may differ if addr already named
+    split_config(fstart, fend, name)
+    write_src(name, ghidra_c)
 
     if args.no_check:
         return
     print("reverse: rebuilding + checking byte-match…")
+    # Clean first: adding/renaming a split changes the generated file set, and
+    # the splat generator's incremental staleness check can miss that (it
+    # compares the *set* of paths). A clean regen is cheap (~seconds) and sound.
+    subprocess.run(["./Build", "clean"], stdout=subprocess.DEVNULL)
     r = subprocess.run(["./Build", "check"], stdout=subprocess.DEVNULL)
     if r.returncode == 0:
         print(f"reverse: ✓ ./Build check GREEN — {args.name} split, still byte-identical.")
