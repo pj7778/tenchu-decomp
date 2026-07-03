@@ -61,12 +61,22 @@ mipsel-unknown-linux-gnu-as {asflags} -o "$OUT" "$TMP/b.s"
 """
 
 
+def piece_addr(path):
+    """VRAM of a nonmatching piece's first instruction (its comment column)."""
+    import re
+    for line in open(path):
+        m = re.match(r"/\* \w+ ([0-9A-Fa-f]{8}) ", line)
+        if m:
+            return int(m.group(1), 16)
+    return 1 << 62
+
+
 def find_nonmatching_s(name):
-    """All split pieces of the function, in address order (a jump-table switch
-    splits one function into several .s files — the target must be their
-    concatenation, not just the entry piece)."""
+    """All split pieces of the function, in ADDRESS order (a jump-table switch
+    splits one function into several .s files whose names sort wrong
+    lexicographically — caseD_1f before caseD_2, switchD last)."""
     dirs = glob.glob(f".shake/gen/main.exe/asm/nonmatchings/{name}")
-    hits = sorted(glob.glob(f"{dirs[0]}/*.s")) if dirs else \
+    hits = sorted(glob.glob(f"{dirs[0]}/*.s"), key=piece_addr) if dirs else \
         glob.glob(f".shake/gen/main.exe/asm/nonmatchings/*/{name}.s")
     if not hits:
         sys.exit(f"permute: {name}.s not found under .shake/gen — is {name} split "

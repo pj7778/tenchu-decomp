@@ -213,6 +213,19 @@ gold — match its return/variable types exactly (`Think1sleep` needed
   (`(s16)CamState.Owner->lifemax`, DoInfoViewProc's PutLifeBar call).
 - Byte-sized call arguments loaded with `lbu` and no masking are plain `u8`
   struct fields passed directly.
+- **A caller-side extern's RETURN TYPE is an extension-position lever**:
+  declaring a u16-returning callee as `extern u32 f()` in the calling TU
+  moves the result's derived (s16) extension after the intervening bit-chain,
+  reusing the dying result copy (BIS: GetRealPad). Original TUs routinely
+  disagree with the defining TU's prototype — respell per-TU, don't "fix"
+  the shared header.
+- **Two adjacent (s16)→int extensions the target INTERLEAVES**
+  ([sll a][sll b][move][sra a][branch][slot: sra b]) can't come from two
+  plain assignments (each emits sll+sra adjacent, one scratch serves both).
+  Hand-split the halves: `hx = j << 0x10; hy = shown << 0x10; k = cursor;
+  ddx = hx >> 0x10; ddy = hy >> 0x10;` — combine collapses
+  (sign_extend)<<16 to one sll, the intermediates overlap, reorg steals the
+  last sra into the branch slot (BIS cursor move).
 - **A constant stored to both a narrow field and a full-word field must be a
   shared int variable**: cc1 gives the literal in `s16_field = 8;` an HImode
   pseudo and a later `s32_field = 8;` a separate SImode one — two `li`s, one
@@ -372,6 +385,24 @@ gold — match its return/variable types exactly (`Think1sleep` needed
   NOTE_INSN_LOOP_VTOP at the bottom; reorg predicts the branch taken and
   fills from the taken thread (duplicate + retarget). goto/do-while forms
   fill from fallthrough — one insn short (BIS's grid loop).
+- **The do{}while(0) lever NESTS and is statement-granular**: each level
+  adds +1 loop_depth to flow.c's ref weighting for just the wrapped
+  statements. A DOUBLE wrapper flipped a case body's {v0,v1}
+  constant/reload pairing; single wrappers around each
+  `t = scale ± 0x10; scale = t;` pair made (s16)t read the addiu temp's
+  register in all three bounce arms (BIS).
+- **A byte-neutral cse re-read works in a COMPARE too**:
+  `mx < cq->stock[n]` for `mx < c` folds back to c's register but donates
+  different global-alloc preferences (set_preference takes the FIRST operand
+  of a compound SET_SRC; find_reg avoids regs other allocnos prefer) —
+  flipped one clamp copy's addu tie while the textually identical sibling
+  kept the fresh-reg shape (BIS).
+- **Which operand goes through the named int temp picks the reload reg**
+  (spilled-u16 pairs): temps for both operands let local-alloc hand the
+  second zero_extend a low scratch; reading the second operand INLINE
+  (`t1 = cap; av = t1 - taken;`) makes its zext an expression temp that
+  reload materializes in source order into the next spill reg (BIS digit
+  entry).
 - **Byte-neutral respellings are permuter seed levers**: re-reading a cached
   field that cse folds back (`dsp->u = dsp->u + …` for `x + …`) or a
   do{}while(0) around an UNRELATED block shifts pseudo bookkeeping enough to
@@ -469,7 +500,9 @@ the original table words (deleted when the real C is activated);
 tools/permute.py concatenates all pieces for its target (fixed after this
 bit a session); tools/matchdiff.py's window stops at the first piece — use
 tools/asmdiff.py (sizes from the Ghidra export) for iteration and
-matchdiff's whole-image count only as the gate.
+matchdiff's whole-image count only as the gate. permute.py orders the
+concatenated pieces by first-instruction address (lexicographic sorting is
+wrong: caseD_1f before caseD_2, switchD last).
 
 ## gp vs absolute globals (item-TU vs think-TU)
 

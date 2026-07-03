@@ -4,65 +4,59 @@
 /*
  * Pre-mission briefing / item selection screen (0x80052084, 0xE24 bytes).
  *
- * CURRENT(28): 905/905 instructions, 28 differing lines in 15 blocks; all
- * remaining diffs are local register-pairing ties (asmdiff.py view):
- *   1. entry clamp {v1,a0}: T ties the stock-address into n's dying reg
- *      (addu v1,t0,v1) and puts maxStock in a0; ours takes fresh a0 for the
- *      address (the case-1 clamp copy, which uses the fresh-reg shape, is
- *      byte-identical in both) (7 lines).
- *   2. (s16)pad argument of check_for_known_button_combination: ours emits
- *      the sll/sra ext BEFORE the np xor/and chain with a0 as intermediate;
- *      T emits it after, reusing v0 (the dying pad copy) (4 lines).
- *   3. case-0x1F store block {v0,v1}: T loads chr into v1/li 255 into v0,
- *      ours inverted. The fresh chr reload itself is right (join block cuts
- *      cse); only the local qty pairing differs (7 lines).
- *   4. cursor-move exts: T interleaves [sll dx][sll dy][move k=cursor]
- *      [sra dx][bnez][slot: sra dy]; ours keeps each (s16)->int ext pair
- *      together and reorg fills the slot with the k move instead (5 lines).
- *   5. bounce-arm compare: T's (s16)t ext reads the addiu temp (sll v0,v0);
- *      ours reads the coalesced scale (sll v0,s7) -- some equivalence makes
- *      cc1 canonicalize (s16)t to scale's reg; reusing early-born ints
- *      (uid/i) as t shifted other regions, so the temp identity is not it
- *      (3 lines).
- *   6. digit-block entry loads: both lhu's are reload-materialized zexts of
- *      the int t1/t2 temps, but ours orders [160][152] with t2 in v0; T
- *      orders [152][160] with t2 in t5. Source statement order of t1/t2
- *      does NOT flip it (canonicalized somewhere post-expand) (3+2 lines).
+ * MATCHED (905/905 instructions, byte-identical; four sessions:
+ * 241 -> 94 -> 28 -> 0). The 28 residual register-tie diffs fell to six
+ * levers, all in this file (permuter rounds 4-6 found 1/3/5, hand-derived
+ * 4/6 from the gcc 2.8.1 local-alloc.c/global.c tie+preference conditions):
+ *   1. `extern u32 GetRealPad(...)` -- the CALLER-side return type (the
+ *      defining TU says buttons_held/u16). With a u16 return the (s16)pad
+ *      ext for check_for_known_button_combination was emitted before the
+ *      np xor/and chain via a0; with u32 it lands after, reusing the dying
+ *      pad copy in v0 (permuter r4; `volatile unsigned int` scored the
+ *      same -- the volatile is pycparser noise).
+ *   2. Entry-clamp compare re-read `mx < cq->stock[n]` (for `mx < c`):
+ *      byte-neutral (cse folds it back to c's reg) but the changed
+ *      preference set makes global alloc tie the store address into n's
+ *      dying v1 (addu v1,t0,v1). The textually-identical case-1 copy keeps
+ *      the plain `mx < c` spelling and the fresh-a0 shape (permuter r5).
+ *   3. case-0x1F body: NESTED do{}while(0) (two deep, statement
+ *      granularity) -- each level adds +1 loop_depth to flow.c's ref
+ *      weighting, flipping the {v0,v1} pairing of the chr reload chain vs
+ *      the li 255 (permuter r4).
+ *   4. Cursor-move exts written as HAND-SPLIT shift pairs:
+ *      `hx = j << 0x10; hy = shown << 0x10; k = cursor; ddx = hx >> 0x10;
+ *      ddy = hy >> 0x10;` -- combine collapses (sign_extend)<<16 into one
+ *      sll (no extra insns), both intermediates overlap (v0+v1 like the
+ *      target's interleave [sll][sll][move][sra][bnez][slot: sra]), and
+ *      reorg steals the second sra into the bnez slot. Natural `ddx = j;`
+ *      pairs each sll/sra and one scratch serves both (no interleave).
+ *   5. Bounce arms: do{}while(0) around each `t = scale +/- 0x10;
+ *      scale = t;` pair (all three arms) -- makes the (s16)t ext read the
+ *      addiu temp's reg (sll v0,v0) instead of the coalesced scale
+ *      (sll v0,s7) (permuter r5 found one arm; same lever fixed all three).
+ *   6. Digit-entry reads: `t1 = cap;` int temp + INLINE `av = t1 - taken;`.
+ *      Named temps for BOTH operands let local-alloc give taken's zext v0
+ *      (tying into the subu); the inline read's zext is an expression temp
+ *      materialized by reload in source order into the next spill reg:
+ *      lhu t9,152 / lhu t5,160 / subu v0,t9,t5 exactly.
  *
- * History: 94 -> 28 this session. The wins, in order:
- *   - digit loop's u0 merged into grid x (multi-def host keeps T's
- *     andi s0,_,0xff alive: an `int c = (u8)<multi-def-var>` zext with two
- *     uses across the call must stay one andi + sb of c's home s0);
- *   - shown-items loop's (s16)j ext runs through grid y (y = (s16)j), so
- *     the y-family (grid conflict with x) lands with jext, freeing s1;
- *   - digit-entry [addiu sp,24][lhu cap][lhu taken][li 34][sh x] shape:
- *     `int t1 = cap, t2 = taken;` read-temps make the loads real zext RTL
- *     insns positioned at their statements (u16 temps get combine-merged
- *     back into the subu; int temps' zero_extends have no subu pattern and
- *     survive) -- this also killed the assembler hazard nop (905 exactly);
- *   - inline index sums `[idx + (ps->chr << 5)]` (shift spelling!): inside
- *     an address expression EXPAND_SUM expands a MULT-BY-CONSTANT first
- *     regardless of source operand order (addu chr32,idx); << 5 skips the
- *     mult special-case and preserves source order (addu idx,chr32). Value
- *     temps (`int n = j + ps->chr * 0x20;`) don't need this (7 sites);
- *   - grid loop must be a real `for` (not goto/do-while): the c==0xFE skip
- *     branch targets the loop bottom = jump.c's NOTE_INSN_LOOP_VTOP, so
- *     reorg's mostly_true_jump predicts it taken and duplicates the j++
- *     addiu into the delay slot (goto-loop: fallthrough fill, one insn
- *     short; invariants stay unhoisted either way because the loop body
- *     has calls);
- *   - do{}while(0) around the cursor-move block (permuter find, round 1);
- *   - digit loop sum written `dsp->u = dsp->u + (s16)rem * dsp->w;` and neg
- *     block `int c = (u8)dsp->u;` -- cse folds the re-reads back to x's
- *     register (same bytes) but the shifted pseudo bookkeeping flips the
- *     global s1/s2 seed: {x+u0, shown+dy}=s1, {y+jext, dsp}=s2 like the
- *     target (permuter find, round 2; the whole ~40-line s1/s2 mirror
- *     traces to which callee-saved reg the first cursor mult temp lands in).
- * Permuter work dirs: scratch/permuter-briefing (r1, base 94-state),
- * scratch/permuter-b2 (r2, base 65-state), scratch/permuter-b3 (r3, base
- * 28-state). tools/permute.py's stock target.o is WRONG for this function
- * (splat splits the switch cases into 8 .s files; concatenate them in
- * address order -- see target.s in the scratch permuter dirs).
+ * Earlier-session levers still load-bearing (see git history for the full
+ * derivations): u0 hosted in grid x (multi-def `int c = (u8)var` keeps the
+ * andi alive); shown-loop's (s16)j ext through grid y; digit-loop division
+ * via int d/quo with the loop-carried copy at the bottom; index sums
+ * spelled `[idx + (ps->chr << 5)]` (shift skips EXPAND_SUM's mult-first
+ * special case, 7 sites); the grid loop as a real `for` (VTOP => reorg
+ * duplicates j++ into the skip branch's delay slot); do{}while(0) around
+ * the cursor-move block; `dsp->u = dsp->u + ...` / `int c = (u8)dsp->u;`
+ * re-read respellings seeding the s1/s2 mirror.
+ *
+ * Permuter dirs: scratch/permuter-{briefing,b2,b3} (rounds 1-3, main
+ * checkout) and .shake/permuter/BriefingAndInventorySelectionScreen
+ * (rounds 4-6, this tree). NOTE tools/permute.py's find_nonmatching_s
+ * concatenates the 8 split .s pieces in LEXICOGRAPHIC order; the target
+ * needs ADDRESS order (entry, switchD, caseD_0, caseD_1, caseD_3,
+ * caseD_1f, caseD_7, caseD_2) -- rebuild target.s/.o by hand after setup
+ * until permute.py is fixed.
  */
 
 /* The persistent state is accessed three ways in the original, on purpose:
@@ -127,45 +121,9 @@ extern void DisposeBG(void *bg);
 extern int check_for_known_button_combination(s16 pad, s16 newpress);
 extern u_long *get_tim_from_archive(u_long *archive, int idx);
 extern void GsSortSprite(GsSPRITE *sp, GsOT *ot, int pri);
-extern buttons_held GetRealPad(s32 which);
+extern u32 GetRealPad(s32 which);
 extern void FUN_800519bc(void);
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/BriefingAndInventorySelectionScreen", BriefingAndInventorySelectionScreen);
-
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/BriefingAndInventorySelectionScreen", switchD_80052360__switchD);
-
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/BriefingAndInventorySelectionScreen", switchD_80052360__caseD_0);
-
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/BriefingAndInventorySelectionScreen", switchD_80052360__caseD_1);
-
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/BriefingAndInventorySelectionScreen", switchD_80052360__caseD_3);
-
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/BriefingAndInventorySelectionScreen", switchD_80052360__caseD_1f);
-
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/BriefingAndInventorySelectionScreen", switchD_80052360__caseD_7);
-
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/BriefingAndInventorySelectionScreen", switchD_80052360__caseD_2);
-
-/*
- * Stub-state jump table. The splat yaml routes vram 0x80013B30 through this
- * TU's .rodata ([0x3330, .rodata, ...]) so the ACTIVE function's compiled
- * switch table lands at the original address. In the stub state the
- * INCLUDE_ASM pieces emit no .rodata, so provide the original 0x20-entry
- * table verbatim (its absence shifts the whole image by 0x80 bytes).
- * DELETE this array when activating the #if 0 draft below.
- */
-static const u32 switchD_80052360_jtbl[32] = {
-    0x80052368, 0x8005238C, 0x8005260C, 0x80052490,
-    0x8005260C, 0x8005260C, 0x8005260C, 0x8005257C,
-    0x8005260C, 0x8005260C, 0x8005260C, 0x8005260C,
-    0x8005260C, 0x8005260C, 0x8005260C, 0x8005260C,
-    0x8005260C, 0x8005260C, 0x8005260C, 0x8005260C,
-    0x8005260C, 0x8005260C, 0x8005260C, 0x8005260C,
-    0x8005260C, 0x8005260C, 0x8005260C, 0x8005260C,
-    0x8005260C, 0x8005260C, 0x8005260C, 0x800524E4,
-};
-
-#if 0
 /*
  * The two TIM-sprite setup blocks are inlined static helpers (same mechanism
  * as DoInfoViewProc's menus): the GsIMAGE scratch is the helper's own local,
@@ -277,7 +235,7 @@ void BriefingAndInventorySelectionScreen(void)
             int n = SHOP_ITEM_DEFAULTS[ci].itemIndex + CHOSEN_CHARACTER * 0x20;
             u8 c = cq->stock[n];
             s32 mx = SHOP_ITEM_DEFAULTS[ci].maxStock;
-            if (c != 0xFE && mx < c) {
+            if (c != 0xFE && mx < cq->stock[n]) {
                 cq->stock[n] = mx;
             }
         }
@@ -337,15 +295,17 @@ void BriefingAndInventorySelectionScreen(void)
                 u8 already = ps->counts[0x13];
                 if (already != 0 || (&ps->stock[0x13])[ps->chr * 0x20] == 1) {
                     do {
-                        if ((s16)nsel < 6) {
-                            if (already == 0) {
-                                nsel++;
-                                taken++;
+                        do {
+                            if ((s16)nsel < 6) {
+                                if (already == 0) {
+                                    nsel++;
+                                    taken++;
+                                }
+                                ps->counts[0x13] = 0xFF;
+                                (&ps->stock[0x13])[ps->chr * 0x20] = 0;
+                                SoundEx((VECTOR *)0x0, 8);
                             }
-                            ps->counts[0x13] = 0xFF;
-                            (&ps->stock[0x13])[ps->chr * 0x20] = 0;
-                            SoundEx((VECTOR *)0x0, 8);
-                        }
+                        } while (0);
                     } while (0);
                 }
             }
@@ -381,7 +341,7 @@ void BriefingAndInventorySelectionScreen(void)
 
         PutItemCursor(SHOP_ITEM_DEFAULTS[cursor].x, SHOP_ITEM_DEFAULTS[cursor].y, 0x1000, -0x3000);
         {
-            int ddx, ddy;
+            int ddx, ddy, hx, hy;
             int k;
 
             do {
@@ -399,9 +359,11 @@ void BriefingAndInventorySelectionScreen(void)
                     j = -0x10;
                 }
             }
-            ddx = j;
-            ddy = shown;
+            hx = j << 0x10;
+            hy = shown << 0x10;
             k = cursor;
+            ddx = hx >> 0x10;
+            ddy = hy >> 0x10;
             if (ddx != 0 || ddy != 0) {
                 int best = 0x7FFFFFFF;
                 int bi = cursor;
@@ -510,20 +472,26 @@ void BriefingAndInventorySelectionScreen(void)
             GsSortSprite(&hspr, OTablePt, 1);
         }
         if (bounce == 1) {
-            t = scale + 0x10;
-            scale = t;
+            do {
+                t = scale + 0x10;
+                scale = t;
+            } while (0);
             if (0x1400 < (s16)t) {
                 bounce ^= 1;
             }
         } else if (bounce == 0) {
-            t = scale - 0x10;
-            scale = t;
+            do {
+                t = scale - 0x10;
+                scale = t;
+            } while (0);
             if ((s16)t < 0x1000) {
                 bounce ^= 1;
             }
         } else if (bounce == 2) {
-            t = scale - 0x10;
-            scale = t;
+            do {
+                t = scale - 0x10;
+                scale = t;
+            } while (0);
             if ((s16)t < 0x1000) {
                 bounce = 0;
             }
@@ -549,14 +517,12 @@ void BriefingAndInventorySelectionScreen(void)
             int quo;
             int d;
             int t1;
-            int t2;
 
-            dsp = &spr;
             t1 = cap;
-            t2 = taken;
+            dsp = &spr;
             dsp->x = 0x22;
             dsp->y = -0x32;
-            av = t1 - t2;
+            av = t1 - taken;
             tv = (s16)av;
             if (tv < 0) {
                 av = -tv;
@@ -602,4 +568,3 @@ quit:
     vfree(harc);
     DisposeBG(bg);
 }
-#endif
