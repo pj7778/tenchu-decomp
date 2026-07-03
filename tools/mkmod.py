@@ -47,9 +47,12 @@ CPP_FLAGS = ("-Iinclude -undef -Wall -lang-c -fno-builtin -gstabs -Dmips "
              "-D__GNUC__=2 -D__OPTIMIZE__ -D__mips__ -D__mips -Dpsx -D__psx__ "
              "-D__psx -D_PSYQ -D__EXTENSIONS__ -D_MIPSEL -D_LANGUAGE_C "
              "-DLANGUAGE_C -DHACKS").split()
+# -fdollars-in-identifiers: mods include reference/ghidra_types.h, whose
+# Ghidra-generated names can contain `$` (the canonical cc1 rejects them by
+# default; the previously-committed non-canonical build happened to allow them).
 CC_FLAGS = ("-mcpu=3000 -quiet -G8 -w -O2 -funsigned-char -fpeephole "
             "-ffunction-cse -fpcc-struct-return -fcommon -fverbose-asm "
-            "-fgnu-linker -mgas -msoft-float").split()
+            "-fgnu-linker -mgas -msoft-float -fdollars-in-identifiers").split()
 MASPSX_FLAGS = ["--aspsx-version=2.77", "-G8"]
 AS_FLAGS = ("-EL -Iinclude -march=r3000 -mtune=r3000 -no-pad-sections -O1 "
             "-G0").split()
