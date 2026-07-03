@@ -106,8 +106,19 @@ the SDK the options (in scene-standard order) are:
 2. **Link original PSY-Q objects**: convert SDK `.OBJ`/`.LIB` members with
    `psyq-obj-parser` (ships with pcsx-redux, already checked out) and let the
    linker use them instead of asm blobs. Needs a user-provided PSY-Q SDK
-   archive (uncommitted, like the game disc). Also unlocks precise SDK
-   function identification/naming via `tools/coddog compare-raw`.
+   archive (uncommitted, like the game disc). **Split this in two** — the
+   halves have very different cost/benefit:
+   - *Identification* (SDK + psyq-obj-parser + `tools/coddog compare-raw`):
+     names/boundaries for the ~1021 lib functions and exact per-library
+     version knowledge (games shipped MIXED lib versions). High value, zero
+     build risk. Do this once SDK archives are on disk.
+   - *Link-swap* (actually feeding the objects to ld): requires
+     reconstructing the original member link order at our fixed addresses,
+     yaml/linker-script restructuring, migrating ~1000 script-assigned
+     symbols to object definitions — and the built exe comes out byte-for-
+     byte THE SAME as today (the bytes are already in via INCLUDE_ASM). It
+     buys provenance cleanliness only; a permanent bring-your-own-SDK tax on
+     contributors/CI. Defer until "no blobs" matters as a property.
 3. **Opportunistic decompilation of trivial clusters** — `tools/coddog
    cluster` found e.g. 108 byte-identical `dmyGsPrstF3NL`-style stubs; one C
    file per cluster is a cheap, large jump in the SDK numbers.
