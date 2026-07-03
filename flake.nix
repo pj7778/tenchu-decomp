@@ -74,8 +74,17 @@
 
       # maspsx: post-processes cc1's asm so GNU as reproduces PSY-Q ASPSX bytes
       # (replaces ASPSX.EXE — no wine needed). Single-file, stdlib-only Python.
+      # Patched (nix/maspsx-gp-extern.patch) to gp-address size-bearing small
+      # externs — cc1 -G emits `.extern SYM,SIZE` for referenced small globals,
+      # which real `as -G`/ASPSX gp-address but upstream maspsx leaves absolute.
+      # This is what lets gp-relative functions (e.g. Think1sleep) byte-match.
+      maspsx-src = pkgs.applyPatches {
+        name = "maspsx-patched";
+        src = inputs.maspsx;
+        patches = [ ./nix/maspsx-gp-extern.patch ];
+      };
       maspsx-bin = pkgs.writeShellScriptBin "maspsx" ''
-        exec ${pkgs.python3}/bin/python3 ${inputs.maspsx}/maspsx.py "$@"
+        exec ${pkgs.python3}/bin/python3 ${maspsx-src}/maspsx.py "$@"
       '';
 
       # mkpsxiso + dumpsxiso: dump/rebuild the game's CD image (`./Build iso`).

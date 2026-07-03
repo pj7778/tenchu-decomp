@@ -1,0 +1,70 @@
+--- a/maspsx/__init__.py	1970-01-01 09:00:01.000000000 +0900
++++ b/maspsx/__init__.py	2026-07-03 08:37:27.972961469 +0900
+@@ -421,6 +421,11 @@
+         self.bss_entries: dict[str, int] = {}
+         self.sbss_entries: dict[str, int] = {}
+         self.sdata_entries: dict[str, int] = {}
++        # Small externs (`.extern SYM, SIZE` with SIZE <= G) that cc1 -G emits
++        # for referenced globals. Real `as -G`/ASPSX gp-address these; we record
++        # them so the gp-rewrite fires, but never define them (they stay
++        # undefined, so the %gp_rel reloc resolves to addr - _gp at link).
++        self.extern_entries: dict[str, int] = {}
+ 
+         self.comm_symbols: set[str] = set()
+ 
+@@ -465,7 +470,23 @@
+                 continue
+ 
+             if line.startswith(".extern"):
++                # cc1 -G emits `.extern SYM, SIZE` for every referenced extern
++                # whose (declared) size it knows. A small one (SIZE <= G) is
++                # gp-addressed by real `as -G`/ASPSX; record it so the gp-rewrite
++                # fires. It is never defined here, so it stays undefined and the
++                # %gp_rel reloc resolves to the symbol's absolute address at link
++                # (addr - _gp). Arrays of unknown size (e.g. `char s[]`) get no
++                # SIZE from cc1, so they are skipped and stay absolute.
+                 in_sdata = False
++                parts = line.split(None, 1)
++                if len(parts) == 2 and "," in parts[1]:
++                    symbol, size_str = parts[1].split(",", 1)
++                    symbol = symbol.strip()
++                    size_str = size_str.strip()
++                    if size_str.isdigit():
++                        size = int(size_str)
++                        if 0 < size <= self.sdata_limit:
++                            self.extern_entries[symbol] = size
+                 continue
+ 
+             if line.startswith(".comm") or line.startswith(".lcomm"):
+@@ -527,6 +548,7 @@
+         self.bss_entries = {}
+         self.sbss_entries = {}
+         self.sdata_entries = {}
++        self.extern_entries = {}
+ 
+         self.preprocess_lines()
+ 
+@@ -634,6 +656,7 @@
+ 
+                 if gp_allowed and (
+                     symbol in self.sbss_entries or symbol in self.sdata_entries
++                    or symbol in self.extern_entries
+                 ):
+                     return True
+ 
+@@ -923,6 +946,7 @@
+ 
+                 if gp_allowed and (
+                     symbol in self.sdata_entries or symbol in self.sbss_entries
++                    or symbol in self.extern_entries
+                 ):
+                     res.append(f"{op}\t{r_dest},{gp_rel}")
+                 else:
+@@ -1014,6 +1038,7 @@
+ 
+                 if gp_allowed and (
+                     symbol in self.sdata_entries or symbol in self.sbss_entries
++                    or symbol in self.extern_entries
+                 ):
+                     res.append(f"{op}\t{r_dest},{gp_rel}")
+                 else:

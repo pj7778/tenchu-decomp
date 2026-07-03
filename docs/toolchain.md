@@ -114,41 +114,53 @@ maspsx *before* the flag flip.
    against the target. Escalate the aspsx version only on an observed `la`/`gp`
    mismatch.
 
-## gp globals: making small globals byte-match (important)
+## gp globals: making small globals byte-match (SOLVED)
 
 Tenchu addresses small globals (≤ 8 bytes, within ±32 KB of `gp = 0x80097698`)
 via `$gp` — the disassembly shows `%gp_rel(SYMBOL)($gp)`. To reproduce that from
-compiled C you must get maspsx to rewrite the access to `%gp_rel`. **maspsx only
-gp-converts symbols it sees declared as small-data** (`.comm`/`.lcomm`/`.sdata`/
-`.sbss`); it *ignores* `.extern`.
+compiled C, maspsx must rewrite the access to `%gp_rel`. Stock maspsx only
+gp-converts symbols it sees declared as small-data (`.comm`/`.lcomm`/`.sdata`/
+`.sbss`); it *ignored* `.extern`, so `extern s16 SR;` compiled to an **absolute**
+`lui/…` access and did not match.
 
-So a small global declared `extern s16 SR;` compiles to an **absolute** `lui/…`
-access and will **not** match. This is **still an open problem** — none of the
-obvious fixes work (learned the hard way on `Think1sleep`):
+**The fix** ([`nix/maspsx-gp-extern.patch`](../nix/maspsx-gp-extern.patch), wired
+in `flake.nix`): cc1 `-G8` already emits **`.extern SYM, SIZE`** for every small
+global it references (e.g. `.extern SR, 2`) — arrays of unknown size like
+`extern char s[]` get *no* size and are skipped. Real `as -G`/ASPSX gp-address
+exactly these size-bearing small externs; the patch teaches maspsx to do the same:
+it records `.extern SYM,SIZE` with `0 < SIZE ≤ G` in a new `extern_entries` set and
+adds that set to the three gp-rewrite gates. The symbols are **never defined** by
+maspsx, so they stay undefined and the `R_MIPS_GPREL16` reloc resolves at link to
+`SYM − _gp` (bfd uses the `_gp = 0x80097698` symbol in the linker script; the real
+addresses come from `config/symbols`). This is general — no per-symbol whitelist,
+no `config/symbols` coupling in maspsx — and it's what unblocked `Think1sleep`
+(`Me_THINK_C`/`SR`/`Attrib`/`FRAMES_UNTIL_END_OF_ALERT`).
 
-- **Tentative definition** (drop `extern` so cc1 emits `.comm SR,2`): maspsx then
-  *does* rewrite to `%gp_rel`, BUT the `.comm` symbol is now *defined locally in
-  `.sbss`*, which the linker script discards → link error (`.sbss referenced in
-  .text … discarded`), and its gp offset is the *sequential* `.sbss` slot (4/6/8…)
-  not the symbol's real `addr − gp` (0x33E/0x344…). So it neither links nor
-  matches. (The earlier "verified working" claim only checked maspsx's text
-  output, never the link — it does not link.)
-- **`as -G8`** (so `as` itself gp-addresses small externs): gp-addresses *every*
-  small extern, including far ones like the string `FONT_FILE_NAME` (reloc
-  truncated), and changes section layout — breaks everything.
+Dead ends that this replaced: a **tentative def** (`.comm`) defines the symbol in
+the discarded `.sbss` at a *sequential* offset (link error + wrong gp offset);
+`as -G8` gp-addresses **every** small extern including far ones — but a far small
+extern (e.g. a `char` string near a large `.data` blob) then reloc-truncates.
+The size-based approach shares that last risk in theory, but it is *loud* (ld errors
+`relocation truncated to fit R_MIPS_GPREL16`), and it doesn't fire for `la`
+(address-of) at aspsx 2.77 (`gp_allow_la` is off), which is how the far strings
+`FONT_FILE_NAME`/`IMAGES_PREFIX_STR` — only ever `&`-taken — stay absolute today.
+If a future function *loads* from a far small extern, declare it as an array so cc1
+emits no `.extern SIZE`. Far globals outside gp range (e.g. `PadPort` at
+`0x800be6d0`) are large/array and correctly stay `extern`/absolute.
 
-The distinction "near-gp vs far" cannot come from size alone (`FONT_FILE_NAME` is
-1 byte but far). The correct fix is to gp-convert **only a whitelist** of symbols
-whose address is within ±32 KB of `gp` (computable from `config/symbols`), keeping
-them **`extern`/undefined** so the `%gp_rel` reloc resolves to the absolute
-address at link. Cleanest: **patch maspsx** to take that whitelist (it already
-does the `%gp_rel` rewrite — it just needs to accept symbols by name instead of
-only tracked `.comm`). Alternatively, split `.sdata`/`.sbss` symbolically so the
-globals are genuinely defined at their addresses in a placed section.
+## `li` of small positive immediates → `addiu`, not `ori` (SOLVED)
 
-`Think1sleep` is blocked on exactly this (everything else about it matches —
-struct layout, signedness, arithmetic). Far globals (e.g. `PadPort` at
-`0x800be6d0`, outside gp range) correctly stay `extern`/absolute.
+ASPSX **≥ 2.56** (Tenchu is 2.77) loads a signed-16-bit-*positive* immediate with
+`addiu $reg,$zero,imm`, **not** `ori` — see maspsx's own
+`aspsx/test_expand_li.py` (`EXPAND_LI_RESULT_2`), and GNU `as`'s built-in `li`
+does the same. But [`include/macro.inc`](../include/macro.inc) shipped a **custom
+`li` macro** (used to assemble maspsx's output, since maspsx passes `li` through
+for aspsx ≥ 2.50) whose positive-`< 0x8000` branch emitted `ori` — the pre-2.56
+convention. That silently mismatched two bytes in `Think1sleep`
+(`addiu $v0,$zero,0x100` vs `ori`, and `0x1001`). Fixed the macro's first branch to
+`addiu` (the negative branch was already correct). Only the `0x8000..0xFFFF` case
+stays `ori` (there `addiu` would wrongly sign-extend). Any compiled `li` of a
+positive constant `≤ 0x7FFF` depends on this.
 
 ## Notes on the current `cc1` flags
 
