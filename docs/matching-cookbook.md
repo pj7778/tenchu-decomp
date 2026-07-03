@@ -117,6 +117,9 @@ gold — match its return/variable types exactly (`Think1sleep` needed
 
 ## Dispatch
 
+- **Case-body memory order reveals the source case order** (the compare tree
+  always sorts by value): LayoutEnemyOption's inner switch was written
+  `case 1, case 2, case 0` — only the bodies show it.
 - A mode-dispatcher that **reloads its variable** (two `lbu` of the same
   field) and compares **signed** (`slti`) is a real **`switch`**: cc1's
   `expand_case` emits a balanced compare tree over a *fresh* index load. An
@@ -315,7 +318,13 @@ gold — match its return/variable types exactly (`Think1sleep` needed
   local sits below at 0x20. Frame = args 0x20 + 0x58 + 0xC8 + 0xF8 + saves
   = 0x248, byte-exact. The tell to look for: same sp offset written by two
   unrelated struct copies + `addiu $a1,$sp,N` repeated per call + a frame
-  smaller than the sum of the visible buffers.
+  smaller than the sum of the visible buffers. **The inverse tell**: when
+  args + sum(buffers) + saves/pad equals the frame exactly
+  (LayoutEnemyOption: 0x10+0x58+0x18+0x38+8 = 0xC0), the buffers are PLAIN
+  LOCALS — each struct-copy loop's CODE_LABEL breaks the cse window between
+  the copy's address use and the call's, so the merge never fires and
+  addresses rematerialize without helpers. A menu copied at ENTRY but only
+  read in a later case body is real source order, not a helper.
   Verified mechanics (RTL dumps, BriefingAndInventorySelectionScreen): each
   frame-address arg expands to its own `reg := (plus fp c)` pseudo; the cse
   pass merges same-valued ones ACROSS CALLS (calls invalidate only hard regs
@@ -504,9 +513,15 @@ gold — match its return/variable types exactly (`Think1sleep` needed
 
 A table-switch splits the function into several nonmatching .s pieces and
 routes the table through the C object's .rodata (see the yaml comment at the
-BriefingAndInventorySelectionScreen carve). Consequences: the STUB state
+BriefingAndInventorySelectionScreen carve). Consequences: the yaml needs
+`- [fileoff, .rodata, <Name>]` at the table's original address plus a data
+re-split line after it; the STUB state
 must INCLUDE_ASM all pieces AND provide a `static const u32 …_jtbl[]` with
-the original table words (deleted when the real C is activated);
+the original table words (deleted when the real C is activated — the
+compiled switch then lands its table at the original vram automatically).
+reverse.py seeds only the FIRST piece's INCLUDE_ASM — copy the full list
+(all pieces, address order) from splat's generated
+`.shake/gen/main.exe/src/<Name>.c`;
 tools/permute.py concatenates all pieces for its target (fixed after this
 bit a session); tools/matchdiff.py's window stops at the first piece — use
 tools/asmdiff.py (sizes from the Ghidra export) for iteration and

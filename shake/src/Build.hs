@@ -126,6 +126,8 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     -- BriefingAndInventorySelectionScreen.c's original TU defines the one-shot
     -- capacity-cheat latch (.sdata, 0x80097cdc); SkipFrame stays absolute.
     syms "BriefingAndInventorySelectionScreen" = ["CARRY_30_ITEMS_CHEAT_APPLIED"]
+    -- LayoutEnemyOption's TU defines this small (debug enemy-layout state).
+    syms "LayoutEnemyOption" = ["D_80097D44"]
     syms _ = []
 
 as :: FilePath

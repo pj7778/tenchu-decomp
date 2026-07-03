@@ -40,6 +40,7 @@ GP_EXTERNS = {
     "GetAreaMapLevel": ["FieldIndex", "FieldArea", "D_80097EC0", "D_80097EC4"],
     "DoInfoViewProc": ["D_80097B1C", "CURRENTLY_SELECTED_ITEM_KIND_1_", "D_80097BB1"],
     "BriefingAndInventorySelectionScreen": ["CARRY_30_ITEMS_CHEAT_APPLIED"],
+    "LayoutEnemyOption": ["D_80097D44"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
