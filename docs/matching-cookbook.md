@@ -549,6 +549,22 @@ Practical rule: a new function needing `$gp` for a symbol → add
 `tools/permute.py` `GP_EXTERNS`); needing absolute → declare it a plain small
 extern and keep the file off the list.
 
+- **≤8-byte externs are -G8-small: their address is one `la` (lui+addiu into
+  the SAME register); a split `lui rA,%hi / addiu rB,rA,%lo` across TWO
+  registers means the original declaration was NOT small** — respell as an
+  unknown-size array (`extern SVECTOR D_80097B88[];`): unknown size is
+  non-small, cc1 emits separate HIGH/LO_SUM pseudos and the hi temp gets the
+  first free caller-saved reg. Raw-constant casts give `lui+ori` (wrong), a
+  pointer temp to a small extern still collapses to `la`
+  (DebugMenuItemSet's smoke vector).
+- **A callee-saved value dying at a call whose result lands in the SAME
+  s-register is the call-result variable HOSTING the earlier load**:
+  `h = pm->locate.coord.t[1]; gy = h; … h = GetAreaMapLevel(…, gy, …);` —
+  the lw lands in h's pseudo, gy coalesces onto it, and the post-call
+  `move sN,v0` reuses the register once gy dies. Loading gy directly leaves
+  h caller-saved and drifts the whole tail (DebugMenuItemSet, permuter
+  find; same family as the variable-reuse rule).
+
 ## Toolchain gotchas
 
 - `-fdollars-in-identifiers` is required for anything including

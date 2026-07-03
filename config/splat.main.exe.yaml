@@ -76,6 +76,8 @@ segments:
       - [0x39C2C, c, FUN_8004a42c]
       - [0x39D00, c, ClearItemLayout]
       - [0x39D98, data]
+      - [0x3A7DC, c, DebugMenuItemSet]
+      - [0x3A98C, data]
       - [0x3ACC0, c, PauseProc]
       - [0x3B048, data]
       - [0x3B25C, c, DoInfoViewProc]

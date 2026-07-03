@@ -104,6 +104,15 @@ typedef struct
     VECTOR end;                  /* 0x18 */
 } PARAM_ITEM_USE;                /* 0x28 */
 
+/* A stationary/placed item's spawn params (DebugMenuItemSet's ReqItemStay;
+ * Ghidra models .type as `enum TItemType`, but every proven sibling (
+ * tag_TItem.type, PARAM_ITEM_USE.type) uses plain s32 instead — same here). */
+typedef struct
+{
+    s32 type;                    /* 0x00 */
+    VECTOR locate;               /* 0x04 */
+} PARAM_ITEM_STAY;               /* 0x14 */
+
 /* The dropped/rolling item's view of tag_TItem.param (Ghidra: param_korogari). */
 typedef struct
 {
@@ -138,7 +147,9 @@ extern void UpdateCoordinate(ModelType *m);
 extern void DrawSprite(Sprite3D *s);
 extern VECTOR *GetAbsolutePosition(ModelType *m, int x, int y, int z);
 extern int ReqItemDrop(PARAM_ITEM_USE *p);
+extern int ReqItemStay(PARAM_ITEM_STAY *p);
 extern void SetBleed(VECTOR *pos, SVECTOR *vel, int a, int col);
+extern void SetSmoke(VECTOR *pos, SVECTOR *vel, short n, short time);
 extern void SoundEx(VECTOR *loc, int id);
 extern void DeleteConflict(ModelType *m);
 extern void AdtMessageBox(char *fmt, ...);
