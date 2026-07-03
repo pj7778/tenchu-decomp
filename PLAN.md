@@ -23,7 +23,14 @@ byte-identical `main.exe`.
   the largest yet: switch dispatch, casted scratch buffer, magic divisions,
   block-copy loop, cross-jumped tails), and **`ReqItemDrop`** — the first
   cross-referenced match: called by the compiled `ProcItemKusuri` (real
-  R_MIPS_26 link), sharing types via `src/main.exe/item.h`.
+  R_MIPS_26 link), sharing types via `src/main.exe/item.h`. Since then, via the
+  matcher-agent pipeline and the Fable sessions: **`ProcItemDrop`**,
+  **`GetAreaMapLevel`**, **`FUN_8004a42c`** (first Sonnet-matched),
+  **`DoInfoViewProc`** (the debug menu — discovered the inlined-static-helper
+  mechanism), **`PauseProc`** (working cheat dispatch), and
+  **`BriefingAndInventorySelectionScreen`** (3620 bytes, the largest: first
+  jump-table switch, matched by a four-session relay 437→241→94→28→0 diff
+  lines). 12/602 game functions, 3.5% of game-code bytes.
   [`docs/matching-cookbook.md`](docs/matching-cookbook.md) records the idioms. Between them they pinned down the real
   gp model (ASPSX gp-addresses only TU-local definitions; externs are absolute)
   and produced the reusable infrastructure in
