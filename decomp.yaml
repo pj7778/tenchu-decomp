@@ -1,0 +1,25 @@
+# decomp_settings (https://github.com/ethteck/decomp_settings) project file —
+# consumed by coddog and other ecosystem tools. Paths assume a green ./Build
+# (the elf/map are our byte-identical rebuild of the original).
+name: Tenchu Stealth Assassins (JP)
+repo: local
+platform: psx
+versions:
+- name: jp
+  fullname: JP (SLPS-01901)
+  sha1: none
+  paths:
+    target: "disks/tenchu/main.exe"
+    build_dir: ".shake/build"
+    map: ".shake/build/tenchu/main.exe.map"
+    compiled_target: ".shake/build/tenchu/main.exe"
+    # A synthetic ELF built by tools/coddog-elf.py (original text bytes +
+    # Ghidra-export function symbols with STT_FUNC types and sizes). Our real
+    # build ELF has NOTYPE/size-0 symbols and our map lacks vrom info, so
+    # neither of coddog's native readers can consume them directly.
+    elf: ".shake/build/tenchu/coddog.elf"
+    # stems dir maintained by tools/coddog-elf.py: a .s per UNMATCHED function,
+    # so coddog's "(decompiled)" tag reflects reality (our real asm dir only
+    # has .s files for split functions, which would invert the flag).
+    asm: ".shake/build/coddog/unmatched"
+    nonmatchings: ".shake/build/coddog/unmatched"

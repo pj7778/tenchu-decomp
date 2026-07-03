@@ -67,6 +67,30 @@ headers like item.h and the gp-extern lists already exist for those). Batch
 work: one function per matcher agent (.claude/agents/matcher.md), and commit
 only on a green `./Build check`.
 
+### coddog (similarity at scale)
+
+[coddog](https://github.com/ethteck/coddog) complements findsimilar.
+`tools/coddog` builds it on first use (needs network + registry nixpkgs — the
+flake's rust is too old); it reads `decomp.yaml`, whose input ELF is
+synthesized by `tools/coddog-elf.py` from the original bytes + the Ghidra
+function table (our real ELF/map aren't consumable: NOTYPE size-0 symbols, no
+vrom). **Regenerate after the Ghidra export changes or after new matches**
+(it also refreshes the stems dir that makes the "(decompiled)" tag truthful):
+
+```console
+$ tools/coddog-elf.py
+$ tools/coddog cluster -m 4        # identical-function families: match one,
+                                   #   apply to the whole cluster (e.g.
+                                   #   dmyGsPrstF3NL ×108, ReqItemManebue ×5)
+$ tools/coddog submatch <Name> 20  # who shares a ≥20-insn chunk with <Name> —
+                                   #   the "stuck on this idiom" tool (found a
+                                   #   79-insn run shared by ProcItemKusuri
+                                   #   and ProcSightShot)
+$ tools/coddog match <Name> -t 0.5 # similar whole functions; good for BIG
+                                   #   functions, noisy under ~300 bytes — use
+                                   #   findsimilar for small ones
+```
+
 Treat the differing-byte count as a score to drive down (matchdiff also
 reports the whole-image count: if your function assembles to a different
 LENGTH, every object after it shifts and even data symbols drift — fix the

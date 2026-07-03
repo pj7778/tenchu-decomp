@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# coddog wrapper: build (once) into .shake/tools and run against this repo's
+# decomp.yaml. Regenerate the input first when the C corpus changed:
+#   tools/coddog-elf.py && tools/coddog cluster -m 4
+# Building needs a MODERN rust (edition 2024) — newer than the flake's pinned
+# nixpkgs — so we use the registry nixpkgs for cargo/rustc, and force the host
+# cc (the devShell exports the MIPS cross gcc as CC, which breaks build.rs).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BIN="$ROOT/.shake/tools/coddog"
+if [ ! -x "$BIN" ]; then
+  echo "coddog: building (first use)..." >&2
+  SRC="$ROOT/.shake/tools/coddog-src"
+  [ -d "$SRC" ] || git clone --depth 1 https://github.com/ethteck/coddog "$SRC"
+  nix shell nixpkgs#cargo nixpkgs#rustc nixpkgs#gcc --command \
+    env -u CC -u CXX bash -c "cd '$SRC' && cargo build --release -p coddog-cli"
+  mkdir -p "$ROOT/.shake/tools"
+  cp "$SRC/target/release/coddog" "$BIN"
+fi
+cd "$ROOT" && exec "$BIN" "$@"
