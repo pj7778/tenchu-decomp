@@ -160,7 +160,9 @@ void ProcItemKusuri(tag_TItem *item)
      * buf+0x10 as its build area / the velocity SVECTOR, and buf+0x18 as the
      * velocity build area. The casts (not typed locals) are what reproduce the
      * original's stack layout and copy alignments (VECTOR copies are word moves,
-     * SVECTOR copies are lwl/lwr). */
+     * SVECTOR copies are lwl/lwr). The repeated casts are load-bearing too: a
+     * pointer temp (PARAM_ITEM_USE *prm = ...; / VECTOR *w = ...;) does NOT
+     * fold away — it allocates a register and shifts the frame (verified). */
     u8 buf[0x28];
 
     sprt = item->model;
@@ -218,7 +220,7 @@ void ProcItemKusuri(tag_TItem *item)
             pos = GetAbsolutePosition(item->locate, 0, 0, 0);
             own = item->owner;
             ty = item->type;
-            memset(buf, 0, 0x28);
+            memset(buf, 0, sizeof(PARAM_ITEM_USE));
             ((PARAM_ITEM_USE *)buf)->type = ty;
             ((PARAM_ITEM_USE *)buf)->user = own;
             ((PARAM_ITEM_USE *)buf)->start.vx = pos->vx;
@@ -269,12 +271,12 @@ void ProcItemKusuri(tag_TItem *item)
         {
             if (!(i < 0x14))
                 break;
-            memset(buf + 0x10, 0, 0x10);
+            memset(buf + 0x10, 0, sizeof(VECTOR));
             ((s32 *)(buf + 0x10))[0] = item->owner->model->locate.coord.t[0] + (rand() % 1000 - 500);
             ((s32 *)(buf + 0x10))[1] = item->owner->model->locate.coord.t[1] + (rand() % 1000 - 0x4b0);
             ((s32 *)(buf + 0x10))[2] = item->owner->model->locate.coord.t[2] + (rand() % 1000 - 500);
             *(VECTOR *)buf = *(VECTOR *)(buf + 0x10);
-            memset(buf + 0x18, 0, 8);
+            memset(buf + 0x18, 0, sizeof(SVECTOR));
             ((SVECTOR *)(buf + 0x18))->vy = rand() % 10 - 30;
             *(SVECTOR *)(buf + 0x10) = *(SVECTOR *)(buf + 0x18);
             SetBleed((VECTOR *)buf, (SVECTOR *)(buf + 0x10), rand() % 0x10 + 0xf, 0xffff7e);

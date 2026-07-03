@@ -130,6 +130,15 @@ gold — match its return/variable types exactly (`Think1sleep` needed
 - Cached pointers that live in `$s`-registers across calls
   (`p = &item->param;`) are real source temporaries — indexing the base
   struct directly doesn't allocate the register (see ProcItemManebue).
+- The reverse also holds: **cc1 does not fold away a pointer temp to a frame
+  object**. `PARAM_ITEM_USE *prm = (PARAM_ITEM_USE *)buf;` allocates a
+  callee-saved register for the address (frame grows, prologue shifts), and a
+  `VECTOR *w = (VECTOR *)(buf + 0x10);` temp inside a loop reshuffles the
+  induction/invariant registers. When the target *rematerializes* a frame
+  address (`addiu $a0, $sp, 0x10` appearing repeatedly), the original wrote
+  the cast at every use — repeated `((T *)buf)->field` casts, however ugly,
+  are the source's real shape. `sizeof(T)` in the memsets is free
+  (compile-time constant) and matches.
 
 ## Shared tails
 
