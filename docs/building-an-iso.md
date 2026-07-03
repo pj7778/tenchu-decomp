@@ -21,18 +21,30 @@ On first use the disc is dumped once with `dumpsxiso` into `TENCHU_ISO_WORK`
 $ nix develop            # provides mkpsxiso + dumpsxiso (packaged in nix/mkpsxiso.nix)
 $ ./Build iso            # matching main.exe   -> .shake/build/tenchu/tenchu.{bin,cue}
 $ ./Build iso-mod        # grown main_mod.exe  (from src/mod/main.exe/, see modding docs)
-$ ./Build run            # build main.exe + repack + launch it in pcsx-redux
-$ ./Build run-mod        # same, with the grown main_mod.exe
+$ ./Build run            # FAST: -loadexe main.exe over the original disc (no repack)
+$ ./Build run-iso        # FAITHFUL: repack the disc with main.exe and boot it
+$ ./Build run-mod        # fast, grown main_mod.exe
+$ ./Build run-iso-mod    # faithful, grown main_mod.exe
 ```
 
-Load `tenchu.cue` in pcsx-redux (drag it in, or *File → Open Disk Image*), or just
-`./Build run` to build-and-launch in one step. We boot the whole disc (with our
-`MAIN.EXE` swapped in) rather than `-loadexe main.exe`, because Tenchu boots
-`SLPS_019.01 → … → TENCHU/MAIN.EXE` and jumping straight to `MAIN.EXE` would skip
-the launcher. `run` finds the emulator via `$PCSX_REDUX`, then `pcsx-redux` on
-`PATH`, then `~/programming/pcsx-redux/pcsx-redux`; extra emulator flags go in
-`$PCSX_REDUX_ARGS` (e.g. `PCSX_REDUX_ARGS='-bios /path/scph.bin' ./Build run`).
-No BIOS needed otherwise — pcsx-redux falls back to OpenBIOS.
+Two ways to launch:
+
+- **`./Build run`** (fast) mounts the original disc and `-loadexe`s our `main.exe`
+  over it — no ISO repack, so the edit→test loop is just `./Build run`. Because
+  Tenchu boots `SLPS_019.01 → … → TENCHU/MAIN.EXE`, this jumps straight to
+  `MAIN.EXE` and skips that launcher; great for iterating on `main.exe`, but if the
+  game needs the full boot chain use `run-iso`.
+- **`./Build run-iso`** (faithful) repacks the disc with our `MAIN.EXE` swapped in
+  and boots the whole thing, running the real `SLPS_019.01 → … → MAIN.EXE`. You can
+  also load `tenchu.cue` by hand (drag it into pcsx-redux, or *File → Open Disk
+  Image*).
+
+`run` finds the emulator via `$PCSX_REDUX`, then `pcsx-redux` on `PATH`, then
+`~/programming/pcsx-redux/pcsx-redux`; extra emulator flags go in `$PCSX_REDUX_ARGS`
+(e.g. `PCSX_REDUX_ARGS='-bios /path/scph.bin' ./Build run`). No BIOS needed
+otherwise — pcsx-redux falls back to OpenBIOS. Both modes need the original disc
+(the fast path mounts it for assets; the faithful path repacks from it), found via
+`$TENCHU_CUE` or under `disks/` / `~/tenchu-iso/`.
 
 ## What you get
 

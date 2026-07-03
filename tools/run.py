@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
-"""Launch the decomp's disc image in pcsx-redux.
+"""Launch the decomp's build in pcsx-redux. Two modes:
 
-Boots the .bin/.cue that `./Build iso` produced — the original Tenchu disc with our
-main.exe swapped in. We boot the whole disc (not `-loadexe main.exe`) because Tenchu
-boots SLPS_019.01 -> ... -> TENCHU/MAIN.EXE, so jumping straight to MAIN.EXE would
-skip the launcher. pcsx-redux falls back to OpenBIOS if no real BIOS is configured.
+  --loadexe EXE   FAST (default): mount the original disc and -loadexe our PS-EXE
+                  over it — no ISO repack, just `./Build` then relaunch. NOTE:
+                  Tenchu boots SLPS_019.01 -> ... -> TENCHU/MAIN.EXE, so this jumps
+                  straight to MAIN.EXE and skips that launcher. Great for iterating
+                  on main.exe; use --iso if the game needs the full boot chain.
 
-Finds pcsx-redux via $PCSX_REDUX, else `pcsx-redux` on PATH, else
-~/programming/pcsx-redux/pcsx-redux. Extra pcsx-redux flags come from
-$PCSX_REDUX_ARGS (e.g. `PCSX_REDUX_ARGS='-bios /path/scph.bin' ./Build run`) and
-from any args after `--` when run directly.
+  --iso CUE       FAITHFUL: boot the repacked disc (our main.exe swapped in), so the
+                  real SLPS_019.01 -> ... -> MAIN.EXE boot runs. Build it first with
+                  `./Build run-iso` (which calls tools/mkiso.py).
 
-Usually invoked as `./Build run`; can also be run directly:
-  tools/run.py [path/to/tenchu.cue] [-- <extra pcsx-redux args>]
+pcsx-redux falls back to OpenBIOS if no real BIOS is configured. It's found via
+$PCSX_REDUX, else `pcsx-redux` on PATH, else ~/programming/pcsx-redux/pcsx-redux.
+Extra emulator flags come from $PCSX_REDUX_ARGS and any trailing args.
+
+Usually invoked by `./Build run` (loadexe) / `./Build run-iso`.
 """
+import argparse
+import glob
 import os
 import shlex
 import shutil
@@ -21,7 +26,9 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_CUE = os.path.join(ROOT, ".shake", "build", "tenchu", "tenchu.cue")
+BUILD = os.path.join(ROOT, ".shake", "build", "tenchu")
+DEFAULT_EXE = os.path.join(BUILD, "main.exe")
+DEFAULT_CUE = os.path.join(BUILD, "tenchu.cue")
 FALLBACK_PCSX = os.path.expanduser("~/programming/pcsx-redux/pcsx-redux")
 
 
@@ -37,21 +44,45 @@ def find_pcsx():
             "on PATH, or build it at ~/programming/pcsx-redux."))
 
 
-def main():
-    args = sys.argv[1:]
-    extra = shlex.split(os.environ.get("PCSX_REDUX_ARGS", ""))
-    if "--" in args:
-        i = args.index("--")
-        args, extra = args[:i], extra + args[i + 1:]
-    cue = args[0] if args else DEFAULT_CUE
+def find_disc():
+    # The original (copyrighted) disc you provide. Mirrors tools/mkiso.py find_cue().
+    env = os.environ.get("TENCHU_CUE")
+    if env:
+        if os.path.exists(env):
+            return env
+        sys.exit(f"run: TENCHU_CUE={env} not found")
+    for d in (os.path.join(ROOT, "disks"), os.path.expanduser("~/tenchu-iso")):
+        cues = sorted(glob.glob(os.path.join(d, "*.cue")))
+        if cues:
+            return cues[0]
+    sys.exit("run: original disc .cue not found. Set TENCHU_CUE=/path/to/game.cue\n"
+             "     (the original disc is copyrighted — you provide it).")
 
-    if not os.path.exists(cue):
-        sys.exit(f"run: disc image not found: {cue}\n"
-                 f"     Build it first with `./Build iso` (or just `./Build run`).")
+
+def main():
+    ap = argparse.ArgumentParser(add_help=True, description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--loadexe", metavar="EXE", nargs="?", const=DEFAULT_EXE,
+                   help="fast: -loadexe this PS-EXE over the original disc")
+    g.add_argument("--iso", metavar="CUE", nargs="?", const=DEFAULT_CUE,
+                   help="faithful: boot this repacked disc image")
+    args, extra = ap.parse_known_args()
+    extra = shlex.split(os.environ.get("PCSX_REDUX_ARGS", "")) + extra
 
     pcsx = find_pcsx()
-    # -run: boot immediately; -iso: mount the disc. OpenBIOS is the auto BIOS fallback.
-    cmd = [pcsx, "-run", "-iso", os.path.abspath(cue), *extra]
+    if args.iso is not None:
+        cue = os.path.abspath(args.iso)
+        if not os.path.exists(cue):
+            sys.exit(f"run: disc image not found: {cue}\n"
+                     f"     Build it with `./Build run-iso`.")
+        cmd = [pcsx, "-run", "-iso", cue, *extra]
+    else:
+        exe = os.path.abspath(args.loadexe or DEFAULT_EXE)
+        if not os.path.exists(exe):
+            sys.exit(f"run: {exe} missing — run `./Build` (or `./Build mod`) first.")
+        cmd = [pcsx, "-run", "-iso", os.path.abspath(find_disc()), "-loadexe", exe, *extra]
+
     print("run:", " ".join(cmd))
     sys.exit(subprocess.run(cmd).returncode)
 

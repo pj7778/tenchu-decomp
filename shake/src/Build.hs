@@ -376,20 +376,31 @@ phonyRules = do
     cmd_ "tools/mkmod.py"
     cmd_ "tools/mkiso.py" ["--exe", buildDir </> "tenchu" </> "main_mod.exe"]
 
-  -- Build the matching main.exe (if needed), repack the disc with it, and launch
-  -- it in pcsx-redux. Tenchu boots SLPS_019.01 -> ... -> MAIN.EXE, so we boot the
-  -- whole disc rather than `-loadexe main.exe`. Set PCSX_REDUX to override which
-  -- emulator binary is used, or PCSX_REDUX_ARGS to pass extra flags (see run.py).
+  -- `run` / `run-mod`: fast path — mount the original disc and `-loadexe` our exe
+  -- over it, no ISO repack. Tenchu boots SLPS_019.01 -> ... -> MAIN.EXE, so this
+  -- skips that launcher — fine for iterating on main.exe; use `run-iso` for the
+  -- faithful full boot. Set PCSX_REDUX / PCSX_REDUX_ARGS to tweak the emulator.
   phony "run" $ do
     need [mainExe]
-    cmd_ "tools/mkiso.py"
-    cmd_ "tools/run.py"
+    cmd_ "tools/run.py" ["--loadexe", mainExe]
 
   phony "run-mod" $ do
     need [mainExe, mainExe <.> "elf"]
     cmd_ "tools/mkmod.py"
+    cmd_ "tools/run.py" ["--loadexe", buildDir </> "tenchu" </> "main_mod.exe"]
+
+  -- `run-iso` / `run-iso-mod`: faithful — repack the disc with our exe and boot the
+  -- whole thing, so the real SLPS_019.01 -> ... -> MAIN.EXE chain runs.
+  phony "run-iso" $ do
+    need [mainExe]
+    cmd_ "tools/mkiso.py"
+    cmd_ "tools/run.py" ["--iso", buildDir </> "tenchu" </> "tenchu.cue"]
+
+  phony "run-iso-mod" $ do
+    need [mainExe, mainExe <.> "elf"]
+    cmd_ "tools/mkmod.py"
     cmd_ "tools/mkiso.py" ["--exe", buildDir </> "tenchu" </> "main_mod.exe"]
-    cmd_ "tools/run.py"
+    cmd_ "tools/run.py" ["--iso", buildDir </> "tenchu" </> "tenchu.cue"]
 
   phony "check" $ do
     let reference = "disks" </> "tenchu" </> "main.exe"
