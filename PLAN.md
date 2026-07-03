@@ -15,9 +15,12 @@ byte-identical `main.exe`.
 - **Toolchain is complete for matching.** Pipeline is
   `cpp | cc1-281 -G8 | maspsx --aspsx-version=2.77 | as | ld`; reproducible/offline
   via nix (no cabal/wine). maspsx is integrated (see [`docs/toolchain.md`](docs/toolchain.md)).
-- **Matched functions:** `initialise_font` and `get_held_buttons` (the latter via
-  decomp-permuter — [`docs/matching-get-held-buttons.md`](docs/matching-get-held-buttons.md)).
-  `Think1sleep` is a WIP stub (see roadmap #1).
+- **Matched functions:** `initialise_font`, `GetRealPad` (via decomp-permuter —
+  [`docs/matching-get-held-buttons.md`](docs/matching-get-held-buttons.md)), and
+  **`Think1sleep`** — the first function needing `$gp`-relative globals. Matching it
+  unblocked two reusable pieces of infrastructure (both in
+  [`docs/toolchain.md`](docs/toolchain.md)): the maspsx `.extern`-gp patch and the
+  `macro.inc` `li→addiu` fix. Every future gp-using function now "just works".
 - **Modding + emulator loop works:** `./Build mod` (grow functions) and
   `./Build iso`/`iso-mod` (bootable disc for pcsx-redux). See docs/.
 
@@ -50,18 +53,16 @@ The **build environment**, not the decomp logic:
 
 Detailed dev docs live in [`docs/`](docs/). Ranked next steps:
 
-1. **gp-relative globals** — the one blocker for `Think1sleep` (and every future
-   gp-using function). `character_state` layout + signedness are now fixed (done),
-   so `Think1sleep`'s body compiles to the target's exact arithmetic — but its 4
-   small globals (`Me_THINK_C`/`SR`/`Attrib`/`FRAMES_UNTIL_END_OF_ALERT`) must be
-   `%gp_rel`, and no simple flag does it (tentative-def `.comm` won't link; `as
-   -G8` gp-addresses far symbols too). **Fix: patch maspsx to gp-convert a
-   whitelist of symbols within ±32 KB of gp (kept `extern`, resolved to absolute).**
-   See the stub `src/main.exe/Think1sleep.c` and
-   [`docs/toolchain.md`](docs/toolchain.md) "gp globals". Then a decomp-permuter
-   pass (`tools/permute.py Think1sleep`) for any residual regalloc.
+1. **Reverse more functions.** The pipeline is now proven end-to-end on a
+   gp-using function (`Think1sleep`). Use `tools/reverse.py <name> --ghidra-export
+   .shake/ghidra-export` to split the next one, turn Ghidra's C in the comment into
+   matching C (its return type + accumulator *types* matter — `Think1sleep` needed
+   `short`/`ushort`, not `s32`), and lean on `tools/permute.py` for residual
+   register allocation. `.shake/ghidra-export/c/<addr>.c` is the reference.
 2. **decomp-permuter is wired in** (`tools/permute.py`) — see
-   [`docs/permuter.md`](docs/permuter.md).
+   [`docs/permuter.md`](docs/permuter.md). (Note: for pure register-allocation
+   ties it can stall; the faster path is often reading Ghidra's C for the right
+   *variable types/count*, as with `Think1sleep`'s single `ushort` accumulator.)
 3. **Commit the disassembly**: move splat's asm to a committed `asm/main.exe/` and
    set splat `base_path: .` so a fresh clone is self-contained.
    (NOTE: the operator prefers keeping `.shake/gen` regenerated-on-demand; only do
