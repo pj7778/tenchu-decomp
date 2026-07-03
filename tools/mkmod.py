@@ -1,37 +1,39 @@
 #!/usr/bin/env python3
-"""Build a *modded* (non-matching) main.exe by trampolining hooked functions.
+"""Build a *modded* (non-matching) main.exe by overwriting hooked functions IN PLACE.
 
-The problem: this is a partial decomp with a fixed memory layout, so a function
-that changes size shifts everything after it and breaks the binary (see
-docs/modding-and-nonmatching.md). The fix here keeps every original address
-fixed and redirects hooked functions to grown code placed in free RAM after the
-image ("the mod region").
+This is a partial decomp with a fixed memory layout, so anything that changes the
+image size shifts every later address and breaks the binary — and there's no free
+RAM/disc space to relocate grown code into without disturbing the game's bss/heap or
+the tightly-packed streaming assets on the disc (see docs/modding-and-nonmatching.md).
 
-For each C file in src/mod/main.exe/<name>.c (filename == function name):
-  * compile it with the normal pipeline (cpp | cc1 -G8 | maspsx | as),
-  * link all of them at MODBASE, resolving the game's symbols from main.exe.elf,
-  * overwrite the first 8 bytes of the original function's slot with
-    `j <impl>; nop` (a trampoline),
-  * append the mod region to the image and extend the PS-EXE header .text size.
+So mods must fit where they already live. For each C file in
+`src/mod/main.exe/<name>.c` (filename == function name) mkmod:
 
-The result: main.exe byte-identical except an 8-byte trampoline per hooked
-function + the header size, plus the grown code appended. All callers (symbolic
-or raw) hit the slot and jump to your code.
+  * compiles it with the normal pipeline (cpp | cc1 -G8 | maspsx | as),
+  * links it at the function's ORIGINAL address, resolving the game's other symbols
+    from main.exe.elf,
+  * overwrites that function's bytes in main.exe with the result.
+
+The function must fit in its original slot (its address .. the next symbol). Because
+nothing moves, `main.exe` stays exactly the same size: the disc rebuild keeps forced
+LBAs (byte-faithful except your function; streamed cutscenes intact) and it runs on
+any emulator / real hardware — no trampoline, no 8MB, no runtime injector.
+
+If a function outgrows its slot, mkmod aborts and tells you by how much — trim it
+(drop debug logging, simplify) until it fits. A same-size *substitution* is the unit
+of change a fixed-layout partial decomp can absorb; *insertions* that grow the image
+are not (yet — that needs more of the surrounding data symbolised so a uniform shift
+stays self-consistent).
 
 Run inside the nix devShell (needs the cross toolchain, tools/cc1-281, maspsx).
 """
-import os, re, struct, subprocess, sys, glob
+import os, re, subprocess, sys, glob
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 
-# Must stay in sync with shake/src/Build.hs. MODBASE is the first free address
-# after the loaded image (main_exe ends at 0x80098000 with zero bss); override
-# with $MODBASE if the game's heap turns out to use it (see the docs).
 TEXT_START = 0x80011000
 FILE_TEXT_OFF = 0x800
-MODBASE = int(os.environ.get("MODBASE", "0x80098000"), 0)
-ALIGN = 0x800
 
 CROSS = "mipsel-unknown-linux-gnu-"
 CPP = CROSS + "cpp"
@@ -87,6 +89,35 @@ def compile_c(cfile, ofile):
     run([AS, *AS_FLAGS, "-o", ofile, s_m])
 
 
+def write_sym_ld(game_syms, exclude, tag):
+    """Linker symbol script: every game symbol except `exclude` (defined by the mod)."""
+    p = os.path.join(WORK, f"syms_{tag}.ld")
+    with open(p, "w") as f:
+        for name, addr in game_syms.items():
+            if name in exclude:
+                continue
+            if re.match(r"^[A-Za-z_.$][\w.$]*$", name):
+                f.write(f"{name} = 0x{addr:08x};\n")
+    return p
+
+
+def link_at(obj, addr, sym_ld, tag):
+    """Link `obj` so its code sits at `addr`; return the raw section bytes."""
+    mod_ld = os.path.join(WORK, f"{tag}.ld")
+    with open(mod_ld, "w") as f:
+        f.write("SECTIONS {\n"
+                f"  .mod 0x{addr:08x} : {{\n"
+                "    *(.text) *(.text.*) *(.rodata*) *(.data*) *(.sdata*)\n  }\n"
+                "  /DISCARD/ : { *(.reginfo) *(.pdr) *(.mdebug*) *(.comment)\n"
+                "               *(.bss) *(.sbss) *(.gnu.attributes) }\n}\n")
+    elf = os.path.join(WORK, f"{tag}.elf")
+    run([LD, "-EL", "-o", elf, "-T", mod_ld, "-T", sym_ld,
+         "--no-check-sections", "-nostdlib", obj])
+    binf = os.path.join(WORK, f"{tag}.bin")
+    run([OBJCOPY, "-O", "binary", "--only-section=.mod", elf, binf])
+    return elf, open(binf, "rb").read()
+
+
 def main():
     if not (os.path.exists(MAIN) and os.path.exists(MAIN_ELF)):
         sys.exit(f"mkmod: {MAIN}(.elf) missing — run ./Build first")
@@ -102,57 +133,39 @@ def main():
         sys.exit(f"mkmod: hooked function(s) not found in main.exe.elf: {missing}")
     print(f"mkmod: hooking {', '.join(hooks)}")
 
-    # compile every mod
-    objs = []
-    for c in cfiles:
-        o = os.path.join(WORK, os.path.basename(c) + ".o")
-        compile_c(c, o)
-        objs.append(o)
-
-    # symbol script = all game symbols except the hooked ones (their defs come
-    # from the mod objects). Keep _gp so gp-relative code resolves.
-    sym_ld = os.path.join(WORK, "syms.ld")
-    with open(sym_ld, "w") as f:
-        for name, addr in game_syms.items():
-            if name in hooks:
-                continue
-            if re.match(r"^[A-Za-z_.$][\w.$]*$", name):
-                f.write(f"{name} = 0x{addr:08x};\n")
-
-    # link the mod region at MODBASE
-    mod_ld = os.path.join(WORK, "mod.ld")
-    with open(mod_ld, "w") as f:
-        f.write("SECTIONS {\n"
-                f"  .modtext 0x{MODBASE:08x} : {{\n"
-                "    *(.text) *(.text.*) *(.rodata*) *(.data*) *(.sdata*)\n  }\n"
-                "  /DISCARD/ : { *(.reginfo) *(.pdr) *(.mdebug*) *(.comment)\n"
-                "               *(.bss) *(.sbss) *(.gnu.attributes) }\n}\n")
-    mod_elf = os.path.join(WORK, "mod.elf")
-    run([LD, "-EL", "-o", mod_elf, "-T", mod_ld, "-T", sym_ld,
-         "--no-check-sections", "-nostdlib", *objs])
-
-    mod_bin = os.path.join(WORK, "mod.bin")
-    run([OBJCOPY, "-O", "binary", "--only-section=.modtext", mod_elf, mod_bin])
-    impl = nm_symbols(mod_elf)
-
-    # patch: trampoline each hooked slot, append the mod region, fix header
+    base_size = os.path.getsize(MAIN)
+    addrs = sorted(set(game_syms.values()))
     data = bytearray(open(MAIN, "rb").read())
-    base_len = len(data)
-    for h in hooks:
-        slot = game_syms[h]
-        off = FILE_TEXT_OFF + (slot - TEXT_START)
-        j = (0x02 << 26) | ((impl[h] >> 2) & 0x03FFFFFF)
-        struct.pack_into("<II", data, off, j, 0)  # j impl ; nop
-        print(f"  {h}: slot 0x{slot:08x} -> j 0x{impl[h]:08x}")
-    mod = bytearray(open(mod_bin, "rb").read())
-    mod += b"\x00" * ((-len(mod)) % ALIGN)
-    data += mod
-    struct.pack_into("<I", data, 0x1C, (base_len - FILE_TEXT_OFF) + len(mod))
 
+    for c, h in zip(cfiles, hooks):
+        obj = os.path.join(WORK, os.path.basename(c) + ".o")
+        compile_c(c, obj)
+        slot = game_syms[h]
+        higher = [a for a in addrs if a > slot]
+        if not higher:
+            sys.exit(f"mkmod: no symbol after {h} @ 0x{slot:08x}; can't size its slot")
+        slot_size = min(higher) - slot
+
+        sym_ld = write_sym_ld(game_syms, {h}, h)
+        elf, code = link_at(obj, slot, sym_ld, h)
+        if nm_symbols(elf).get(h) != slot:
+            sys.exit(f"mkmod: {h} did not link at its slot 0x{slot:08x}")
+        if len(code) > slot_size:
+            sys.exit(
+                f"mkmod: {h} compiled to {len(code)} bytes but its slot (0x{slot:08x}"
+                f"..0x{slot + slot_size:08x}) is only {slot_size} — over by "
+                f"{len(code) - slot_size}. Trim it (drop debug logging / simplify) so "
+                f"it fits in place; the fixed layout can't absorb a bigger function.")
+
+        off = FILE_TEXT_OFF + (slot - TEXT_START)
+        data[off:off + len(code)] = code
+        print(f"  {h}: {len(code)}/{slot_size} bytes -> patched in place @ 0x{slot:08x}")
+
+    assert len(data) == base_size, "in-place patch must not change the file size"
     out = f"{BUILD}/main_mod.exe"
     open(out, "wb").write(data)
-    print(f"mkmod: wrote {out}  ({len(data)} bytes, mod region {len(mod)} @ "
-          f"0x{MODBASE:08x}, header .text size 0x{(base_len-FILE_TEXT_OFF)+len(mod):x})")
+    print(f"mkmod: wrote {out}  ({len(data)} bytes, same size as main.exe — the disc "
+          f"rebuild stays byte-faithful, so it runs anywhere)")
 
 
 if __name__ == "__main__":

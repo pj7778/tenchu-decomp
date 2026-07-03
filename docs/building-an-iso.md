@@ -19,13 +19,30 @@ On first use the disc is dumped once with `dumpsxiso` into `TENCHU_ISO_WORK`
 
 ```console
 $ nix develop            # provides mkpsxiso + dumpsxiso (packaged in nix/mkpsxiso.nix)
-$ ./Build iso            # matching main.exe   -> .shake/build/tenchu/tenchu.{bin,cue}
-$ ./Build iso-mod        # grown main_mod.exe  -> .shake/build/tenchu/tenchu-mod.{bin,cue}
+$ ./Build iso            # matching main.exe -> .shake/build/tenchu/tenchu.{bin,cue}
+$ ./Build iso-mod        # modded main.exe   -> .shake/build/tenchu/tenchu-mod.{bin,cue}
 $ ./Build run            # FAST: -loadexe main.exe over the original disc (no repack)
 $ ./Build run-iso        # FAITHFUL: repack the disc with main.exe and boot it
-$ ./Build run-mod        # fast, grown main_mod.exe
-$ ./Build run-iso-mod    # faithful, grown main_mod.exe
+$ ./Build run-mod        # fast, -loadexe the modded main.exe
+$ ./Build run-iso-mod    # FAITHFUL: repack the disc with the modded main.exe and boot it
 ```
+
+**Mods are patched in place, so the disc stays faithful.** `./Build mod`
+(tools/mkmod.py) compiles each `src/mod/main.exe/<fn>.c`, links it at the function's
+*original* address, and overwrites that function's bytes — the function has to fit in
+its original slot (up to the next symbol), so `main_mod.exe` is **exactly the same
+size** as `main.exe`. That matters because the disc is packed with **no free sectors**:
+`MAIN.EXE` is a 271-sector slot at LBA 319, immediately followed by `TRIAL/ENDING.EXE`,
+`DATA.VOL`, and the `MOVIE/*.STR` + `XA/*.XA` streams. A *bigger* `MAIN.EXE` would shove
+them all to new LBAs, and streamed cutscenes seek by absolute sector, so they'd read the
+wrong data and hang (right after the loading screen). Because the modded exe is the same
+size, mkiso keeps **forced LBAs** — the mod disc is byte-identical to the original except
+`MAIN.EXE`'s sectors, so the full `SLPS→MENU→MAIN` boot and every cutscene work, on any
+emulator or real hardware.
+
+If a modded function outgrows its slot, `./Build mod` aborts and tells you by how many
+bytes — trim it (drop debug logging, simplify) until it fits. See
+[modding-and-nonmatching.md](modding-and-nonmatching.md).
 
 Two ways to launch:
 
@@ -66,13 +83,12 @@ supply a real BIOS and opt in:
   `src/main.exe/…` keeping instruction count) rides the same path — only your
   changed bytes differ, so it boots exactly like the original.
 
-- **`./Build iso-mod`** puts the grown `main_mod.exe` (trampolines + mod region,
-  see [modding-and-nonmatching.md](modding-and-nonmatching.md)) on the disc.
-  Because it's bigger than the original slot, the build drops forced LBAs and
-  lets mkpsxiso auto-pack — files after `main.exe` shift. The game finds files by
-  name, so the game logic runs; streaming assets that hardcode LBAs (some
-  movies/XA) may glitch. (Verified: the ISO's `MAIN.EXE` == our `main_mod.exe`,
-  trampoline intact.)
+- **`./Build iso-mod`** puts the modded `main_mod.exe` (functions patched in place
+  by `./Build mod`, see [modding-and-nonmatching.md](modding-and-nonmatching.md)) on
+  the disc. Because it's the **same size** as the original `main.exe`, the build keeps
+  forced LBAs — the data track is byte-identical to the original except `main.exe`'s
+  sectors, exactly like `./Build iso`. So the full boot chain and all streamed
+  movies/XA work; `run-iso-mod` is the faithful way to play a mod.
 
 ## How it works
 

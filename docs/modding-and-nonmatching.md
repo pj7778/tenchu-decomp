@@ -53,60 +53,68 @@ because this is a *partial* decomp with a fixed memory layout:
 In short: a fixed-layout partial decomp can absorb *substitutions* but not
 *insertions*.
 
-## Making growth work: `./Build mod` (implemented)
+## Making a mod run: `./Build mod` — patch in place
 
-Growth is handled by a **trampoline + mod region**, wired in as the `mod` target:
+Non-matching behaviour changes (a decompiled function edited however you like) are
+handled by **overwriting the function in place**, wired in as the `mod` target:
 
 ```console
-$ # put your grown/modified function in src/mod/main.exe/<fn>.c (filename == fn)
+$ # put your modified function in src/mod/main.exe/<fn>.c (filename == fn)
 $ ./Build mod        # -> .shake/build/tenchu/main_mod.exe
-mkmod: hooking get_held_buttons
-  get_held_buttons: slot 0x8001b260 -> j 0x80098000
-mkmod: wrote .shake/build/tenchu/main_mod.exe (…, mod region @ 0x80098000, …)
+mkmod: hooking ProcItemKusuri
+  ProcItemKusuri: 1376/1432 bytes -> patched in place @ 0x80040500
+mkmod: wrote .shake/build/tenchu/main_mod.exe (555008 bytes, same size as main.exe …)
 ```
 
-How it works (`tools/mkmod.py`): it starts from the byte-matching `main.exe`,
-then for each `src/mod/main.exe/<fn>.c`:
+How it works (`tools/mkmod.py`): it starts from the byte-matching `main.exe`, then
+for each `src/mod/main.exe/<fn>.c`:
 
 1. compiles it with the normal pipeline (`cpp | cc1 -G8 | maspsx | as`);
-2. links all mods at **`MODBASE` (`0x80098000`)** — the first free address after
-   the loaded image (`main_exe` ends there with zero bss) — resolving the game's
+2. links it at the function's **original address**, resolving the game's other
    symbols from `main.exe.elf`;
-3. overwrites the first 8 bytes of the original function's slot with
-   `j <mod_addr>; nop`;
-4. appends the mod region to the image and extends the PS-EXE `.text` size.
+3. overwrites that function's bytes in `main.exe` with the result.
 
-Result (verified): `main_mod.exe` is **byte-identical to the original except the
-8-byte trampoline per hooked function and the header size**, with the grown code
-appended. Every original address stays put, so all callers — symbolic *and* raw
-— reach the slot and jump to your code. `src/main.exe/` (the matching decomp)
-is untouched; mods live only in `src/mod/main.exe/`.
+The function must **fit in its original slot** (its address → the next symbol). Since
+nothing moves, `main_mod.exe` is byte-identical to `main.exe` except that function —
+same size, PS-EXE header untouched — so the disc rebuild keeps forced LBAs and it runs
+on any emulator or real hardware. `src/main.exe/` (the matching decomp) is untouched;
+mods live only in `src/mod/main.exe/`.
 
-Notes / knobs:
-- `MODBASE` defaults to `0x80098000` (contiguous after the image). If the game's
-  runtime heap turns out to use that region, override it: `MODBASE=0x801f0000
-  ./Build mod` (any free RAM below the stack at `0x801FFFF0`). Determining a
-  guaranteed-safe address needs the runtime memory map (e.g. from your Ghidra
-  project); the mechanism itself is address-agnostic.
-- A hooked function's slot must be ≥ 8 bytes (for `j` + `nop`); every real
-  function is.
-- Taking the *address* of a hooked function still yields the original slot
-  address (which trampolines correctly); only rare address-identity comparisons
-  would notice.
+**Why in place and not relocated.** A grown function shifts every later address, and
+there's nowhere safe to put relocated code: right after the image (`0x80098000`) is the
+game's bss (globals → `HEAP_START = 0x800cdbac`, then heap, then stack `0x801ffff0`),
+which crt0 zeroes and the game writes; there's no reusable hole inside the 2 MB image
+(even the 17 KB zero run at `0x80089fed` is the live `EffectSlot`/`ModelSlot` buffers);
+and the disc is packed with no free sectors, so a bigger `MAIN.EXE` shifts the streamed
+movies/XA and hangs the cutscenes (see [building-an-iso.md](building-an-iso.md)). So the
+one edit a fixed-layout partial decomp can absorb is a **same-slot substitution**.
 
-### Alternative: decompile more (not needed now)
+**If it doesn't fit**, `./Build mod` aborts with the overage, e.g.:
 
-Once the data around a function is fully symbolic (no raw pointers / fixed
-addresses into that region), a uniform shift becomes self-consistent and
-functions can grow in place without trampolines. That's the natural end-state of
-the decomp — not required, just noted for context. `./Build mod` works today
-regardless.
+```
+mkmod: ProcItemKusuri compiled to 1440 bytes but its slot (…) is only 1432 — over by 8.
+Trim it (drop debug logging / simplify) so it fits in place …
+```
+
+Trim the function — drop debug/log calls, simplify Ghidra-isms — until it fits. (The
+worked example `ProcItemKusuri.c` drops the original's `AdtMessageBox("item dispose
+fail…")` diagnostic, which is never hit in normal play, to make room.)
+
+### Later: grow in place by decompiling more
+
+Once the data around a function is fully symbolic (no raw pointers / fixed addresses
+into that region), a uniform shift of everything after it becomes self-consistent, and
+functions can grow without fitting the original slot. That's the natural end-state of
+the decomp — not required for same-slot mods, just where genuinely-larger changes
+become possible.
 
 ## Running a modified exe
 
-Structural validity: a same-size mod is a valid PS-EXE (header + all other bytes
-unchanged), so it boots like the original. To actually run it you need to rebuild
-the disc image with the patched `main.exe` (e.g. `mkpsxiso`) and load it in an
-emulator (DuckStation / pcsx-redux) or on hardware — that tooling isn't in the
-repo yet. The decomp only rebuilds `main.exe`; the rest of the disc
-(`disks/tenchu/…`) is the original.
+Both mod launchers use the same-size `main_mod.exe`, so both are byte-faithful except
+your function (see [building-an-iso.md](building-an-iso.md)):
+
+- `./Build run-mod` — `-loadexe main_mod.exe` over the original disc. Fast, but boots
+  `MAIN.EXE` directly (skips `SLPS→MENU`), so some game state is under-initialised.
+- `./Build run-iso-mod` — **faithful**: repacks the disc with `main_mod.exe` (forced
+  LBAs, streamed cutscenes intact) and runs the full `SLPS→MENU→MAIN` boot. Use this
+  to actually play a mod.

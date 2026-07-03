@@ -51,7 +51,8 @@ processedDir = shakeDir </> "processed"
 mainExe :: FilePath
 mainExe = buildDir </> "tenchu" </> "main.exe"
 
--- | The grown/trampolined non-matching build (tools/mkmod.py).
+-- | The modded (non-matching) build: hooked functions patched in place by
+-- tools/mkmod.py, so it stays the same size as main.exe (disc rebuild is faithful).
 mainModExe :: FilePath
 mainModExe = buildDir </> "tenchu" </> "main_mod.exe"
 
@@ -360,10 +361,15 @@ mainRules = do
     need [mainElf]
     cmd_ objcopy objcopyFlags [mainElf, mainExe]
 
-  -- Grown/trampolined non-matching build. mkmod reads main.exe's symbol table
-  -- (via nm on the elf), so depend on both. See docs/modding-and-nonmatching.md.
+  -- Non-matching build: mkmod patches hooked functions in place. It reads main.exe's
+  -- symbol table (via nm on the elf), compiles every src/mod/main.exe/*.c, and aborts
+  -- if one outgrows its slot — so depend on the exe+elf, the mod sources, AND the
+  -- tool itself, or an edit to a mod (or to mkmod) wouldn't rebuild and the size
+  -- guard wouldn't re-run. See docs/modding-and-nonmatching.md.
   mainModExe %> \_out -> do
-    need [mainExe, mainExe <.> "elf"]
+    modSrcs <- getDirectoryFiles srcDir ["mod/main.exe/*.c"]
+    need $ [mainExe, mainExe <.> "elf", "tools/mkmod.py"]
+        <> map (srcDir </>) modSrcs
     cmd_ "tools/mkmod.py"
 
   -- Bootable CD images (.bin/.cue) with our exe swapped in — repacked only when the
@@ -405,22 +411,25 @@ phonyRules = do
   -- faithful full boot. Set PCSX_REDUX / PCSX_REDUX_ARGS to tweak the emulator.
   phony "run" $ do
     need [mainExe]
-    launchLoadExe mainExe
+    launchLoadExe [] mainExe
 
   phony "run-mod" $ do
     need [mainModExe]
-    launchLoadExe mainModExe
+    launchLoadExe [] mainModExe
 
   -- `run-iso` / `run-iso-mod`: faithful — boot the repacked disc (built by the file
   -- rules above only when the exe changed), so the real SLPS_019.01 -> ... -> MAIN.EXE
   -- chain runs.
   phony "run-iso" $ do
     need [tenchuCue]
-    launchIso tenchuCue
+    launchIso [] tenchuCue
 
+  -- main_mod.exe is patched in place (same size as main.exe), so the mod disc keeps
+  -- forced LBAs and is byte-faithful except our function — streamed cutscenes and the
+  -- full SLPS→MENU→MAIN boot all work. See docs/modding-and-nonmatching.md.
   phony "run-iso-mod" $ do
     need [tenchuModCue]
-    launchIso tenchuModCue
+    launchIso [] tenchuModCue
 
   phony "check" $ do
     let reference = "disks" </> "tenchu" </> "main.exe"
@@ -438,18 +447,19 @@ phonyRules = do
       fail $ unwords ["Expected", mainExe, "to have sha256 of", expectedSha256, "but it's", ourSha]
 
 -- | Launch our exe fast: mount the original disc and @-loadexe@ over it (no repack).
--- Paths are absolutised — pcsx-redux resolves them against its own cwd.
-launchLoadExe :: FilePath -> Action ()
-launchLoadExe exe = do
+-- Paths are absolutised — pcsx-redux resolves them against its own cwd. @extra@ are
+-- extra emulator flags (e.g. @-8mb@ for the grown mod, whose region is above 2MB).
+launchLoadExe :: [String] -> FilePath -> Action ()
+launchLoadExe extra exe = do
   disc <- liftIO $ findDisc >>= IO.makeAbsolute
   exeAbs <- liftIO $ IO.makeAbsolute exe
-  runPcsx ["-run", "-iso", disc, "-loadexe", exeAbs]
+  runPcsx (["-run", "-iso", disc, "-loadexe", exeAbs] <> extra)
 
--- | Launch a repacked disc image (the faithful full boot).
-launchIso :: FilePath -> Action ()
-launchIso cue = do
+-- | Launch a repacked disc image (the faithful full boot). @extra@ as 'launchLoadExe'.
+launchIso :: [String] -> FilePath -> Action ()
+launchIso extra cue = do
   cueAbs <- liftIO $ IO.makeAbsolute cue
-  runPcsx ["-run", "-iso", cueAbs]
+  runPcsx (["-run", "-iso", cueAbs] <> extra)
 
 -- | Run pcsx-redux with the given base args plus any @$PCSX_REDUX_ARGS@. It falls
 -- back to OpenBIOS when no BIOS is configured, so no BIOS is required.
