@@ -123,6 +123,9 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     -- DoInfoViewProc.c is part of the original info-view TU, which defines
     -- these smalls (fInitialize / item cursor / PutMap latch).
     syms "DoInfoViewProc" = ["D_80097B1C", "CURRENTLY_SELECTED_ITEM_KIND_1_", "D_80097BB1"]
+    -- BriefingAndInventorySelectionScreen.c's original TU defines the one-shot
+    -- capacity-cheat latch (.sdata, 0x80097cdc); SkipFrame stays absolute.
+    syms "BriefingAndInventorySelectionScreen" = ["CARRY_30_ITEMS_CHEAT_APPLIED"]
     syms _ = []
 
 as :: FilePath

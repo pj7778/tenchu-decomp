@@ -221,7 +221,10 @@ gold — match its return/variable types exactly (`Think1sleep` needed
   s16 element; a u16 element materializes `ori $rN,$zero,0xffff`. Same
   family: an `x != 0` test on an s16 compiles to `sll`+`beqz` (truncation
   with the sra dropped), on a u16 to `andi 0xffff` — the zero-test names the
-  type (PauseProc's cheat buffer is s16).
+  type (PauseProc's cheat buffer is s16). Initializers too: `u16 pad = -1;`
+  materializes `ori 0xffff`; only an s16 variable's `= -1` gives the
+  `addiu $rN,$zero,-1` form (fold converts the constant through the lvalue's
+  type before RTL).
 - **An increment shared with a call argument goes through a narrow temp
   BEFORE the call**: `addiu rX,s_i,1; addu s_i,rX; … jal f` (rX caller-saved,
   dead at the call) is `j = i + 1; i = j; f(buf, j + 1);` with `short i, j`.
@@ -283,6 +286,25 @@ gold — match its return/variable types exactly (`Think1sleep` needed
   = 0x248, byte-exact. The tell to look for: same sp offset written by two
   unrelated struct copies + `addiu $a1,$sp,N` repeated per call + a frame
   smaller than the sum of the visible buffers.
+  Verified mechanics (RTL dumps, BriefingAndInventorySelectionScreen): each
+  frame-address arg expands to its own `reg := (plus fp c)` pseudo; the cse
+  pass merges same-valued ones ACROSS CALLS (calls invalidate only hard regs
+  and memory, not pseudo equivalences) — only a CODE_LABEL breaks the window.
+  Passing the written object as the helper's pointer PARAMETER keeps later
+  argument uses direct too: integrate substitutes the argument address and
+  folds it per-use, so `Helper(buf, &hspr)` + a later `GsSortSprite(&hspr,…)`
+  both emit fresh `addiu $aN,$sp,c` (probe-verified against the original's
+  delay-slot placement). A pointer variable (`p = &spr;`) is the ORIGINAL's
+  shape when the object is the FIRST local (its address is the bare frame
+  reg, so the copy is free) and field accesses mix `p->` with direct `var.`
+  spellings — keep both spellings exactly as Ghidra shows them.
+- **A division variable carried around an in-loop call goes through a
+  quotient temp reassigned at the loop BOTTOM**: `q = d / 10; …; call;
+  …; av = q; } while ((s16)av != 0);` — the bottom test cse's to q's
+  register and av's live range stays off the call (caller-saved, like the
+  original). Writing `av = d / 10;` at the top extends av's range across the
+  call → callee-saved reg + a whole allocation cascade
+  (BriefingAndInventorySelectionScreen's item-count digits).
 
 ## Register allocation steering
 
@@ -331,6 +353,12 @@ gold — match its return/variable types exactly (`Think1sleep` needed
 
 ## Shared tails
 
+- **Ghidra's duplicated single store on both branch paths is literal**: write
+  it twice (`if (uid == 0) { q->counts[0] = 0xFF; …; return; } q->counts[0] =
+  0xFF;`) — cross-jump merges the copies and reorg leaves one `sb` in the
+  branch delay slot, executed on both paths. Hoisting it above the `if` in
+  source puts the store BEFORE the load/branch instead (scheduler moves it
+  further up) — one store, wrong position.
 - An identical dispose/cleanup sequence reached from two paths with a `j`
   into the middle of one copy is **the code written out twice** in source —
   GCC's cross-jump pass merges the common suffix (from the `jalr` backwards;

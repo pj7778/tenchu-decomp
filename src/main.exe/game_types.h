@@ -604,3 +604,29 @@ struct character_state
     u8 field83_0xcf;
 };
 // s32 AdtSelect(char *screen_header, debug_menu_choice *choices, char *param_3);
+
+// The persistent game state blob at 0x80010000 (below the exe image; survives
+// across screens). Offsets proven by BriefingAndInventorySelectionScreen.
+// Splat also names some fields as standalone globals (CHOSEN_CHARACTER = +4,
+// CHOSEN_STAGE = +5, STAGE_LAYOUT_NUMBER = +6, CHOSEN_LANGUAGE = +0x5E,
+// SHOP_STOCK_STATE_BY_CHAR = +0x40C); the original source mixed direct global
+// accesses with pointer-based ones, so both views coexist on purpose.
+typedef struct
+{
+    u8 field_0x0[4];        /* 0x000 */
+    u8 chr;                 /* 0x004 CHOSEN_CHARACTER (stock matrix row) */
+    u8 stage;               /* 0x005 CHOSEN_STAGE */
+    u8 layout;              /* 0x006 STAGE_LAYOUT_NUMBER */
+    u8 counts[0x14];        /* 0x007 selected count per item 0..0x13;
+                             *       [0x12]/[0x13] double as flags */
+    u8 field_0x1b[0xC];     /* 0x01B */
+    u8 backup[0x14];        /* 0x027 loadout backup (restore on abort) */
+    u8 field_0x3b[0xD];     /* 0x03B */
+    u8 flags48;             /* 0x048 bit0: item screen already initialised */
+    u8 field_0x49[0x15];    /* 0x049 */
+    u8 language;            /* 0x05E CHOSEN_LANGUAGE */
+    u8 field_0x5f[0x3AD];   /* 0x05F */
+    u8 stock[0x100];        /* 0x40C SHOP_STOCK_STATE_BY_CHAR[chr*0x20+item];
+                             *       0xFE = locked, 0xFF = infinite;
+                             *       [chr*0x20+0x13] = stage bonus item flag */
+} PersistentState;

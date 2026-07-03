@@ -35,6 +35,26 @@ struct GsDOBJ2
     u_long id;
 };
 
+/* 0x24 bytes — layout proven by BriefingAndInventorySelectionScreen's stack
+ * (two sprites at sp+0x18/0x40, GsIMAGE at 0x68, next local at 0x88). */
+typedef struct GsSPRITE GsSPRITE;
+struct GsSPRITE
+{
+    u_long attribute;     /* 0x00 */
+    short x, y;           /* 0x04 */
+    u_short w, h;         /* 0x08 */
+    u_short tpage;        /* 0x0C */
+    u_char u, v;          /* 0x0E */
+    short cx, cy;         /* 0x10 */
+    u_char r, g, b;       /* 0x14 */
+    short mx, my;         /* 0x18 */
+    short scalex, scaley; /* 0x1C */
+    long rotate;          /* 0x20 */
+};
+
+/* Ordering table — opaque here (only passed around by pointer). */
+typedef struct GsOT GsOT;
+
 typedef struct GsIMAGE GsIMAGE;
 struct GsIMAGE
 {
