@@ -48,6 +48,8 @@ segments:
       - [0xAAB8, data]
       - [0x1F198, c, Think1sleep]
       - [0x1F224, data]
+      - [0x2FD00, c, ProcItemKusuri]
+      - [0x30298, data]
       - [0x399D8, c, ProcItemManebue]
       - [0x39AEC, data]
       - [0x46E98, c, initialise_font]
