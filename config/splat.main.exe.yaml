@@ -44,6 +44,8 @@ segments:
     subsegments:
       - [0x800, data] # ?
       - [0x5934, data]
+      - [0x9210, c, GetAreaMapLevel]
+      - [0x96A0, data]
       - [0xAA60, c, GetRealPad]
       - [0xAAB8, data]
       - [0x1F198, c, Think1sleep]

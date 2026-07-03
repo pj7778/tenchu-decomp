@@ -36,6 +36,13 @@ AS_FLAGS = ("-EL -Iinclude -march=r3000 -mtune=r3000 -no-pad-sections -O1 -G0").
 GP_EXTERNS = {
     "Think1sleep": ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"],
     "ReqItemDrop": ["COUNTER_FOR_ITEM_ARRAY_"],
+    "GetAreaMapLevel": ["FieldIndex", "FieldArea", "D_80097EC0", "D_80097EC4"],
+}
+
+# Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
+# maspsxGpExterns (e.g. --expand-div for TUs that divide by a variable).
+MASPSX_EXTRA = {
+    "GetAreaMapLevel": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash
@@ -79,7 +86,8 @@ def main():
 
     # compile.sh
     csh = os.path.join(work, "compile.sh")
-    gpx = "".join(f" --gp-extern {s}" for s in GP_EXTERNS.get(name, []))
+    gpx = "".join(f" {f}" for f in MASPSX_EXTRA.get(name, []))
+    gpx += "".join(f" --gp-extern {s}" for s in GP_EXTERNS.get(name, []))
     open(csh, "w").write(COMPILE_SH.format(
         root=ROOT, ccflags=" ".join(CC_FLAGS), asflags=" ".join(AS_FLAGS),
         gpexterns=gpx))

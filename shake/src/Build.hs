@@ -103,13 +103,21 @@ maspsxFlags = ["--aspsx-version=2.77", "-G8"]
 -- link), so per file we list the small globals its ORIGINAL translation unit
 -- defined — maspsx then gp-addresses exactly those and leaves the rest absolute.
 maspsxGpExterns :: FilePath -> [String]
-maspsxGpExterns src = concat [["--gp-extern", s] | s <- syms (takeBaseName src)]
+maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s <- syms (takeBaseName src)]
   where
+    -- Files whose original code divides by a *variable* need ASPSX's guarded
+    -- div expansion (bnez/break 7/break 6); scoped per-file so nothing else
+    -- in the image can change.
+    extra "GetAreaMapLevel" = ["--expand-div"]
+    extra _ = []
     -- Think1sleep.c is a fragment of the original think TU, which defines these.
     syms "Think1sleep" = ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"]
     -- ReqItemDrop.c is part of the original item TU, which defines its
     -- round-robin counter (the item TU's .sdata block starts at 0x80097ac8).
     syms "ReqItemDrop" = ["COUNTER_FOR_ITEM_ARRAY_"]
+    -- GetAreaMapLevel.c is part of the original area-map TU, which defines
+    -- these small globals (.sdata around 0x80097ec0).
+    syms "GetAreaMapLevel" = ["FieldIndex", "FieldArea", "D_80097EC0", "D_80097EC4"]
     syms _ = []
 
 as :: FilePath

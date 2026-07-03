@@ -139,6 +139,16 @@ gold — match its return/variable types exactly (`Think1sleep` needed
 - A hand-rolled `label: if (...) goto...` loop also keeps the top test but
   **loses hoisting** (no loop notes → loop.c skips it): magic divisors and
   invariant addresses get rematerialized per iteration. Wrong.
+- **No combined address bases + no rotated tests ⇒ goto loops.** Real
+  for/while/do-while get loop.c strength reduction (extra induction pseudos
+  folding several field offsets, e.g. base+2/base+6) and jump.c rotation (a
+  break test migrating to the bottom with a compensation decrement). A
+  hand-rolled `label: ... if (cond) goto label;` keeps one cursor with the
+  original displacements and a top test + conditional back-jump
+  (GetAreaMapLevel's node walk). Corollary: a TU that divides by a variable
+  needs maspsx `--expand-div` for ASPSX's break 7/break 6 guards — per-file,
+  via the `extra` list next to maspsxGpExterns in Build.hs (mirrored in
+  permute.py MASPSX_EXTRA).
 - An induction variable zeroed in a **branch delay slot** of the dispatch
   (`move $s1, $zero` under the `beq`) is just `i = 0;` as the first statement
   of the case body — reorg hoists the target block's head insn into the delay
@@ -211,6 +221,18 @@ gold — match its return/variable types exactly (`Think1sleep` needed
 - Cached pointers that live in `$s`-registers across calls
   (`p = &item->param;`) are real source temporaries — indexing the base
   struct directly doesn't allocate the register (see ProcItemManebue).
+- **A `do { ... } while (0);` wrapper is a regalloc lever**: the degenerate
+  loop generates no code, but its loop notes make flow.c count every ref
+  inside at loop_depth 2, doubling those pseudos' priority in global-alloc.
+  When the callee-saved assignment is permuted relative to the target and
+  statement-level tweaks can't fix it, wrapping the body (after parameter
+  setup, before the final return) re-weights the whole interior at once
+  (GetAreaMapLevel: flipped four s-registers in one move; GetRealPad's old
+  wrapper was the same mechanism).
+- **Reused parameters vs fresh locals show in the prologue**: `move $s5,$a1`
+  + later arithmetic on $s5 means the original overwrote the parameter
+  (`x = x / 10;`) — the param pseudo gets a callee-saved home. A fresh local
+  computes straight into the s-register with no entry move.
 - **Assignment position around a branch is a double lever** (ReqItemDrop):
   `pp = ...;` placed *before* `if (it == 0) return 0;` lets reorg fill the
   `beqz` delay slot with its `addiu` (instead of collapsing the return-0
@@ -238,6 +260,15 @@ gold — match its return/variable types exactly (`Think1sleep` needed
   the differing prefixes, e.g. two different `mode = 0xff` stores, stay
   separate). A shared `goto` label merges *more* than the original (loses the
   duplicated call-site setup) — don't.
+
+- **Multiple `return CONST;` statements cross-jump unpredictably; a labeled
+  return body pins them**: write the constant return once, label INSIDE the
+  last guarding if (`if (...) { ret_min: return 0x80000000; }`), `goto
+  ret_min;` elsewhere — one fallthrough-entered body whose insns reorg steals
+  into the other branches' delay slots.
+- A conditional branch that lands PAST a load at its target block is reorg's
+  redundant-insn elimination (the branch path already has the value): both
+  source paths simply read the same variable — no restructuring needed.
 
 ## gp vs absolute globals (item-TU vs think-TU)
 
