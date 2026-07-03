@@ -28,6 +28,45 @@ $ tools/matchdiff.py <Name>
 $ ./Build check      # then confirm the whole image
 ```
 
+## Iteration protocol
+
+The ordered triage — fix categories in THIS order, re-running
+`tools/matchdiff.py <Name>` after every source change:
+
+1. **Length first.** If your function assembles to a different instruction
+   count (matchdiff's whole-image number explodes), the *structure* is wrong —
+   dispatch shape, loop shape, missing/extra temps, tail merging. Fix before
+   anything else; operand diffs are meaningless while the length is off.
+2. **Wrong/missing/reordered instructions next.** Map each to a cookbook rule
+   (switch vs ladder, while(1)+break, fold reassociation, temps-vs-inline,
+   buffer casts, statement order). `tools/findsimilar.py <Name>` names the
+   matched functions most like yours — read their source and header notes
+   first; imitate the nearest one.
+3. **Register-only differences last.** They usually fall out of 1–2. The
+   levers, in order: statement/assignment position (a one-line move can flip
+   allocation priorities and delay-slot fills), declaration of temps, and
+   finally `tools/permute.py <Name>` for pure allocation ties.
+4. Don't trust the byte count alone — read the diff. A change can improve the
+   count while shifting registers globally (worse), or vice versa.
+5. **Attempt cap.** If ~10 meaningful source changes haven't reduced the diff,
+   stop: restore the INCLUDE_ASM stub, keep your best attempt in the file as a
+   comment or note `/* CURRENT(N): best attempt, see notes */`, commit nothing
+   red, and record what blocked you. decomp.me (psyq4.3 preset) arbitrates
+   "is this expressible at all".
+6. **On MATCH:** `./Build check`, add the matching-notes header, promote any
+   NEW reusable rule to this cookbook, commit the function + splat.yaml
+   together.
+
+## Picking targets
+
+`tools/findsimilar.py --targets` ranks every unmatched function by assembly
+similarity to the matched corpus (best-first, smallest-first) — the top
+entries are near-clones of things we've already solved and make good next
+targets. Prefer functions from an original TU we've already touched (shared
+headers like item.h and the gp-extern lists already exist for those). Batch
+work: one function per matcher agent (.claude/agents/matcher.md), and commit
+only on a green `./Build check`.
+
 Treat the differing-byte count as a score to drive down (matchdiff also
 reports the whole-image count: if your function assembles to a different
 LENGTH, every object after it shifts and even data symbols drift — fix the

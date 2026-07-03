@@ -14,6 +14,11 @@ all verified), and the workflow — tools/reverse.py to split a function, then
 iterate with tools/matchdiff.py <Name> until MATCH, then ./Build check.
 Keep the cookbook updated: when matching teaches a new reusable rule, add it
 there (not just to session memory), and extend the worked-example pointers.
+Pick targets with tools/findsimilar.py --targets (unmatched functions ranked
+by similarity to already-matched ones). For batch matching, spawn the
+`matcher` agent (.claude/agents/matcher.md) with one function name each;
+the main session reviews, commits only on green `./Build check`, and folds
+newly reported rules into the cookbook.
 
 If you need some tools, you can use ~/programming/nixpkgs to get anything you
 need from nix.
