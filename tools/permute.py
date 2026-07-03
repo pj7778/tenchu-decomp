@@ -41,6 +41,7 @@ GP_EXTERNS = {
     "DoInfoViewProc": ["D_80097B1C", "CURRENTLY_SELECTED_ITEM_KIND_1_", "D_80097BB1"],
     "BriefingAndInventorySelectionScreen": ["CARRY_30_ITEMS_CHEAT_APPLIED"],
     "LayoutEnemyOption": ["D_80097D44"],
+    "debug_menu_stage_option": ["SystemFlag"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs

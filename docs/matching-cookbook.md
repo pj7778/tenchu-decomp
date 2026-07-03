@@ -246,6 +246,10 @@ gold — match its return/variable types exactly (`Think1sleep` needed
   original's single `li` in one register (the `sh` reads its low part). The
   tell: the same small constant materialized twice, once feeding `sh`, once
   `sw` (ProcItemDrop's conflict-insert path).
+- **A callee returning a pointer to a small static struct gets a FULL struct
+  copy** even when only one field is read afterward: `sr = *(SmallStruct *)
+  f();` — align-2 lwl/lwr+swl/swr block copy, not a selective field load
+  (debug_menu_stage_option).
 - A two-statement remainder temp (`x = rand(); x = x % 200;`) is provable
   from the asm: the `mult`/`subu` operate **in place on the moved call
   result's register** ($sN) — inline `rand() % 200` computes on `$v0`.
@@ -516,10 +520,14 @@ routes the table through the C object's .rodata (see the yaml comment at the
 BriefingAndInventorySelectionScreen carve). Consequences: the yaml needs
 `- [fileoff, .rodata, <Name>]` at the table's original address plus a data
 re-split line after it; the STUB state
-must INCLUDE_ASM all pieces AND provide a `static const u32 …_jtbl[]` with
-the original table words (deleted when the real C is activated — the
-compiled switch then lands its table at the original vram automatically).
-reverse.py seeds only the FIRST piece's INCLUDE_ASM — copy the full list
+must INCLUDE_ASM all pieces (entry + switchD + every caseD, address order).
+Preferred protocol: DELAY the `.rodata` carve until you activate the real
+switch — during the stub phase the table stays raw incbin'd data and no
+placeholder is needed; add the carve (address from the
+`switchD_…__switchdataD_<tableaddr>` symbol) together with the real C, whose
+compiled table then supplies the bytes. (A `static const u32 …_jtbl[]`
+placeholder is only needed if the carve must pre-exist the C, e.g. a
+committed WIP.) reverse.py seeds only the FIRST piece's INCLUDE_ASM — copy the full list
 (all pieces, address order) from splat's generated
 `.shake/gen/main.exe/src/<Name>.c`;
 tools/permute.py concatenates all pieces for its target (fixed after this

@@ -56,6 +56,9 @@ segments:
       # LayoutEnemyOption's switch jump table (vram 0x80014798), same scheme.
       - [0x3F98, .rodata, LayoutEnemyOption]
       - [0x3FB8, data]
+      # debug_menu_stage_option's switch jump table (vram 0x800147F0), same scheme.
+      - [0x3FF0, .rodata, debug_menu_stage_option]
+      - [0x400C, data]
       - [0x5934, data]
       - [0x9210, c, GetAreaMapLevel]
       - [0x96A0, data]
@@ -83,4 +86,6 @@ segments:
       - [0x46EE8, data]
       - [0x4B318, c, LayoutEnemyOption]
       - [0x4B59C, data]
+      - [0x4C1FC, c, debug_menu_stage_option]
+      - [0x4C3BC, data]
   - [0x87800]

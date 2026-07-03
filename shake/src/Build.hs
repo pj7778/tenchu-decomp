@@ -128,6 +128,9 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "BriefingAndInventorySelectionScreen" = ["CARRY_30_ITEMS_CHEAT_APPLIED"]
     -- LayoutEnemyOption's TU defines this small (debug enemy-layout state).
     syms "LayoutEnemyOption" = ["D_80097D44"]
+    -- debug_menu_stage_option.c is part of the same debug-menu TU, which
+    -- defines SystemFlag (info-view TU accesses it absolutely — both proven).
+    syms "debug_menu_stage_option" = ["SystemFlag"]
     syms _ = []
 
 as :: FilePath
