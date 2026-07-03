@@ -124,6 +124,23 @@ gold — match its return/variable types exactly (`Think1sleep` needed
   the other body usually means the source condition was the **opposite
   polarity** of Ghidra's rendering (`if (0xe < n) {...} else {...}` vs
   Ghidra's `if (n < 0xf)` with swapped bodies).
+- **Don't reuse the switch variable inside case bodies across calls**: a
+  dispatch-only variable dies at the case tree and lives in a caller-saved
+  reg (`move $v1,$v0` after the call that produced it). Assigning a later
+  call result to the *same* variable inside a case body extends one pseudo's
+  life across calls → it's promoted to a callee-saved reg, adding a prologue
+  save and shifting the whole function by one instruction. Use a separate
+  case-local variable (DoInfoViewProc: `sel` dispatches, the helpers' `n`
+  takes the sub-menu results in $s0).
+- **A tests-then-bodies ladder for two values is a nested `switch`**:
+  `beqz $sN → bodyA; li $v0,1; beq $sN,$v0 → bodyB; j end` with both bodies
+  laid out after the tests is `switch (n) { case 0: ...; case 1: ...; }`.
+  An `if (n==0) ... else if (n==1)` chain puts the first body on the
+  fallthrough path instead — and because that keeps the second body in the
+  same extended basic block as the `li 1` compare, cse reuses $v0 for a later
+  constant-1 argument (`move $a2,$v0`); the switch's branch-taken bodies get
+  a fresh `li $a2,1` like the original (cse tables don't follow the taken
+  edge).
 
 ## Loops
 
@@ -153,6 +170,18 @@ gold — match its return/variable types exactly (`Think1sleep` needed
   (`move $s1, $zero` under the `beq`) is just `i = 0;` as the first statement
   of the case body — reorg hoists the target block's head insn into the delay
   slot and retargets the branch.
+- **A wrap-around search loop with its increment in the backjump's delay slot
+  and an inverse-compensation on the fallthrough exit** is a plain do-while
+  with the increment as the FIRST body statement:
+  `i = CURR; cur = i; do { i--; if (i < 0) i = 0x19; } while (item[i] == 0 &&
+  i != cur);` — reorg steals the top-of-loop `i--` into the conditional
+  backjump's slot, retargets the branch to the wrap check, and patches the
+  fallthrough exit with `addiu +1` (the entry path falls into the original
+  loop top, executing the first decrement for free). Writing the increment
+  at the loop *bottom* (`for(;;){...; i--;}`) emits `beq → exit; nop; j top`
+  instead — one wasted slot. Load into `i` first then copy to `cur`
+  (`i = CURR; cur = i;`) so the lh lands in i's register and the copy is
+  `move cur,i`, matching the original operand order (DoInfoViewProc).
 
 ## Expressions
 
@@ -171,6 +200,10 @@ gold — match its return/variable types exactly (`Think1sleep` needed
   shared by several `%`s in range gets CSE'd into one callee-saved register.
 - Unsigned halfword loads (`lhu`) mean the field is `u16` even when a
   neighbouring field is `s16` (`life` is `s16`@0x8, `lifemax` is `u16`@0xA).
+  Different original TUs can disagree about the same field: the item TU
+  `lhu`'s lifemax (u16) but the info-view TU `lh`'s it — keep the shared
+  header's proven type and cast at the divergent use
+  (`(s16)CamState.Owner->lifemax`, DoInfoViewProc's PutLifeBar call).
 - Byte-sized call arguments loaded with `lbu` and no masking are plain `u8`
   struct fields passed directly.
 - **A constant stored to both a narrow field and a full-word field must be a
@@ -206,6 +239,27 @@ gold — match its return/variable types exactly (`Think1sleep` needed
   `*(s32 *)(buf + 0x18) = ...;`): with distinct address pseudos the scheduler
   loses the store→copy dependence and interleaves the copy into the divide
   latency (differently from the original).
+- **Overlapping big frame buffers whose addresses rematerialize at every
+  call are INLINED STATIC HELPERS, not locals** (DoInfoViewProc's debug
+  menus). Mechanics, all three observable in the bytes:
+  (1) a frame-address argument (`&local` / decayed array, any spelling) is
+  forced into a pseudo by calls.c `precompute_register_parameters` whenever
+  its offset from the frame base is nonzero (the value is `(plus vreg c)`,
+  not a REG) — and two same-valued forced pseudos in one extended basic
+  block get cse'd into a single callee-saved register (`addiu $s0,$sp,N` +
+  `move $a1,$s0` twice), costing an extra prologue save. A helper's OWN
+  first local sits at inlined-frame offset 0, so its address is the bare
+  remapped register → every call re-materializes `addiu $a1,$sp,N` like the
+  original. (2) inline expansion allocates the helper frame as a TEMP SLOT,
+  freed at the call statement's end: the next inlined helper's frame REUSES
+  it if it fits (cc1 never overlaps ordinary sibling-scope locals — verified
+  again by probe). DoInfoViewProc: item menu 0xC8 @ sp+0x78; the next
+  helper's 0x40 layout+confirm pair reuses 0x78/0xA0; the 0xF8 effect menu
+  doesn't fit the freed slot and lands fresh at 0x140; caller's own `mm`
+  local sits below at 0x20. Frame = args 0x20 + 0x58 + 0xC8 + 0xF8 + saves
+  = 0x248, byte-exact. The tell to look for: same sp offset written by two
+  unrelated struct copies + `addiu $a1,$sp,N` repeated per call + a frame
+  smaller than the sum of the visible buffers.
 
 ## Register allocation steering
 

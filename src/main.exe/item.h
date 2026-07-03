@@ -63,6 +63,16 @@ typedef struct
     MotionDataType *motion;      /* 0x10 */
 } MotionManager;
 
+/* Per-controller state embedded in Humanoid (Ghidra: PADtype). */
+typedef struct
+{
+    u16 data;                    /* 0x0 (held buttons) */
+    u16 sdata;                   /* 0x2 */
+    u16 trig;                    /* 0x4 (newly pressed this frame) */
+    s16 time;                    /* 0x6 */
+    u16 stream[4];               /* 0x8 */
+} PADtype;                       /* 0x10 */
+
 typedef struct
 {
     s16 type;                    /* 0x00 */
@@ -70,8 +80,11 @@ typedef struct
     s16 attribute;               /* 0x04 */
     s16 turn;                    /* 0x06 */
     s16 life;                    /* 0x08 */
-    u16 lifemax;                 /* 0x0A */
-    u8 pad0[0x2C];               /* 0x0C */
+    u16 lifemax;                 /* 0x0A (lhu in ProcItemKusuri; DoInfoViewProc lh's it via a (s16) cast) */
+    s16 width;                   /* 0x0C */
+    s16 height;                  /* 0x0E */
+    PADtype pad;                 /* 0x10 (DoInfoViewProc reads .data/.trig) */
+    u8 pad0[0x18];               /* 0x20 */
     VECTOR *locate;              /* 0x38 */
     u8 pad1[0x1C];               /* 0x3C */
     ModelArchiveType *model;     /* 0x58 */
@@ -79,7 +92,8 @@ typedef struct
     u8 pad2[0x4E];               /* 0x60 */
     s16 active_item;             /* 0xAE (item_kind2 the character is using) */
     u8 pad3[0x4];                /* 0xB0 */
-    u8 item[0x8];                /* 0xB4 (carry count per item_kind2 — ProcItemDrop) */
+    u8 item[0x1A];               /* 0xB4 (carry count per item_kind2 — ProcItemDrop;
+                                    DoInfoViewProc's cursor wraps at index 0x19) */
 } Humanoid;
 
 typedef struct

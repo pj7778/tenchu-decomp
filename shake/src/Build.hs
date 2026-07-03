@@ -120,6 +120,9 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     -- GetAreaMapLevel.c is part of the original area-map TU, which defines
     -- these small globals (.sdata around 0x80097ec0).
     syms "GetAreaMapLevel" = ["FieldIndex", "FieldArea", "D_80097EC0", "D_80097EC4"]
+    -- DoInfoViewProc.c is part of the original info-view TU, which defines
+    -- these smalls (fInitialize / item cursor / PutMap latch).
+    syms "DoInfoViewProc" = ["D_80097B1C", "CURRENTLY_SELECTED_ITEM_KIND_1_", "D_80097BB1"]
     syms _ = []
 
 as :: FilePath
