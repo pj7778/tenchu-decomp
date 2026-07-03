@@ -40,11 +40,19 @@ Two ways to launch:
   Image*).
 
 `run` finds the emulator via `$PCSX_REDUX`, then `pcsx-redux` on `PATH`, then
-`~/programming/pcsx-redux/pcsx-redux`; extra emulator flags go in `$PCSX_REDUX_ARGS`
-(e.g. `PCSX_REDUX_ARGS='-bios /path/scph.bin' ./Build run`). No BIOS needed
-otherwise — pcsx-redux falls back to OpenBIOS. Both modes need the original disc
-(the fast path mounts it for assets; the faithful path repacks from it), found via
-`$TENCHU_CUE` or under `disks/` / `~/tenchu-iso/`.
+`~/programming/pcsx-redux/pcsx-redux`; extra emulator flags go in `$PCSX_REDUX_ARGS`.
+Both modes need the original disc (the fast path mounts it for assets; the faithful
+path repacks from it), found via `$TENCHU_CUE` or under `disks/` / `~/tenchu-iso/`.
+
+**CPU/BIOS:** no BIOS needed — pcsx-redux falls back to OpenBIOS. But its x64
+**dynarec crashes with OpenBIOS** ("Unrecoverable error while running recompiler"
+during Tenchu's intro) — a regression of
+[grumpycoders/pcsx-redux#695](https://github.com/grumpycoders/pcsx-redux/issues/695)
+(that combo was fixed in 2022, then re-broke in the emulator's memory-system
+rework). So `run` forces `-interpreter` by default. To use the faster dynarec,
+supply a real BIOS and opt in:
+`PCSX_REDUX_ARGS='-bios /path/scph.bin -dynarec' ./Build run` (any of `-dynarec`,
+`-bios`, `-interpreter` in `$PCSX_REDUX_ARGS` disables the forced default).
 
 ## What you get
 

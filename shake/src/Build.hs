@@ -435,11 +435,20 @@ launchIso cue = do
 
 -- | Run pcsx-redux with the given base args plus any @$PCSX_REDUX_ARGS@. It falls
 -- back to OpenBIOS when no BIOS is configured, so no BIOS is required.
+--
+-- We force @-interpreter@ by default: pcsx-redux's x64 dynarec crashes
+-- (\"Unrecoverable error while running recompiler\") with OpenBIOS — a regression
+-- of grumpycoders/pcsx-redux#695 (that combo was fixed in 2022, re-broke in the
+-- memory-system rework since). Since we default to OpenBIOS, the dynarec is
+-- unusable here. The user opts back into the dynarec (with a real BIOS) by putting
+-- @-dynarec@/@-bios@/@-interpreter@ in @$PCSX_REDUX_ARGS@.
 runPcsx :: [String] -> Action ()
 runPcsx baseArgs = do
   pcsx <- liftIO findPcsx
   extra <- liftIO $ maybe [] words <$> lookupEnv "PCSX_REDUX_ARGS"
-  cmd_ pcsx (baseArgs <> extra)
+  let userChoseCpu = any (`elem` ["-interpreter", "-dynarec", "-bios"]) extra
+      cpu = ["-interpreter" | not userChoseCpu]
+  cmd_ pcsx (baseArgs <> cpu <> extra)
 
 -- | The pcsx-redux binary: @$PCSX_REDUX@, else on @$PATH@, else the usual checkout.
 findPcsx :: IO FilePath
