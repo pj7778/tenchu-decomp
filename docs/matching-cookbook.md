@@ -91,6 +91,13 @@ $ tools/coddog match <Name> -t 0.5 # similar whole functions; good for BIG
                                    #   findsimilar for small ones
 ```
 
+For big or length-shifted functions use `tools/asmdiff.py <Name>` — it
+takes the true size from the Ghidra export (matchdiff's window is capped by
+mid-function symbols like switch tables) and difflib-aligns the instruction
+sequences, so an insert shows as one insert instead of shifting every line
+after it; `--structural` shows only the blocks that change the length (fix
+those first), and pure branch-target drift is suppressed by default.
+
 Treat the differing-byte count as a score to drive down (matchdiff also
 reports the whole-image count: if your function assembles to a different
 LENGTH, every object after it shifts and even data symbols drift — fix the
