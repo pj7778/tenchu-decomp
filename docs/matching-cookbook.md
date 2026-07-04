@@ -80,7 +80,11 @@ entries are near-clones of things we've already solved and make good next
 targets. Prefer functions from an original TU we've already touched (shared
 headers like item.h and the gp-extern lists already exist for those). Batch
 work: one function per matcher agent (.claude/agents/matcher.md), and commit
-only on a green `./Build check`.
+only on a green `./Build check`. **Don't hand-write the launch prompt** — run
+`tools/matcher-prompt.py <Name>` to generate it (auto-fills address/size,
+jump-table detection, the nearest matched worked examples, TU family, and the
+current cross-cutting guidance). Update the GUIDANCE block in that script (and
+this cookbook) as lessons accrue, so every future launch inherits them.
 
 Two helpers for the setup phase:
 - `tools/gpsyms.py <Name> [--write]` derives the gp-extern list from the

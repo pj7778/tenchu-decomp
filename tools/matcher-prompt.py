@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Generate a matcher-agent launch prompt for a function.
+
+The orchestrator shouldn't hand-write agent instructions from scratch each time.
+This emits a complete, ready-to-launch prompt with the per-function facts
+auto-derived (address/size, jump-table-or-not, nearest matched worked examples,
+TU family, gp reminder) wired into a stable template. The evolving cross-cutting
+guidance lives in GUIDANCE below (and, in depth, in docs/matching-cookbook.md +
+.claude/agents/matcher.md) — update it here as we learn, so every future launch
+inherits the lesson.
+
+  tools/matcher-prompt.py <Name>            print the prompt
+  tools/matcher-prompt.py <Name> --model sonnet   (annotate suggested model)
+
+Run inside the nix devShell (uses findsimilar for the nearest examples).
+"""
+import argparse, os, re, subprocess, sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(ROOT)
+
+TSV = ".shake/ghidra-export/functions.tsv"
+SYMBOLS = "config/symbols.main.exe.txt"
+
+# ---- evolving guidance: the load-bearing lessons every agent should get at
+# launch (deeper detail is in the cookbook, which the agent reads). Edit here. --
+GUIDANCE = [
+    "Ghidra's SCALAR types are gold, but its inferred STRUCT NAMES are often "
+    "wrong (it invents PARAM_ITEM_DROP etc. with fields shifted 4 bytes). For "
+    "struct layout trust the m2c reference's raw offsets + the proven shared "
+    "header (item.h), NOT Ghidra's struct name.",
+    "Lean on the tools; don't re-derive their output by hand. gpsyms --write "
+    "syncs the gp lists, xref gives the prototype/externs, reverse.py seeds both "
+    "a Ghidra AND an m2c reference (m2c = cleaner control flow / register temps, "
+    "Ghidra = types/names).",
+    "N loads adjacent with no use between them are source temps (us/ty), even if "
+    "the scheduler later scatters their stores.",
+]
+
+
+def func(name):
+    for line in open(TSV):
+        p = line.rstrip("\n").split("\t")
+        if len(p) == 3 and p[2] == name:
+            return int(p[0], 16), int(p[1])
+    sys.exit(f"matcher-prompt: {name} not in {TSV}")
+
+
+def is_jump_table(addr, size):
+    pat = re.compile(r"switchD_([0-9a-fA-F]+)__switchdataD_")
+    for line in open(SYMBOLS):
+        m = pat.search(line)
+        if m and addr <= int(m.group(1), 16) < addr + size:
+            return True
+    return False
+
+
+def nearest_matched(name, k=3):
+    try:
+        out = subprocess.run(["tools/findsimilar.py", name],
+                             capture_output=True, text=True).stdout
+    except Exception:
+        return []
+    rows = []
+    for line in out.splitlines():
+        m = re.match(r"\s*([01]\.\d\d)\s+(\w+)\s+\((\d+) bytes\)", line)
+        if m and m.group(2) != name and float(m.group(1)) > 0:
+            rows.append((float(m.group(1)), m.group(2)))
+    return rows[:k]
+
+
+def family(name):
+    if re.match(r"^(ReqItem|ProcItem)", name):
+        return ("item TU", "item.h",
+                "takes PARAM_ITEM_USE *p (type@0, user@4, start@8, end@0x18) and "
+                "gp-addresses COUNTER_FOR_ITEM_ARRAY_")
+    return (None, None, None)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("name")
+    ap.add_argument("--model", default="sonnet",
+                    help="suggested model (annotation only)")
+    args = ap.parse_args()
+    name = args.name
+    addr, size = func(name)
+    split = is_jump_table(addr, size)
+    near = nearest_matched(name)
+    fam, header, famnote = family(name)
+
+    examples = ", ".join(f"src/main.exe/{n}.c ({s:.2f})" for s, n in near) or \
+        "(run tools/findsimilar.py to pick worked examples)"
+    ex_names = [n for _, n in near]
+
+    P = []
+    P.append(f"You are a matcher agent for the Tenchu PS1 decomp. Your ONE "
+             f"function: **{name}** @ {addr:#010x} ({size} bytes).")
+    if near:
+        P.append(f"Nearest matched (worked examples to imitate): {examples}.")
+    if fam:
+        P.append(f"It's a {fam} function — {famnote}. Reuse {header} types; "
+                 f"don't redefine them.")
+    P.append("")
+    P.append("FIRST read, in order: .claude/agents/matcher.md (your contract), "
+             "docs/matching-cookbook.md (workflow + Iteration protocol + rules)"
+             + (", then " + ", ".join(f"src/main.exe/{n}.c" for n in ex_names)
+                + (f" and src/main.exe/{header}" if header else "")
+                if ex_names else "") + ".")
+    P.append("")
+    P.append("Worktree setup (link untracked inputs from the main checkout):\n"
+             "```\nROOT=/home/shana/programming/tenchu-decomp\n"
+             "for e in slps_019.01 system.cnf tenchu; do ln -sfn \"$ROOT/disks/$e\" "
+             "\"disks/$e\"; done\nmkdir -p .shake && ln -sfn "
+             "\"$ROOT/.shake/ghidra-export\" .shake/ghidra-export\n```\n"
+             "Run build/tool commands via `nix develop --command bash -c \"...\"`.")
+    P.append("")
+    P.append("Tool-driven workflow (lean on these — they do the mechanical work):")
+    P.append(f"- `tools/reverse.py {name} --ghidra-export .shake/ghidra-export` — "
+             "splits + seeds the file with BOTH a Ghidra and an m2c reference.")
+    if split:
+        P.append(f"- **{name} is a JUMP-TABLE function** — after reverse.py, run "
+                 f"`tools/split-scaffold.py {name}` (writes all INCLUDE_ASM pieces "
+                 "+ the jtbl + the .rodata carve, green before you draft).")
+    P.append(f"- `tools/xref.py {name}` — callers (pin the prototype) + callees "
+             "(matched vs needs-extern).")
+    P.append(f"- `tools/gpsyms.py {name} --write` — auto-derives + syncs the "
+             "gp-externs into Build.hs + permute.py (run after splitting).")
+    P.append(f"- `tools/matchdiff.py {name}` / `tools/asmdiff.py {name}` — iterate. "
+             f"Done = matchdiff MATCH (0 whole-image diffs) AND `./Build check` "
+             "exit 0.")
+    P.append("")
+    P.append("Guidance (deeper detail in the cookbook):")
+    for g in GUIDANCE:
+        P.append(f"- {g}")
+    P.append("")
+    P.append("Follow the contract exactly: never commit, writable-file allowlist "
+             "only, restore the stub (NON_MATCHING convention) on failure after "
+             "~10 attempts. Report back: MATCH or CURRENT(N); which tools you used; "
+             "**where you had to reason manually that a tool could have done "
+             "(this run also evaluates the tooling for a smaller model)**; files "
+             "touched; any NEW cookbook rule; gp/symbol additions; contract "
+             "deviations.")
+
+    print(f"# suggested model: {args.model}"
+          + ("  |  JUMP-TABLE function" if split else "")
+          + (f"  |  {fam}" if fam else ""))
+    print("\n".join(P))
+
+
+if __name__ == "__main__":
+    main()
