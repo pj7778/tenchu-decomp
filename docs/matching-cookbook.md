@@ -413,7 +413,11 @@ plain C is the matched file.
   short-returning call assigned to int extends once at the assignment
   (sll/sra right after the jal, before any joins); a true `short` variable
   re-extends at each compare after the joins. Place the sll/sra relative to
-  the joins to pick the type (PauseProc).
+  the joins to pick the type (PauseProc). Corollary: a short-returning call
+  whose result INDEXES an array (`n = InsertConflict(...); D_800BC108[n]…`)
+  wants `s32 n`, not `s16` — s16 lets the sign-extend float to the use and
+  interleave with the `&arr` address calc (16-byte residual); s32 pins it at
+  the assignment (Makibishi/LightningBolt).
 - **A param-union write to OFFSET 0 routes through a fresh `it->param` recast,
   nonzero offsets through the live `pp` pointer** — mechanical, not stylistic:
   `pp` holds its own register so `pp+0` encodes `sw rN,0(pp)`, but a fresh
