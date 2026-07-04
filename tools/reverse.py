@@ -148,6 +148,22 @@ def write_src(name, ghidra_c):
         print(f"reverse: {path} exists — not overwriting")
         return
     body = INCLUDE_TMPL.format(name=name)
+    # Difficulty + likely-relevant cookbook sections (from the function's asm
+    # features) so the drafter knows what they're in for and which rules apply.
+    try:
+        import triage
+        hit = next((x for x in triage.load()["funcs"] if x[2] == name), None)
+        if hit:
+            f = triage.features(hit[0], hit[1])
+            sim, twin = triage.nearest_matched(hit[0], hit[1], name)
+            docs = triage.docs_for(f)
+            body += (f"\n// triage: {triage.bucket(triage.score(f, sim)).upper()} — "
+                     f"{triage.why(f, sim, twin)}\n")
+            if docs:
+                body += "// likely-relevant cookbook sections:\n"
+                body += "".join(f"//   - {sec}: {w}\n" for sec, w in docs)
+    except Exception:
+        pass
     if ghidra_c:
         # Line comments (not /* */): Ghidra's C frequently contains `/* */`, which
         # would nest and break a block comment.

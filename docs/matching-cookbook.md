@@ -74,7 +74,11 @@ The ordered triage — fix categories in THIS order, re-running
 
 ## Picking targets
 
-`tools/findsimilar.py --targets` ranks every unmatched function by assembly
+`tools/triage.py` rates every unmatched function EASY..VERY-HARD with a
+"why" (size, jump table, float/GTE, loops, gp, frame, near-clone twin) and the
+cookbook sections it needs — `--leverage` sorts by call in-degree (high-impact
+first), `<Name>` details one. `tools/findsimilar.py --targets` ranks every
+unmatched function by assembly
 similarity to the matched corpus (best-first, smallest-first) — the top
 entries are near-clones of things we've already solved and make good next
 targets. Prefer functions from an original TU we've already touched (shared
