@@ -361,6 +361,14 @@ plain C is the matched file.
   (sll/sra right after the jal, before any joins); a true `short` variable
   re-extends at each compare after the joins. Place the sll/sra relative to
   the joins to pick the type (PauseProc).
+- **A param-union write to OFFSET 0 routes through a fresh `it->param` recast,
+  nonzero offsets through the live `pp` pointer** — mechanical, not stylistic:
+  `pp` holds its own register so `pp+0` encodes `sw rN,0(pp)`, but a fresh
+  `((T *)it->param)` recast folds the constant offset into `it`'s register
+  (`sw rN,0x20(it)`) — same address, different bytes. Extends the twins'
+  `hint = 0` single-field case; ReqItemKaengeki does it for a whole 6-word
+  tail (p->start/p->end stored as raw s32 at it->param 0/4/8/0x10/0x14/0x18,
+  each an isolated lw+sw, no temps).
 - **A param-union store whose access WIDTH differs from the proven shared
   view at the same offset is a distinct union member** — reach it via an
   explicit offset cast off the SAME proven pointer

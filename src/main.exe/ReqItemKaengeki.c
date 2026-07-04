@@ -1,0 +1,100 @@
+#include "common.h"
+#include "main.exe.h"
+#include "item.h"
+
+/*
+ * ReqItemKaengeki (0x80043c0c) — spawn a "kaengeki" item. Twin of
+ * ReqItemDrop/ReqItemJirai/ReqItemSmoke/ReqItemFire/ReqItemDokudango (same
+ * item TU, same pool round-robin on COUNTER_FOR_ITEM_ARRAY_ and the same
+ * dispose-on-exhaustion block); like ReqItemJirai/ReqItemSmoke/ReqItemFire/
+ * ReqItemDokudango there is no GetAreaMapLevel floor check. It gets
+ * ProcItemKaengeki as its processor.
+ *
+ * Unlike those siblings' narrowed param_korogari throw-velocity view, this
+ * one packs p->start AND p->end as SIX FULL 32-bit words (not s16s) into
+ * it->param at offsets 0/4/8/0x10/0x14/0x18 — tools/access.py confirms all
+ * six are `sw`, not `sh`, so it's a distinct/wider union view than
+ * param_korogari; per the cookbook's divergent-width-union rule these are
+ * reached via raw offset casts off the SAME proven `pp` pointer. Offset 0
+ * is the exception: the asm addresses it as 0x20($s0) (a fresh it->param
+ * cast), the same lever the other twins use for `hint = 0` at that same
+ * offset, rather than through pp.
+ *
+ * Matching notes (see docs/matching-cookbook.md):
+ *  - `pp = (param_korogari *)it->param;` sits BEFORE the null check, same
+ *    lever as the other twins (addiu fills the beqz delay slot) — even
+ *    though every param field here is reached through a raw offset cast
+ *    instead of pp's own named members.
+ *  - `st = &p->start;` materialized between the t[0] and t[1] stores, same
+ *    as the other twins; dead afterward (p->start.vy/vz are re-read
+ *    directly off p, not through st, in the param tail below).
+ *  - us/ty are real temps, same shape as the other twins.
+ *  - The six start/end fields are INLINE (no x/y/z temps): each compiles to
+ *    one lw immediately followed by its sw with no batching, unlike the
+ *    s16-narrowing twins which batch three loads before three stores.
+ */
+extern void ProcItemKaengeki(tag_TItem *item);
+/* This TU defines the counter (gp-relative): listed in Build.hs
+ * maspsxGpExterns for this file, unlike ActionHalt/FRAMES (absolute here). */
+extern s32 COUNTER_FOR_ITEM_ARRAY_;
+/* Model pointer per item type. */
+extern Sprite3D *D_8008E5BC[];
+
+int ReqItemKaengeki(PARAM_ITEM_USE *p)
+{
+    tag_TItem *it;
+    param_korogari *pp;
+    VECTOR *st;
+    Humanoid *us;
+    s32 ty;
+    s32 i;
+
+    i = 0;
+    do
+    {
+        COUNTER_FOR_ITEM_ARRAY_++;
+        if (0x1d < COUNTER_FOR_ITEM_ARRAY_)
+            COUNTER_FOR_ITEM_ARRAY_ = 0;
+        it = items + COUNTER_FOR_ITEM_ARRAY_;
+        if (it->proc == 0)
+            goto found;
+        i++;
+    } while (i < 0x1d);
+
+    /* pool exhausted: force-dispose the slot the counter landed on */
+    it->mode = 0xff;
+    it->proc(it);
+    DeleteConflict(it->locate);
+    if (it->mode != 0)
+    {
+        AdtMessageBox(D_800121CC, it->type, (u32)it->mode);
+    }
+    it->owner = 0;
+    it->proc = 0;
+
+found:
+    pp = (param_korogari *)it->param;
+    if (it == 0)
+        return 0;
+    us = p->user;
+    ty = p->type;
+    it->owner = us;
+    it->proc = ProcItemKaengeki;
+    it->mode = 0;
+    it->type = ty;
+    it->locate->locate.coord.t[0] = p->start.vx;
+    st = &p->start;
+    it->locate->locate.coord.t[1] = st->vy;
+    it->locate->locate.coord.t[2] = st->vz;
+    it->locate->locate.super = 0;
+    UpdateCoordinate(it->locate);
+    it->coll_size = 0;
+    it->model = D_8008E5BC[it->type];
+    *(s32 *)it->param = p->start.vx;
+    *(s32 *)((u8 *)pp + 0x4) = p->start.vy;
+    *(s32 *)((u8 *)pp + 0x8) = p->start.vz;
+    *(s32 *)((u8 *)pp + 0x10) = p->end.vx;
+    *(s32 *)((u8 *)pp + 0x14) = p->end.vy;
+    *(s32 *)((u8 *)pp + 0x18) = p->end.vz;
+    return 1;
+}
