@@ -69,6 +69,7 @@ GP_EXTERNS = {
     "InsertConflict": ["ConflictObjects"],
     "GetConflictResult": ["ConflictObjects", "ConflictDistance", "ConflictModel"],
     "DisposeAreaMap": ["GlobalAreaMap"],
+    "NowReturnNormal": ["Me_MOTION_C", "motID", "D_80097F0E"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
