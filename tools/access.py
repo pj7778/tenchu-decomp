@@ -9,6 +9,9 @@ the ORIGINAL bytes, grouped by base register + offset, so you don't hand-trace
 the `.s`.
 
   tools/access.py <Name>            all accesses, grouped by base reg + offset
+  tools/access.py <Name> --order    accesses in INSTRUCTION ORDER (the store
+                                    sequence grouping hides — e.g. interleaved
+                                    lhu/sh pairs, which fields write before which)
   tools/access.py <Name> --reg a1   only accesses off $a1 (e.g. the param)
 
 Base registers a0-a3 hold the incoming params at entry (a0=1st, ...). A value
@@ -71,6 +74,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("name")
     ap.add_argument("--reg", help="only accesses off this base register (e.g. a1)")
+    ap.add_argument("--order", action="store_true",
+                    help="list accesses in instruction order (shows the store "
+                         "sequence) instead of grouping by offset")
     args = ap.parse_args()
     addr, size = bounds(args.name)
     insns = disasm(addr, size)
@@ -94,13 +100,35 @@ def main():
         e = acc.setdefault(key, {"ty": set(), "dir": set(), "n": 0, "mn": set()})
         e["ty"].add(info[1]); e["dir"].add(kind); e["n"] += 1; e["mn"].add(mn)
 
+    # instruction-ordered view: shows the store/load SEQUENCE (which grouping
+    # hides) — the interleaved lhu/sh pattern, base register, offset, width.
+    PARAM = {"a0": "param1", "a1": "param2", "a2": "param3", "a3": "param4"}
+    if args.order:
+        print(f"{args.name} @ {addr:#x} ({size}B) — accesses in instruction order:")
+        for ia, mn, ops in insns:
+            info = LOADS.get(mn) or STORES.get(mn)
+            if not info:
+                continue
+            m = mem.match(ops)
+            if not m:
+                continue
+            _, off_s, base = m.groups()
+            if args.reg and base != args.reg:
+                continue
+            off = int(off_s, 0)
+            kind = "load " if mn in LOADS else "store"
+            tag = f" ({PARAM[base]})" if base in PARAM else ""
+            print(f"  {ia:#010x}  {kind} ${base:<3}{tag:9} +{off:#05x} "
+                  f"{info[1]:5} [{mn}]")
+        return
+
     if not acc:
         print(f"access: {args.name} has no register+offset memory accesses"
               + (f" off ${args.reg}" if args.reg else ""))
         return
 
-    PARAM = {"a0": "param1", "a1": "param2", "a2": "param3", "a3": "param4"}
-    print(f"{args.name} @ {addr:#x} ({size}B) — base reg + offset -> type / dir:")
+    print(f"{args.name} @ {addr:#x} ({size}B) — base reg + offset -> type / dir "
+          f"(--order shows the store sequence):")
     for (base, off) in sorted(acc, key=lambda k: (k[0], k[1])):
         e = acc[(base, off)]
         tag = f" ({PARAM[base]})" if base in PARAM else ""

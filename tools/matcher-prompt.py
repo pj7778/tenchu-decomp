@@ -151,7 +151,8 @@ def main():
              "(matched vs needs-extern).")
     P.append(f"- `tools/access.py {name}` — each pointer offset's WIDTH/"
              "signedness/direction (sw vs sh vs sb, lh vs lhu) straight from the "
-             "mnemonics; use it for struct layout instead of hand-tracing .s.")
+             "mnemonics; `--order` shows the store SEQUENCE. Use it for struct "
+             "layout instead of hand-tracing .s.")
     P.append(f"- `tools/gpsyms.py {name} --write` — auto-derives + syncs the "
              "gp-externs into Build.hs + permute.py (run after splitting).")
     P.append(f"- `tools/matchdiff.py {name}` / `tools/asmdiff.py {name}` — iterate. "
