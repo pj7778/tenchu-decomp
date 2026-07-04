@@ -37,6 +37,10 @@ GUIDANCE = [
     "Ghidra = types/names).",
     "N loads adjacent with no use between them are source temps (us/ty), even if "
     "the scheduler later scatters their stores.",
+    "When Ghidra's union rendering has MORE assignment lines than access.py's "
+    "per-register offset count, check the m2c reference's raw-offset dump "
+    "(already in the seed) BEFORE opening the raw .s — it usually disambiguates "
+    "which stores are pp-relative vs it->param-relative directly.",
 ]
 
 

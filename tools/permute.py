@@ -48,6 +48,7 @@ GP_EXTERNS = {
     "ReqItemSmoke": ["COUNTER_FOR_ITEM_ARRAY_"],
     "ReqItemFire": ["COUNTER_FOR_ITEM_ARRAY_"],
     "ReqItemShinsoku": ["COUNTER_FOR_ITEM_ARRAY_"],
+    "ReqItemNinken": ["COUNTER_FOR_ITEM_ARRAY_"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
