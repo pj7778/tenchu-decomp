@@ -24,7 +24,8 @@
  * loads sound into $v0 and reassigns `seid`/$v1 (`lhu v0; or v1,v1,v0; sll
  * a1,v1`). Every source form that avoids reassigning `seid` (inline arg, separate
  * temp, two shared-tail returns) makes cc1 repartition $a0/$a1 wholesale (worse).
- * A bounded decomp-permuter run (score 25 base) hasn't found the swap yet.
+ * A decomp-permuter run of ~447k iterations never beat the score-25 base, so the
+ * swap is below the C level (a scheduler/allocator tie source can't steer here).
  */
 extern s16 D_80097CB4;
 

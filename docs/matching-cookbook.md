@@ -246,6 +246,14 @@ plain C is the matched file.
   (`u8 ff = 0xff;`) also used by a later store. A path where the same value is
   materialized fresh (`li $v1, 0xFF`) uses a literal there — the register got
   reused for something else in between.
+- **De-Morgan layout lever — `||` vs `&&` place the bodies differently.** cc1
+  always emits the THEN body physically first, so `if (a != 0 || b != 0) {BIG}
+  else {SMALL}` and `if (a == 0 && b == 0) {SMALL} else {BIG}` (logically
+  identical) compile to *different* code. Read the polarity off the asm: `||`
+  gives `bnez a, BIG; beqz b, SMALL` (BIG falls through / is first); `&&` gives
+  `bnez a, BIG; bnez b, BIG` (SMALL is first). When the small "stop" body sits
+  right after the condition reached by a `beqz` on the second test, write the
+  `||` form (MoveHumanoid's zero-speed guard).
 
 - **cc1 collapses a logically-redundant `&&` chain, dropping a branch the
   binary has**: `if (x != 0 && x == 1 && other)` compiles to `if (x == 1 &&
@@ -422,6 +430,26 @@ plain C is the matched file.
   shared i+1 across the call — callee-saved reg + post-call move that the
   scheduler never undoes. Narrow (HImode) adds stay raw on the unnormalized
   reg (PauseProc).
+- **Share one sign-extended pseudo between a zero-test and a later `& mask` with
+  an explicit `int` copy.** Inline `(int)shortvar == 0` compiles to `sll+bnez`
+  with the `sra` *elided* (a zero-test doesn't need the low bits), so the
+  sign-extended value is never materialized and a following `(int)shortvar &
+  mask` re-`and`s the raw copy — the shared pseudo never forms. Write `int io =
+  shortvar;` and use `io` in both spots: that forces the `sll+sra` into one
+  pseudo (callee-saved if it spans calls) that cse reuses (MoveHumanoid: the
+  zero-test and the `& 0xff80` byte-resign share `io` across rsin/rcos).
+- **A byte-resign that writes a *different* register than the live param is a
+  separate local.** `if ((v & 0xff80) == 0x80) v -= 0x100;` whose `addiu`
+  targets a fresh reg (leaving the raw param still live) is `o = v; if (…) o = v
+  - 0x100;` — the multiply/store reads `o`; a single reassigned `v` compiles
+  in-place. (MoveHumanoid keeps three ordr-derived regs live across the calls:
+  the raw param, the `int io` test pseudo, and the `o` corrected copy.)
+- **`x = -f(...)` negates at the assignment**, and reorg steals the `negu` into
+  a *following* call's delay slot, making `-f` live across that call →
+  callee-saved ($s3); a later `y = -g(...)` after the last call stays
+  caller-saved ($v1). Keep the negation at the assignment (`s = -rsin(a); c =
+  -rcos(a);`), don't write `-(short)s` in the downstream expression and don't
+  hoist the sign-fix ahead of it (MoveHumanoid).
 - **Two registers holding the same computed value = an explicit source
   copy**: cc1 never splits live ranges — `trg = cur & (cur ^ opad);` into
   one callee-saved reg and then `opad = trg;` into another, with the rest of
