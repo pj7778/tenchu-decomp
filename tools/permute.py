@@ -65,6 +65,7 @@ GP_EXTERNS = {
     "ReqItemHappou": ["COUNTER_FOR_ITEM_ARRAY_"],
     "ProcItemHappou": ["HAPPOU_SCRATCH_MODEL"],
     "Sound": ["D_80097CB4"],
+    "DeleteConflict": ["ConflictObjects"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs

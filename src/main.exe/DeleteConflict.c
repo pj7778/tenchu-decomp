@@ -1,70 +1,75 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DeleteConflict", DeleteConflict);
+/*
+ * DeleteConflict (0x8001a57c) — remove every conflict box owned by `model`
+ * from the D_800BC108 pool (see ProcItemMakibishi.c / ProcItemDrop.c, which
+ * register boxes into this pool). A swap-remove compaction: scan the live
+ * range [0, ConflictObjects); when a slot's `.model` matches, overwrite it
+ * with the last live element, shrink the count, and rewrite the moved
+ * element's `.model->id` to its new slot. The matched slot is re-examined
+ * (i is NOT advanced on a hit) so duplicates are all removed. Finally the
+ * model is marked free (id = -1) and its top two attribute bits are cleared.
+ *
+ * Matching notes (docs/matching-cookbook.md):
+ *  - `D_800BC108[i] = D_800BC108[count];` is a 0x78-byte, word-aligned STRUCT
+ *    ASSIGNMENT — cc1's emit_block_move copies MAX_MOVE_BYTES (4 words = 0x10)
+ *    per loop iteration for the aligned bulk (0x70) then the 8-byte remainder
+ *    as two lw/sw (the cookbook's "0x50-byte struct assignment becomes the
+ *    16-bytes-per-iteration copy loop"). Ghidra renders it as a hand do-while
+ *    over invented `position`/`offset` fields and shows the tail as `sh`s —
+ *    both wrong; access.py --order proves every copy insn is a full word.
+ *  - `short count = ConflictObjects - 1;` at the loop TOP: the narrowing
+ *    subtraction reads ConflictObjects with `lhu` (only the low 16 bits reach
+ *    the s16 result), distinct from the signed `lh` the `i < ConflictObjects`
+ *    comparison needs — two un-CSE'd loads of the same gp global, the lhu one
+ *    reused for both the `ConflictObjects = count` store and the source index.
+ *  - `short i` (signed): sign-extended (sll/sra) at every array-index and at
+ *    the `< ConflictObjects` compare; stored raw (sh) into `.model->id`.
+ *  - `while (i < ConflictObjects)` → cc1's top-guard (blez) + bottom-test
+ *    do-while (duplicate_loop_exit_test). i advances only on the miss branch.
+ */
 
-// triage: EASY — 67 insns, 2 loop, 0 callees, ~0.08 to PlayerOption
-// likely-relevant cookbook sections:
-//   - Loops: 2 back-edge(s) — for/while/do vs goto shape
-//   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py
+/* Conflict slot (Ghidra: ConflictObjectType, 0x78 bytes; see ProcItemDrop.c). */
+typedef struct
+{
+    ModelType *model;            /* 0x00 */
+    VECTOR position;             /* 0x04 */
+    SVECTOR offset;              /* 0x14 */
+    SVECTOR size;                /* 0x1C */
+    void *common;                /* 0x24 */
+    u8 result[64];               /* 0x28 */
+    u8 pad[0x10];                /* 0x68 */
+} ConflictObjectType;            /* 0x78 */
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// void DeleteConflict(ModelType *model)
-//
-// {
-//   short sVar1;
-//   int iVar2;
-//   ConflictObjectType *pCVar3;
-//   ConflictObjectType *pCVar4;
-//   short sVar5;
-//   ConflictObjectType *pCVar6;
-//   ConflictObjectType *pCVar7;
-//   ushort uVar8;
-//   long lVar9;
-//   long lVar10;
-//   long lVar11;
-//
-//   if (model->id != -1) {
-//     uVar8 = 0;
-//     if (0 < ConflictObjects) {
-//       iVar2 = 0;
-//       do {
-//         sVar5 = ConflictObjects + -1;
-//         if (ConflictObject[iVar2 >> 0x10].model == model) {
-//           pCVar4 = ConflictObject + sVar5;
-//           pCVar7 = ConflictObject + (iVar2 >> 0x10);
-//           ConflictObjects = sVar5;
-//           do {
-//             pCVar6 = pCVar7;
-//             pCVar3 = pCVar4;
-//             lVar9 = (pCVar3->position).vx;
-//             lVar10 = (pCVar3->position).vy;
-//             lVar11 = (pCVar3->position).vz;
-//             pCVar6->model = pCVar3->model;
-//             (pCVar6->position).vx = lVar9;
-//             (pCVar6->position).vy = lVar10;
-//             (pCVar6->position).vz = lVar11;
-//             pCVar4 = (ConflictObjectType *)&(pCVar3->position).pad;
-//             pCVar7 = (ConflictObjectType *)&(pCVar6->position).pad;
-//           } while (pCVar4 != (ConflictObjectType *)&ConflictObject[sVar5].field14_0x70);
-//           sVar5 = (pCVar3->offset).vx;
-//           sVar1 = (pCVar3->offset).vy;
-//           *(long *)pCVar7 = *(long *)pCVar4;
-//           (pCVar6->offset).vx = sVar5;
-//           (pCVar6->offset).vy = sVar1;
-//           (ConflictObject[(short)uVar8].model)->id = uVar8;
-//         }
-//         else {
-//           uVar8 = uVar8 + 1;
-//         }
-//         iVar2 = (uint)uVar8 << 0x10;
-//       } while ((short)uVar8 < ConflictObjects);
-//     }
-//     model->id = -1;
-//     model->attribute = model->attribute & 0x3fff;
-//   }
-//   return;
-// }
+/* The conflict pool + live count (Ghidra: ConflictObject / ConflictObjects). */
+extern ConflictObjectType D_800BC108[];
+extern s16 ConflictObjects;
+
+void DeleteConflict(ModelType *model)
+{
+    short i;
+    short count;
+
+    if (model->id != -1)
+    {
+        i = 0;
+        while (i < ConflictObjects)
+        {
+            count = ConflictObjects - 1;
+            if (D_800BC108[i].model == model)
+            {
+                ConflictObjects = count;
+                D_800BC108[i] = D_800BC108[count];
+                D_800BC108[i].model->id = i;
+            }
+            else
+            {
+                i++;
+            }
+        }
+        model->id = -1;
+        model->attribute = model->attribute & 0x3fff;
+    }
+}
