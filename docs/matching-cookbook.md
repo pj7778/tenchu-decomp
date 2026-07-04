@@ -346,6 +346,14 @@ plain C is the matched file.
   `lhu`'s lifemax (u16) but the info-view TU `lh`'s it — keep the shared
   header's proven type and cast at the divergent use
   (`(s16)CamState.Owner->lifemax`, DoInfoViewProc's PutLifeBar call).
+  - **But a *narrowing* use reads even a signed-s16 global with `lhu`**: `short
+    count = SignedShortGlobal - 1;` loads the global `lhu` (the result truncates
+    to 16 bits, so the sign bits are dead), while a *comparison* of the SAME
+    signed-s16 global in the same function (`i < SignedShortGlobal`) needs the
+    full value and loads `lh` — two un-CSE'd loads of one global, one `lh` one
+    `lhu` (different machine modes don't CSE). Don't collapse to one load; give
+    the narrowing use its own `short` temp and both loads fall out
+    (DeleteConflict's `ConflictObjects`).
 - Byte-sized call arguments loaded with `lbu` and no masking are plain `u8`
   struct fields passed directly.
 - **m2c and Ghidra disagree on a call's ARG COUNT in BOTH directions** — m2c
@@ -473,6 +481,14 @@ plain C is the matched file.
   rotation; a 0x50-byte struct assignment becomes the 16-bytes-per-iteration
   copy loop), while `*(SVECTOR *)a = *(SVECTOR *)b` (align 2) is `lwl/lwr` +
   `swl/swr` pairs.
+  - **A whole-pool swap-remove is a plain struct assignment `pool[i] =
+    pool[last];`** — Ghidra mis-renders it as a hand `do{}while` over invented
+    per-field names with a halfword-typed (`sh`) tail; both wrong. A 0x78-byte
+    word-aligned struct assignment compiles to `emit_block_move`'s
+    `MAX_MOVE_BYTES`=0x10 (4-word) loop over the aligned bulk (0x70) + the
+    leftover 8 bytes as two `lw`/`sw`. `tools/access.py <Name> --order` showing
+    every copy insn (tail included) as `sw` disproves the field-typed rendering —
+    trust it over Ghidra's struct-field names (DeleteConflict).
 - Write grouped stores **through the same base expression** a later copy
   reads (`((s32 *)(buf + 0x10))[n] = ...;` rather than
   `*(s32 *)(buf + 0x18) = ...;`): with distinct address pseudos the scheduler
