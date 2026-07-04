@@ -77,6 +77,8 @@ segments:
       - [0x9C44, c, InsertConflict]
       - [0x9D7C, c, DeleteConflict]
       - [0x9E88, data]
+      - [0xA1B8, c, GetConflictResult]
+      - [0xA328, data]
       - [0xAA60, c, GetRealPad]
       - [0xAAB8, data]
       - [0x16754, c, SetNowMotion]

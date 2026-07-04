@@ -67,6 +67,7 @@ GP_EXTERNS = {
     "Sound": ["D_80097CB4"],
     "DeleteConflict": ["ConflictObjects"],
     "InsertConflict": ["ConflictObjects"],
+    "GetConflictResult": ["ConflictObjects", "ConflictDistance", "ConflictModel"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
