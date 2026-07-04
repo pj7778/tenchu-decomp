@@ -92,6 +92,8 @@ segments:
       - [0x3408C, data]
       - [0x34EFC, c, ReqItemFire]
       - [0x350A8, data]
+      - [0x35740, c, ReqItemNemuri]
+      - [0x358D0, data]
       - [0x38158, c, ReqItemJirai]
       - [0x382FC, data]
       - [0x399D8, c, ProcItemManebue]
