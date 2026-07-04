@@ -317,6 +317,14 @@ plain C is the matched file.
   (`(s16)CamState.Owner->lifemax`, DoInfoViewProc's PutLifeBar call).
 - Byte-sized call arguments loaded with `lbu` and no masking are plain `u8`
   struct fields passed directly.
+- **m2c and Ghidra disagree on a call's ARG COUNT in BOTH directions** — m2c
+  over-counts (a leftover register at the call site read as an argument),
+  Ghidra under-counts (misses stack-passed args past the 4 register ones).
+  Count the actual a0-a3 + `sw …,N(sp)`-before-call sets in the raw `.s`
+  (Makibishi SoundEx, Ningyo SetNowMotion, Launch SetupFly).
+- **Two `u16` out-parameter locals with a 4-byte stack GAP are one `SVECTOR`'s
+  `.vx`/`.vz`** (the write skips `.vy`), not two scalars (LightningBolt's
+  GetVectorRotation output).
 - **A caller-side extern's RETURN TYPE is an extension-position lever**:
   declaring a u16-returning callee as `extern u32 f()` in the calling TU
   moves the result's derived (s16) extension after the intervening bit-chain,
@@ -510,6 +518,11 @@ plain C is the matched file.
   memory-chain stores frees their registers for later constants — in
   ProcItemKusuri that one swap released `$s0` for the division magic and
   collapsed a whole extra callee-saved register out of the prologue.
+- **A same-address store must go through whichever pointer variable holds the
+  base register the asm uses** (`it->param` vs a `pp` alias, even when
+  numerically identical): value unaffected, but it decides a delay-slot
+  scheduling tie — the wrong one leaves a small pure-reorder residual (Launch:
+  9 bytes, `pp+0x28` → `it->param+0x28`).
 - For a guarded indirect call, null-check through a variable but **call
   through the field**: `ppu = item->proc; if (ppu == 0) return; ...
   item->proc(item);` — cse reuses the loaded value and allocation lands in
@@ -517,6 +530,18 @@ plain C is the matched file.
 - Cached pointers that live in `$s`-registers across calls
   (`p = &item->param;`) are real source temporaries — indexing the base
   struct directly doesn't allocate the register (see ProcItemManebue).
+- **A pool-search cursor and its post-`found:` continuation can be a SEPARATE
+  pseudo that's invisible under low register pressure.** Write the loop cursor
+  as `cur = items + COUNTER…;`, then `it = cur;` assigned exactly twice — in
+  the early-exit (`if (cur->proc == 0) { it = cur; goto found; }`) and once
+  before the dispose tail. In SHORT functions `cur`/`it` get the same hard reg
+  → the transfer is a deleted self-move; under higher pressure (an `st`/SVECTOR
+  local surviving to a late call) they get different regs → a real `move` on
+  EVERY edge into the label (cross-jump can't merge — continuations differ).
+  Tell: exactly 8 bytes short at the loop-exit label, otherwise identical to
+  the single-`it` version. Harmless when unneeded (Ningyo matched with one
+  `it`), so try it first when a pool-search function comes up short
+  (Makibishi/LightningBolt needed it).
 - **Spilled u16 locals loaded several insns before their use went through
   int temps**: `int t1 = cap, t2 = taken; … av = t1 - t2;` — the u16→int
   reads are real zero_extend insns that reload turns into lhu in place;
