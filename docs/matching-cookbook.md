@@ -362,6 +362,12 @@ plain C is the matched file.
     `lhu` (different machine modes don't CSE). Don't collapse to one load; give
     the narrowing use its own `short` temp and both loads fall out
     (DeleteConflict's `ConflictObjects`).
+  - **Store-before-sign-extend on a capture-and-increment.** `v = Global; Global
+    = v + 1; idx = (short)v;` — the store to `Global` MUST come before the
+    `(short)v`. While `v` is still memory-equivalent to `Global`, cse renders
+    `(short)v` as a second signed *reload* (`lh Global`) instead of an `sll/sra`
+    on the register; the intervening store breaks the equivalence and forces the
+    register sign-extend (InsertConflict's slot capture).
 - Byte-sized call arguments loaded with `lbu` and no masking are plain `u8`
   struct fields passed directly.
 - **m2c and Ghidra disagree on a call's ARG COUNT in BOTH directions** — m2c

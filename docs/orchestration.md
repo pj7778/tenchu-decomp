@@ -172,8 +172,20 @@ lens.
   candidate). It's `CamState.Owner` and every enemy/player — unlocks a large
   slice of remaining game code.
 - **Easy + high-in-degree functions** (from `triage.py --leverage`): matching
-  them confirms a signature for many callers. e.g. `UpdateCoordinate` (trivial,
-  54 callers), `DeleteConflict` (easy, 65), `Sound` (trivial, 43), `SetNowMotion`
-  (trivial, 35 — Ghidra already types it `(Humanoid*, short, short)`).
+  them confirms a signature for many callers. DONE so far: `UpdateCoordinate`,
+  `DeleteConflict`, `SetNowMotion`, `GetAbsolutePosition`, `MoveHumanoid`;
+  `Sound`/`InsertConflict` are parked NON_MATCHING (sub-C regalloc ties). Next
+  high-lev: `AdtMessageBox` (87), `GetConflictResult` (conflict trio), `SoundEx`.
 - **Remaining item family**: the ~16 large `ProcItem*` (784–2468B, Fable tier)
   and the 5272B `ReqItemUse` dispatcher.
+
+## Tooling backlog (recurring friction → build these)
+
+- **A register-preference/tie diagnoser.** Several matches (Sound, InsertConflict,
+  Makibishi's residuals) bottom out in a below-C register-allocation tie that
+  eats many blind permute/restructure iterations. cc1 `-dg` emits a global-reg
+  (greg) disposition + copy-preference dump; a tool that parses it into "pseudo X
+  is pinned to hard-reg Y via copy-chain Z" would root-cause these in one shot
+  instead of guessing. Would have shortcut both Sound and InsertConflict. The
+  clean tell that you're in tie territory: `autorules` reports no win AND a
+  bounded permuter run never beats the base score.
