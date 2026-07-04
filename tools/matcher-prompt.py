@@ -36,12 +36,13 @@ GUIDANCE = [
     "a Ghidra AND an m2c reference (m2c = cleaner control flow / register temps, "
     "Ghidra = types/names).",
     "Once your draft COMPILES (set NON_MATCHING for a partial), run "
-    "`tools/autorules.py <Name>` BEFORE hand-tuning widths: it mechanically "
-    "sweeps every local's integer type (the s16<->s32 index/call-result lever, "
-    "sign toggles) and greedily keeps what shrinks the asmdiff, reporting which "
-    "flip helped (`n: s16->s32: 4->0`). It's the deterministic first pass — if "
-    "it reports no win, the residual is NOT a type-width issue (don't keep "
-    "guessing widths; it's control-flow/regalloc — read the diff or permute).",
+    "`tools/autorules.py <Name>` BEFORE hand-tuning: it mechanically sweeps the "
+    "*local* cookbook rules — every local's integer type (s16<->s32 index/call-"
+    "result, sign toggles), splitting/merging `&&` chains, inlining single-use "
+    "temps — and greedily keeps what shrinks the asmdiff, reporting which edit "
+    "helped (`n: s16->s32: 4->0`). It's the deterministic first pass — if it "
+    "reports no win, the residual is NOT one of those mechanical rules (don't "
+    "keep guessing them; it's structure/regalloc — read the diff or permute).",
     "N loads adjacent with no use between them are source temps (us/ty), even if "
     "the scheduler later scatters their stores.",
     "When Ghidra's union rendering has MORE assignment lines than access.py's "

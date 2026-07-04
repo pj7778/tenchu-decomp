@@ -30,6 +30,12 @@
       url = "github:simonlindholm/decomp-permuter";
       flake = false;
     };
+    # A SECOND, modern nixpkgs used ONLY for Python dev tooling (tree-sitter for
+    # tools/autorules.py). The main `nixpkgs` is pinned to 2023-03 and is
+    # load-bearing for the byte-matching toolchain (cc1/binutils/ghc) — never
+    # bump it for a tool. This input keeps the toolchain frozen while giving the
+    # tools a recent interpreter + packages.
+    nixpkgs-tools.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
   outputs =
@@ -43,6 +49,7 @@
     , spimdisasm
     , maspsx
     , decomp-permuter
+    , nixpkgs-tools
     }:
     flake-utils.lib.eachDefaultSystem (system:
     let
@@ -56,6 +63,16 @@
         ];
       };
       mipselPkgs = pkgs.pkgsCross.mipsel-linux-gnu;
+
+      # Python for the dev tools (tools/*.py), from the modern tools-nixpkgs so
+      # tree-sitter is available for tools/autorules.py's AST rules. The devShell
+      # otherwise ships no python3 (it comes from the user profile), so this
+      # single interpreter cleanly becomes `python3` on the devShell PATH.
+      pkgsTools = import inputs.nixpkgs-tools { inherit system; };
+      toolsPython = pkgsTools.python3.withPackages (ps: with ps; [
+        tree-sitter
+        tree-sitter-language-pack
+      ]);
 
 
       asm-differ =
@@ -173,6 +190,8 @@
           pkgs.haskell-language-server
           # TODO: asm-differ into overlay
           asm-differ
+          # Modern python with tree-sitter for tools/autorules.py (see toolsPython).
+          toolsPython
         ];
         buildInputs = [
 

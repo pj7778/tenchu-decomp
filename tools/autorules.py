@@ -162,11 +162,13 @@ def uncommented(lines, rng):
 
 
 # ---------------------------------------------------------------------------
-# The rule registry. A rule is gen(lines, ranges) -> iterator of
-# (label, new_lines). Each yielded candidate is one applied site; the driver
-# scores them all and greedily keeps the best. Add mechanical rules here as the
-# cookbook grows (structural ones need an AST — see the roadmap in the module
-# docstring / docs).
+# The rule registry. A rule is gen(text, name, span) -> iterator of
+# (label, new_text): each yielded candidate is the FULL file text with ONE site
+# rewritten. The driver scores them all and greedily keeps the best. Simple
+# token rewrites (type-width) are line/regex based; structural rewrites (&&-nest,
+# temp-inline) parse with tree-sitter (get_parser("c")) and splice byte spans —
+# tolerant of the SDK headers / INCLUDE_ASM / preprocessor without fake headers.
+# Add mechanical rules here as the cookbook grows.
 # ---------------------------------------------------------------------------
 
 # Integer types we treat as interchangeable, by (width, signed).
@@ -202,15 +204,16 @@ DECL = re.compile(
     + r")(\s+)(\**\s*)(\w+)\s*(?=[;,=\[])")
 
 
-def rule_type_width(lines, ranges):
+def rule_type_width(text, name, span):
     """Flip a local variable's integer type across width/signedness.
 
     THE most-cited mechanical lever (cookbook Expressions): a short-returning
     call result that indexes an array wants s32 not s16; a u16 field read
     signed; a terminator's signedness; short-vs-int call results (PauseProc).
     For each local declaration we try each *distinct* (width, signedness)
-    canonical type.
+    canonical type. Line-based (robust without the AST); confined to the body.
     """
+    lines, ranges = body_line_ranges(text, span, name)
     for rng in ranges:
         for i, raw, code in uncommented(lines, rng):
             m = DECL.match(code)
@@ -226,7 +229,7 @@ def rule_type_width(lines, ranges):
                     continue
                 nl = lines[:]
                 nl[i] = new_line
-                yield (f"{m.group(6)}: {cur}→{rep}", nl)
+                yield (f"{m.group(6)}: {cur}→{rep}", "\n".join(nl))
 
 
 def _swap_decl_type(raw, m, rep):
@@ -240,8 +243,176 @@ def _swap_decl_type(raw, m, rep):
     return new if n else None
 
 
+# ---- AST support (tree-sitter). Gated: if unavailable the AST rules yield
+# nothing and autorules still runs the line-based rules. ----------------------
+try:
+    from tree_sitter_language_pack import get_parser
+    _TS = get_parser("c")
+except Exception:
+    _TS = None
+
+
+# tree-sitter reports UTF-8 BYTE offsets, so all AST text handling works on
+# `data = text.encode()` (bytes) and decodes the result back to str. Mixing byte
+# offsets with Python str indexing corrupts any file with non-ASCII (e.g. an
+# em-dash in a header comment) — that bug cost a debugging round; keep it bytes.
+def _txt(data, n):
+    return data[n.start_byte:n.end_byte]
+
+
+def splice(data, start, end, repl):
+    return data[:start] + repl + data[end:]
+
+
+def _line(data, off):
+    return data.count(b"\n", 0, off) + 1
+
+
+def _byte_span(text, span):
+    return (len(text[:span[0]].encode()), len(text[:span[1]].encode()))
+
+
+def _find(node, types):
+    out = []
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if n.type in types:
+            out.append(n)
+        stack.extend(reversed(n.children))
+    return out
+
+
+def _descend_ident(node):
+    """Follow a declarator down to its identifier (through pointer/array/etc)."""
+    while node is not None and node.type != "identifier":
+        nxt = node.child_by_field_name("declarator")
+        if nxt is None:
+            ids = [c for c in node.children if c.type == "identifier"]
+            return ids[0] if ids else None
+        node = nxt
+    return node
+
+
+def _paren_inner(cond):
+    """Inner expression of a parenthesized_expression condition."""
+    if cond is None:
+        return None
+    kids = [c for c in cond.named_children if c.type != "comment"]
+    return kids[0] if kids else None
+
+
+def _func_body(data, name, bspan):
+    """The body compound_statement node of function `name` within byte-span
+    `bspan`. `data` is the utf-8 bytes; returns (root_data, body_node)."""
+    if _TS is None:
+        return None
+    root = _TS.parse(data).root_node
+    want = name.encode()
+    for n in _find(root, ("function_definition",)):
+        if not (bspan[0] <= n.start_byte and n.end_byte <= bspan[1]):
+            continue
+        fd = n.child_by_field_name("declarator")
+        while fd is not None and fd.type != "function_declarator":
+            fd = fd.child_by_field_name("declarator")
+        if fd is None:
+            continue
+        idn = _descend_ident(fd.child_by_field_name("declarator"))
+        if idn is not None and _txt(data, idn) == want:
+            return n.child_by_field_name("body")
+    return None
+
+
+def _lone_if(node):
+    """`node` is a single if_statement, or a block wrapping exactly one."""
+    if node.type == "if_statement":
+        return node
+    if node.type == "compound_statement":
+        stmts = [c for c in node.named_children if c.type != "comment"]
+        if len(stmts) == 1 and stmts[0].type == "if_statement":
+            return stmts[0]
+    return None
+
+
+def rule_and_nest(text, name, span):
+    """`if (A && B) S`  <->  `if (A) { if (B) S }` — cc1 collapses a redundant
+    `&&` chain (dropping a branch the binary keeps), so NESTing recovers it;
+    the merge is the reverse. Only when there is no `else` (nesting rebinds it).
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    for iff in _find(body, ("if_statement",)):
+        if iff.child_by_field_name("alternative") is not None:
+            continue
+        cond = iff.child_by_field_name("condition")
+        cons = iff.child_by_field_name("consequence")
+        if cond is None or cons is None:
+            continue
+        inner = _paren_inner(cond)
+        # SPLIT: condition A && B  ->  if (A) { if (B) S }
+        op = inner.child_by_field_name("operator") if inner is not None else None
+        if (inner is not None and inner.type == "binary_expression"
+                and op is not None and _txt(data, op) == b"&&"):
+            L = _txt(data, inner.child_by_field_name("left"))
+            R = _txt(data, inner.child_by_field_name("right"))
+            repl = b"if (" + L + b") { if (" + R + b") " + _txt(data, cons) + b" }"
+            yield (f"&&-split L{_line(data, iff.start_byte)}",
+                   splice(data, iff.start_byte, iff.end_byte, repl).decode())
+        # MERGE: consequence is a lone if  ->  if (A && B) S
+        inner_if = _lone_if(cons)
+        if inner_if is not None and inner_if.child_by_field_name("alternative") is None:
+            a = _paren_inner(iff.child_by_field_name("condition"))
+            b = _paren_inner(inner_if.child_by_field_name("condition"))
+            s = inner_if.child_by_field_name("consequence")
+            if a is not None and b is not None and s is not None:
+                repl = (b"if (" + _txt(data, a) + b" && " + _txt(data, b)
+                        + b") " + _txt(data, s))
+                yield (f"&&-merge L{_line(data, iff.start_byte)}",
+                       splice(data, iff.start_byte, iff.end_byte, repl).decode())
+
+
+def rule_temp_inline(text, name, span):
+    """Inline a single-use local temp: `T x = E; … x …` -> `… (E) …`, dropping
+    the declaration. cc1 keeps calls inline in expressions where a temp inserts
+    a move (cookbook Expressions). Single-use bounds the risk; scoring guards
+    correctness (a wrong inline just fails to improve)."""
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    idents = _find(body, ("identifier",))
+    for decl in _find(body, ("declaration",)):
+        idecs = [c for c in decl.named_children if c.type == "init_declarator"]
+        if len(idecs) != 1:
+            continue
+        idn = _descend_ident(idecs[0].child_by_field_name("declarator"))
+        val = idecs[0].child_by_field_name("value")
+        if idn is None or val is None:
+            continue
+        vid = _txt(data, idn)
+        uses = [n for n in idents if n.start_byte >= decl.end_byte
+                and _txt(data, n) == vid]
+        if len(uses) != 1:
+            continue
+        use = uses[0]
+        if use.start_byte > 0 and data[use.start_byte - 1:use.start_byte] == b"&":
+            continue  # address-of: (E) may not be an lvalue
+        repl = b"(" + _txt(data, val) + b")"
+        t1 = splice(data, use.start_byte, use.end_byte, repl)
+        ds = decl.start_byte
+        while ds > 0 and data[ds - 1:ds] in (b" ", b"\t"):
+            ds -= 1
+        de = decl.end_byte + (1 if data[decl.end_byte:decl.end_byte + 1] == b"\n" else 0)
+        yield (f"inline {vid.decode()} L{_line(data, decl.start_byte)}",
+               splice(t1, ds, de, b"").decode())
+
+
 RULES = [
     ("type-width", "flip a local's integer type across width/signedness", rule_type_width),
+    ("and-nest", "split/merge if(a && b) <-> nested ifs (no else)", rule_and_nest),
+    ("temp-inline", "inline a single-use local temp into its use", rule_temp_inline),
 ]
 
 
@@ -286,14 +457,21 @@ def main():
     args = ap.parse_args()
 
     if args.list or not args.name:
-        print("registered mechanical rules:")
-        for key, desc, _ in RULES:
-            print(f"  {key:12} {desc}")
+        ast = "available" if _TS is not None else "MISSING (AST rules disabled)"
+        print(f"registered mechanical rules  [tree-sitter: {ast}]:")
+        for key, desc, gen in RULES:
+            uses_ast = gen in (rule_and_nest, rule_temp_inline)
+            tag = " (AST)" if uses_ast else ""
+            print(f"  {key:12} {desc}{tag}")
         if not args.name:
             print("\ngive a <Name> to sweep it.")
         return 0
 
     name = args.name
+    if _TS is None:
+        print("autorules: tree-sitter unavailable — AST rules (&&-nest, "
+              "temp-inline) are DISABLED; running line-based rules only. "
+              "Run inside `nix develop` for the full set.", file=sys.stderr)
     path, original, partial = load(name)
     span = region_span(original, partial)
 
@@ -314,15 +492,13 @@ def main():
     try:
       while True:
         passes += 1
-        lines, ranges = body_line_ranges(cur_text, span, name)
         best = None  # (score, label, new_text, match)
         tried = 0
         for _key, _desc, gen in RULES:
-            for label, new_lines in gen(lines, ranges):
-                new_text = "\n".join(new_lines)
+            for label, new_text in gen(cur_text, name, span):
                 if new_text == cur_text:
                     continue
-                write(path, new_lines)
+                write(path, new_text.split("\n"))
                 m, sc, l1, l2 = score(name, partial)
                 write(path, cur_text.split("\n"))  # restore between candidates
                 tried += 1
