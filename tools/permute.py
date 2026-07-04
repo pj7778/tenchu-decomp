@@ -63,6 +63,7 @@ GP_EXTERNS = {
     "ReqItemLaunch": ["COUNTER_FOR_ITEM_ARRAY_", "D_80097F48"],
     "ReqItemArrow": ["COUNTER_FOR_ITEM_ARRAY_", "D_80097F4C"],
     "ReqItemHappou": ["COUNTER_FOR_ITEM_ARRAY_"],
+    "ProcItemHappou": ["HAPPOU_SCRATCH_MODEL"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs

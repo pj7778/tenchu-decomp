@@ -49,6 +49,12 @@ The ordered triage — fix categories in THIS order, re-running
    levers, in order: statement/assignment position (a one-line move can flip
    allocation priorities and delay-slot fills), declaration of temps, and
    finally `tools/permute.py <Name>` for pure allocation ties.
+4. **A whole-image `./Build check` failure while a function is mid-match is
+   EXPECTED, not a regression** — a function of the wrong length shifts every
+   later object (even already-matched siblings show huge matchdiff diffs).
+   Finish the in-progress function (its own `tools/matchdiff.py <Name>` window
+   isolates it); downstream resolves once it reaches the right length. Don't
+   bisect.
 4. Don't trust the byte count alone — read the diff. A change can improve the
    count while shifting registers globally (worse), or vice versa.
 5. **Attempt cap.** If ~10 meaningful source changes haven't reduced the diff,
@@ -215,6 +221,11 @@ plain C is the matched file.
 - **Case-body memory order reveals the source case order** (the compare tree
   always sorts by value): LayoutEnemyOption's inner switch was written
   `case 1, case 2, case 0` — only the bodies show it.
+  This diverges from the TEST order: expand_case sorts the compare TREE by
+  value but lays bodies in SOURCE order, and a case ending in `return` is
+  pushed later in memory (reached by a forward jump). Makibishi's nested
+  switch needed `case 4:` before `case 1:` in source though the tests check 1
+  first — check body ADDRESSES in the `.s`, not just the test order.
 - A mode-dispatcher that **reloads its variable** (two `lbu` of the same
   field) and compares **signed** (`slti`) is a real **`switch`**: cc1's
   `expand_case` emits a balanced compare tree over a *fresh* index load. An
@@ -225,7 +236,13 @@ plain C is the matched file.
   (`u8 ff = 0xff;`) also used by a later store. A path where the same value is
   materialized fresh (`li $v1, 0xFF`) uses a literal there — the register got
   reused for something else in between.
-- Branch-if-equal *into* a physically-later block with the fallthrough being
+
+- **cc1 collapses a logically-redundant `&&` chain, dropping a branch the
+  binary has**: `if (x != 0 && x == 1 && other)` compiles to `if (x == 1 &&
+  other)` — the provably-redundant `!= 0` test's `beqz` is gone. Ghidra shows
+  the redundant form (logical, not physical, structure), so trusting it
+  under-produces instructions. NEST instead of chain — `if (x != 0) { if
+  (x == 1 && other) {…} }` — to keep both branches (ProcItemLightningBolt).- Branch-if-equal *into* a physically-later block with the fallthrough being
   the other body usually means the source condition was the **opposite
   polarity** of Ghidra's rendering (`if (0xe < n) {...} else {...}` vs
   Ghidra's `if (n < 0xf)` with swapped bodies).
@@ -354,10 +371,20 @@ plain C is the matched file.
   original's single `li` in one register (the `sh` reads its low part). The
   tell: the same small constant materialized twice, once feeding `sh`, once
   `sw` (ProcItemDrop's conflict-insert path).
+  Refinement: the shared-variable tie only forms when the constant feeds
+  ARITHMETIC (`item->mode + one`, an `addu` reusing a compare's materialized
+  `1`), not when it only feeds stores — plain `sh/sw` of the same literal to
+  several fields can reuse the register with NO named C variable
+  (Makibishi needed `s32 one=1;`, LightningBolt's store-only case did not).
 - **A callee returning a pointer to a small static struct gets a FULL struct
   copy** even when only one field is read afterward: `sr = *(SmallStruct *)
   f();` — align-2 lwl/lwr+swl/swr block copy, not a selective field load
   (debug_menu_stage_option).
+- **The countdown-decrement idiom is per-function — decode the raw immediate,
+  don't assume.** `count - 1` (real `addiu -1`, tests the NEW value) and
+  `count + 0xff` (literal +255, NOT -1, tests the OLD value) both occur for
+  lookalike countdown-and-dispose logic (Happou vs LightningBolt). Ghidra's
+  `+0xff` is real, not a decompiler artifact — confirm against the encoded word.
 - A two-statement remainder temp (`x = rand(); x = x % 200;`) is provable
   from the asm: the `mult`/`subu` operate **in place on the moved call
   result's register** ($sN) — inline `rand() % 200` computes on `$v0`.
@@ -796,6 +823,12 @@ externs are always absolute (`lui $at`/dest-reg expansion of the one-line
 macro). Our per-file `maspsxGpExterns` list in `Build.hs` encodes "smalls the
 original TU defined". Full story + evidence in
 [toolchain.md](toolchain.md#gp-globals-making-small-globals-byte-match-solved--per-tu-opt-in).
+Cross-TU aliasing reaches struct FIELD addresses too, not just top-level
+globals: `CURRENTLY_SELECTED_CHARACTER_STATE_PTR` (item TU) is byte-identical
+to `CamState + 0x10` = `CamState.Owner`'s address — check an m2c "mystery
+symbol"'s arithmetic against already-proven struct layouts before treating it
+as new.
+
 Practical rule: `tools/gpsyms.py <Name> --write` derives the set from the
 split asm's `%gp_rel(...)` and syncs both lists for you. Build.hs exposes the
 per-file gp flags through a Shake **oracle** (`GpFlags`), so editing the list
@@ -835,6 +868,12 @@ absolute → keep the symbol off the list (a plain small extern).
 
 ## Toolchain gotchas
 
+- **`config/symbols.main.exe.txt` (an ld/splat script) has NO comment syntax**
+  — `//` or `/* */` is a hard parse error, not a no-op. If a splat-auto-named
+  `D_XXXXXXXX` data symbol resolves to the wrong address (verify against the
+  `.map`; a few bytes low, shared with a neighbor, = a pre-existing drift, not
+  yours), bind a FRESH non-colliding name at the correct address there — it
+  resolves regardless of the drifted file's byte-accumulation.
 - `-fdollars-in-identifiers` is required for anything including
   `reference/ghidra_types.h` (Ghidra `$`-names); the mod pipeline passes it.
 - The canonical cc1 correctly reads the **low** halfword for
