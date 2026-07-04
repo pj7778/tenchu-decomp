@@ -975,6 +975,23 @@ absolute → keep the symbol off the list (a plain small extern).
 
 ## Toolchain gotchas
 
+- **`as` cannot assemble PS1 GTE command opcodes — the DrawTMD/renderer region
+  is un-splittable until a GTE→`.word` pass exists.** Our `mipsel-...-as`
+  (binutils 2.40, `-march=r3000`) is vanilla MIPS: standard COP2 data moves
+  (`lwc2`/`swc2`/`mfc2`/`cfc2`) assemble, but the GTE *command* opcodes
+  (`RTPT`/`RTPS`/`NCLIP`/`DPCS`/`DPCT`/`MVMVA`/`AVSZ3`/`AVSZ4`/`GPF`/`GPL`/`OP`/
+  `SQR`/`NC*`/`CC`/`CDP`/`INTPL`) are `unrecognized opcode`. splat emits them as
+  *mnemonics* when you individually split a function, so `reverse.py` on any
+  renderer helper (FUN_8005d1fc/d764/dd30/d49c/e330 = per-primitive-type
+  handlers dispatched by `DrawTMD`) fails at `./Build check` — before the
+  NON_MATCHING convention even applies (that assumes the stub assembles). maspsx
+  has no GTE handling either. FIX (backlogged, see orchestration.md): a filter
+  that rewrites each GTE mnemonic to `.word 0x…` taking the encoding straight
+  from splat's own `/* addr vaddr WORD */` comment on the line (byte-exact by
+  construction). NOTE it only makes the region *splittable*; MATCHING these still
+  needs the register-pinned-locals / inline-asm treatment (non-ABI calling
+  convention, values in `$t2..$t5`/`$s0`), i.e. the same open inline-asm policy
+  as GetPad/PClseek — so build the pass together with that decision.
 - **maspsx's `break` wants the single-value form `break 0x107`, not the
   two-operand disassembly `break 0, 263`.** maspsx (`elif op == "break"`) takes
   one immediate and splits it into the two 10-bit fields itself; the

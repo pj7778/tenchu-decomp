@@ -190,3 +190,14 @@ lens.
   `regalloc.py` then break the copy-chain / shorten the live range it points at,
   instead of blind permuting. (Open v2: diff our greg allocation against the
   target asm's registers to auto-flag the divergent value.)
+- **A GTE-opcode → `.word` pass** (NOT built — needs a build-pipeline + policy
+  decision, so parked for the owner). `as` can't assemble PS1 GTE command
+  opcodes, so splat's per-function split of any renderer helper (the ~5
+  `FUN_8005dxxx` `DrawTMD` handlers, `SetDepthQ`, neighbors) won't assemble —
+  the whole GTE-using region is un-splittable. The transform itself is trivial
+  and byte-exact: rewrite each GTE mnemonic line to `.word 0x…` from splat's own
+  `/* … WORD */` comment (like maspsx's other normalizations); the open part is
+  WHERE it runs (post-splat on the nonmatchings `.s`, or a maspsx addition) and
+  that MATCHING the region additionally needs the inline-asm/register-pinned
+  policy (non-ABI calling convention) — so do both together. See the cookbook's
+  Toolchain-gotchas GTE entry.
