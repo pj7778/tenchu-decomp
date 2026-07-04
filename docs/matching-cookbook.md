@@ -622,6 +622,19 @@ plain C is the matched file.
 > is in $s0–$s7 *only* because it survives a call; if the target holds it in a
 > caller-saved reg, shorten its live range so it no longer crosses the call.
 
+- **A shared return variable copy-preferences its sources together — use early
+  returns to split their live ranges.** Funnelling two values through one
+  `ret` (e.g. `ret = existing_id; … ret = new_index; return ret;`) makes cc1's
+  local-alloc give the short-lived one a copy-preference toward the other's hard
+  register: if `new_index` is callee-saved (live across a call), `existing_id`
+  gets pulled into that same `$sN` — even though *its own* live range never
+  crosses a call. Writing `if (cond) return existing_id; … return new_index;`
+  keeps their ranges disjoint, so `existing_id` takes a caller-saved reg like the
+  target. This single change turned InsertConflict from a "mutually exclusive
+  from C" 26-byte tie into a MATCH; `tools/regalloc.py` had named the
+  `$s0 -> $v0` return copy-chain that pinned it. (When a value is in `$sN` but
+  its C live range doesn't obviously cross a call, suspect a return/temp
+  copy-chain dragging it there — regalloc.py shows the chain.)
 - **Source statement order is the main regalloc lever.** Storing
   register-held values first (`prm.type = ty; prm.user = own;`) before
   memory-chain stores frees their registers for later constants — in
@@ -947,6 +960,15 @@ absolute → keep the symbol off the list (a plain small extern).
   `.map`; a few bytes low, shared with a neighbor, = a pre-existing drift, not
   yours), bind a FRESH non-colliding name at the correct address there — it
   resolves regardless of the drifted file's byte-accumulation.
+  - **gp-output SVECTOR/aggregate whose fields splat auto-named as separate
+    drifted `D_` symbols**: when a function writes a small SVECTOR to gp memory,
+    splat names each *referenced field address* its own `D_XXXX` glabel and can
+    place them at drifted addresses — so storing through the `D_` names puts
+    every `sh`/`sw` at the wrong gp_rel offset. Bind ONE fresh correct-address
+    name in `config/symbols` and declare it as the real SVECTOR; maspsx
+    gp-addresses the `+2`/`+4` field offsets from that base fine (the original
+    compiled it exactly that way, which is *why* splat saw separate addresses).
+    Concrete: `ConflictDistance`/`ConflictModel` in GetConflictResult.
 - `-fdollars-in-identifiers` is required for anything including
   `reference/ghidra_types.h` (Ghidra `$`-names); the mod pipeline passes it.
 - The canonical cc1 correctly reads the **low** halfword for
