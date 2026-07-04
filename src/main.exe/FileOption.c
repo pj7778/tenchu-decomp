@@ -21,13 +21,22 @@
  * terminator's base-first addu via a byte-cast shift index, the cross-jumped
  * leLayoutEnemy(0) tail, gp-relative SystemFlag (this TU defines it).
  *
- * Why the residual swap resists (sched1/sched2 dumps + gcc 2.8.1 sched.c
- * reading): the call-arg mask `k & 0xFF` is expanded (or combine-fused) at
- * the call, and the backward scheduler's equal-priority tiebreak
- * (schedule_select -> potential_hazard) always prefers the STORE (memory
- * unit, max_blockage>1) over the andi (alu, blockage 1 -> hazard 0), so the
- * sb is scheduled backward-first = placed forward-later: [andi][sb], every
- * time, in both sched passes. Every lever tried moves other bytes:
+ * Why the residual swap resists (ROOT-CAUSED via -dc/-dS dumps + gcc 2.8.1
+ * sched.c): the combine dump has the CORRECT order [sb][SystemFlag][andi]
+ * [call] — it is SCHED1 (before reload) that hoists the andi (a0 = k&0xff,
+ * insn 504) up past the store. Mechanism (rank_for_schedule, both insns
+ * priority 1 = tie): the %hi(STAGE_LAYOUT_NUMBER) lui BIRTHS its address reg
+ * (n_deaths==0, birthing_insn_p) so adjust_priority boosts it to max ->
+ * scheduled first; immediately after, the sb is DATA-dependent on that lui
+ * (class 1) while the andi is INDEPENDENT (class 3); "choose the highest
+ * class" picks the andi. So [andi][sb]. The only source lever that would
+ * flip it — making the sb's address reg non-local (computed earlier, so the
+ * sb is class-3 independent and the luid tiebreak, sb lower, wins) —
+ * CONTRADICTS the target, whose lui is local (in the bltz delay slot). A
+ * function-scope pointer const-folds back to the local lui; `(u8)k` instead
+ * of `k&0xFF` just moves the andi into the delay slot (wrong filler). So the
+ * order is a sched1 tie our source-level repro can't win without a non-local
+ * %hi. Every lever tried moves other bytes:
  *  - statement orders/temps for the mask and the SystemFlag RMW: no effect
  *    (T01-T08 all identical);
  *  - do{}while(0) fences (loop notes) around/between the statements DO pin
