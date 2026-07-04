@@ -89,7 +89,8 @@ typedef struct
     u8 pad1[0x1C];               /* 0x3C */
     ModelArchiveType *model;     /* 0x58 */
     MotionManager *motion;       /* 0x5C */
-    u8 pad2[0x4E];               /* 0x60 */
+    u8 pad2[0x4C];               /* 0x60 */
+    u16 sound;                   /* 0xAC (default sound id, OR'd into Sound()'s seid) */
     s16 active_item;             /* 0xAE (item_kind2 the character is using) */
     u8 pad3[0x4];                /* 0xB0 */
     u8 item[0x1A];               /* 0xB4 (carry count per item_kind2 — ProcItemDrop;
@@ -141,7 +142,7 @@ struct tag_TItem
 };                               /* sizeof = 0x58 (items[] stride) */
 
 extern void dispose_weapon_data_of_char_(Humanoid *h, int a);
-extern void UpdateMotion(MotionManager *m, int id);
+extern s16 UpdateMotion(MotionManager *m, int id);
 extern void MoveHumanoid(Humanoid *h, int a, int b);
 extern void UpdateCoordinate(ModelType *m);
 extern void DrawSprite(Sprite3D *s);
@@ -150,7 +151,7 @@ extern int ReqItemDrop(PARAM_ITEM_USE *p);
 extern int ReqItemStay(PARAM_ITEM_STAY *p);
 extern void SetBleed(VECTOR *pos, SVECTOR *vel, int a, int col);
 extern void SetSmoke(VECTOR *pos, SVECTOR *vel, short n, short time);
-extern void SoundEx(VECTOR *loc, int id);
+extern s16 SoundEx(VECTOR *loc, int id);
 extern void DeleteConflict(ModelType *m);
 extern void AdtMessageBox(char *fmt, ...);
 extern int rand(void);

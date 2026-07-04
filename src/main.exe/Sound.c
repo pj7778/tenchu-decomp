@@ -1,0 +1,54 @@
+#include "common.h"
+#include "main.exe.h"
+#include "item.h"
+
+/*
+ * Sound (0x8004fef8) — play a character's sound effect. `seid` with any of the
+ * high nibble set (0xf0) is an explicit id: play it at the character's position.
+ * Otherwise it's a "category" (< 0x10): ids >= 6 are gated by a global mute
+ * (D_80097CB4) and the character's 0x80 attribute (e.g. dead/silent), and the
+ * character's own default sound (Humanoid.sound) is OR'd in.
+ *
+ * Matching notes:
+ *  - Written `if (seid & 0xf0) {simple} else {gated}` (opposite polarity to
+ *    Ghidra's `== 0`): the beqz branches to the gated body and the simple body
+ *    falls through with a `j` to the shared SoundEx call.
+ *  - `seid` is a short: the >5 test and each arg pass sign-extend it (sll/sra).
+ *  - SoundEx returns s16 here (item.h) — the result is Sound's return, so the
+ *    `return -1` paths share its sign-extend tail (cross-jump merge).
+ *
+ * STATUS: NON_MATCHING — 5 bytes (a pure register-allocation tie). The draft is
+ * arithmetically correct and the right length; only the `seid | human->sound`
+ * else-branch differs: the target loads `human->sound` into the arg reg $a1 and
+ * ORs `seid` (kept in $v1) into it (`lhu a1; or a1,v1,a1`), whereas cc1 here
+ * loads sound into $v0 and reassigns `seid`/$v1 (`lhu v0; or v1,v1,v0; sll
+ * a1,v1`). Every source form that avoids reassigning `seid` (inline arg, separate
+ * temp, two shared-tail returns) makes cc1 repartition $a0/$a1 wholesale (worse).
+ * A bounded decomp-permuter run (score 25 base) hasn't found the swap yet.
+ */
+extern s16 D_80097CB4;
+
+#ifndef NON_MATCHING
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/Sound", Sound);
+#else
+short Sound(Humanoid *human, short seid)
+{
+    VECTOR *locate;
+
+    if (seid & 0xf0) {
+        locate = human->locate;
+    } else {
+        if (seid > 5) {
+            if (D_80097CB4 != 0) {
+                return -1;
+            }
+            if ((human->attribute & 0x80) != 0) {
+                return -1;
+            }
+        }
+        locate = human->locate;
+        seid = seid | human->sound;
+    }
+    return SoundEx(locate, seid);
+}
+#endif

@@ -45,7 +45,7 @@
  *    for this one store, same as the other twins.
  */
 extern void ProcItemMakibishi(tag_TItem *item);
-extern void SoundEx(VECTOR *loc, int id);
+extern s16 SoundEx(VECTOR *loc, int id);
 /* This TU defines the counter (gp-relative): listed in Build.hs
  * maspsxGpExterns for this file, unlike ActionHalt/FRAMES (absolute here). */
 extern s32 COUNTER_FOR_ITEM_ARRAY_;

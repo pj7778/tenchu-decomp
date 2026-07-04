@@ -153,6 +153,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "ReqItemArrow" = ["COUNTER_FOR_ITEM_ARRAY_", "D_80097F4C"]
     syms "ReqItemHappou" = ["COUNTER_FOR_ITEM_ARRAY_"]
     syms "ProcItemHappou" = ["HAPPOU_SCRATCH_MODEL"]
+    syms "Sound" = ["D_80097CB4"]
     syms _ = []
 
 as :: FilePath
