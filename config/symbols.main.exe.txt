@@ -4249,3 +4249,6 @@ AccessPower = 0x800976d8;
 cbAccess = 0x80018dec;
 FUN_8004f598 = 0x8004f598;
 FUN_80027304 = 0x80027304;
+cd_close = 0x8005f558;
+cd_getsize = 0x8005f6d8;
+cd_tell = 0x8005f798;
