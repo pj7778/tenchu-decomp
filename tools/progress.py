@@ -20,7 +20,9 @@ os.chdir(ROOT)
 
 TEXT_START = 0x80011000
 TEXT_END = 0x80098000
-SDK_START = 0x80061000  # provisional game/SDK boundary — see module docstring
+SDK_START = 0x80060000  # game/SDK boundary: 0x80060xxx is the CRT/libcd/libapi
+# block (Exec/__main/Cd*/PC*/EVENT_OBJ*/DeliverEvent/_SN*), a differently-compiled
+# PsyQ SDK object that won't byte-match our cc1 — see module docstring.
 TSV = ".shake/ghidra-export/functions.tsv"
 SRC = "src/main.exe"
 SYMBOLS = "config/symbols.main.exe.txt"

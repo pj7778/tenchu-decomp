@@ -826,6 +826,12 @@ plain C is the matched file.
   above the prologue `sw ra`** (not just above unrelated stores). Writing the
   statement that needs a LOAD first anchors the schedule so `sw ra` stays put
   and the `li` fills the load's delay slot (ReqItemStay).
+  - **No-load body (one call, only constant args) → wrap it in `do { … }
+    while (0);`.** When there's no load anywhere to anchor on, the loop-note is a
+    genuine scheduler barrier that pins `sw ra` before the wrapped body, exactly
+    as a load would — fixes the constant-args floating above the prologue
+    (EVENT_OBJ_F4/11C's `DeliverEvent(...)` — though those stay NON_MATCHING for
+    the separate SDK-compiler reason below).
 - **Assignment position around a branch is a double lever** (ReqItemDrop):
   `pp = ...;` placed *before* `if (it == 0) return 0;` lets reorg fill the
   `beqz` delay slot with its `addiu` (instead of collapsing the return-0
@@ -995,6 +1001,19 @@ absolute → keep the symbol off the list (a plain small extern).
 
 ## Toolchain gotchas
 
+- **The PsyQ SDK block (`0x80060000+`: CRT/libcd/libapi) was built by a DIFFERENT
+  compiler — don't source-shape it.** `Exec`/`__main`/`__SN_ENTRY_POINT`/`Cd*`/
+  `PC*`/`EVENT_OBJ_*`/`DeliverEvent`/`_SN_*` are precompiled library objects, not
+  game TUs. The tell: for a trivial (ra-only) frame our cc1's `mips_expand_epilogue`
+  ALWAYS emits `restore-ra; addiu sp,sp,N; jr ra` with reorg pulling the `addiu`
+  into `jr`'s delay slot — but these objects leave the delay slot a bare `nop` with
+  the sp-restore BEFORE the jump, a shape our cc1 never produces at any `-O`/body
+  (verified via `-dd`/`.dbr` dumps + the gcc-2.8.1 sources) and permuter-immune.
+  So a few-byte epilogue residual on a `0x80060xxx` function is a compiler-version
+  mismatch, not a source problem — don't chase it. `triage.py`/`progress.py` now
+  cut the game/SDK boundary at `0x80060000`; also note `EVENT_OBJ_80/90/BC` etc.
+  aren't even standalone functions (they're shared epilogues of `CdInit` and its
+  retry wrapper — splat carved them only because they had symbol names).
 - **`as` cannot assemble PS1 GTE command opcodes — the DrawTMD/renderer region
   is un-splittable until a GTE→`.word` pass exists.** Our `mipsel-...-as`
   (binutils 2.40, `-march=r3000`) is vanilla MIPS: standard COP2 data moves

@@ -25,7 +25,9 @@ os.chdir(ROOT)
 
 TEXT_START = 0x80011000
 TEXT_END = 0x80098000
-SDK_START = 0x80061000
+SDK_START = 0x80060000  # 0x80060xxx is CRT/libcd/libapi (Exec/__main/Cd*/PC*/
+# EVENT_OBJ*/DeliverEvent/_SN*) — a differently-compiled PsyQ SDK block that won't
+# byte-match our cc1 (verified: mips_expand_epilogue shape we never emit); not game.
 FILE_OFF = 0x800
 ORIG = "disks/tenchu/main.exe"
 TSV = ".shake/ghidra-export/functions.tsv"
