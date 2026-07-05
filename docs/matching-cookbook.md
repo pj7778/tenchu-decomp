@@ -425,6 +425,12 @@ plain C is the matched file.
   target has a signed `slti` there instead, declare the local `s32` — the source
   `lbu` load already zero-extends so nothing is lost, and cc1 then keeps the
   signed compare with no mask (FUN_800576e8).
+- **A boolean flag's declared width (`s16` vs `s32`) changes whether `if (flag)`
+  tests it in place or spills through a fresh-register copy — and can shift the
+  whole-function instruction count.** When the length is off by a few insns and
+  a switch/loop-driven success flag is involved, try flipping its width: a
+  `s16` flag matched where `s32` was 4 insns short (handle_char_state_using_item_,
+  139→143).
   - **Store-before-sign-extend on a capture-and-increment.** `v = Global; Global
     = v + 1; idx = (short)v;` — the store to `Global` MUST come before the
     `(short)v`. While `v` is still memory-equivalent to `Global`, cse renders
