@@ -555,7 +555,15 @@ struct character_state
     u8 field34_0x55;
     u8 field35_0x56;
     u8 field36_0x57;
-    char_state_related_camera_things *camera_related;
+    // Was typed `char_state_related_camera_things *camera_related` (an
+    // unverified guess — nothing dereferenced it). update_something_for_-
+    // each_visible_enemy_.c passes this exact offset straight to
+    // DrawModelArchive(); item.h's (cross-TU) Humanoid.model AND Ghidra's own
+    // independently-built Humanoid struct (reference/ghidra_types.h) both
+    // put a `ModelArchiveType *model` at this same 0x58 — three independent
+    // sources agree. Kept `void *` here (not ModelArchiveType*) so this
+    // shared header doesn't need to pull in item.h; cast at the use site.
+    void *model;
     something_about_current_animation *something_about_current_animation;
     some_char_state_function *think_setting0;
     some_char_state_function *think_setting1;
@@ -575,29 +583,42 @@ struct character_state
     byte field54_0x8a;
     byte field55_0x8b;
     s16 index_s32o_animation_collection;
-    weapon_kind weapon_kind;
+    u16 weapon_kind; // enum weapon_kind, stored as 2 bytes (see the
+                      // character_kind/character_status precedent above —
+                      // the pinned cc1 has no -fshort-enums, so the bare
+                      // enum typedef would compile 4 bytes wide and shift
+                      // every field after it)
     u8 field58_0x90;
     u8 field59_0x91;
     u8 field60_0x92;
     u8 field61_0x93;
+    // Ghidra's own (fuller, independently-built) `Humanoid` struct in
+    // reference/ghidra_types.h types this run of 4 pointers `OrnamentType
+    // *weapon[4]` (right/left active + right/left inactive, matching this
+    // struct's guessed names) — update_something_for_each_visible_enemy_.c
+    // reads weapon[0]/[1] and passes them straight to DrawOrnament(), which
+    // works unchanged through the existing pointer type (width was already
+    // right; only the two fields below needed widening).
     some_tmd_map_link_struct *right_hand_active_weapon_tmd;
     some_tmd_map_link_struct *left_hand_active_weapon_tmd;
     some_tmd_map_link_struct *right_hand_inactive_weapon_tmd;
     some_tmd_map_link_struct *left_hand_inactive_weapon_tmd;
-    u8 field66_0xa4;
-    u8 field67_0xa5;
-    u8 field68_0xa6;
-    u8 field69_0xa7;
-    u8 field70_0xa8;
-    u8 field71_0xa9;
-    u8 field72_0xaa;
-    u8 field73_0xab;
+    // Was 8 separate u8 fields; update_something_for_each_visible_enemy_.c
+    // proves each is really one 4-byte pointer (`lw`/passed whole to
+    // DrawAfterimage) — matches Ghidra's `pointer illusion[2]` at this same
+    // offset in its own Humanoid struct (reference/ghidra_types.h).
+    void *some_afterimage_1_0xa4;
+    void *some_afterimage_2_0xa8;
     u16 character_kind_sound_mask;
-    item_kind2 active_item;
-    u8 field76_0xb0;
-    u8 field77_0xb1;
-    u8 field78_0xb2;
-    u8 field79_0xb3;
+    u16 active_item; // enum item_kind2, stored as 2 bytes (same bare-enum-
+                      // is-4-bytes-without-fshort-enums fix as weapon_kind
+                      // above)
+    // A packed flags/hint word (NOT a function pointer despite Ghidra's
+    // `code *`/`undefined *` guess from a stale type — think_setting_go_-
+    // towards_player.c and turn_towards_player_.c both only test it against
+    // 0 and store whole-word constants like 0x80000008/0x20000008/(kind|
+    // 0x1e), proven by `lw`/`sw` at this offset, never a call through it).
+    s32 field76_0xb0;
     inventory_item_counts inventory;
     u8 field81_0xcd;
     u8 field82_0xce;

@@ -166,6 +166,10 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "handle_balmer_acm_" = ["GlobalAreaMap", "FieldIndex", "D_800976E8", "FieldArea"]
     syms "FUN_80027304" = ["Me_MOTION_C", "dtL"]
     syms "init_score_stats" = ["StageBosses", "StageEnemies", "Findenemies", "Murders", "Criticals", "FriendHits"]
+    syms "is_character_state_present_on_stage_" = ["Humans"]
+    syms "think_setting_go_towards_player" = ["Attrib", "Me_THINK_C", "Degree"]
+    syms "update_something_for_each_visible_enemy_" = ["VISIBLE_ENEMIES_"]
+    syms "turn_towards_player_" = ["Me_THINK_C", "Degree", "Attrib", "D_80097F10"]
     syms _ = []
 
 as :: FilePath

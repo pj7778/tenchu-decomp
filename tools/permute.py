@@ -77,6 +77,10 @@ GP_EXTERNS = {
     "handle_balmer_acm_": ["GlobalAreaMap", "FieldIndex", "D_800976E8", "FieldArea"],
     "FUN_80027304": ["Me_MOTION_C", "dtL"],
     "init_score_stats": ["StageBosses", "StageEnemies", "Findenemies", "Murders", "Criticals", "FriendHits"],
+    "is_character_state_present_on_stage_": ["Humans"],
+    "think_setting_go_towards_player": ["Attrib", "Me_THINK_C", "Degree"],
+    "update_something_for_each_visible_enemy_": ["VISIBLE_ENEMIES_"],
+    "turn_towards_player_": ["Me_THINK_C", "Degree", "Attrib", "D_80097F10"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
