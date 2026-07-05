@@ -236,7 +236,23 @@ def main():
     for l in printed:
         print("   " + l.strip())
     print(f"  next: fill in the #else draft, then `NON_MATCHING={name} ./Build` "
-          f"+ tools/matchdiff.py {name}; default `./Build check` stays green now.")
+          f"+ tools/matchdiff.py {name}.")
+    # Actually verify the default (stub) build is byte-identical — don't just
+    # claim it. An INCLUDE_ASM piece boundary that lands right after an unfilled
+    # load makes gas add a defensive nop under `.set reorder` (a silent 4-byte
+    # inflation that shifts every later object), so a scaffold can look done yet
+    # break the image.
+    print("split-scaffold: building + checking the stub is byte-identical…")
+    if (subprocess.run(["./Build"]).returncode == 0
+            and subprocess.run(["./Build", "check"]).returncode == 0):
+        print("split-scaffold: ✓ ./Build check GREEN — stub byte-identical.")
+    else:
+        sys.exit(
+            "split-scaffold: ✗ stub NOT byte-identical. If a piece boundary fell "
+            "right after an unfilled load, INCLUDE_ASM's `.set reorder` added a "
+            "defensive nop — merge those two pieces under one "
+            '`__asm__(".set noreorder\\n …\\n.set reorder")` block '
+            "(see FUN_80027818.c).")
 
 
 if __name__ == "__main__":
