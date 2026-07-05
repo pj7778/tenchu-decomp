@@ -1,0 +1,31 @@
+#include "common.h"
+#include "main.exe.h"
+#include "item.h"
+
+/*
+ * ReturnNormal (0x800272a0) — pick the "return to normal" motion id + move
+ * flag for the current motion-manager humanoid (Me_MOTION_C), writing them
+ * into the globals motID / D_80097F0E that NowReturnNormal.c (this TU's
+ * caller, see its header) reloads right after calling this. If the current
+ * character is the player (Me_MOTION_C == StagePlayer), also resets the
+ * camera to normal mode (CMODE_NORMAL == 0, same literal PauseProc.c uses).
+ */
+extern Humanoid *Me_MOTION_C;
+extern Humanoid *StagePlayer;
+extern u16 motID;
+extern u16 D_80097F0E;
+extern void SetCameraMode(int mode);
+
+void ReturnNormal(void)
+{
+    if (Me_MOTION_C == StagePlayer) {
+        SetCameraMode(0);
+    }
+    if ((Me_MOTION_C->attribute & 0x40) != 0) {
+        motID = 0x501;
+        D_80097F0E = 1;
+    } else {
+        motID = 0;
+        D_80097F0E = 1;
+    }
+}

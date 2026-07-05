@@ -4257,3 +4257,4 @@ D_80097F10 = 0x80097f10;
 atkd = 0x800979e0;
 atkd2 = 0x800979e8;
 MusicIDTable = 0x8008ea2c;
+DemoBackupArea = 0x800c0938;
