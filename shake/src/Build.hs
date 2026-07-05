@@ -110,6 +110,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     -- in the image can change.
     extra "GetAreaMapLevel" = ["--expand-div"]
     extra "bow_shoot_logic" = ["--expand-div"]
+    extra "Think3escape" = ["--expand-div"]
     extra _ = []
     -- Think1sleep.c is a fragment of the original think TU, which defines these.
     syms "Think1sleep" = ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"]
@@ -175,6 +176,10 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "Think3chase" = ["Distance", "SR", "EngageLevel", "D_800979BC", "Degree", "Me_THINK_C"]
     syms "handle_char_state_attacking_SEVEN_" = ["dtM", "Me_MOTION_C", "dtR"]
     syms "bow_shoot_logic" = ["Me_MOTION_C", "dtR"]
+    syms "Think1watch" = ["Me_THINK_C"]
+    syms "Think3firstattack" = ["Distance", "SR", "Me_THINK_C", "Attrib", "Degree"]
+    syms "Think3escape" = ["Distance", "SR", "Degree", "Attrib", "Me_THINK_C"]
+    syms "Think1ninja" = ["Me_THINK_C"]
     syms _ = []
 
 as :: FilePath

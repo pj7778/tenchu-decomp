@@ -30,6 +30,19 @@ struct some_tmd_map_link_struct
     GsDOBJ2 gsdobj;
 };
 
+// Ghidra's own independently-built Humanoid struct (reference/ghidra_types.h)
+// has this exact 8-byte struct (`long level; long height;`) right after its
+// PADtype pad, at the same 0x20 offset character_state's `buttons` field ends
+// at. Think1ninja.c BYTE-PROVES `level` (a whole-word `lw` at offset 0x20,
+// compared against a GetAreaMapLevel return value); `height` is un-exercised
+// so far but kept as Ghidra's own proven-elsewhere layout, not invented.
+typedef struct MapVector MapVector;
+struct MapVector
+{
+    s32 level;
+    s32 height;
+};
+
 typedef enum weapon_kind weapon_kind;
 
 enum weapon_kind
@@ -527,14 +540,7 @@ struct character_state
     s16 field6_0xc;
     s16 field7_0xe;
     some_character_button_values buttons;
-    u8 field9_0x20;
-    u8 field10_0x21;
-    u8 field11_0x22;
-    u8 field12_0x23;
-    u8 field13_0x24;
-    u8 field14_0x25;
-    u8 field15_0x26;
-    u8 field16_0x27;
+    MapVector map;
     u8 field17_0x28;
     u8 field18_0x29;
     u8 field19_0x2a;
@@ -579,7 +585,12 @@ struct character_state
     s32 some_other_x_position;
     s32 some_other_z_position;
     u8 field52_0x88;
-    u8 field53_0x89;
+    // Was `field53_0x89` — Think1watch.c proves this is `actflg`: Ghidra's
+    // own (independent) decompilation of Think1watch names this exact
+    // offset `actflg` (tested `!= 0`, later assigned `rand() & 1`), matching
+    // Ghidra's own independently-built Humanoid struct
+    // (reference/ghidra_types.h)'s actmode/actflg/actcnt/actscnt run.
+    u8 actflg;
     // Was `byte` (signed char) — Think1trace.c proves both BY THE LOAD/COMPARE
     // INSTRUCTIONS: `lbu` (not `lb`) loads each field, and actscnt is compared
     // with `sltiu` (unsigned) against 0x3C/0x1E, not a signed `slti`/`slt`.

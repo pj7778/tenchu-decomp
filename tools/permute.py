@@ -85,6 +85,10 @@ GP_EXTERNS = {
     "Think3chase": ["Distance", "SR", "EngageLevel", "D_800979BC", "Degree", "Me_THINK_C"],
     "handle_char_state_attacking_SEVEN_": ["dtM", "Me_MOTION_C", "dtR"],
     "bow_shoot_logic": ["Me_MOTION_C", "dtR"],
+    "Think1watch": ["Me_THINK_C"],
+    "Think3firstattack": ["Distance", "SR", "Me_THINK_C", "Attrib", "Degree"],
+    "Think3escape": ["Distance", "SR", "Degree", "Attrib", "Me_THINK_C"],
+    "Think1ninja": ["Me_THINK_C"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
@@ -92,6 +96,7 @@ GP_EXTERNS = {
 MASPSX_EXTRA = {
     "GetAreaMapLevel": ["--expand-div"],
     "bow_shoot_logic": ["--expand-div"],
+    "Think3escape": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash

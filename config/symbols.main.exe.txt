@@ -4254,3 +4254,5 @@ cd_getsize = 0x8005f6d8;
 cd_tell = 0x8005f798;
 DrawTMDmode = 0x8005d018;
 D_80097F10 = 0x80097f10;
+atkd = 0x800979e0;
+atkd2 = 0x800979e8;

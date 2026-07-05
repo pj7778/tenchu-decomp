@@ -51,6 +51,16 @@ typedef struct
     u8 sidespd;                  /* 0x3 */
 } MotionDataType;
 
+/* GetMotionID's registry row (Ghidra's own independently-built type,
+ * cross-checked: the `*8`-scaled index in GetMotionID's asm exactly matches
+ * this struct's size). Sentinel-terminated array (mid == -1). */
+typedef struct
+{
+    s16 mid;                      /* 0x0 */
+    s16 id;                       /* 0x2 */
+    MotionDataType *motion;       /* 0x4 */
+} MotionRegistType;                /* 0x8 */
+
 typedef struct
 {
     s16 mid;                     /* 0x0 */
@@ -61,7 +71,7 @@ typedef struct
     s16 mode;                    /* 0xA */
     void *model;                 /* 0xC */
     MotionDataType *motion;      /* 0x10 */
-    void *motreg;                /* 0x14 */
+    MotionRegistType *motreg;    /* 0x14 (GetMotionID's table) */
     void *control;               /* 0x18 (freed by DisposeMotionManager) */
 } MotionManager;
 
