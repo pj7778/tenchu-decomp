@@ -61,19 +61,22 @@ def patch_permute(name, syms):
     s = open(PERMUTE).read()
     lst = "[" + ", ".join(f'"{x}"' for x in syms) + "]"
     line = f'    "{name}": {lst},'
+    # Scope the search+replace to the GP_EXTERNS dict. A bare `"name": [...]`
+    # regex over the whole file would also match (and clobber) an entry in
+    # MASPSX_EXTRA — which shares the same line format — so a function present in
+    # both dicts (e.g. a `--expand-div` one) would lose its MASPSX_EXTRA entry.
+    m = re.search(r'^GP_EXTERNS = \{$.*?^\}$', s, re.M | re.S)
+    if not m:
+        sys.exit("gpsyms: couldn't find GP_EXTERNS dict in permute.py")
+    block = m.group(0)
     pat = re.compile(rf'^    "{re.escape(name)}": \[.*\],$', re.M)
-    if pat.search(s):
-        s = pat.sub(line, s, count=1)
+    if pat.search(block):
+        newblock = pat.sub(line, block, count=1)
         action = "updated"
     else:
-        # insert as the last entry of the GP_EXTERNS dict (before its closing })
-        m = re.search(r'^GP_EXTERNS = \{$.*?^\}$', s, re.M | re.S)
-        if not m:
-            sys.exit("gpsyms: couldn't find GP_EXTERNS dict in permute.py")
-        block = m.group(0)
-        new = block[:-1] + line + "\n}"
-        s = s[:m.start()] + new + s[m.end():]
+        newblock = block[:-1] + line + "\n}"
         action = "inserted"
+    s = s[:m.start()] + newblock + s[m.end():]
     open(PERMUTE, "w").write(s)
     return action
 
