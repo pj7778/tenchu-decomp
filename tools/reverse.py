@@ -34,20 +34,56 @@ def file_offset(vram):
     return FILE_OFF + (vram - VRAM)
 
 
+def addr_from_symbols(name):
+    """vram of `name` from config/symbols.main.exe.txt, or None."""
+    if not os.path.exists(SYMBOLS):
+        return None
+    for line in open(SYMBOLS):
+        m = re.match(rf"\s*{re.escape(name)}\s*=\s*(0x[0-9A-Fa-f]+)\s*;", line)
+        if m:
+            return int(m.group(1), 16)
+    return None
+
+
 def from_ghidra(export, name):
-    """(vram, size, c) for `name` from a Ghidra export dir, or (None,None,None)."""
+    """(vram, size, c) for `name` from a Ghidra export dir.
+
+    Resolves by the functions.tsv name first; if `name` isn't there — the very
+    common case where the export still calls it `FUN_<addr>` but config/symbols
+    has since given it a project name — falls back to config/symbols for the
+    address, then reads size + Ghidra C by address. Removes the manual
+    `--addr/--size` dance for any function already named in config/symbols."""
     tsv = os.path.join(export, "functions.tsv")
     if not os.path.exists(tsv):
         sys.exit(f"reverse: {tsv} not found (run tools/ghidra/ExportDecomp.java)")
+    rows = []
     for line in open(tsv):
         parts = line.rstrip("\n").split("\t")
-        if len(parts) == 3 and parts[2] == name:
-            addr = int(parts[0], 16)
-            size = int(parts[1])
+        if len(parts) == 3:
+            rows.append((int(parts[0], 16), int(parts[1]), parts[2]))
+
+    def by_addr(addr):
+        for a, size, _ in rows:
+            if a == addr:
+                cpath = os.path.join(export, "c", f"{addr:08x}.c")
+                c = open(cpath).read() if os.path.exists(cpath) else None
+                return addr, size, c
+        return None
+
+    for addr, size, nm in rows:            # 1) the export's own name
+        if nm == name:
             cpath = os.path.join(export, "c", f"{addr:08x}.c")
             c = open(cpath).read() if os.path.exists(cpath) else None
             return addr, size, c
-    sys.exit(f"reverse: function {name!r} not in {tsv}")
+    addr = addr_from_symbols(name)         # 2) config/symbols fallback
+    if addr is not None:
+        hit = by_addr(addr)
+        if hit:
+            return hit
+        sys.exit(f"reverse: {name!r} = {addr:#x} (config/symbols) not in {tsv} "
+                 f"— pass --addr/--size")
+    sys.exit(f"reverse: function {name!r} not in {tsv} or config/symbols "
+             f"— pass --addr/--size")
 
 
 def parse_subsegments(text):
