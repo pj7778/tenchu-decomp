@@ -322,6 +322,13 @@ plain C is the matched file.
       relocates the `return X` to the function's far end — instead invert the
       condition and NEST the keep-searching + fallback inside the `if`, leaving
       the found-return as the final unnested statement (GetItemType).
+    - **…and flip back when the "success" arm's last statement is a tail-called
+      return.** `if (idx == -1) { return 0; } …; return f(0);` in Ghidra's
+      literal polarity runs 4 bytes long (inverted branch + a skip-jump around
+      the success block); write success-with-tail-call FIRST
+      (`if (idx != -1) { …; return f(0); } return 0;`) so the call's result
+      (already in `$v0`) is the last code before the epilogue with no extra move
+      (leRemoveEnemy).
 - **Don't reuse the switch variable inside case bodies across calls**: a
   dispatch-only variable dies at the case tree and lives in a caller-saved
   reg (`move $v1,$v0` after the call that produced it). Assigning a later
