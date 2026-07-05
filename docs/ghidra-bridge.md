@@ -75,6 +75,24 @@ $ tools/import_symbols.py --ghidra-export .shake/ghidra-export
 
 It renames game-RAM symbols only (leaves PSX hardware/BIOS names), never
 downgrades a real name to a Ghidra placeholder (`FUN_…`), and skips collisions.
+It also rewrites the quoted symbol form (`"SYM"`) in the gp-extern lists
+(`shake/src/Build.hs`, `tools/permute.py`) — a renamed gp-small would otherwise
+lose its `--gp-extern` flag and maspsx would emit it absolute (a silent byte
+break; `./Build check` catches it, but the rewrite prevents it).
+
+**There is no "more official" name source than Ghidra — `main.exe` is stripped.**
+The file is exactly `0x800` (header) + `0x87000` (text) bytes with nothing
+appended (no symbol table); the disc carries no `.SYM`; the sibling exes
+(trial/menu/ending/run) are stripped too; and the function names are not present
+as debug strings in the binary. So **every** name in the repo is
+reverse-engineered — there is no developer-symbol table to defer to. The naming
+rule is therefore simply: **Ghidra is the source of truth. Where it has a real
+name, `import_symbols.py` adopts it; where it still has `FUN_`, the repo keeps
+whatever it has** (often a hand-picked placeholder like `item_use_gun`, which is
+as authoritative as any CamelCase name). To pull in names you have added in
+Ghidra since the last export, re-run `ExportSymbolsTypes.java` first — the
+committed `symbols.tsv` can lag the live project (it will show `FUN_` for
+addresses the repo has since named by hand).
 
 ## Types (reference)
 
