@@ -103,6 +103,11 @@ cp <worktree>/src/main.exe/<Name>.c src/main.exe/          # the matched C
 # comment syntax — plain `NAME = 0xADDR;` lines only)
 tools/reverse.py <Name> --ghidra-export .shake/ghidra-export --no-check   # carve — NEVER hand-edit the yaml, offsets are easy to get wrong
 ```
+If the target was **renamed via an adjacent sibling** (config/symbols has a real
+name but the Ghidra export still lists `FUN_<addr>` at that address), invoke
+`reverse.py FUN_<addr>` — it detects the address already carries a non-placeholder
+name and writes the correctly-named `.c` (e.g. `reverse.py FUN_8001ab64` →
+`handle_balmer_acm_.c`). Passing the real name fails the export lookup.
 then once all are copied+carved:
 ```
 ./Build                                   # generates the split .s

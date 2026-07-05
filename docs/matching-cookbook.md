@@ -387,7 +387,13 @@ plain C is the matched file.
   over-counts (a leftover register at the call site read as an argument),
   Ghidra under-counts (misses stack-passed args past the 4 register ones).
   Count the actual a0-a3 + `sw …,N(sp)`-before-call sets in the raw `.s`
-  (Makibishi SoundEx, Ningyo SetNowMotion, Launch SetupFly).
+  (Makibishi SoundEx, Ningyo SetNowMotion, Launch SetupFly). m2c *also*
+  under-counts in the other direction: a **leading** argument in a register
+  carried in live from the caller and never reassigned before the `jal` is
+  invisible to m2c (no local def), so it silently drops it — the real call takes
+  one more leading arg than m2c shows (DrawBG's `FUN_80063b94`,
+  lePackEnemyLayout's `memcpy`/`AdtMessageBox`). Always reconcile against the
+  a0–a3 set in the raw `.s`, never m2c's argument list alone.
 - **Two `u16` out-parameter locals with a 4-byte stack GAP are one `SVECTOR`'s
   `.vx`/`.vz`** (the write skips `.vy`), not two scalars (LightningBolt's
   GetVectorRotation output).
@@ -491,6 +497,21 @@ plain C is the matched file.
   wants `s32 n`, not `s16` — s16 lets the sign-extend float to the use and
   interleave with the `&arr` address calc (16-byte residual); s32 pins it at
   the assignment (Makibishi/LightningBolt).
+- **Ghidra can mistype a stack-passed *parameter*'s width — cross-check m2c's
+  per-register typing.** Two tells that Ghidra's narrow guess is wrong and the
+  full register width is really used:
+  - a full `lw` + `sll`/`sra` re-widen of a parameter used/narrowed exactly once
+    with no other reference — a genuinely-`int` parameter merely narrowed for a
+    callee's `short` formal instead folds to a single `lh` (cc1/combine reads
+    "load then keep the low 16 bits" of a plain memory operand as one
+    instruction; a local copy does NOT defeat the fold — copy-propagation erases
+    the temp first). Declare the real width: SetLightning's 5th param was
+    Ghidra-typed `int b` (rendered `(int)(short)b`) but is actually `short b`.
+  - Ghidra spelling the parameter `CONCAT22(in_register_XXXX, narrow_var)` — the
+    decompiler admitting its own narrow guess is wrong (the full register width
+    is used); the real type is the wide one (PutItemCursor's `rotdif`: Ghidra
+    `short`, really `s32`). m2c's per-register width inference is the tiebreaker,
+    together with the absence of widen instructions before the arithmetic use.
 - **A param-union write to OFFSET 0 routes through a fresh `it->param` recast,
   nonzero offsets through the live `pp` pointer** — mechanical, not stylistic:
   `pp` holds its own register so `pp+0` encodes `sw rN,0(pp)`, but a fresh
@@ -663,6 +684,15 @@ plain C is the matched file.
   `$s0 -> $v0` return copy-chain that pinned it. (When a value is in `$sN` but
   its C live range doesn't obviously cross a call, suspect a return/temp
   copy-chain dragging it there — regalloc.py shows the chain.)
+  - **The same split fixes a *flag* return (constant 0/1); the failure shape is
+    "default then override".** `ret = 0; if (cond) { …; ret = 1; } return ret;`
+    puts `ret`'s default assignment *before* the condition test, so its pseudo
+    is live simultaneously with the test's own `$v0` temp (regalloc.py shows an
+    explicit conflict edge to hard reg `$v0`) — cc1 evicts `ret` to `$v1` and
+    emits a trailing `move $v0,$v1`. Two early returns
+    (`if (cond) { …; return 1; } return 0;`) let cc1 target `$v0` directly for
+    each constant — 0 bytes (DrawBG). When a flag-return draft is one register
+    off, try both shapes.
 - **Source statement order is the main regalloc lever.** Storing
   register-held values first (`prm.type = ty; prm.user = own;`) before
   memory-chain stores frees their registers for later constants — in
