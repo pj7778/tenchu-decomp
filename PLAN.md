@@ -15,30 +15,32 @@ byte-identical `main.exe`.
 - **Toolchain is complete for matching.** Pipeline is
   `cpp | cc1-281 -G8 | maspsx --aspsx-version=2.77 | as | ld`; reproducible/offline
   via nix (no cabal/wine). maspsx is integrated (see [`docs/toolchain.md`](docs/toolchain.md)).
-- **Matched functions:** `initialise_font`, `GetRealPad` (via decomp-permuter —
-  [`docs/matching-get-held-buttons.md`](docs/matching-get-held-buttons.md)),
-  **`Think1sleep`** — the first function needing `$gp`-relative globals — and
-  **`ProcItemManebue`** — the first needing *absolute* addressing of a small
-  global that another TU gp-addresses — and **`ProcItemKusuri`** (1432 bytes,
-  the largest yet: switch dispatch, casted scratch buffer, magic divisions,
-  block-copy loop, cross-jumped tails), and **`ReqItemDrop`** — the first
-  cross-referenced match: called by the compiled `ProcItemKusuri` (real
-  R_MIPS_26 link), sharing types via `src/main.exe/item.h`. Since then, via the
-  matcher-agent pipeline and the Fable sessions: **`ProcItemDrop`**,
-  **`GetAreaMapLevel`**, **`FUN_8004a42c`** (first Sonnet-matched),
-  **`DoInfoViewProc`** (the debug menu — discovered the inlined-static-helper
-  mechanism), **`PauseProc`** (working cheat dispatch), and
-  **`BriefingAndInventorySelectionScreen`** (3620 bytes, the largest: first
-  jump-table switch, matched by a four-session relay 437→241→94→28→0 diff
-  lines). 12/602 game functions, 3.5% of game-code bytes.
+- **Matched functions: ~150/555 game functions (27%), ~11.7% of game-code
+  bytes**, whole-image byte-identical throughout (see `git log` for the
+  per-function record; `tools/progress.py` for the live count). The engine is
+  the matcher-agent pipeline ([`docs/orchestration.md`](docs/orchestration.md))
+  driven **family-first**: map a subsystem's shared struct ONCE and clone/reuse
+  across the whole family — `src/main.exe/item.h`
+  (`PARAM_ITEM_USE`/`Humanoid`/`MotionManager`/`MotionRegistType`) and
+  `src/main.exe/game_types.h` (the byte-proven `character_state`). Highest-yield
+  seams landed: the `ProcItem*`/`ReqItem*` item TU, the CD/AFS file-access
+  wrappers, the character-AI `Think*`/`think_setting_*`/`character_state`
+  family, and small render/util helpers. **The clean seam** (non-jump-table,
+  ≤~500-byte, non-dispatch functions) matches **4–5/5 per batch at ~65–250k
+  tokens** on Sonnet; pick targets with `tools/triage.py` / `tools/findsimilar.py`.
 - **Partial matches** (blocked on sub-C-level residuals, kept via the
   NON_MATCHING convention — default build stays green byte-identical, draft
-  builds with `NON_MATCHING=<Name> ./Build`): **`FileOption`** (6 of 1108
-  bytes — a sched1 class tie hoisting an andi past a store) and
-  **`AdtSelect`** (9 of 776 bytes — a reload spill-register rotation from the
-  >32KB frame). Both root-caused in their file headers; a decomp.me psyq4.3
-  scratch would confirm whether the bytes are expressible at all.
-  [`docs/matching-cookbook.md`](docs/matching-cookbook.md) records the idioms. Between them they pinned down the real
+  builds with `NON_MATCHING=<Name> ./Build`): **~30 functions parked**, each
+  root-caused in its file header. Residuals are consistently sub-C —
+  register-allocation / scheduling / reload-pass ties the source can't steer:
+  the named **`la` address-materialization tie** (`%hi` in a temp vs the target
+  reg — `PrepareAccess`, `cd_open`, `PlayMusicFromID`, `FUN_8004a368`),
+  goto-merge copy-chains (`turn_towards_player_`, `Think3chase`), and the
+  big-handler flag/frame ties (`handle_char_state_*`/`Think3*` dispatchers,
+  ~1400–1700 bytes — the **tie-prone bucket**). The permuter is *provably immune*
+  to the reload-tie class, so these are parked (the sub-C early-stop protocol),
+  not burned on. [`docs/matching-cookbook.md`](docs/matching-cookbook.md)
+  records ~60 verified matching idioms. The early sessions pinned down the real
   gp model (ASPSX gp-addresses only TU-local definitions; externs are absolute)
   and produced the reusable infrastructure in
   [`docs/toolchain.md`](docs/toolchain.md): the opt-in `maspsx --gp-extern`
