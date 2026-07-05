@@ -1,0 +1,57 @@
+#include "common.h"
+#include "main.exe.h"
+
+/*
+ * DrawBG (0x80018818, 0x44 bytes) — sort the background layer into the GsOT
+ * if it's enabled (attribute bit 0 clear); returns whether it drew.
+ *
+ * BackGround (Ghidra, recovered from the type export): only the fields this
+ * function touches are named here, the rest is opaque padding (offsets
+ * proven by the raw .s: work@0x38, sz@0x40, attribute@0x44).
+ *
+ * Matching notes (docs/matching-cookbook.md):
+ *  - m2c undercounts FUN_80063b94's call args: `bg` itself (a0) is carried
+ *    in live from the caller and never overwritten before the jal, so
+ *    m2c's basic-block-local view misses it — Ghidra's 4-arg rendering
+ *    (bg, bg->work, OTablePt, bg->sz) is the real call (same undercount
+ *    pattern as lePackEnemyLayout's memcpy/AdtMessageBox).
+ *  - `bg->attribute & 1` is a narrowing (mask-only) use, so cc1 emits `lhu`
+ *    even though the field is Ghidra-typed signed `short` (same rule as the
+ *    item TU's lifemax/it narrowing loads).
+ *  - OTablePt is %gp_rel in this TU (tools/gpsyms.py --write; Build.hs
+ *    maspsxGpExterns + permute.py GP_EXTERNS both list DrawBG now).
+ *  - Register tie: a single `ret=0; if(cond){...; ret=1;} return ret;`
+ *    shared-variable form puts the `ret=0` default BEFORE the condition
+ *    test, so its pseudo is simultaneously live with the test's own v0 temp
+ *    (regalloc.py showed an explicit conflict edge to hard reg v0) and gets
+ *    evicted to v1 + a trailing `move v0,v1` at the return. Two early
+ *    returns (`if (cond) {...; return 1;} return 0;`) let cc1 target v0
+ *    directly for each constant with no competing live temp — 0 bytes.
+ *    (This is the opposite failure mode from InsertConflict's shared-`ret`
+ *    fix: there splitting early returns avoided a copy-PREFERENCE toward a
+ *    callee-saved reg; here the shared variable caused a hard CONFLICT with
+ *    a caller-saved temp. Try both shapes when a flag-return is off by a
+ *    register.)
+ */
+typedef struct
+{
+    u8 pad0[0x38];
+    u32 *work;       /* 0x38 */
+    u8 pad1[4];      /* 0x3C (index, unused here) */
+    u16 sz;          /* 0x40 */
+    u8 pad2[2];      /* 0x42 (id, unused here) */
+    short attribute; /* 0x44 */
+} BackGround;
+
+extern GsOT *OTablePt;
+extern void FUN_80063b94(BackGround *bg, u32 *work, GsOT *ot, u16 sz);
+
+short DrawBG(BackGround *bg)
+{
+    if ((bg->attribute & 1) == 0)
+    {
+        FUN_80063b94(bg, bg->work, OTablePt, bg->sz);
+        return 1;
+    }
+    return 0;
+}

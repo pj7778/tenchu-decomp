@@ -72,6 +72,9 @@ GP_EXTERNS = {
     "NowReturnNormal": ["Me_MOTION_C", "motID", "D_80097F0E"],
     "vinit": ["virtual_memory_pool"],
     "LoadAreaMap": ["GlobalAreaMap", "FieldIndex", "FieldArea"],
+    "DrawBG": ["OTablePt"],
+    "PrepareAccess": ["AccessPower"],
+    "handle_balmer_acm_": ["GlobalAreaMap", "FieldIndex", "D_800976E8", "FieldArea"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs

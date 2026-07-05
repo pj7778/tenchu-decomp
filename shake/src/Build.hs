@@ -161,6 +161,9 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "NowReturnNormal" = ["Me_MOTION_C", "motID", "D_80097F0E"]
     syms "vinit" = ["virtual_memory_pool"]
     syms "LoadAreaMap" = ["GlobalAreaMap", "FieldIndex", "FieldArea"]
+    syms "DrawBG" = ["OTablePt"]
+    syms "PrepareAccess" = ["AccessPower"]
+    syms "handle_balmer_acm_" = ["GlobalAreaMap", "FieldIndex", "D_800976E8", "FieldArea"]
     syms _ = []
 
 as :: FilePath
