@@ -12,6 +12,12 @@
 
 typedef struct tag_TItem tag_TItem;
 
+/* Opaque — only ever handled by pointer (moved around Humanoid's weapon[4],
+ * never dereferenced by an item-TU function). Fully defined locally, per
+ * this repo's convention, in DrawOrnament.c/CreateCloneOrnament.c/
+ * UpdateOrnament.c (each its own TU; no conflict with this forward decl). */
+typedef struct OrnamentType OrnamentType;
+
 typedef struct ModelType ModelType;
 struct ModelType
 {
@@ -108,7 +114,17 @@ typedef struct
                                     reads target->locate.coord.t[1], the Y
                                     translation of the target's world matrix,
                                     for a lightning-bolt end point) */
-    u8 pad2b[0x34];              /* 0x78 */
+    u8 pad2b[0x1C];              /* 0x78 */
+    OrnamentType *weapon[4];     /* 0x94 (equipped weapon ornaments — right/
+                                    left active + right/left inactive per
+                                    game_types.h's character_state sibling
+                                    view of this same offset; FUN_80027688
+                                    swaps weapon[0] with weapon[2]/[3] to
+                                    draw/holster) */
+    void *illusion[2];           /* 0xA4 (Ghidra: `pointer illusion[2]` —
+                                    opaque, matches character_state's
+                                    some_afterimage_1/2_0xa4/0xa8; untouched
+                                    by any matched function yet) */
     u16 sound;                   /* 0xAC (default sound id, OR'd into Sound()'s seid) */
     s16 active_item;             /* 0xAE (item_kind2 the character is using) */
     u8 pad3[0x4];                /* 0xB0 */

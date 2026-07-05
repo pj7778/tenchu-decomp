@@ -97,6 +97,8 @@ GP_EXTERNS = {
     "SetupStageSequence": ["StageEvent", "StagePlayer"],
     "FUN_800274e8": ["dtM", "Me_MOTION_C"],
     "ThinkBasicHuman1": ["Me_THINK_C"],
+    "StartDrawing": ["DrawingPage", "OTablePt", "GameClock"],
+    "FUN_80027688": ["Me_MOTION_C", "dtM"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
