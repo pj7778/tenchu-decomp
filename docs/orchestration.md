@@ -16,7 +16,7 @@ The split of responsibility:
 
 ## Resuming the hands-off flywheel (quick-start)
 
-**State (keep this line current):** ~192/555 game functions (~35%), ~13% of
+**State (keep this line current):** ~199/555 game functions (~36%), ~14% of
 game bytes, whole-image byte-identical (sha256 `0690a5c1…3558`). Live count:
 `nix develop --command tools/progress.py`.
 
@@ -43,11 +43,19 @@ game bytes, whole-image byte-identical (sha256 `0690a5c1…3558`). Live count:
 at ~150–260k agent tokens**; the tie-prone bucket (big `handle_char_state_*`/
 `Think3*` dispatchers, 1400–1700 B) costs 2–3× for 2/5 and its residuals are
 sub-C reload/schedule ties — **DEFER them** (don't burn Sonnet on them). If a
-batch's residual is the named `la`/address-materialization reload tie (`%hi` in
-a temp vs the target reg), it is **permuter-immune → NON_MATCHING immediately**,
-never permute. A jump-table NON_MATCHING with a `.rodata` carve or two-piece
-split is fiddly to harvest — **defer it** (leave in the blob, save the draft to
-`scratch/`), like `cd_open`/`handle_char_state_using_item_`/`FUN_80027818`.
+batch's residual is one of the two NAMED permuter-immune classes — the
+`la`/address-materialization reload tie, or the guard delay-slot fill tie — it is
+**NON_MATCHING immediately**, never permute. Otherwise, **a right-LENGTH residual
+is worth one bounded permuter run**: it has cracked 5-byte register ties, a
+61-byte schedule/colour miss, and a pure statement-order fix (see the cookbook's
+early-stop section — its pessimistic tone predates those).
+
+A **MATCHED** jump-table function harvests fine: `reverse.py <Name>` then
+`./Build` then `split-scaffold.py <Name>` reproduces both the `c` carve and the
+`.rodata` carve (done for `EquipWeapon`). Two-piece `__override__prt_` splits are
+automatic now. What is still fiddly is a jump-table **NON_MATCHING** stub —
+**defer it** (leave in the blob, save the draft to `scratch/`), like
+`cd_open`/`handle_char_state_using_item_`/`FUN_80027818`.
 
 **Biggest lever — family-first:** before a new subsystem, map its shared struct
 ONCE (`item.h`, `game_types.h`) and point every agent at it; sequence small
@@ -261,7 +269,11 @@ lens.
 - **Flesh out the `Humanoid` struct** in `item.h` (character/actor state, ~724
   accesses at its 4 signature offsets alone; Ghidra `types.h` has a fuller
   candidate). It's `CamState.Owner` and every enemy/player — unlocks a large
-  slice of remaining game code.
+  slice of remaining game code. **It is 0xCE bytes, NOT ~0x145** (Ghidra's own
+  struct ends near 0xCD, `character_state`'s independently-proven twin near
+  0xD0) — an earlier version of this line said 0x145 and a matcher agent caught
+  it. Progress: `attrib`(s16)@0x28 and `weapon_kind`(u16)@0x8E are now
+  byte-proven (GetHumanoid/DisposeWeapon/EquipWeapon/StickonCheck batch).
 - **Easy + high-in-degree functions** (from `triage.py --leverage`): matching
   them confirms a signature for many callers. DONE so far: `UpdateCoordinate`,
   `DeleteConflict`, `SetNowMotion`, `GetAbsolutePosition`, `MoveHumanoid`;

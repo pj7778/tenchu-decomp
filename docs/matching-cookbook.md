@@ -101,6 +101,24 @@ The ordered triage — fix categories in THIS order, re-running
        cd_open (4 bytes, ~50 min / **353k agent tokens**, flat) are the identical
        tie. Recognize the signature, document it, mark NON_MATCHING immediately —
        a permuter run on this pattern has never once paid off.
+     - **A guard's DELAY-SLOT FILL tie is a second named member.** When the only
+       diff is which of two equally-ready, harmless-either-way instructions fills
+       a guard branch's delay slot — the branch's own return-value setup (`move
+       $v0,zero`) vs the fallthrough's first data-independent instruction (an
+       address `lui`) — that is `reorg`, not source. StickonCheck: ~34k permuter
+       iterations flat at 460, after trying guard-polarity inversion, literal
+       Ghidra nesting, named temps and a `do{}while(0)` wrapper. Recognize and
+       stop after one bounded run.
+     - **BUT the permuter is stronger than this section's tone implies — do not
+       skip it when the residual is the SAME LENGTH as the target.** It has since
+       cracked: a 5-byte register tie (`FUN_800568b8`, ~400 iters), a 61-byte
+       same-length schedule/colour miss (`AfsGetHeader`), and — a residual class
+       worth naming — a pure **statement-order** fix (`FUN_80038c0c`: one field
+       store had to sit one line *earlier* than its offset-order position, before
+       the neighbouring word store, though every other store nearby was in strict
+       offset order; 31 bytes). Statement order is a real, permuter-findable
+       source lever, not a register swap. `autorules` reporting "no win" plus a
+       right-length residual is the signal to permute, not to park.
 6. **On MATCH:** `./Build check`, add the matching-notes header, promote any
    NEW reusable rule to this cookbook, commit the function + splat.yaml
    together.
@@ -774,11 +792,29 @@ plain C is the matched file.
   nothing follows to overlap with (SetupThinkFunction).
 - **A signed `slt` on a pointer comparison is an `(s32)` cast pair in
   source** (Ghidra renders it as `(int)ptr < -0x7ff…`).
+- **A TU sibling can mislead: two functions in the same TU touching the same
+  region need not share an addressing shape.** `FUN_80039544` reaches the
+  scratchpad through flat per-statement `*(T *)0x1F8000xx` casts (a repeated
+  `lui $at` per store) while its twins `FUN_800396c0`/`FUN_80039684` cache a
+  `MATRIX *`/`SVECTOR *` local. Check the raw `.s` for the repeated `lui $at`
+  before importing a twin's cached-pointer idiom.
+- **One C variable is ONE pseudo for the whole function, not one per
+  occurrence.** So a value playing the same role in two mutually-exclusive
+  switch-case bodies must reuse the SAME C variable across the cases when the
+  target reuses the same hard register in both. Pick the variable to reuse by
+  matching the ROLE across cases: reusing a *different* already-used variable
+  (one tied to another role) drags that case's own allocation off-target too
+  (EquipWeapon's `a` = "the `wp[0]` value" in both the 4-swap and 2-swap cases).
 - **Array spelling picks the addu operand order**: `p->arr[i]` emits
   `addu base,index`; `(&p->arr[0])[i]` emits `addu index,base`;
   `((T *)0x80010000)->arr[i]` emits index-first with a split `lui`+lo
   displacement that cse merges into any register already holding the
   constant; an extern-array symbol emits `la` (lui+addiu), not the split.
+  - **The `(&p->arr[0])[i]` respelling only works on a struct-member array
+    reached THROUGH A POINTER.** It has zero effect on a top-level
+    `extern T arr[N]` indexed directly — verified by trying it on `leSetEnemy`'s
+    identical-looking tie after it had fixed `leAddPath`. Don't reach for it when
+    the base is a plain extern array; the tie there is local-allocation ordering.
   - **Two ADJACENT data tables are separate symbols, not one array indexed with
     a constant offset.** When a load's `lh/lw` displacement is 0 and the base
     address equals a *different* nearby symbol's address, declare that second
@@ -1283,6 +1319,14 @@ absolute → keep the symbol off the list (a plain small extern).
   exactly three, all parked: `GetPad`, `FUN_8001b174`, `GetPadXY` (see
   `GetPad.c` for the byte-exact barrier form). `triage.py` now detects the triple
   and reports `SIGNEXT-SPLIT (GetPad class)` instead of rating it TRIVIAL.
+  - **Do NOT confuse this with the ordinary 2-instruction `sll r,r,16 / sra
+    r,r,K` (K≠16)**, which is just a `short`/HImode index sign-extended *and*
+    scaled in one go — exactly what `arr[short_i]` compiles to for a 4-byte
+    stride. That shape is perfectly matchable (`GetHumanoid`, `DisposeWeapon`).
+    The blocked class is specifically **three** instructions: a pure sign-extend
+    split into two `sra`s summing to 16, with **no** scale folded in.
+    `triage.py`'s detector already requires the 3-insn form, so it will not
+    false-positive here.
 - **`as` cannot assemble PS1 GTE command opcodes — the DrawTMD/renderer region
   is un-splittable until a GTE→`.word` pass exists.** Our `mipsel-...-as`
   (binutils 2.40, `-march=r3000`) is vanilla MIPS: standard COP2 data moves

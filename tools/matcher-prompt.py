@@ -25,6 +25,40 @@ SYMBOLS = "config/symbols.main.exe.txt"
 # ---- evolving guidance: the load-bearing lessons every agent should get at
 # launch (deeper detail is in the cookbook, which the agent reads). Edit here. --
 GUIDANCE = [
+    "`./Build check` is the ONLY gate. matchdiff's window can be shorter than "
+    "the function (and for a split function covers only piece 1 — use asmdiff). "
+    "Removing the INCLUDE_ASM is not evidence of a match; never report MATCH "
+    "without a green `./Build clean && ./Build check`.",
+
+    "The permuter is worth ONE bounded run whenever autorules finds nothing and "
+    "the residual is the SAME LENGTH as the target — it has cracked 5-byte "
+    "register ties, a 61-byte schedule/colour miss, and a pure statement-order "
+    "fix (one field store one line earlier than its offset-order position). Only "
+    "two residual classes are known permuter-immune, and you must NOT permute "
+    "them: the `la`/address-materialization reload tie (`%hi` in a temp vs the "
+    "target register), and the guard delay-slot fill tie (branch's own `move "
+    "$v0,zero` vs the fallthrough's data-independent `lui`). Park those at once.",
+
+    "A bare `lui $rN,0xHHHH` with NO `addiu`, reused as a base across several "
+    "accesses, means the source held the address in a LOCAL via a literal "
+    "pointer cast — `(PersistentState *)0x80010000`, not `extern u8 D_80010047`. "
+    "The extern form lets cc1 fold the address into each memory operand, so `as` "
+    "re-materialises `%hi` per use through `$at`: extra `lui`s and WRONG LENGTH.",
+
+    "If the link fails with `undefined reference to D_XXXXXXXX`, splat only "
+    "auto-labels data that still-carved *asm* references — matching the last "
+    "such function drops the symbol. Add a plain `D_XXXXXXXX = 0xXXXXXXXX;` to "
+    "config/symbols.main.exe.txt (that file has NO comment syntax).",
+
+    "A 3-instruction `sll 16 / sra k / sra 16-k` (k!=16) is the blocked GetPad "
+    "sign-extension class — park it. The ordinary 2-instruction `sll 16 / sra K` "
+    "is just a short-indexed array's fused extend+scale and matches fine.",
+
+    "Before trusting the Ghidra export's SIZE, remember two entries are "
+    "under-sized (LoadCard, FUN_800593a0) and a truncated carve still builds "
+    "GREEN — run `tools/coverage.py` if a function's body seems to run past its "
+    "carve, and re-carve with `reverse.py <Name> --size 0x<true>`.",
+
     "Ghidra's SCALAR types are gold, but its inferred STRUCT NAMES are often "
     "wrong (it invents PARAM_ITEM_DROP etc. with fields shifted 4 bytes) and "
     "NEITHER Ghidra nor m2c discloses access WIDTH. For struct layout trust "
