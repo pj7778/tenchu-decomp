@@ -141,7 +141,16 @@ and `exeRules` is applied over `targets`. Two things that are easy to get wrong:
 
 `trial.exe` is the same size as `main.exe` but is *not* the same bytes, and its
 `$gp` differs — it is a separately-linked build. Do not assume a `main.exe`
-address means anything there.
+address means anything there. It is the **Mission Editor**: it loads
+`preset\preset%d.msn` (the 16 preset missions, all present in `data.vol`) and
+`theme%d.lnd`/`theme%d.tpd`, and saves user-built missions to memory-card slots
+`mem01.arc`…`mem12.arc` under `BISLPS-01901TENCHU`. Internally the mode is called
+TRIAL (`IMAGE\TRIAL%d.TPD`, `HUMAN\MOTION\TRIAL%d.AMD`). `menu.exe`, `main.exe`
+and `slps_019.01` all name it in their exec tables.
+
+`tools/xexe.py` reports how much of `main.exe` each of the others contains — see
+PLAN.md. The five images live under `disks/`, which is gitignored in its entirety;
+only sizes, `$gp` and sha256s appear in tracked files.
 
 ## Environment notes & gotchas
 

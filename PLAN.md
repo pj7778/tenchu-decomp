@@ -115,6 +115,21 @@ Best remaining leads, roughly in value order:
    name-recovery matchers (`symmatch`/`xbuildnames`/`callmatch`/`datamatch`) still
    hardcode `main.exe`; they need a `--target` before they can be pointed at the
    others.
+
+   `tools/xexe.py` already locates main.exe's functions inside the other five by
+   normalized instruction identity (relocations masked). `trial.exe` -- the Mission
+   Editor, a near-complete relink of the engine -- contains 891 of our 1322
+   functions unambiguously, 582 of them in end-to-end runs (consecutive functions
+   landing exactly back-to-back, which corroborates the boundaries), and 140 of
+   them are functions we have already byte-matched. menu/ending/slps_019.01 carry
+   ~600 each (engine core + the statically linked Sony SDK); run.exe only 150.
+
+   That is a symbol-recovery path for exes that have *no* symbols at all: mint
+   `config/symbols.<target>.txt` from `xexe.py --tsv`. Do it deliberately, not in
+   bulk -- and note that a byte-*exact* transfer is rare (92 functions for
+   trial.exe, only 4 of them ours), because the two builds place data at different
+   addresses, so anything touching a global re-links differently. The C is what
+   transfers, not the bytes.
 3. **The `statics` list** (73 functions, 231 objects) should feed `tools/gpsyms.py`: a
    `static` never gets a `%gp` extern.
 4. **The SLD stream** (per-instruction line deltas) and the `0x90`/`0x92` block markers
