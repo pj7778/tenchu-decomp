@@ -107,6 +107,7 @@ GP_EXTERNS = {
     "GetHumanoid": ["Humans"],
     "AttackAnimal": ["Me_THINK_C", "Distance", "Degree"],
     "StickonCheck": ["Me_MOTION_C", "dtL", "motID", "D_80097F0E"],
+    "DeleteCard": ["D_80097D04"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs

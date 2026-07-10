@@ -32,7 +32,30 @@ import triage  # noqa: reuse its objdump pass + function table
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SYMS_TSV = os.path.join(ROOT, ".shake", "ghidra-export", "symbols.tsv")
+YAML = os.path.join(ROOT, "config", "splat.main.exe.yaml")
 ALIGN = 8  # holes this small are inter-function padding
+FILE_OFF, VRAM = 0x800, 0x80011000  # file 0x800 <-> vram TEXT_START
+SUB = re.compile(r"^\s+- \[(0x[0-9A-Fa-f]+)(?:,\s*([A-Za-z._]+))?(?:,\s*(\S+?))?\]")
+
+
+def carve_ends():
+    """name -> VRAM end of its `c` subsegment, i.e. how far we actually carved.
+
+    We may have compensated for an under-sized functions.tsv entry by carving
+    with `reverse.py --size`; the export still lies, but the hole is handled.
+    """
+    subs = []
+    for line in open(YAML):
+        m = SUB.match(line)
+        if m:
+            subs.append((int(m.group(1), 16), (m.group(2) or "").strip(),
+                         (m.group(3) or "").strip()))
+    subs.sort()
+    out = {}
+    for (off, typ, name), (nxt, _, _) in zip(subs, subs[1:]):
+        if typ == "c" and name:
+            out[name] = VRAM + nxt - FILE_OFF
+    return out
 
 
 def data_syms():
@@ -92,9 +115,10 @@ def main():
     if cur < hi:
         holes.append((cur, hi - cur))
 
+    carved = carve_ends()
     print(f"text considered: 0x{lo:08x}..0x{hi:08x} ({len(funcs)} functions)\n")
     print(f"{'addr':<12} {'bytes':>6}  after                        why")
-    total = 0
+    total, todo = 0, 0
     for a, ln in sorted(holes, key=lambda h: -h[1]):
         if ln <= ALIGN:
             continue
@@ -103,9 +127,15 @@ def main():
         total += ln
         reasons, prev = classify(a, a + ln, funcs, insns)
         pn = prev[2] if prev else "-"
+        # Did we already carve the previous function past this hole?
+        if prev and carved.get(pn, 0) >= a + ln:
+            reasons.append("CARVE COMPENSATES — export still lies, build is fine")
+        else:
+            todo += 1
         print(f"0x{a:08x} {ln:>6}  {pn:<28} {', '.join(reasons) or 'unknown — inspect'}")
-    print(f"\n{total} bytes of code claimed by no function.")
-    if total:
+    print(f"\n{total} bytes of code claimed by no function; "
+          f"{todo} hole(s) still need a carve.")
+    if todo:
         print("A hole whose reason names the previous function is an UNDER-SIZED\n"
               "functions.tsv entry. Carve that function with its TRUE size\n"
               "(`reverse.py <Name> --size 0x<n>`) and fix it in Ghidra, or its\n"
