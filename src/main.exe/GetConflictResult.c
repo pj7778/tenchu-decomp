@@ -42,53 +42,59 @@
  * inter-model delta is published to ConflictDistance and the other model to
  * ConflictModel, and the slot index is returned; every failure path returns -1.
  *
- * STATUS: NON_MATCHING — 38 of 368 bytes differ (arithmetically correct, right
- * length). Three independent below-the-C-level residuals remain (a decomp-permuter
- * run improves its own metric but does not beat this in raw bytes):
- *   1. Guard target (~4B): the search loop is a `for` (needed so reorg duplicates
- *      the `index+1` increment into the two skip-branch delay slots — the
- *      cookbook "loop-internal skip branch ... needs a real for" rule). cc1's
- *      duplicate_loop_exit_test then aims the top guard at the loop EXIT
- *      (post-loop, .L…aa7c); the target aims it at the shared `return -1`
- *      (.L…a9e0). Recovering that needs an explicit `if (ConflictObjects < 1)`
- *      guard whose redundant for-copy cc1 elides — but cc1 reloads the gp
- *      `ConflictObjects` (no calls, yet it won't CSE across the loop), so both
- *      guards survive; forcing one value through a local `n` reallocates the
- *      whole loop (found→t0) and regresses hard (>200B). Structural, not source.
- *   2. offset.pad / found-extension order (~8B): in the loop `offset.pad < found`,
- *      the target schedules the `(short)found` sll before the `lh` of offset.pad;
- *      cc1 emits the load first. Pure sched1 tie (the store/load-vs-alu ready
- *      tiebreak), permuter-immune.
- *   3. model lw schedule (~26B): the target hoists `pool[k].model`'s `lw` into
- *      the vx load-delay (implying a source temp `m = pool[k].model; … =m;`); cc1
- *      here fills that slot with a nop and sinks the lw into the vy region. Adding
- *      the temp DOES hoist the lw, but flips the pool[k] base register v1→v0 and
- *      drops the return move out of the jr delay slot (length 91) — a net +7B.
- *      The two are mutually exclusive from C.
- *
  * Matching notes (docs/matching-cookbook.md; siblings DeleteConflict.c /
- * InsertConflict.c / ProcItemMakibishi.c define the conflict-TU conventions):
- *  - `model->id` is loaded TWICE, un-CSE'd (the DeleteConflict lhu-vs-lh split):
- *    `int iVar3 = model->id;` (lh — the `== -1` guard and the loop's scan base
- *    id*0x78) and `short sVar1 = model->id;` (lhu, narrowing — the post-loop
- *    result/position base). Different machine modes don't CSE. iVar3's scan base
- *    dies once its id*0x78 invariant is hoisted, so it lands in caller-saved $v1
- *    and the post-loop index gets its own `int k`.
- *  - `if (index < 0)` is `sll a1,16; bgez` (short sign test); `found = 0;` sits
- *    before it so reorg fills the bgez delay slot, and the for-init `index = 0`
+ * InsertConflict.c define the conflict-TU conventions). Three former
+ * "below-the-C-level" residuals all turned out to be source structure,
+ * found by RTL-dump analysis (cc1 -dj/-dc/-dS/-dg/-dl/-dJ/-dR/-dd):
+ *  - id-guard is NESTED (`if (id != -1) { ... } return -1;`, DeleteConflict's
+ *    own style), NOT an early `return -1;` guard: the final `return -1` is the
+ *    id-guard's else path, cse elides its `li v0,-1` along the beq's taken edge
+ *    (v0 still holds the compare's -1; single-predecessor label), leaving a
+ *    bare label between the success `return index` and the function end. That
+ *    label blocks jump.c's jump-to-next deletion, so the success return stays
+ *    a real jump that reorg's make_return_insns converts to its OWN `jr` with
+ *    `addu v0,a3` in the delay slot, followed by the bare `jr; nop` island the
+ *    id==-1 beq targets. (An early-return spelling instead merges the success
+ *    return into the island: shared jr, move outside the slot — 8B off.)
+ *  - `ConflictModel = ...` is the FIRST store of the publish group (before
+ *    .vx/.vy/.vz): sched1 then drops its lw into the vx pair's load-delay slot
+ *    and its sw into the vy pair's, and the vz temps allocate to v1/a0 reusing
+ *    the dying k-base (the `do{}while(0)` barrier hack this file used to carry
+ *    is not needed). Ordering the model store between vx and vy instead leaves
+ *    a nop in the vx slot and shifts sw below the vy subu (~26B).
+ *  - The scan-loop guard: `index = 0; if (index >= ConflictObjects) goto
+ *    ret_m1;` then `for (; index < ConflictObjects; index++)`. The guard's
+ *    test folds (index==0 by cse) to `blez N -> ret_m1`, and cse1's
+ *    record_jump_equiv on its fallthrough records LT(idx0, N) on the
+ *    zero-valued quantity, which lets fold_rtx delete the for's
+ *    duplicate_loop_exit_test entry copy (comparison_dominates_p(LT,LT) —
+ *    the recorded comparison must sit on the copy's FIRST slt operand, which
+ *    is why the guard must compare INDEX against N, not `ConflictObjects < 1`:
+ *    that records on N's quantity and never folds — both blez's survive).
+ *    The loop must stay a real `for`: duplicate_loop_exit_test's
+ *    NOTE_INSN_LOOP_VTOP makes reorg's mostly_true_jump predict the
+ *    result==0 skip-branch taken, filling both skip delay slots from the
+ *    continue-point (`addiu v0,a2,1` twice); a do-while has no VTOP, the EQ
+ *    heuristic predicts not-taken, and the fills come from the fallthrough.
+ *  - The pad cap is `found > ConflictObject[iVar3].offset.pad` (found FIRST):
+ *    expand evaluates op0 first, putting the (short)found sll before the
+ *    lh of offset.pad (spelling it `pad < found` loads first — not a sched
+ *    tie).
+ *  - `model->id` is loaded TWICE, un-CSE'd (the DeleteConflict lhu-vs-lh
+ *    split): `int iVar3 = model->id;` (lh — the `== -1` guard and the scan
+ *    base id*0x78) and `short sVar1 = model->id;` (lhu, narrowing — the
+ *    post-loop result/position base). Different machine modes don't CSE.
+ *  - `if (index < 0)` is `sll a1,16; bgez` (short sign test); `found = 0;`
+ *    sits before it so reorg fills the bgez delay slot, and `index = 0`
  *    cse-copies the zero (`move a2,a3`).
- *  - The `return -1`s: the `id == -1` case is a distinct `return -1` that reuses
- *    the compare's `v0 = -1` (a bare `jr;nop` at the tail); every other failure
- *    path shares one early `ret_m1:` block (label INSIDE the attribute guard, so
- *    the inverted `(attr & 0x4000) == 0` places it first) reached by `goto`.
+ *  - All mid-function failure paths `goto ret_m1;`, a label INSIDE the
+ *    attribute guard (the inverted `(attr & 0x4000) == 0` places its
+ *    `jr; li v0,-1` island first, at 0x8001A9E0).
  *  - ConflictDistance is one SVECTOR whose three fields splat auto-named as
  *    SEPARATE, ADDRESS-DRIFTED D_80097EC8/ECC + D_80097ED0 glabels (8 bytes low
  *    in the .map — see the fresh correct-address binds in config/symbols).
- *    `(short)position.vx` reads the low half `lhu` (narrowing into the s16 delta).
- *  - `do { vz…; } while (0);` is a scheduler-barrier lever (permuter-found): it
- *    keeps the model `sw`/return `move` out of the vz region so the return move
- *    lands in the jr delay slot and the function is the right length (92 insns);
- *    without it the tail is one insn short.
+ *    `(short)position.vx` reads the low half `lhu` (narrowing into the s16
+ *    delta).
  */
 
 /* Conflict slot (Ghidra: ConflictObjectType, 0x78 bytes; see DeleteConflict.c). */
@@ -112,9 +118,6 @@ extern s16 ConflictObjects;
 extern SVECTOR ConflictDistance; /* 0x80097EC8 (vx/vy/vz) */
 extern ModelType *ConflictModel; /* 0x80097ED0 */
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GetConflictResult", GetConflictResult);
-#else
 short GetConflictResult(ModelType *model, short index)
 {
     short sVar1;
@@ -124,50 +127,51 @@ short GetConflictResult(ModelType *model, short index)
 
     iVar3 = model->id;
     sVar1 = model->id;
-    if (iVar3 == -1)
+    if (iVar3 != -1)
     {
-        return -1;
-    }
-    if ((model->attribute & 0x4000) == 0)
-    {
-    ret_m1:
-        return -1;
-    }
-    found = 0;
-    if (index < 0)
-    {
-        for (index = 0; index < ConflictObjects; index++)
+        if ((model->attribute & 0x4000) == 0)
         {
-            if (ConflictObject[iVar3].result[index] != 0)
+        ret_m1:
+            return -1;
+        }
+        found = 0;
+        if (index < 0)
+        {
+            index = 0;
+            if (index >= ConflictObjects)
             {
-                found++;
-                if (ConflictObject[iVar3].offset.pad < found)
+                goto ret_m1;
+            }
+            for (; index < ConflictObjects; index++)
+            {
+                if (ConflictObject[iVar3].result[index] != 0)
                 {
-                    goto ret_m1;
-                }
-                if ((ConflictObject[iVar3].result[index] & 0x40) == 0)
-                {
-                    break;
+                    found++;
+                    if (found > ConflictObject[iVar3].offset.pad)
+                    {
+                        goto ret_m1;
+                    }
+                    if ((ConflictObject[iVar3].result[index] & 0x40) == 0)
+                    {
+                        break;
+                    }
                 }
             }
         }
-    }
-    k = index;
-    if (k < ConflictObjects)
-    {
-        if (ConflictObject[sVar1].result[k] != 0)
+        k = index;
+        if (k < ConflictObjects)
         {
-            ConflictObject[sVar1].result[k] |= 0x40;
-            ConflictDistance.vx = (short)ConflictObject[k].position.vx - (short)ConflictObject[sVar1].position.vx;
-            ConflictModel = ConflictObject[k].model;
-            ConflictDistance.vy = (short)ConflictObject[k].position.vy - (short)ConflictObject[sVar1].position.vy;
-            do
+            if (ConflictObject[sVar1].result[k] != 0)
             {
+                ConflictObject[sVar1].result[k] |= 0x40;
+                ConflictModel = ConflictObject[k].model;
+                ConflictDistance.vx = (short)ConflictObject[k].position.vx - (short)ConflictObject[sVar1].position.vx;
+                ConflictDistance.vy = (short)ConflictObject[k].position.vy - (short)ConflictObject[sVar1].position.vy;
                 ConflictDistance.vz = (short)ConflictObject[k].position.vz - (short)ConflictObject[sVar1].position.vz;
-            } while (0);
-            return index;
+                return index;
+            }
         }
+        goto ret_m1;
     }
-    goto ret_m1;
+    return -1;
 }
-#endif

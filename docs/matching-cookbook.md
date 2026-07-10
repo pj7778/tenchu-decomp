@@ -569,6 +569,28 @@ reach it with a single branch (`ItemUse`'s `item[4]==0` and `d >= 300` guards).
 
 ## Loops
 
+### A for-loop's duplicated entry test branching to a shared `return K` is a folded guard
+
+Write `i = 0; if (i >= N) goto ret_k;` immediately before `for (; i < N; i++)`. cse1's
+`record_jump_equiv` records the guard's comparison on its FIRST slt operand's quantity,
+so the guard MUST compare the INDEX against N — `if (N < 1)` records on N's quantity and
+never folds (both `blez`s survive, a real trap). The loop must stay a real `for`: its
+`NOTE_INSN_LOOP_VTOP` is what makes reorg predict the loop-internal skip branch taken and
+duplicate the increment (`addiu v0,a2,1`) into both skip delay slots; a `do`/`while`
+loses those fills (`GetConflictResult`, the deepest of its three residuals).
+
+### A success `return X` keeping its own `jr` needs a zero-byte blocker before function end
+
+When the target's success path has its own `jr` with the value in the delay slot (rather
+than jumping to a shared epilogue), nest the entry guard —
+`if (id != -1) { … } return -1;` — so the final `return -1` is the guard's else. cse
+elides its `li` along the taken edge (single-pred label), and the surviving bare
+CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, letting reorg's
+`make_return_insns` convert it to its own return and fill the slot
+(`GetConflictResult`; DeleteConflict's own style).
+
+
+
 - `for (init; cond; inc)` and `while (cond)` expand with a jump to a
   bottom test; jump.c's `duplicate_loop_exit_test` (fires only when
   `NOTE_INSN_LOOP_BEG` is immediately followed by a simplejump) then copies
@@ -1043,6 +1065,18 @@ a licence to reuse the variable.
 call's argument position**, not assigned to a named local first (even via a ternary).
 Assigning it first makes cc1 re-read the tested field a second time, with the wrong
 signedness -- three extra instructions in `AVCameraSetup`'s `ordr`.
+
+**A comparison's operand order is an instruction-order lever, not a sched tie.**
+expand evaluates op0 first, so `found > mem` emits the (short) sign-extension `sll`s
+BEFORE the `lh`, while `mem < found` loads first — same `slt` either way. Order the
+comparison to match which side's evaluation the target front-loads (`GetConflictResult`,
+8 bytes).
+
+**Put a pointer-field publish (`Global = p->field;`) FIRST in a multi-field store
+group.** sched1 then sinks its `lw`/`sw` into the following pairs' load-delay slots one
+group at a time; placing it mid-group leaves a `nop` in the first slot and drags the
+`sw` below the next `subu` (`GetConflictResult`; made an old `do{}while(0)` hack
+unnecessary).
 
 **Two stores of the same struct field to DIFFERENT objects, even with zero
 intervening statements, need a named temp for a single shared load** — if the struct's
