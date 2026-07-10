@@ -212,9 +212,15 @@ Commit the `.c` + `config/splat.main.exe.yaml` + `shake/src/Build.hs` +
   `./Build clean && ./Build check`, and read the header comments of anything an
   interrupted agent touched.
 - **Trust the whole-image `./Build check` (sha), never per-function matchdiff
-  alone.** matchdiff's window can be shorter than the function — `cd_open`
-  reported "0 differing bytes" in its 64-byte window while 4 bytes differed
-  past it; only the sha caught it. A batch isn't green until `./Build check` is.
+  alone.** matchdiff's window used to be the gap to the next *symbol*, so a `D_`
+  label or a jump table inside a function truncated it — `cd_open` reported "0
+  differing bytes" in its 64-byte window while 4 bytes differed past it. **Fixed:
+  now that every function is carved, matchdiff sizes the window from the splat
+  carve extent** and prints `window N -> M bytes` when the old symbol gap would
+  have been short. Eleven matched functions had been verified only over part of
+  their body (EquipWeapon, PathFileRead, BriefingAndInventorySelectionScreen,
+  SetupStageSequence, …); all 224 re-verified MATCH over their true extents. The
+  whole-image sha is still the gate — a batch isn't green until `./Build check` is.
 - **A phantom `nonmatchings/<name>.s` "can't open for reading" error after
   incremental carves is stale Shake state, not a real break** (the INCLUDE_ASM
   dep-tracking latent issue). `./Build clean` (~7s) fixes it; harvests in a

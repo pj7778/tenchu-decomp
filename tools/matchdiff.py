@@ -40,8 +40,36 @@ def is_carved(name):
     return bool(pat.search(open(YAML).read()))
 
 
+SUBSEG = re.compile(r"^\s+- (?:\[\s*0x([0-9A-Fa-f]+)\s*,\s*[\w.]+\s*(?:,\s*[\w.]+\s*)?\]"
+                    r"|\{\s*start:\s*0x([0-9A-Fa-f]+)\b)", re.M)
+TEXT_FOFF, TEXT_VADDR = 0x800, 0x80011000
+
+
+def carve_extent(name):
+    """(addr, size) from the splat carve, or None.
+
+    Every game function has a `c` subsegment, so the distance to the NEXT
+    subsegment is the function's true extent. The symbol gap is not: a `D_` label
+    or a jump table sitting inside a function truncates it, and a short window is
+    how `cd_open` once reported "0 differing bytes" while 4 bytes differed past
+    its end. Two Ghidra `functions.tsv` sizes are also wrong (LoadCard,
+    FUN_800593a0) -- the carve is right where the export lies.
+    """
+    y = open(YAML).read()
+    offs = sorted(int(m.group(1) or m.group(2), 16) for m in SUBSEG.finditer(y))
+    pat = re.compile(rf"^\s+- \[0x([0-9A-Fa-f]+),\s*c,\s*{re.escape(name)}\]", re.M)
+    m = pat.search(y)
+    if not m:
+        return None
+    off = int(m.group(1), 16)
+    nxt = next((o for o in offs if o > off), None)
+    if nxt is None:
+        return None
+    return off - TEXT_FOFF + TEXT_VADDR, nxt - off
+
+
 def symbol_slot(name):
-    """(addr, size) for `name`, size = gap to the next symbol."""
+    """(addr, size) for `name`. Prefer the splat carve; fall back to the symbol gap."""
     syms = {}
     for line in open(SYMBOLS):
         m = re.match(r"([A-Za-z_$][\w$]*)\s*=\s*(0x[0-9A-Fa-f]+)\s*;", line)
@@ -50,10 +78,17 @@ def symbol_slot(name):
     if name not in syms:
         sys.exit(f"matchdiff: {name} not in {SYMBOLS}")
     addr = syms[name]
+    carve = carve_extent(name)
     higher = [a for a in set(syms.values()) if a > addr]
-    if not higher:
+    gap = (min(higher) - addr) if higher else None
+    if carve and carve[0] == addr:
+        if gap is not None and carve[1] > gap:
+            print(f"matchdiff: window {gap} -> {carve[1]} bytes (a symbol inside "
+                  f"{name} would have truncated it)", file=sys.stderr)
+        return carve
+    if gap is None:
         sys.exit(f"matchdiff: no symbol after {name} @ {addr:#x}; can't size it")
-    return addr, min(higher) - addr
+    return addr, gap
 
 
 def disasm(data, off, size, base):
