@@ -92,9 +92,11 @@ def main():
         if r.returncode != 0:
             tail = "\n".join(open(log, errors="replace").read().splitlines()[-15:])
             if r.returncode in (126, 127) and "Argument list too long" in tail:
-                sys.exit("asmdiff: could not EXEC ./Build (kernel E2BIG; see "
-                         "docs/build-system.md) — environment failure, not a build "
-                         "failure. Re-run.")
+                # execve E2BIG: one env string > MAX_ARG_STRLEN (128 KiB).
+                sys.exit("asmdiff: could not EXEC ./Build -- environment failure, "
+                         "not a build failure. An env var exceeds 128 KiB; find it "
+                         "with: env | awk -F= 'length($0) > 131072 {print $1}'. "
+                         "See docs/build-system.md")
             sys.exit(f"asmdiff: ./Build FAILED (rc={r.returncode}), log: {log}\n{tail}")
 
     addr, size = resolve(args.name)

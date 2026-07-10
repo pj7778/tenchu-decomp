@@ -433,11 +433,13 @@ def score(name, partial):
     b = subprocess.run(["./Build"], stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, env=env)
     if b.returncode in (126, 127):
-        # The kernel failed to exec ./Build (E2BIG; see docs/build-system.md).
-        # Scoring that as "this edit does not compile" would silently poison the
-        # greedy search -- a good edit would be discarded as INVALID.
-        sys.exit("autorules: could not EXEC ./Build — environment failure, not a "
-                 "bad edit. Aborting rather than mis-scoring. Re-run.")
+        # Could not exec ./Build (execve E2BIG: an env string > 128 KiB, see
+        # docs/build-system.md). Scoring that as "this edit does not compile"
+        # would silently poison the greedy search -- a good edit discarded as
+        # INVALID. Abort instead.
+        sys.exit("autorules: could not EXEC ./Build -- environment failure, not a "
+                 "bad edit. An env var exceeds 128 KiB (env | awk -F= "
+                 "'length($0) > 131072 {print $1}'). See docs/build-system.md")
     if b.returncode != 0:
         return (False, INVALID, None, None)
     r = subprocess.run([sys.executable, ASMDIFF, name, "-n"],

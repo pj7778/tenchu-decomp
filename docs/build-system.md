@@ -186,50 +186,89 @@ Cheaper checks: `--lint` (basic: rules that change the cwd or modify their outpu
 after finishing), `--live=FILE` (which files Shake considers live), and
 `--report=r.html` (a profile of what rebuilt and why).
 
-## "Argument list too long" is not what it says
+## "Argument list too long": never capture a big log into `$out`
 
-`execve` on this machine intermittently returns `E2BIG` — which bash prints as
-`Argument list too long`, and shells report as exit 126 — for commands with a trivial
-argument list. Captured with strace:
+**Root cause, found 2026-07-10 (full evidence: `scratch/e2big/FINDINGS.md`).**
+`execve` was intermittently returning `E2BIG` — bash prints `Argument list too long`,
+exit 126 — for commands with a trivial argument list:
 
 ```
 execve("…/bin/grep", ["grep","--version"], 0x55f010 /* 153 vars */) = -1 E2BIG
 ```
 
-Two argv entries, 153 environment variables, ~24 KB total. **Nothing is oversized.**
-An `execve` whose argv+envp is under `ARG_MAX` (128 KB) returns from the kernel's size
-check before any limit applies — verified by shrinking `RLIMIT_STACK` to 64 KB, which
-still execs fine. What fails is `get_arg_page()` populating the new process's argument
-stack, and the kernel reports that as `E2BIG`.
+It looked like a kernel/memory-pressure transient. It is not. The chain is:
 
-**What it is not.** Two plausible causes were tested and eliminated:
+1. `nix develop` — and direnv's `use flake`, i.e. **every shell in this repo** —
+   exports the stdenv derivation machinery into the environment, including a
+   variable literally named `out` (the derivation output path).
+2. bash keeps the **export attribute** on any variable inherited from the
+   environment. So an innocent-looking `out=$(./Build 2>&1)` does not create a
+   private shell variable — it rewrites the *environment* of every subsequent child.
+3. The kernel rejects any **single** argv/envp string longer than `MAX_ARG_STRLEN`
+   (`PAGE_SIZE * 32` = 128 KiB) with `E2BIG` (`fs/exec.c: copy_strings →
+   valid_arg_len`). The *total* (`ARG_MAX`, ~2 MB here) was never the issue —
+   one oversized string is enough, and strace's `/* 153 vars */` hides it because
+   the count doesn't change when an existing var grows.
 
-* *Not a large captured buffer.* `out=$(./Build 2>&1)` holding a 780 KB build log:
-  **0 failures in 200 runs**. A 50 MB shell variable: 0 in 200. Baseline: 0 in 200.
-* *Not the stack rlimit.* See above — below `ARG_MAX` the limit is never consulted.
+So: capture a ≥128 KiB build log into `out` (or any exported name) and **every**
+subsequent `exec` in that shell fails with "Argument list too long" — `grep`, `head`,
+and `./Build` itself — until some capture shrinks the variable again. That self-healing
+is why sweeps showed a contiguous prefix of failures and then went clean: an iteration
+whose capture came back small (e.g. the one-line exec error itself) un-poisoned the
+shell. The "only under heavy load" correlation was also indirect: a warm `./Build`
+prints a few KB (harmless to capture); only cold/busy builds during nine-agent sweeps
+emit ~780 KB logs that cross the 128 KiB line. Verified boundary: an `out=…` env string
+of 131072 bytes (incl. NUL) execs fine; 131073 fails, 100% deterministically, at idle.
 
-It was only ever observed under **heavy concurrent build load** (nine agents, each
-running `./Build`, forking hundreds of `cc1`/`as` processes). That is consistent with a
-transient page-allocation/VMA-expansion failure, and it can hit *any* exec — including
-`./Build` itself — making a perfectly good build look broken.
+**Fixes in place:**
 
-**What we do about it.** There is no user-space fix for a kernel that cannot hand out a
-page, so the tools do three things instead:
+1. The devShell `shellHook` unsets **every** stdenv attribute nix leaks into the
+   interactive environment — all 31 of them (`out`, `name`, `system`, `shell`,
+   `stdenv`, `buildInputs`, `depsBuildBuild`, …), not just `out`. Any of them is the
+   same trap the moment a script assigns to that name. Verified: `declare -px` shows
+   no lowercase stdenv names, and a 200 KB `out=$(…)` is now a plain shell variable
+   (`declare -- out`) that execs fine. After changing `flake.nix`, run `direnv reload`
+   — open shells keep the old environment.
+2. **Never capture command output into a lowercase generic name without checking it is
+   not exported** (`declare -p name`). Better: stream big output to a file, which
+   `matchdiff.py`/`asmdiff.py` already do.
+3. **Never mistake it for a build result.** A `rc 126/127` + `Argument list too long`
+   is reported by the tools as *"could not EXEC ./Build — environment failure, not a
+   build failure"* and not retried. `autorules.py` aborts rather than scoring the
+   failed exec as "this edit does not compile".
+4. The `./Build` wrapper skips `ghc -O2` when the compiled driver is current (~3 s →
+   ~0.2 s warm). Done as exec-churn mitigation while this was still thought to be a
+   kernel transient; kept because it is simply faster.
 
-1. **Never hold a build log in memory.** `matchdiff.py`/`asmdiff.py` stream `./Build`'s
-   output to a file and print its tail on failure. This is hygiene, not a cure — the
-   experiment above shows buffers were never the trigger — but it is bounded and the
-   log survives for reading.
-2. **Never mistake it for a build result.** A `rc 126/127` + `Argument list too long`
-   is reported as *"could not EXEC ./Build — environment failure, not a build failure"*
-   and the tool exits. It is **not** retried: silently retrying hides a real signal, and
-   a caller that sees success cannot tell the difference. `autorules.py` in particular
-   now aborts rather than scoring the failed exec as "this edit does not compile",
-   which would have quietly discarded a good edit as INVALID.
-3. **Reduce exec churn.** The `./Build` wrapper used to invoke `ghc -O2` on *every*
-   call. It now skips ghc unless `shake/src/Build.hs` or the wrapper itself is newer
-   than the compiled driver. A warm `./Build` went from ~3 s to ~0.2 s, and a
-   224-function sweep no longer launches 224 ghc processes.
+If it ever reappears in a shell, the 10-second diagnosis is:
+`env | awk -F= 'length($0) > 131072 {print $1, length($0)}'` — then `unset` the
+offender (or start a fresh shell).
 
-If a sweep reports a contiguous run of build failures that vanish on re-run, suspect
-this before suspecting the build.
+### How the first investigation talked itself out of the right answer
+
+Worth reading before you trust your own control experiments.
+
+The bug was originally chased as a kernel/memory-pressure transient, and a control
+loop "proved" a large captured buffer was innocent: **0 failures in 200 runs.** The
+loop looked like this:
+
+```bash
+run() { for i in $(seq 1 200); do eval "$2"; grep --version || f=$((f+1)); unset out big; done; }
+run "baseline"            "true"
+run "capture 782KB"       "out=\$(cat big.txt)"     # <- reported 0/200
+```
+
+`unset out` in the **baseline** row deleted the variable, and with it the *export
+attribute* inherited from the environment. Every subsequent row therefore assigned to
+a plain shell variable and could never reproduce the bug. The teardown destroyed the
+very state under test.
+
+The tell was there: an earlier ad-hoc loop scored exactly **1 failure in 5** —
+iteration 1 (still exported) failed, `unset out` ran, iterations 2–5 passed. That "1/5"
+was the whole mechanism in miniature, and it was read as noise.
+
+Two lessons. **A control that cleans up between iterations may be cleaning up the
+bug.** And an `errno` name is a claim about a *return value*, not about a cause: here
+`E2BIG` was literally correct — one env string really was too long — while every
+human reading "Argument list too long" against a 2-argument command concluded it
+could not possibly be about length.

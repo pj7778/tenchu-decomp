@@ -252,6 +252,36 @@
 
         ];
         LANG = "C.UTF-8";
+        # `nix develop` (and direnv's `use flake`, i.e. EVERY shell in this
+        # repo) exports stdenv's derivation attributes into the interactive
+        # environment: out, name, system, shell, stdenv, buildInputs, ...
+        # They mean nothing in a devshell, and they are a live trap.
+        #
+        # bash keeps the EXPORT attribute on a variable inherited from the
+        # environment. So an innocent `out=$(some command)` does not create a
+        # shell variable -- it rewrites the *environment* of every subsequent
+        # child. The kernel rejects any single argv/envp string longer than
+        # MAX_ARG_STRLEN (32 * PAGE_SIZE = 131072 bytes) with -E2BIG, so
+        # capturing a large build log into $out makes every following exec in
+        # that shell die with "Argument list too long" (exit 126) -- grep, head,
+        # ./Build itself -- until something shrinks the variable again.
+        # Measured: `out` of 131067 bytes execs, 131068 does not ("out=" + NUL
+        # brings the env string to exactly 131072).
+        #
+        # Unset the lot. See docs/build-system.md ("Argument list too long").
+        shellHook = ''
+          unset out outputs name builder stdenv system shell phases patches \
+                shellHook \
+                buildPhase configureFlags cmakeFlags mesonFlags \
+                doCheck doInstallCheck dontAddDisableDepTrack \
+                preferLocalBuild strictDeps \
+                buildInputs nativeBuildInputs \
+                propagatedBuildInputs propagatedNativeBuildInputs \
+                depsBuildBuild depsBuildBuildPropagated \
+                depsBuildTarget depsBuildTargetPropagated \
+                depsHostHost depsHostHostPropagated \
+                depsTargetTarget depsTargetTargetPropagated
+        '';
       };
     });
 }

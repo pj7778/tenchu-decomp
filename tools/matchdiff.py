@@ -68,6 +68,8 @@ def carve_extent(name):
     return off - TEXT_FOFF + TEXT_VADDR, nxt - off
 
 
+DIAGNOSIS = ("an env var exceeds MAX_ARG_STRLEN (128 KiB). Find it with:\n  env | awk -F= 'length($0) > 131072 {print $1, length($0)}'\nThen unset it. Root cause + fix: docs/build-system.md")
+
 BUILD_LOG = os.path.join(tempfile.gettempdir(), "tenchu-matchdiff-build.log")
 
 
@@ -158,15 +160,13 @@ def main():
         if r.returncode != 0:
             tail = build_log_tail()
             if r.returncode in (126, 127) and "Argument list too long" in tail:
-                # Not a build failure at all. execve() returns E2BIG when the
-                # kernel cannot populate the new process's argument stack --
-                # confirmed with strace: 2 argv entries, 153 env vars, ~24 KB.
-                # Nothing is oversized. It is transient and appears under heavy
-                # concurrent build load. Report it as what it is; do not retry,
-                # and do not call it a build failure.
-                sys.exit("matchdiff: could not EXEC ./Build (kernel returned "
-                         "E2BIG; see docs/build-system.md). This is an "
-                         "environment failure, not a build failure. Re-run.")
+                # Not a build failure. execve() returned E2BIG because ONE env
+                # string exceeds MAX_ARG_STRLEN (128 KiB) -- classically a
+                # `out=$(./Build ...)` in a shell where nix exported `out`, so
+                # the assignment rewrote the environment. The devShell now unsets
+                # those names; if this fires, something re-introduced one.
+                sys.exit("matchdiff: could not EXEC ./Build -- environment "
+                         "failure, not a build failure.\n" + DIAGNOSIS)
             # Surface the real error. Swallowing this behind "run it directly"
             # once cost a long, wrong diagnosis: an exec failure and a compile
             # error looked identical from here.
