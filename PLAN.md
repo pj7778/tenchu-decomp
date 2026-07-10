@@ -15,8 +15,9 @@ byte-identical `main.exe`.
 - **Toolchain is complete for matching.** Pipeline is
   `cpp | cc1-281 -G8 | maspsx --aspsx-version=2.77 | as | ld`; reproducible/offline
   via nix (no cabal/wine). maspsx is integrated (see [`docs/toolchain.md`](docs/toolchain.md)).
-- **Matched functions: ~150/555 game functions (27%), ~11.7% of game-code
-  bytes**, whole-image byte-identical throughout (see `git log` for the
+- **Every game function is carved (555/555)**; matched count is live in
+  `tools/progress.py` (206/555 game functions, 14.1% of game-code bytes at the time
+  of writing), whole-image byte-identical throughout (see `git log` for the
   per-function record; `tools/progress.py` for the live count). The engine is
   the matcher-agent pipeline ([`docs/orchestration.md`](docs/orchestration.md))
   driven **family-first**: map a subsystem's shared struct ONCE and clone/reuse
@@ -75,6 +76,47 @@ The **build environment**, not the decomp logic:
   → now `ld -r -b binary` (matches the old Makefile). Fires once assets exist.
 - **`check` hardened.** Now asserts the reference `disks/tenchu/main.exe` matches a
   pinned expected sha256, so a swapped/corrupt base image can't pass green.
+
+## Original-source data recovered (2026-07-10)
+
+The Japanese demo disc (PAPX-90029) shipped `PSX.SYM`, the Psy-Q linker's debug
+output for an earlier, lost build. It is now parsed, dumped and mined — see
+[`docs/psx-sym.md`](docs/psx-sym.md), which is the resume point for this whole thread.
+
+- **Every game function is carved** (555/555), so `permute.py`/`m2c`/the sweep work on
+  any of them. `tools/progress.py` is the live count (206/555 game functions when this
+  was written).
+- **Recovered from `PSX.SYM`**: 442 prototypes with the authors' parameter names, 2516
+  locals (name, type, register-or-stack), 415 structs/unions/enums with real field
+  names, the 31-file translation-unit map, 304 `static` declarations, 567 typed
+  globals. All under `reference/psxsym-*`; `tools/matcher-prompt.py` injects the
+  per-function facts into every agent launch.
+- **34 function names and 156 data symbols adopted**, all byte-identical. Six replaced
+  guesses with originals (`handle_char_state_using_item_` → `ActITEM`). 121 of the data
+  symbols were already sitting unused in our own Ghidra export — `import_symbols.py`
+  could only *rename*, never *define*, until now.
+- **Recorded, not dropped**: `reference/psxsym-candidates.tsv` (suggestions too weak to
+  adopt), `psxsym-unplaced.tsv` (61 demo functions with no retail home),
+  `psxsym-unnamed.tsv` (136 retail placeholders with no candidate),
+  `psxsym-data-candidates.tsv`.
+
+Best remaining leads, roughly in value order:
+
+1. **Match more functions.** Every batch of function renames unlocks more data symbols
+   (`datamatch.py` can only see a global through a function named on both sides).
+   Re-run `tools/datamatch.py` after each; it proposes zero today because it has
+   harvested everything the current 954 shared names reach.
+2. **`MENU.EXE` / `ENDING.EXE`.** The 61 unplaced demo functions — `OPENING.C`,
+   `OPMOVIE.C`, `MOJI.C` — are presumably there; the demo was one monolithic
+   `PSX.EXE`. The same four matchers apply.
+3. **The `statics` list** (73 functions, 231 objects) should feed `tools/gpsyms.py`: a
+   `static` never gets a `%gp` extern.
+4. **The SLD stream** (per-instruction line deltas) and the `0x90`/`0x92` block markers
+   are parsed and discarded. They would give an address→source-line map for the demo
+   build.
+5. **`StageBosses`/`StageEnemies`** at `0x80097c74`/`0x80097c76`: the demo knows only a
+   single `short StageEnemies`, and the reference votes point it at `…c74`. One of our
+   two names is probably a two-byte-shifted invention.
 
 ## Roadmap / TODO (not yet done)
 

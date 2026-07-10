@@ -15,6 +15,47 @@ Worked examples, in increasing difficulty:
 [`ProcItemKusuri.c`](../src/main.exe/ProcItemKusuri.c) (1432 bytes — the most
 idioms in one place; read its header comment).
 
+## Start from the original source's own facts
+
+Before drafting anything, look up what the authors actually wrote. The Japanese
+demo's `PSX.SYM` (see [psx-sym.md](psx-sym.md)) preserves, for 442 of the game's
+functions, the **prototype with parameter names**, the **source file and line**, and
+**every local variable** — name, type, and whether the compiler kept it in a register
+or on the stack. `tools/matcher-prompt.py <Name>` prints all of it, plus the globals
+the function touches with their original declarations.
+
+```
+- Original prototype: short DrawSprite(struct Sprite3D *sprt);   /* 3DCTRL.C:593 */
+- The original locals (8):
+    param $s1     struct Sprite3D * sprt
+    stack sp+16   struct MATRIX mat
+    reg   $s1     struct ModelType * objp
+    stack sp+48   short [2] rxy
+- Globals it touches:  extern struct GsOT *OTablePt;   /* 0x80097eb0 */
+```
+
+Three things this buys you:
+
+- **The local count and their types are the single biggest lever on cc1's codegen.**
+  The demo's *register allocation* may differ from retail, but how many locals there
+  were and what type each had carries over. Declare those, in that order, before you
+  start guessing.
+- **The prototype is not a guess.** `reference/psxsym-protos.h` beats anything Ghidra
+  or m2c infers. `reference/psxsym-globals.h` beats inventing a layout for `D_800BC108`
+  — the original called it `struct ConflictObjectType ConflictObject[64]`.
+- **TU-mates are contiguous.** `reference/psxsym-tu-map.tsv` tells you which functions
+  shared a `.c` file, which pins rodata pooling and the `%gp` vs absolute choice
+  (see [gp vs absolute globals](#gp-vs-absolute-globals-item-tu-vs-think-tu)).
+
+Caveats worth internalising: the layouts are from an **earlier build**, so verify a
+field offset with `tools/access.py` before relying on it; a local name repeated inside
+one function is a nested-block scope, not a duplicate; and `psxsym-types.h`'s
+`.NNNfake` tags were per-TU, so a struct named after one is only meaningful with its
+file.
+
+If a function is still `FUN_…`, check `reference/psxsym-candidates.tsv` — it may have
+a suggested original name that was not confident enough to adopt.
+
 ## The workflow
 
 ```console

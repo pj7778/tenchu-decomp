@@ -15,6 +15,25 @@ generates its; the repo has the matching one — different roles). What syncs is
 the repo is canonical for what the byte-match proves. See PLAN.md / the design
 discussion for the full rationale.
 
+## Which program to export from (read this first)
+
+The project `~/programming/ghidra-projects/tenchu-decompile.rep` holds ~60 programs
+across every Tenchu release. Our binary is
+**`/Rittai Ninja Katsugeki - Tenchu - Shinobi Gaisen (Japan)/TENCHU/MAIN.EXE`**
+(1781 functions, 277 `FUN_`). That is what `.shake/ghidra-export` was made from, and
+what the repo's names descend from.
+
+**The project also has a program called `/main.exe` in its root. Do not export from
+it.** It is a stale, separately-annotated import of the same binary: 302 functions
+that `MAIN.EXE` names are still `FUN_` there, and it carries 240 *conflicting guessed*
+names (`get_free_memory` where the real name is `vgetfreesize`). `import_symbols.py`
+only refuses to overwrite a real name with a `FUN_`-style placeholder, so pointing it
+at `/main.exe` would silently regress ~240 names into guesses.
+
+The project also contains `PSX.SYM.elf` — boricj's NOBITS import of the demo's debug
+symbols — and the demo binaries. We now read `PSX.SYM` directly instead; see
+[psx-sym.md](psx-sym.md).
+
 ## 1. Export from Ghidra (once, re-run when it changes)
 
 `tools/ghidra/ExportDecomp.java` decompiles every function and writes, to a chosen

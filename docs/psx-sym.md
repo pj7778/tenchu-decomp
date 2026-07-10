@@ -23,6 +23,48 @@ Walks the MODE2/2352 ISO9660 tree, pulls `TENCHU.VOL`, walks its AFS directory
 executables. `disks/` is gitignored; the extractor asserts
 `sha1(PSX.SYM) = ffc15ac96e595a2c073529b368be8bcc53a52bcd`.
 
+## Resuming from cold
+
+Everything derived is committed under `reference/`. Only the inputs are not, because
+they are copyrighted game data (`disks/` is gitignored). To rebuild the world:
+
+```console
+$ tools/extract-demo.py ~/Downloads/PAPX90029.BIN -o disks/demo   # PSX.SYM + PSX.EXE
+$ tools/symdump.py                                                # -> reference/psxsym-*
+```
+
+`reference/demo-psxexe.functions.tsv` and `.labels.tsv` are the demo `PSX.EXE`'s
+Ghidra names (boricj's PSX.SYM propagation), which the three matchers match *against*
+and then re-filter through `PSX.SYM` for provenance. Regenerate them with:
+
+```console
+$ ghidra-analyzeHeadless <proj_dir> \
+    'tenchu-decompile/Rittai Ninja Katsugeki - Tenchu (Japan) (Demo)/TENCHU.VOL/CDIMAGE' \
+    -process 'PSX.EXE' -noanalysis -readOnly -scriptPath tools/ghidra \
+    -postScript ExportFunctionsLabels.java \
+    reference/demo-psxexe.functions.tsv reference/demo-psxexe.labels.tsv
+```
+
+The matchers also read `.shake/ghidra-export/functions.tsv` (see
+[ghidra-bridge.md](ghidra-bridge.md)) and `disks/tenchu/main.exe`.
+
+Then, to look for more names:
+
+```console
+$ tools/symmatch.py --candidates reference/psxsym-candidates.tsv \
+                    --unplaced   reference/psxsym-unplaced.tsv \
+                    --left       reference/psxsym-unnamed.tsv
+$ tools/xbuildnames.py --apply /tmp/x.tsv
+$ tools/callmatch.py   --apply /tmp/c.tsv
+$ tools/callmatch.py   --verify /tmp/x.tsv          # ALWAYS, before adopting
+$ tools/import_symbols.py --renames /tmp/x.tsv      # rebuilds + gates on ./Build check
+$ tools/datamatch.py --apply /tmp/d.tsv             # re-run after ANY function renames
+```
+
+`import_symbols.py --renames` both renames existing symbols and **defines new ones**
+(rewriting splat's `D_800BC108` auto-label across `src/`, the gp-extern lists in
+`Build.hs`/`permute.py`, and the yaml), then gates on a byte-identical `./Build check`.
+
 ## Reading it
 
 `tools/psxsym.py` parses the `MND` format: an 8-byte header then a stream of

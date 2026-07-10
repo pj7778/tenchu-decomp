@@ -89,6 +89,30 @@ Everything the pipeline needs, in the order you touch it:
 | `tools/dedupe-symbols.py [--check]` | one name per address in `config/symbols.main.exe.txt`. splat >= 0.4x refuses duplicates, and our file cannot disambiguate them (it doubles as an ld script, no comment syntax). Re-run after any Ghidra symbol import. |
 | `tools/coverage.py [--all]` | code claimed by NO function — finds under-sized `functions.tsv` entries (a truncated carve still builds green; the tail becomes a `.data` blob that defines the `.L` labels, so nothing complains). `LoadCard` and `FUN_800593a0` are the two in game code. |
 | `tools/regalloc.py <Name>` | **diagnose a register tie** — runs `cc1 -dg` and surfaces which values are live across calls (forced callee-saved), the pseudo→hard-reg map, and the copy-chains that bias the coloring. Run this BEFORE blindly permuting a sub-C tie; it tells you which copy-chain to break. |
+| `tools/extract-demo.py`, `tools/psxsym.py`, `tools/symdump.py` | carve/parse/dump the demo disc's `PSX.SYM` — original prototypes, locals, structs, TU map. See [psx-sym.md](psx-sym.md). `matcher-prompt.py` injects the per-function facts automatically. |
+| `tools/symmatch.py`, `tools/xbuildnames.py`, `tools/callmatch.py`, `tools/datamatch.py` | recover original **names** (functions, then globals) from `PSX.SYM` + the demo `PSX.EXE`. |
+| `tools/import_symbols.py --renames <tsv>` | adopt a rename table: renames existing symbols **and defines new ones** (rewriting splat's `D_…` auto-label across `src/`, the gp-extern lists, the yaml), then gates on a byte-identical `./Build check`. |
+
+## Name recovery: never trust one matcher
+
+Four independent matchers, each measuring its own precision against a control set of
+things already named on both sides. Full detail in [psx-sym.md](psx-sym.md); the
+operating rules:
+
+- **Frame size + saved-register mask agreement is not evidence.** `symmatch` proposed
+  `SetPadState` for `0x80032610` with *both* matching. The callees said
+  `UpdateTexScroll`, and they were right. Call signature outranks frame shape.
+- **Always `tools/callmatch.py --verify <table>` before `import_symbols.py`.** It
+  checks that the demo function's named callees are *contained in* the retail
+  function's (containment, not equality — retail functions grow). It has rejected five
+  candidates and rescued one (`AttackFire`) from LOW.
+- **Ambiguous ⇒ keep the placeholder, record the candidate.** `reference/psxsym-candidates.tsv`
+  and `reference/psxsym-data-candidates.tsv` hold every suggestion we did not adopt;
+  `matcher-prompt.py` surfaces them to whoever touches the function next.
+- **Names and data feed each other.** `datamatch.py` can only see a global through a
+  function named on *both* sides, so every batch of function renames unlocks more data
+  symbols. **Re-run `datamatch.py` after any function renames.** It currently proposes
+  zero — it has harvested everything the present 954 shared names can reach.
 
 ## Launching an agent
 
