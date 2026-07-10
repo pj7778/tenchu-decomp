@@ -339,40 +339,27 @@ against context prototypes), so a small m2c fix-up layer is where more zeros hid
 
 ## Tooling backlog (recurring friction → build these)
 
-- **Carve every remaining game function ("once and for all")? Two concrete
-  `split-scaffold.py` bugs block it — everything else works.** Carving does not
-  affect analysis: `triage.py`, `access.py`, `coverage.py`, `findsimilar.py` and
-  the Ghidra export all read the ORIGINAL binary via objdump, so they see every
-  function whole whether or not it is carved. What carving changes is the BUILD:
-  a `c` subsegment makes splat disassemble that range into its own
-  `asm/nonmatchings/<Name>/<Name>.s` (instead of leaving it inside a raw
-  `asm/data/<off>.data.s` blob) and emit a stub that `INCLUDE_ASM`s it. Output
-  bytes are identical either way. The payoff is that **`permute.py`, m2c and the
-  auto-draft sweep need a per-function `.s`** — the sweep currently bulk-carves
-  into a throwaway worktree just to get them.
-
-  Measured end-to-end (304 un-carved game functions, 237,656 bytes):
-  * 276 plain functions carve cleanly; build time ~13s → ~26s.
-  * 24 are `__override__prt_` two-piece splits: a single `INCLUDE_ASM` stub
-    leaves `undefined reference to .L<addr>` at link. `reverse.py`'s
-    `expand_stub` fixes all 24 — a bulk carver must call it, not just `write_src`.
-  * 29 are jump tables; all 29 now scaffold (needed the `func_bounds`
-    renamed-via-sibling fix). The tree LINKS with all 557 functions carved.
-  * **But the image comes out 52 bytes too large**, and the cause is two bugs:
-    1. **`split-scaffold` assumes one table per function.** `ActCHASE`,
-       `ActSQUAT`, `CameraType1` have 2 tables and `ActENGAGE` has 3, yet the
-       compiled object has ONE `.rodata` section with the `_jtbl` arrays
-       concatenated. Emitting one carve per table places that whole section at
-       the FIRST carve and nothing at the others. Fix: one carve per contiguous
-       table pool, sized to the object's whole `.rodata`.
-    2. **`table_len` under-counts.** `ActENGAGE`'s middle table is 34 words, not
-       33; the 34th (at vram `0x80011424`) is not a code pointer inside the
-       function, so the heuristic stops. That is exactly where the first byte
-       diff appears. Fix: bound a table by the next table's start / the pool end
-       rather than by "is this word a pointer into me".
-
-  Fix those two, and the full carve should land. Until then, carving on demand is
-  one `reverse.py` command and nothing is blocked.
+- **DONE — every game function is carved.** All 555 game functions (plus the two
+  SDK ones we had) now have a `c` subsegment, their own
+  `asm/nonmatchings/<Name>/<Name>.s`, and a `.c` (a stub where unmatched).
+  `./Build check` is byte-identical; a clean build is ~25s (was ~13s).
+  So `permute.py`, m2c and the auto-draft sweep can target ANY function without
+  carving first — `tools/sweep.py`, when built, no longer needs the throwaway
+  worktree. Carving never affected analysis: `triage.py`/`access.py`/
+  `coverage.py`/`findsimilar.py` and the Ghidra export all read the ORIGINAL
+  binary via objdump. What it changes is the build — splat disassembles the range
+  into its own `.s` instead of leaving it inside a raw `data` blob.
+  Three things it took to get there, all now in the tools:
+  * `reverse.py`'s `expand_stub` seeds every piece when splat splits a function at
+    an interior SYMBOL (25 of them: Ghidra `__override__prt_` call-site markers,
+    plus plain labels like `INIT_STAGE_STATS` inside `StartStageSequence`).
+    `is_jump_table()` is the predicate — a `switchD_` piece, not the marker name.
+  * `split-scaffold.py` reads a function's whole jump-table POOL as one raw run
+    and emits one array + one carve, because the compiled object has a single
+    `.rodata` section (28 scaffolded; `ActENGAGE` has three tables).
+  * A full carve is a stronger consistency check than `coverage.py`: it surfaced
+    five "matched" functions that had never been carved, so their `.c` was never
+    linked and `matchdiff` had been reporting a false MATCH. Four were drafts.
 
 - **Productize the sweep as `tools/sweep.py`** (see the section above). Needs:
   resolve the permuter's source + python env from the `permuter.py` wrapper

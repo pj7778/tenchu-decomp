@@ -1,0 +1,65 @@
+#include "common.h"
+#include "main.exe.h"
+
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/CreateHumanoid", CreateHumanoid);
+
+// triage: MEDIUM — 127 insns, 9 callees, ~0.07 to GetAbsolutePosition
+// likely-relevant cookbook sections:
+//   - Dispatch: if/switch ladder — reload vs CSE, signed vs unsigned
+//   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py
+
+// Ghidra decompilation (reference — turn this into matching C,
+// then drop the INCLUDE_ASM above):
+//
+//
+// Humanoid * CreateHumanoid(short type,ulong *mad)
+//
+// {
+//   ushort uVar1;
+//   uint uVar2;
+//   short sVar3;
+//   short sVar4;
+//   Humanoid *human;
+//   ModelArchiveType *pMVar5;
+//   int iVar6;
+//
+//   if ((mad != (ulong *)0x0) && (Humans < 0x28)) {
+//     human = (Humanoid *)vcalloc(0xd0,'\0');
+//     human->type = type;
+//     human->status = 0;
+//     human->attribute = 0;
+//     pMVar5 = LoadModelArchive(mad,&World);
+//     human->model = pMVar5;
+//     human->rotate = &pMVar5->rotate;
+//     human->locate = (VECTOR *)(pMVar5->locate).coord.t;
+//     human->model->attribute = 0x1c;
+//     SetupThinkFunction(human,0);
+//     SetupCharacterParameter(type,human);
+//     iVar6 = (uint)(ushort)human->height << 0x10;
+//     (human->model->clip).vy = -(short)((iVar6 >> 0x10) - (iVar6 >> 0x1f) >> 1);
+//     UpdateMotion(human->motion,0);
+//     GetAreaMapVector((MapVector *)GlobalAreaMap,(VECTOR *)&human->map,(long)human->locate);
+//     SetupWeapon(human);
+//     sVar3 = InsertConflict(*human->model->object);
+//     iVar6 = (uint)(ushort)human->height << 0x10;
+//     sVar4 = (short)((iVar6 >> 0x10) - (iVar6 >> 0x1f) >> 1);
+//     ConflictObject[sVar3].size.vy = sVar4;
+//     ConflictObject[sVar3].offset.vy = -(human->model->rotate).pad - sVar4;
+//     uVar1 = human->width;
+//     ConflictObject[sVar3].common = (undefined *)human;
+//     iVar6 = (uint)uVar1 << 0x10;
+//     sVar4 = (short)((iVar6 >> 0x10) - (iVar6 >> 0x1f) >> 1);
+//     ConflictObject[sVar3].size.vz = sVar4;
+//     ConflictObject[sVar3].size.vx = sVar4;
+//     if ((type == 0x86) || (type == 0x89)) {
+//       ConflictObject[sVar3].offset.vy = -0x1c5;
+//       ConflictObject[sVar3].offset.vz = 0xc0;
+//     }
+//     uVar2 = (uint)(ushort)Humans;
+//     Humans = Humans + 1;
+//     *(Humanoid **)((int)HumanGroup + ((int)(uVar2 << 0x10) >> 0xe)) = human;
+//     return human;
+//   }
+//                     /* WARNING: Subroutine does not return */
+//   SystemOut((uchar *)"HUMAN OVERFLOW");
+// }

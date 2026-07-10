@@ -1,0 +1,53 @@
+#include "common.h"
+#include "main.exe.h"
+
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GetCommand", GetCommand);
+
+// triage: MEDIUM — 73 insns, 3 loop, 0 callees, ~0.07 to LoadAreaMap
+// likely-relevant cookbook sections:
+//   - Loops: 3 back-edge(s) — for/while/do vs goto shape
+
+// Ghidra decompilation (reference — turn this into matching C,
+// then drop the INCLUDE_ASM above):
+//
+//
+// short GetCommand(PADtype *pad)
+//
+// {
+//   int iVar1;
+//   short sVar2;
+//   int iVar3;
+//   int iVar4;
+//   undefined *puVar5;
+//   int iVar6;
+//   int iVar7;
+//
+//   iVar1 = 0;
+//   puVar5 = Command;
+//   while( true ) {
+//     if (puVar5 == (undefined *)0x0) {
+//       return 0;
+//     }
+//     iVar3 = *(int *)((int)&Command + ((iVar1 << 0x10) >> 0xe));
+//     iVar7 = 0;
+//     iVar6 = iVar3 + 2;
+//     if (*(short *)(iVar3 + 2) == -1) break;
+//     do {
+//       iVar3 = (iVar7 << 0x10) >> 0xf;
+//       iVar4 = iVar7 + 1;
+//       if (*(short *)(iVar3 + iVar6) != *(short *)((int)pad->stream + iVar3)) break;
+//       iVar7 = iVar4;
+//     } while (*(short *)((iVar4 * 0x10000 >> 0xf) + iVar6) != -1);
+//     if (*(short *)(((iVar7 << 0x10) >> 0xf) + iVar6) == -1) break;
+//     puVar5 = *(undefined **)((int)&Command + ((iVar1 + 1) * 0x10000 >> 0xe));
+//     iVar1 = iVar1 + 1;
+//   }
+//   iVar7 = 3;
+//   do {
+//     sVar2 = (short)iVar7;
+//     iVar7 = iVar7 + -1;
+//     pad->stream[sVar2] = pad->stream[sVar2 + -1];
+//   } while (0 < iVar7 * 0x10000);
+//   pad->stream[0] = 0;
+//   return **(short **)((int)&Command + ((iVar1 << 0x10) >> 0xe));
+// }
