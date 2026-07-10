@@ -31,6 +31,8 @@ mainGenDir = genDir </> "main.exe"
 
 mainGen :: FilePath
 mainGen = genDir </> "main.exe.done"
+-- (kept as plain constants: `targets` is defined below and Haskell has no
+-- forward-use problem, but these two are referenced in comments/tools too.)
 
 configDir :: FilePath
 configDir = "config"
@@ -55,6 +57,46 @@ mainExe = buildDir </> "tenchu" </> "main.exe"
 -- tools/mkmod.py, so it stays the same size as main.exe (disc rebuild is faithful).
 mainModExe :: FilePath
 mainModExe = buildDir </> "tenchu" </> "main_mod.exe"
+
+-- | Every executable on the disc. `main.exe` is the one we are decompiling; the
+-- rest are still whole -- their splat config (tools/newexe.py) splits each into a
+-- single `data` blob and the build reassembles it byte-identically. They cost
+-- nothing until you carve a function out of one, at which point the workflow is
+-- exactly main.exe's.
+data Target = Target
+  { tgName :: String,      -- ^ e.g. @"main.exe"@; also the gen/build subdirectory
+    tgImage :: FilePath,   -- ^ the original image we must reproduce
+    tgSha :: String        -- ^ sha256 of that image, so `check` catches a swap
+  }
+
+targets :: [Target]
+targets =
+  [ Target "main.exe" ("disks" </> "tenchu" </> "main.exe")
+      "0690a5c14ff3e975ebcb3de26e196a4dbb6afc992677d0de2cbcf86af9993558",
+    Target "menu.exe" ("disks" </> "tenchu" </> "menu.exe")
+      "5de759508d87fa3bd3122329eaaf00467ff5f4d964a1673699309f3b6983c5ab",
+    Target "ending.exe" ("disks" </> "tenchu" </> "ending.exe")
+      "b7ada48dbc9d78098bd2e9fbf8589bdbcb1c64d963abc6282cd65855bf2bb606",
+    Target "trial.exe" ("disks" </> "tenchu" </> "trial.exe")
+      "f236f35ad8d4bed8c70f6cc1e69b62e7dfd27469e6bf1a838aa65932335d7230",
+    Target "run.exe" ("disks" </> "tenchu" </> "run.exe")
+      "8b7d7da5be9b78688e468b1319686f1e36a0fe874f897e5608cb2038340d2caf",
+    Target "slps_019.01" ("disks" </> "slps_019.01")
+      "03f3106094be75b99844f7e111712be4691798fc34fbaf5fd30d1a11e238b332"
+  ]
+
+mainTarget :: Target
+mainTarget = head targets
+
+tgGenDir, tgGen, tgExe, tgElf, tgSplat, tgSymbols, tgBuildDir, tgSrcDir :: Target -> FilePath
+tgGenDir t = genDir </> tgName t
+tgGen t = genDir </> tgName t <.> "done"
+tgExe t = buildDir </> "tenchu" </> tgName t
+tgElf t = tgExe t <.> "elf"
+tgSplat t = configDir </> "splat." <> tgName t <> ".yaml"
+tgSymbols t = configDir </> "symbols." <> tgName t <> ".txt"
+tgBuildDir t = buildDir </> tgName t
+tgSrcDir t = srcDir </> tgName t
 
 -- | Bootable disc images repacked from our exe. The matching build and the mod
 -- build get distinct names so they can each be their own Shake target.
@@ -371,9 +413,13 @@ rules :: Rules ()
 rules = do
   _ <- addOracle (liftIO . runIdOracle)
   _ <- addOracle (\(GpFlags f) -> pure (maspsxGpExterns f))
-  mainRules
-  phonyRules
+  -- Every splat config rewrites include/*.inc, so only one may run at a time.
+  splatRes <- newResource "splat" 1
+  want [mainExe]
   objRules
+  mapM_ (exeRules splatRes) targets
+  mainExtraRules
+  phonyRules
 
 objRules :: Rules ()
 objRules = do
@@ -388,13 +434,14 @@ objRules = do
       neededAsmDeps depFile
 
   [processedDir <//> "*.c", processedDir <//> "*.h"] |%> \out -> do
-    _generatedFiles <- getGeneratedFiles mainGen
     let fileComponent = makeRelative processedDir out
         target = takeDirectory1 fileComponent
+        targetGen = genDir </> target <.> "done"
         file = dropDirectory1 fileComponent
         header = srcDir </> target </> target <.> "h"
         genPath = genDir </> target </> "src" </> file
         srcPath = srcDir </> target </> file
+    _generatedFiles <- getGeneratedFiles targetGen
 
     -- If corresponding file is in `src` then use it, otherwise use it from gen
     -- dir.
@@ -412,7 +459,7 @@ objRules = do
     -- only headers :(. Very sad. Not sure what to do about it. Parse the file
     -- and find INCLUDE_ASM by hand? But maybe it'll already recompile if
     -- anything in mainGen changes.
-    need [mainGen, src]
+    need [targetGen, src]
     liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
     nm <- nonMatchingFlags src
     withTempFile $ \makeOut -> do
@@ -462,30 +509,27 @@ objRules = do
     liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
     cmd_ ld ["-r", "-b", "binary", "-o", out, asset]
 
-mainRules :: Rules ()
-mainRules = do
-  want [mainExe]
+-- | Rules for one executable. Identical for every target: splat -> asm/C -> objects
+-- -> elf -> raw binary. `main.exe` is the only one with C sources today; the others
+-- are one `data` blob each, and everything below is oblivious to the difference.
+exeRules :: Resource -> Target -> Rules ()
+exeRules splatRes t = do
+  let gen = tgGen t
+      genD = tgGenDir t
+      exe = tgExe t
+      elf = tgElf t
+      tBuildDir = tgBuildDir t
+      definedSymbols = tgSymbols t
 
-  priority 2 $ generator mainGen [mainGenDir <//> "*"] $ do
-    -- genereratedFiles <- getGeneratedFiles mainGen
-    let splatFile = configDir </> "splat.main.exe.yaml"
-    need [splatFile, "disks/tenchu/main.exe", configDir </> "symbols.main.exe.txt"]
-    -- Remove the gen directory if it's present: this means that if some file
-    -- changes upstream, we can regenerate easily without worrying about having
-    -- stale things around.
-    -- liftIO $ removeFiles mainGenDir ["//"]
-    liftIO $ mapM_ (\d -> IO.createDirectoryIfMissing True (mainGenDir </> d)) splatDirs
-    -- splat also (re)generates include/{macro.inc,include_asm.h,labels.inc,
-    -- gte_macros.inc}; gte_macros.inc is what lets `as` assemble the PS1 GTE
-    -- command opcodes (RTPS/RTPT/NCLIP/DPCS/...) that make the renderer region
-    -- splittable. Our own `li`/`move` overrides are re-injected into macro.inc
-    -- via the yaml's `generated_macro_inc_content`.
-    cmd_ "split.py" [splatFile]
-    -- splat writes these four into include/ (outside mainGenDir, so the
-    -- `generator` output pattern doesn't cover them) and reads them back, as does
-    -- the `sed -i` on the linker script below. They are this rule's own outputs,
-    -- not dependencies, so tell the linter to allow the reads -- otherwise
-    -- `--lint-fsatrace` drowns the real findings in five known false positives.
+  priority 2 $ generator gen [genD <//> "*"] $ do
+    need [tgSplat t, tgImage t, definedSymbols]
+    liftIO $ mapM_ (\d -> IO.createDirectoryIfMissing True (genD </> d)) splatDirs
+    -- EVERY splat config regenerates include/{macro.inc,include_asm.h,labels.inc,
+    -- gte_macros.inc}, so two targets splitting concurrently would race on them.
+    -- Each config re-injects our `li`/`move` overrides via
+    -- `generated_macro_inc_content`, so the content is identical -- but the writes
+    -- must still be serialised.
+    withResource splatRes 1 $ cmd_ "split.py" [tgSplat t]
     produces
       [ "include" </> "macro.inc",
         "include" </> "gte_macros.inc",
@@ -493,48 +537,45 @@ mainRules = do
         "include" </> "include_asm.h"
       ]
     trackAllow
-      [ mainGenDir <//> "*",
+      [ genD <//> "*",
         "include/macro.inc",
         "include/gte_macros.inc",
         "include/labels.inc",
         "include/include_asm.h"
       ]
-    -- Clean up paths in linker to not be buildDir </> genDir as we want to put
-    -- object files in separate place for aesthetics or whatever.
-    let mainBuildDir = buildDir </> "main.exe"
-        beforeAsm = mainBuildDir </> mainGenDir </> asmDir
-        beforeSrc = mainBuildDir </> mainGenDir </> srcDir
-        beforeAssets = mainBuildDir </> mainGenDir </> assetsDir
-    cmd_ "sed" ["-i", "s|" <> beforeAsm <> "|" <> mainBuildDir <> "|g", mainGenDir </> linkerDir </> "main.exe.ld"]
-    cmd_ "sed" ["-i", "s|" <> beforeSrc <> "|" <> mainBuildDir <> "|g", mainGenDir </> linkerDir </> "main.exe.ld"]
-    cmd_ "sed" ["-i", "s|" <> beforeAssets <> "|" <> mainBuildDir <> "|g", mainGenDir </> linkerDir </> "main.exe.ld"]
+    -- splat bakes `buildDir/<target>/<genDir>/...` into the linker script; we put
+    -- objects directly under `buildDir/<target>`.
+    let beforeAsm = tBuildDir </> genD </> asmDir
+        beforeSrc = tBuildDir </> genD </> srcDir
+        beforeAssets = tBuildDir </> genD </> assetsDir
+        ldOut = genD </> linkerDir </> tgName t <.> "ld"
+    cmd_ "sed" ["-i", "s|" <> beforeAsm <> "|" <> tBuildDir <> "|g", ldOut]
+    cmd_ "sed" ["-i", "s|" <> beforeSrc <> "|" <> tBuildDir <> "|g", ldOut]
+    cmd_ "sed" ["-i", "s|" <> beforeAssets <> "|" <> tBuildDir <> "|g", ldOut]
 
-  let mainElf = mainExe <.> "elf"
-  mainElf %> \out -> do
-    _generatedFiles <- getGeneratedFiles mainGen
-    mainSFiles <- liftIO $ getDirectoryFilesIO (mainGenDir </> asmDir) ["*.s", "data/*.s"]
+  elf %> \out -> do
+    _generatedFiles <- getGeneratedFiles gen
+    sFiles <- liftIO $ getDirectoryFilesIO (genD </> asmDir) ["*.s", "data/*.s"]
     cFiles <- liftIO $ do
-      userFiles <- Set.fromList <$> getDirectoryFilesIO (srcDir </> "main.exe") ["//*.c"]
-      genFiles <- Set.fromList <$> getDirectoryFilesIO (mainGenDir </> "src") ["//*.c"]
+      -- a target nobody has started decompiling has no src/<name>/ at all
+      hasSrc <- IO.doesDirectoryExist (tgSrcDir t)
+      userFiles <- if hasSrc
+        then Set.fromList <$> getDirectoryFilesIO (tgSrcDir t) ["//*.c"]
+        else pure Set.empty
+      genFiles <- Set.fromList <$> getDirectoryFilesIO (genD </> "src") ["//*.c"]
       pure $ Set.toList (userFiles <> genFiles)
-    mainAssetFiles <- liftIO $ getDirectoryFilesIO (mainGenDir </> assetsDir) ["//*.bin"]
-    let mainOFiles = map (\f -> buildDir </> "main.exe" </> f <.> "o") (cFiles <> mainSFiles <> mainAssetFiles)
-        ldFile = mainGenDir </> linkerDir </> "main.exe.ld"
-        definedSymbols = configDir </> "symbols.main.exe.txt"
-        undefinedSymbols = mainGenDir </> metaDir </> "undefined_symbols_auto.main.exe.txt"
-        undefinedFunctions = mainGenDir </> metaDir </> "undefined_functions_auto.main.exe.txt"
-        mainSFilesExp = map (\f -> mainGenDir </> asmDir </> f) mainSFiles
-        -- mainCFilesExp = map (\f -> srcDir </> "main.exe" </> f) mainCFiles
-        mainAssetFilesExp = map (\f -> mainGenDir </> assetsDir </> f) mainAssetFiles
+    assetFiles <- liftIO $ getDirectoryFilesIO (genD </> assetsDir) ["//*.bin"]
+    let oFiles = map (\f -> tBuildDir </> f <.> "o") (cFiles <> sFiles <> assetFiles)
+        ldFile = genD </> linkerDir </> tgName t <.> "ld"
+        undefinedSymbols = genD </> metaDir </> "undefined_symbols_auto." <> tgName t <> ".txt"
+        undefinedFunctions = genD </> metaDir </> "undefined_functions_auto." <> tgName t <> ".txt"
+        sFilesExp = map (\f -> genD </> asmDir </> f) sFiles
+        assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
     -- definedSymbols is fed to `ld -T` below, so the link MUST depend on it.
-    -- Without it, editing config/symbols.main.exe.txt (adding a `D_` address, or
-    -- moving one) silently has no effect: splat only re-runs when the change
-    -- touches something it emits, and if nothing else is dirty the old .elf is
-    -- reused. `./Build check` then reports success against a stale link, and
-    -- matchdiff reports the OLD address with no indication anything is wrong.
-    need (mainSFilesExp <> mainAssetFilesExp <> mainOFiles <> [ldFile, definedSymbols, undefinedSymbols, undefinedFunctions])
-    -- need [mainCFilesExp]
-
+    -- Without it, editing config/symbols.<target>.txt silently has no effect:
+    -- splat only re-runs when the change touches something it emits, and if
+    -- nothing else is dirty the old .elf is reused. `--lint-fsatrace` catches this.
+    need (sFilesExp <> assetFilesExp <> oFiles <> [ldFile, definedSymbols, undefinedSymbols, undefinedFunctions])
     liftIO $ IO.createDirectoryIfMissing True (buildDir </> "tenchu")
     cmd_
       ld
@@ -542,10 +583,9 @@ mainRules = do
       [ "-o",
         out,
         "-Map",
-        buildDir </> "tenchu" </> "main.exe.map",
+        buildDir </> "tenchu" </> tgName t <.> "map",
         "-T",
         ldFile,
-        -- -T <( cut -d '/' -f1 $(CONFIG_DIR)/symbols.main.exe.txt ) \
         "-T",
         definedSymbols,
         "-T",
@@ -554,18 +594,21 @@ mainRules = do
         undefinedFunctions,
         "--no-check-sections",
         "-nostdlib"
-        -- NB: not stripped (`-s`) on purpose — keeping the symbol table lets the
+        -- NB: not stripped (`-s`) on purpose -- keeping the symbol table lets the
         -- `mod` target look up function slot addresses via nm. objcopy -O binary
-        -- ignores the symbol table, so main.exe is unaffected.
+        -- ignores the symbol table, so the exe is unaffected.
       ]
 
-  mainExe %> \_out -> do
-    need [mainElf]
-    cmd_ objcopy objcopyFlags [mainElf, mainExe]
+  exe %> \_out -> do
+    need [elf]
+    cmd_ objcopy objcopyFlags [elf, exe]
 
+-- | Things that only make sense for the executable we are actually decompiling.
+mainExtraRules :: Rules ()
+mainExtraRules = do
   -- Non-matching build: mkmod patches hooked functions in place. It reads main.exe's
   -- symbol table (via nm on the elf), compiles every src/mod/main.exe/*.c, and aborts
-  -- if one outgrows its slot — so depend on the exe+elf, the mod sources, AND the
+  -- if one outgrows its slot -- so depend on the exe+elf, the mod sources, AND the
   -- tool itself, or an edit to a mod (or to mkmod) wouldn't rebuild and the size
   -- guard wouldn't re-run. See docs/modding-and-nonmatching.md.
   mainModExe %> \_out -> do
@@ -574,7 +617,7 @@ mainRules = do
         <> map (srcDir </>) modSrcs
     cmd_ "tools/mkmod.py"
 
-  -- Bootable CD images (.bin/.cue) with our exe swapped in — repacked only when the
+  -- Bootable CD images (.bin/.cue) with our exe swapped in -- repacked only when the
   -- exe changes, not on every `run-iso`. mkiso.py discovers the *original* disc
   -- dynamically ($TENCHU_CUE / disks/ / ~/tenchu-iso/), so a disc swap isn't a
   -- tracked input: `./Build clean` (or touch the exe) to force a repack then.
@@ -633,20 +676,30 @@ phonyRules = do
     need [tenchuModCue]
     launchIso [] tenchuModCue
 
-  phony "check" $ do
-    let reference = "disks" </> "tenchu" </> "main.exe"
-    need [mainExe, reference]
-    StdoutTrim ref <- cmd "sha256sum" reference
-    StdoutTrim ours <- cmd "sha256sum" mainExe
-    let refSha = head $ words ref
-        ourSha = head $ words ours
-    -- Guard against a swapped/corrupt base image: the reference we diff against
-    -- must itself be the known-good Tenchu main.exe, not just self-consistent
-    -- with whatever splat happened to extract.
-    when (refSha /= expectedSha256) $
-      fail $ unwords ["Reference", reference, "has sha256", refSha, "but expected known-good", expectedSha256, "- wrong/corrupt base image?"]
-    when (ourSha /= expectedSha256) $
-      fail $ unwords ["Expected", mainExe, "to have sha256 of", expectedSha256, "but it's", ourSha]
+  -- Verify a target reproduces its original image byte for byte. The reference sha
+  -- is pinned so a swapped/corrupt base image is caught, rather than merely proving
+  -- the build is self-consistent with whatever splat happened to extract.
+  let checkTarget t = do
+        need [tgExe t, tgImage t]
+        StdoutTrim ref <- cmd "sha256sum" (tgImage t)
+        StdoutTrim ours <- cmd "sha256sum" (tgExe t)
+        let refSha = head $ words ref
+            ourSha = head $ words ours
+        when (refSha /= tgSha t) $
+          fail $ unwords ["Reference", tgImage t, "has sha256", refSha,
+                          "but expected known-good", tgSha t, "- wrong/corrupt base image?"]
+        when (ourSha /= refSha) $
+          fail $ unwords ["Expected", tgExe t, "to have sha256 of", refSha,
+                          "but it's", ourSha]
+        putInfo $ "check: " <> tgName t <> " byte-identical"
+
+  -- The matching gate: main.exe only, so it stays fast (matchdiff runs ./Build once
+  -- per function). `check-all` verifies every executable on the disc.
+  phony "check" $ checkTarget mainTarget
+
+  phony "check-all" $ mapM_ checkTarget targets
+
+  phony "all" $ need (map tgExe targets)
 
 -- | Launch our exe fast: mount the original disc and @-loadexe@ over it (no repack).
 -- Paths are absolutised — pcsx-redux resolves them against its own cwd. @extra@ are

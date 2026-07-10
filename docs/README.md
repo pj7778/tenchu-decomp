@@ -7,7 +7,8 @@ decisions behind the toolchain. It's the reference companion to the terse
 ## Contents
 
 - [build-system.md](build-system.md) — the split→reassemble pipeline, the Shake
-  build driver, dependency tracking, and the offline/reproducible nix setup.
+  build driver, dependency tracking, all six executables, and the
+  offline/reproducible nix setup.
 - [toolchain.md](toolchain.md) — the compiler + assembler story, **maspsx vs
   ASPSX.EXE** (do we need wine?), the ASPSX version for Tenchu, and the exact
   recipe to add maspsx.

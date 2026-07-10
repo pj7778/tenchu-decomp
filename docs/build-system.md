@@ -87,11 +87,57 @@ works from anywhere in the tree.
 ```console
 ./Build                 # build .shake/build/tenchu/main.exe
 ./Build check           # build + assert sha256 == disks/tenchu/main.exe
+./Build all             # build all six executables
+./Build check-all       # build + assert sha256 for all six
 ./Build clean           # remove .shake/{gen,build,processed}
 ./Build extract_main.exe# just run splat
 ```
 
 Everything must run inside the devShell (`nix develop`, or `direnv allow` once).
+
+Cold `./Build` is ~25 s; cold `./Build check-all` ~35 s. `check` deliberately
+stays main-only because `tools/matchdiff.py` calls it once per iteration.
+
+## The other five executables
+
+Tenchu ships six PS-EXEs. Only `main.exe` is being decompiled; the other five are
+still whole, but the build carries all of them:
+
+| exe | size | text vram | `$gp` | what it is |
+|---|---|---|---|---|
+| `main.exe` | 555008 | `0x80011000` | `0x80097698` | the game — the one we match |
+| `trial.exe` | 555008 | `0x80011000` | `0x800970b0` | a *different build* of the game (training) |
+| `menu.exe` | 307200 | `0x80011000` | `0x8005b48c` | title / options / save |
+| `ending.exe` | 264192 | `0x80011000` | `0x800507d4` | ending FMV sequencer |
+| `slps_019.01` | 247808 | `0x80011000` | `0x8004ccc0` | the boot stub named in `SYSTEM.CNF` |
+| `run.exe` | 47104 | `0x80110000` | `0x8011af20` | loader — note the different vram |
+
+`tools/newexe.py <name>...` generates `config/splat.<name>.yaml` plus an empty
+`config/symbols.<name>.txt` for any of them. The generated config has one `data`
+subsegment spanning the whole image: splat dumps it to `.word` asm and the build
+reassembles it byte-identically. Carving a function out is then exactly the
+`main.exe` workflow — `tools/reverse.py` grows `c` subsegments in the same shape.
+`newexe.py` refuses to overwrite a config that already has `c` subsegments unless
+you pass `--force`, so regenerating is safe.
+
+Each exe gets its own `.shake/gen/<name>/`, `.shake/build/<name>/`,
+`src/<name>/`, `config/splat.<name>.yaml`, and `config/symbols.<name>.txt`.
+In `Build.hs` a `Target` record carries the name, image path, and pinned sha256,
+and `exeRules` is applied over `targets`. Two things that are easy to get wrong:
+
+- **splat is serialised across targets.** Every config regenerates the *shared*
+  `include/{macro.inc,include_asm.h,labels.inc,gte_macros.inc}` on every run, so
+  concurrent splits race on those four files. `exeRules` takes a
+  `newResource "splat" 1` and wraps the `split.py` call in `withResource`. Each
+  config must also re-inject our `li`/`move` overrides via
+  `generated_macro_inc_content` (splat's own `macro.inc` has neither) — otherwise
+  whichever config ran last silently breaks the others' `li` expansion.
+- **`src/<name>/` may not exist.** The `.elf` rule probes for it before globbing;
+  an exe nobody has started has generated sources only.
+
+`trial.exe` is the same size as `main.exe` but is *not* the same bytes, and its
+`$gp` differs — it is a separately-linked build. Do not assume a `main.exe`
+address means anything there.
 
 ## Environment notes & gotchas
 

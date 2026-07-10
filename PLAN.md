@@ -108,7 +108,13 @@ Best remaining leads, roughly in value order:
    harvested everything the current 954 shared names reach.
 2. **`MENU.EXE` / `ENDING.EXE`.** The 61 unplaced demo functions — `OPENING.C`,
    `OPMOVIE.C`, `MOJI.C` — are presumably there; the demo was one monolithic
-   `PSX.EXE`. The same four matchers apply.
+   `PSX.EXE`. The same four matchers apply. The build now carries all six
+   executables (`./Build check-all`), each split to a single `data` blob and
+   reassembled byte-identically, so a function can be carved out of any of them
+   with the usual `reverse.py` workflow — see `docs/build-system.md`. The
+   name-recovery matchers (`symmatch`/`xbuildnames`/`callmatch`/`datamatch`) still
+   hardcode `main.exe`; they need a `--target` before they can be pointed at the
+   others.
 3. **The `statics` list** (73 functions, 231 objects) should feed `tools/gpsyms.py`: a
    `static` never gets a `%gp` extern.
 4. **The SLD stream** (per-instruction line deltas) and the `0x90`/`0x92` block markers

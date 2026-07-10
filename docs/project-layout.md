@@ -25,7 +25,7 @@ change.
 ```
 config/                       flat, one yaml + symbols per binary  (KEEP)
   splat.main.exe.yaml         CHANGE base_path: . ; asm_path: asm/main.exe ; src_path: src/main.exe
-  splat.slps_019.01.yaml      per-overlay (add others as tackled)
+  splat.<name>.yaml           one per executable; all six exist (tools/newexe.py)
   symbols.common.txt          NEW: PSX hw/BIOS regs split out of symbols.main.exe.txt
   symbols.main.exe.txt        game symbols only
   main.exe.sha256             NEW: externalise the expected hash out of Build.hs
