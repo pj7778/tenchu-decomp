@@ -16,7 +16,7 @@ The split of responsibility:
 
 ## Resuming the hands-off flywheel (quick-start)
 
-**State (keep this line current):** ~189/555 game functions (~34%), ~13% of
+**State (keep this line current):** ~192/555 game functions (~35%), ~13% of
 game bytes, whole-image byte-identical (sha256 `0690a5c1…3558`). Live count:
 `nix develop --command tools/progress.py`.
 
@@ -269,8 +269,54 @@ lens.
 - **Remaining item family**: the ~16 large `ProcItem*` (784–2468B, Fable tier)
   and the 5272B `ReqItemUse` dispatcher.
 
+## The m2c auto-draft sweep (measured; worth productizing)
+
+An experiment worth knowing the numbers for before repeating it. **Do not port
+`autorules.py`'s rules into decomp-permuter — upstream already has them**:
+`type-width` = `perm_randomize_internal_type`, `and-nest` = `perm_condition`,
+`temp-inline` = `perm_expand_expr` (see the permuter's `default_weights.toml`,
+whose weights are overridable per-function via a `settings.toml` in the
+non-matching dir — no fork needed). `autorules`' value is being deterministic
+and *explainable*, not having rules the permuter lacks. What the permuter really
+lacks are our *structural* rules (literal pointer cast, `T[i]` vs `e++`,
+whole-struct assignment) — and even some of those it reaches indirectly via
+`perm_reorder_stmts`/`perm_temp_for_expr` (that is how it cracked AfsGetHeader).
+
+**"Permute every unmatched function briefly" does not work as stated**: only
+carved functions have a per-function `.s`, so there is no `base.c` to perturb and
+no `target.o` to score against. What *does* work, and is cheap:
+
+1. In a throwaway worktree, carve every unmatched non-GTE function (import
+   `reverse.py`'s `add_symbol`/`split_config`, loop, then run `split.py` once).
+2. `m2c.py -t mipsel-gcc-c --context <cpp'd headers> --valid-syntax <pieces>`.
+   Strip the top-level `__asm__()` out of the cpp'd context first — pycparser
+   chokes on it. Define `M2C_UNK`, `M2C_FIELD`, `M2C_ERROR` and the draft mostly
+   compiles.
+3. Compile with our `cc1|maspsx|as` pipeline and score against `target.o` using
+   decomp-permuter's own `Scorer` (`algorithm="difflib"` — `levenshtein` needs a
+   module we don't ship; `objdump_command=None`).
+
+Measured over all **341** unmatched non-GTE functions: m2c produced usable output
+for 286, **146 compiled**, and **3 scored 0** — i.e. m2c's raw output already
+byte-matched (`GetVectorRotation`, `ChkCard`, `FormatCard`, all since committed).
+Only 3 more scored ≤200. Median score was 2520, so **a brief permuter run over
+everything would be wasted** — from a score-1165 base the permuter did not
+converge in 45 s, while the score-0 ones need no permuter at all.
+
+Takeaways: the sweep's value is (a) free matches and (b) a *ranked worklist* —
+score-vs-target is a far better "what's easy next" signal than triage's
+size/similarity heuristic. The 195 that never scored are blocked on draft quality
+(`sp32 undeclared` stack temps, `void value not ignored`, arg-count mismatches
+against context prototypes), so a small m2c fix-up layer is where more zeros hide.
+
 ## Tooling backlog (recurring friction → build these)
 
+- **Productize the sweep as `tools/sweep.py`** (see the section above). Needs:
+  resolve the permuter's source + python env from the `permuter.py` wrapper
+  rather than hardcoding `/nix/store` paths, generate the cpp'd context itself,
+  manage its own throwaway worktree, and emit a score-ranked worklist. Then add a
+  fix-up layer for the 3 recurring m2c compile failures to lift the 146/341
+  scoring rate.
 - **Drop the 79 `__override__prt_` non-symbols from `config/symbols.main.exe.txt`.**
   They are Ghidra call-SITE prototype overrides, not functions, but splat consumes
   the file as `symbol_addrs` and starts a new `.s` piece at each one — silently
