@@ -1,6 +1,31 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void * LoadSI(int target, unsigned char *name);
+ *     INFOVIEW.C:618, 53 src lines, frame 8440 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       int target
+ *     param $s0       unsigned char * name
+ *     reg   $s1       void * ret
+ *     stack sp+24     unsigned char [200] fn
+ *     reg   $s2       unsigned char * msg
+ *     stack sp+8416   long cmd
+ *     stack sp+8420   long result
+ *     stack sp+224    unsigned char [8192] block
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short StageCitizens;
+ *     extern unsigned char *ImagePath;
+ *     extern int StageID;
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/LoadSI", LoadSI);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/LoadSI", load_stage_resource___override__prt_8005c2f4_aee7b64a);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/LoadSI", load_stage_resource___override__prt_8005c36c_6152584a);

@@ -2,6 +2,16 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct tag_TItem items[30];
+ *     extern int StageID;
+ * END PSX.SYM */
+
 /*
  * FUN_8004a42c (0x8004a42c) — allocate a free slot from items[] via the same
  * round-robin counter as ReqItemDrop (COUNTER_FOR_ITEM_ARRAY_): if the slot

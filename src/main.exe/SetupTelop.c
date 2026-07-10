@@ -1,6 +1,30 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetupTelop(unsigned char *telop);
+ *     CHRANIM.C:372, 44 src lines, frame 560 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s4       unsigned char * telop
+ *     reg   $a2       short * font
+ *     stack sp+16     short [16][16] bitmap
+ *     reg   $s0       short n
+ *     reg   $t0       short u
+ *     reg   $t1       short v
+ *     stack sp+528    struct RECT rect
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct POLY_FT4 TelopP;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupTelop", SetupTelop);
 
 // triage: HARD — 269 insns, 4 loop, frame 0x230, 6 callees, ~0.04 to BriefingAndInventorySelectionScreen

@@ -1,6 +1,36 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * long GetAreaMapVector(unsigned long *area, struct MapVector *mvp, struct VECTOR *pos, long wide, int mode);
+ *     CONFLICT.C:180, 39 src lines, frame 64 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param stack+0   unsigned long * area
+ *     param $s0       struct MapVector * mvp
+ *     param $s1       struct VECTOR * pos
+ *     param $s7       long wide
+ *     param stack+16  int mode
+ *     reg   $s4       short mode
+ *     reg   $s2       short i
+ *     reg   $s1       short v
+ *     reg   $a0       long level
+ *     reg   $s6       long x
+ *     reg   $s3       long y
+ *     reg   $s5       long z
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short FieldAttrib;
+ *     extern struct AreaNodeType *FieldArea;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern short RefrectMove[16][2];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GetAreaMapVector", GetAreaMapVector);
 
 // triage: MEDIUM — 137 insns, mul/div, 1 loop, 1 callees, ~0.08 to AdtFntOpen

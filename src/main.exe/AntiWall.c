@@ -1,6 +1,34 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void AntiWall(struct GsRVIEW2 *vinfo, struct GsRVIEW2 *target);
+ *     CAMERA.C:432, 91 src lines, frame 88 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct GsRVIEW2 * vinfo
+ *     param $s2       struct GsRVIEW2 * target
+ *     stack sp+24     struct SVECTOR vsL
+ *     stack sp+32     struct SVECTOR vsR
+ *     reg   $s3       int lvR
+ *     reg   $s0       int rmap
+ *     stack sp+40     struct SVECTOR av
+ *     stack sp+48     int rx
+ *     stack sp+52     int ry
+ *     reg   $s5       int sx
+ *     reg   $s3       int sy
+ *     reg   $s0       int sz
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int Projection;
+ *     extern unsigned long *GlobalAreaMap;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/AntiWall", AntiWall);
 
 // triage: MEDIUM — 173 insns, 6 callees, ~0.06 to AdtFntOpen

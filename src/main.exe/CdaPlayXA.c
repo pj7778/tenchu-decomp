@@ -1,6 +1,30 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * int CdaPlayXA(unsigned char *fname, struct CdlLOC *start, struct CdlLOC *end, unsigned char channel, int mode);
+ *     OPAUDIO.C:133, 39 src lines, frame 96 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       unsigned char * fname
+ *     param $s5       struct CdlLOC * start
+ *     param $s4       struct CdlLOC * end
+ *     param $s6       unsigned char channel
+ *     param stack+16  int mode
+ *     stack sp+16     struct CdlFILE cf
+ *     stack sp+40     struct CdlFILTER filter
+ *     stack sp+48     unsigned char [4] param
+ *     stack sp+56     struct CdlLOC loc
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/CdaPlayXA", CdaPlayXA);
 
 // triage: EASY — 89 insns, 6 callees, ~0.11 to AdtFntOpen

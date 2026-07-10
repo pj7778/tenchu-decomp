@@ -1,6 +1,21 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int Projection;
+ *     extern struct tag_EffectSlot EffectSlot[200];
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern long GameClock;
+ *
+ * PSX.SYM suggests this may be `DrawGore` (LOW confidence, EFFECT.C) — NOT
+ * adopted. Corroborate with `tools/callmatch.py --verify` before renaming.
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80035f44", FUN_80035f44);
 
 // triage: MEDIUM — 208 insns, mul/div, 2 loop, 5 callees, ~0.06 to ReqItemNingyo

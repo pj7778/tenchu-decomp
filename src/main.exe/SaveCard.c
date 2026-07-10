@@ -1,6 +1,36 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short SaveCard(int target, unsigned char *name, void *mem, long size);
+ *     MEMCARD.C:157, 38 src lines, frame 8464 bytes, saved-reg mask 0x80ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       int target
+ *     param $s5       unsigned char * name
+ *     param $s6       void * mem
+ *     param $s7       long size
+ *     stack sp+24     unsigned char [200] fn
+ *     stack sp+8416   long cmd
+ *     stack sp+8420   long result
+ *     reg   $s4       long chan
+ *     stack sp+224    unsigned char [8192] block
+ *     reg   $s2       struct TCardHeader * hd
+ *     reg   $s3       void * data
+ *     reg   $s2       struct TCardHeader * hd
+ *     reg   $t1       unsigned char * icon3
+ *     reg   $s1       unsigned char * icon2
+ *     reg   $s0       unsigned char * icon1
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short StageCitizens;
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SaveCard", SaveCard);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SaveCard", FUN_80056a3c__override__prt_80056d4c_aee7b64a);
 

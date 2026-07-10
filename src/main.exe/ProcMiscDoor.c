@@ -1,6 +1,32 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void ProcMiscDoor(struct tag_TMisc *m, enum TMiscMessage msg);
+ *     MISC.C:294, 116 src lines, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       struct tag_TMisc * m
+ *     param $a1       enum TMiscMessage msg
+ *     reg   $s1       struct TDoor * param
+ *     reg   $s2       int r
+ *     reg   $a1       int type
+ *     reg   $v0       int t
+ *     reg   $v0       int cid
+ *     reg   $v0       int dir
+ *     reg   $s2       int w
+ *     reg   $s0       struct ModelType * model
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern struct MISC__183fake DoorData[11];
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ProcMiscDoor", ProcMiscDoor);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ProcMiscDoor", run_door_spawner_action__override__prt_8004c798_2685a9f3);
 

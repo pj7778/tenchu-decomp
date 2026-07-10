@@ -1,6 +1,16 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 /*
  * FUN_80039610 (0x80039610, 0x74 bytes) — camera-relative coordinate
  * transform helper: writes (x,y,z) - ViewInfo.(vpx,vpy,vpz) as a scratchpad

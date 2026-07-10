@@ -1,6 +1,33 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActSQUAT(void);
+ *     MOTION.C:1712, 83 src lines, frame 40 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s0       short turn
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct MotionManager *dtM;
+ *     extern short dtPAD;
+ *     extern struct SVECTOR *dtR;
+ *     extern short motID;
+ *     extern struct SVECTOR *dtV;
+ *     extern struct TCameraStatus CamState;
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct VECTOR *dtL;
+ *     extern short dtCMD;
+ *     extern unsigned char fInitialize;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 /*
  * ActSQUAT (0x80024a04) — TODO one-line description.
  *

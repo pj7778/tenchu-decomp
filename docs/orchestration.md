@@ -91,6 +91,7 @@ Everything the pipeline needs, in the order you touch it:
 | `tools/regalloc.py <Name>` | **diagnose a register tie** — runs `cc1 -dg` and surfaces which values are live across calls (forced callee-saved), the pseudo→hard-reg map, and the copy-chains that bias the coloring. Run this BEFORE blindly permuting a sub-C tie; it tells you which copy-chain to break. |
 | `tools/extract-demo.py`, `tools/psxsym.py`, `tools/symdump.py` | carve/parse/dump the demo disc's `PSX.SYM` — original prototypes, locals, structs, TU map. See [psx-sym.md](psx-sym.md). `matcher-prompt.py` injects the per-function facts automatically. |
 | `tools/symmatch.py`, `tools/xbuildnames.py`, `tools/callmatch.py`, `tools/datamatch.py` | recover original **names** (functions, then globals) from `PSX.SYM` + the demo `PSX.EXE`. |
+| `tools/symnote.py --write --all` | stamp every `src/main.exe/*.c` with a `BEGIN PSX.SYM` block: the original prototype, locals (name/type/register-or-stack), touched globals, and any recorded candidate name. Idempotent; `--check` gates staleness; `--rename-params` adopts the authors' parameter names. Comments only — `./Build check` must stay byte-identical. |
 | `tools/import_symbols.py --renames <tsv>` | adopt a rename table: renames existing symbols **and defines new ones** (rewriting splat's `D_…` auto-label across `src/`, the gp-extern lists, the yaml), then gates on a byte-identical `./Build check`. |
 
 ## Name recovery: never trust one matcher

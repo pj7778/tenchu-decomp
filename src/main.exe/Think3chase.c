@@ -2,6 +2,23 @@
 #include <psxsdk/libgs.h>
 #include "game_types.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think3chase(void);
+ *     THINK_3.C:60, 5 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long Distance;
+ *     extern short SR;
+ *     extern short EngageLevel;
+ *     extern long GameClock;
+ *     extern long AttackActionCount;
+ *     extern short Degree;
+ *     extern short (*AttackFunc[4])();
+ * END PSX.SYM */
+
 /*
  * Think3chase (0x8002cf74, 0x13c bytes) — think-handler, same "think" TU as
  * Think1trace.c/Think1sleep.c/Think2confirm.c (s16 return convention;

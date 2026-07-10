@@ -1,6 +1,23 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct OrnamentType * LoadOrnament(unsigned long *adr);
+ *     3DCTRL.C:471, 21 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       unsigned long * adr
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ModelType World;
+ *     extern struct SVECTOR UnitVector;
+ * END PSX.SYM */
+
 /*
  * LoadOrnament (0x80018644, 0x90 bytes) - near-twin of
  * CreateCloneOrnament.c (same OrnamentType/WorldType locals, same

@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct MotionPackType * LoadMotion(unsigned long *data);
+ *     ACTION.C:77, 19 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       unsigned long * data
+ *     reg   $s0       struct MotionPackType * mpd
+ *     reg   $a1       struct MotionDataType * mmp
+ *     reg   $a3       short i
+ *     reg   $a2       short j
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionPackType *MotionPack;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/LoadMotion", LoadMotion);
 
 // triage: EASY — 60 insns, 2 loop, 1 callees, ~0.11 to LoadAreaMap

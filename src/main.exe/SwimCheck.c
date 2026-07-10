@@ -1,6 +1,33 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short SwimCheck(void);
+ *     MOTION.C:219, 33 src lines, frame 40 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct VECTOR vect
+ *     reg   $a2       struct ModelArchiveType * mdl
+ *     reg   $a1       short i
+ *     reg   $v1       short i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern short motID;
+ *     extern struct MotionManager *dtM;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern struct VECTOR *dtL;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern short ActionHalt;
+ *     extern short MotionUpdateMode;
+ *     extern struct HumanAnimType CVAhuman[5];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SwimCheck", SwimCheck);
 
 // triage: HARD — 216 insns, mul/div, 2 loop, 11 callees, ~0.10 to FUN_80027304

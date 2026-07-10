@@ -1,6 +1,34 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short HangCheck(void);
+ *     MOTION.C:291, 51 src lines, frame 56 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+24     struct SVECTOR vect
+ *     reg   $s0       long yy
+ *     reg   $s0       long y
+ *     reg   $s1       long ry
+ *     reg   $s4       long oy
+ *     reg   $v1       short i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern short motID;
+ *     extern struct VECTOR *dtL;
+ *     extern struct SVECTOR *dtR;
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern short MotionUpdateMode;
+ *     extern struct HumanAnimType CVAhuman[5];
+ *     extern struct Humanoid *StagePlayer;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/HangCheck", HangCheck);
 
 // triage: MEDIUM — 305 insns, 1 loop, 5 callees, ~0.05 to MotionAndMove

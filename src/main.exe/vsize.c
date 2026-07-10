@@ -1,6 +1,19 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * unsigned long vsize(void *pt);
+ *     VALLOC.C:247, 8 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       void * pt
+ * END PSX.SYM */
+
 /*
  * vsize (0x80016e80, 0xc bytes) — same TU as vinit.c/vgetfreesize.c
  * (virtual_memory_pool/valloc/vfree/vgetmaxsize/vgetfreesize/vcalloc all

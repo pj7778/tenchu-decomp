@@ -1,6 +1,49 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DrawShadow(struct Humanoid *human);
+ *     EFFECT.C:1572, 89 src lines, frame 168 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct Humanoid * human
+ *     stack sp+24     struct VECTOR scl
+ *     reg   $s1       struct VECTOR * loc
+ *     stack sp+40     struct MATRIX mat
+ *     reg   $s0       int height
+ *     reg   $s1       struct VECTOR * pos
+ *     reg   $v1       struct SplashType * param
+ *     reg   $a1       struct tag_EffectSlot * slot
+ *     reg   $a2       int i
+ *     stack sp+72     struct PARAM_ITEM_LAUNCH param
+ *     reg   $s1       struct ModelType * model
+ *     stack sp+112    struct VECTOR pos
+ *     stack sp+128    struct SVECTOR sv
+ *     reg   $t2       short time
+ *     reg   $s1       struct _GsCOORDINATE2 * super
+ *     reg   $v1       struct FrameType * param
+ *     reg   $t1       struct tag_EffectSlot * slot
+ *     reg   $a2       int i
+ *     stack sp+72     struct SVECTOR scr
+ *     stack sp+148    long flag
+ *     stack sp+144    long p
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long GameClock;
+ *     extern int Projection;
+ *     extern struct tag_EffectSlot EffectSlot[200];
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern short motID;
+ *     extern short RefrectVector[16];
+ *     extern struct SVECTOR UnitVector;
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawShadow", DrawShadow);
 
 // triage: HARD — 280 insns, mul/div, 1 loop, 9 callees, ~0.07 to ProcItemKusuri

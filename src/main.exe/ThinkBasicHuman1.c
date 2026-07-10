@@ -1,6 +1,18 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short ThinkBasicHuman1(void);
+ *     THINK.C:236, 7 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern enum TSystemFlag SystemFlag;
+ *     extern short EngageLevel;
+ * END PSX.SYM */
+
 /*
  * ThinkBasicHuman1 (0x8002f820, 0xa4 bytes) — think-handler (same "think" TU
  * as Think1sleep.c/Think1trace.c/ThinkBasicHuman2.c): reads port-0 held

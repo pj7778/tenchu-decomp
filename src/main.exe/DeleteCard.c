@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short DeleteCard(unsigned char *name);
+ *     MEMCARD.C:95, 10 src lines, frame 232 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       unsigned char * name
+ *     stack sp+216    long cmd
+ *     stack sp+220    long result
+ *     stack sp+16     unsigned char [200] fn
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short StageCitizens;
+ * END PSX.SYM */
+
 /*
  * DeleteCard (0x80056ec4, 0x54 bytes) — builds the save file's full memory-card
  * path into a 200-byte stack buffer ("<region-prefix><name>", the prefix being

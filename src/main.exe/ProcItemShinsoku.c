@@ -1,6 +1,33 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemShinsoku(struct tag_TItem *item);
+ *     ITEM.C:1324, 55 src lines, frame 104 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       struct tag_TItem * item
+ *     reg   $s1       struct param_shinsoku * param
+ *     stack sp+24     struct VECTOR pos
+ *     reg   $s2       struct Humanoid * human
+ *     reg   $s0       int itemID
+ *     stack sp+40     struct PARAM_ITEM_LAUNCH p
+ *     reg   $s3       struct tag_TItem * item
+ *     reg   $s0       struct VECTOR * apos
+ *     stack sp+56     struct MapVector map
+ *     stack sp+40     struct VECTOR pos
+ *     reg   $s3       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct TCameraStatus CamState;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemShinsoku", ProcItemShinsoku);
 
 // triage: HARD — 336 insns, mul/div, indirect-call, 14 callees, ~0.27 to ProcItemKusuri

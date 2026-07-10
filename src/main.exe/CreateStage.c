@@ -1,6 +1,42 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void CreateStage(int StageNo, int CharType);
+ *     WORLD.C:139, 114 src lines, frame 208 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       int StageNo
+ *     param $s5       int CharType
+ *     reg   $s0       struct Humanoid * target
+ *     reg   $s2       int i
+ *     stack sp+24     struct POLY_FT4 ply_ten
+ *     stack sp+64     struct POLY_FT4 ply_title1
+ *     stack sp+104    struct POLY_FT4 ply_title2
+ *     stack sp+144    struct GsIMAGE image
+ *     reg   $s1       unsigned long * dat
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $a0       int i
+ *     reg   $s0       void * pBuf
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short Humans;
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern int StageID;
+ *     extern unsigned char *ImagePath;
+ *     extern struct GsOT *OTablePt;
+ *     extern short SkipFrame;
+ *     extern struct TCameraStatus CamState;
+ *     extern enum TSystemFlag SystemFlag;
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/CreateStage", CreateStage);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/CreateStage", initialise_stage_and_character__override__prt_8003a3dc_e0d8bb81);
 

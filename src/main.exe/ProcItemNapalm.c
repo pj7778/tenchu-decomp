@@ -1,6 +1,36 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemNapalm(struct tag_TItem *item);
+ *     ITEM.C:3014, 71 src lines, frame 80 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct tag_TItem * item
+ *     reg   $s5       struct Sprite3D * model
+ *     reg   $s3       struct param_napalm * param
+ *     reg   $s0       int ex
+ *     reg   $s2       struct tag_TItem * item
+ *     reg   $v0       int t
+ *     reg   $a0       int cid
+ *     reg   $a0       struct ModelType * model
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $s1       struct ModelType * model
+ *     stack sp+16     struct VECTOR pos
+ *     reg   $s2       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short motID;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern unsigned long *GlobalAreaMap;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemNapalm", ProcItemNapalm);
 
 // triage: HARD — 418 insns, mul/div, 2 loop, indirect-call, 11 callees, ~0.25 to ProcItemMakibishi

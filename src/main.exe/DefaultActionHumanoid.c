@@ -1,6 +1,41 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short DefaultActionHumanoid(struct Humanoid *human);
+ *     HUMAN.C:155, 175 src lines, frame 120 bytes, saved-reg mask 0x80ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct Humanoid * human
+ *     reg   $s3       struct MapVector * map
+ *     reg   $s5       struct SVECTOR * vector
+ *     reg   $s2       struct VECTOR * locate
+ *     reg   $s4       struct VECTOR * slocate
+ *     reg   $s7       struct ModelType * object
+ *     reg   $a2       long i
+ *     reg   $s4       long xx
+ *     reg   $v1       long yy
+ *     reg   $s0       long zz
+ *     reg   $s0       long ry
+ *     stack sp+32     struct VECTOR position
+ *     stack sp+48     struct MapVector mv
+ *     stack sp+64     struct VECTOR position
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct AreaNodeType *FieldArea;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern short RefrectMove[16][2];
+ *     extern struct SVECTOR ConflictDistance;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DefaultActionHumanoid", DefaultActionHumanoid);
 
 // triage: VERY-HARD — 656 insns, mul/div, 7 loop, 10 callees, ~0.05 to ProcItemDrop

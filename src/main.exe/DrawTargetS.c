@@ -1,6 +1,24 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DrawTargetS(long x, long y, long z, long color);
+ *     EFFECT.C:442, 23 src lines, frame 56 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       long x
+ *     param $s1       long y
+ *     param $s3       long z
+ *     param $a3       long color
+ *     stack sp+16     struct GsLINE line
+ *     reg   $a2       int z
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawTargetS", DrawTargetS);
 
 // triage: EASY — 65 insns, 1 callees, ~0.08 to GetAbsolutePosition

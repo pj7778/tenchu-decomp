@@ -1,6 +1,18 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long GameClock;
+ *     extern unsigned char PutMapMode;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern struct GsSPRITE sprFrame[4];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8004c350", FUN_8004c350);
 
 // triage: MEDIUM — 147 insns, mul/div, 5 callees, ~0.11 to ProcItemKusuri

@@ -1,6 +1,29 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short DrawAfterimage(struct AfterimageType *afi, short disp);
+ *     EFFECT.C:1717, 49 src lines, frame 72 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct AfterimageType * afi
+ *     param $a1       short disp
+ *     reg   $s0       struct POLY_GT4 * poly
+ *     reg   $s3       short i
+ *     reg   $s1       short tplv
+ *     stack sp+16     struct MATRIX mat
+ *     reg   $v1       int z
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct SVECTOR UnitVector;
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawAfterimage", DrawAfterimage);
 
 // triage: MEDIUM — 158 insns, mul/div, 2 loop, 4 callees, ~0.05 to bow_shoot_logic

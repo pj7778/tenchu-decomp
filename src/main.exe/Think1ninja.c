@@ -1,6 +1,18 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think1ninja(void);
+ *     THINK_1.C:99, 2 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short EngageLevel;
+ *     extern unsigned long *GlobalAreaMap;
+ * END PSX.SYM */
+
 /*
  * STATUS: NON_MATCHING — 6 of 356 bytes differ (right length: matchdiff's
  * whole-image count equals the function-local count; asmdiff confirms 89

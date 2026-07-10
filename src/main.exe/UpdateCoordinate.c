@@ -2,6 +2,19 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void UpdateCoordinate(struct ModelType *dim);
+ *     3DCTRL.C:203, 4 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct ModelType * dim
+ * END PSX.SYM */
+
 /*
  * UpdateCoordinate (0x80018248) — recompute a model's local->world matrix from
  * its Euler rotation, then clear the GsCOORDINATE2 dirty flag. `dim` survives
@@ -9,8 +22,8 @@
  */
 extern MATRIX *RotMatrixYXZ(SVECTOR *r, MATRIX *m);
 
-void UpdateCoordinate(ModelType *m)
+void UpdateCoordinate(ModelType *dim)
 {
-    RotMatrixYXZ(&m->rotate, &m->locate.coord);
-    m->locate.flg = 0;
+    RotMatrixYXZ(&dim->rotate, &dim->locate.coord);
+    dim->locate.flg = 0;
 }

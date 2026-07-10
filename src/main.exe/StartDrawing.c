@@ -1,6 +1,20 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void StartDrawing(void);
+ *     3DCTRL.C:140, 6 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short DrawingPage;
+ *     extern struct GsOT OTable[2];
+ *     extern struct GsOT *OTablePt;
+ *     extern long GameClock;
+ * END PSX.SYM */
+
 /*
  * StartDrawing (0x800181d4, 0x74 bytes) — per-frame draw-page flip: toggles
  * the double-buffer page index, points the GPU work/packet area at the new

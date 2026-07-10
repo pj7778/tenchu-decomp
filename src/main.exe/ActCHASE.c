@@ -1,6 +1,34 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActCHASE(void);
+ *     MOTION.C:1241, 61 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s1       short turn
+ *     reg   $v1       short i
+ *     reg   $s0       long y
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct MotionManager *dtM;
+ *     extern short dtPAD;
+ *     extern short MotionUpdateMode;
+ *     extern short motID;
+ *     extern struct HumanAnimType CVAhuman[5];
+ *     extern struct VECTOR *dtL;
+ *     extern struct SVECTOR *dtR;
+ *     extern short dtCMD;
+ *     extern unsigned char fInitialize;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 /*
  * ActCHASE (0x800217dc) — TODO one-line description.
  *

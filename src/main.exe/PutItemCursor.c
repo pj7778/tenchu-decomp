@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void PutItemCursor(short x, short y, short size, short rotdif);
+ *     INFOVIEW.C:358, 5 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       short x
+ *     param $a1       short y
+ *     param $a2       short size
+ *     param $a3       short rotdif
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsSPRITE CursorImage;
+ *     extern struct tag_TItem items[30];
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 /*
  * PutItemCursor (0x8004c094, 0x50 bytes) — position/scale the shop item
  * cursor sprite, bump its rotation by `rotdif`, and sort it into the GsOT.

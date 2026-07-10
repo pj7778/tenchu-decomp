@@ -1,6 +1,24 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void ProcItemManebue(struct tag_TItem *item);
+ *     ITEM.C:1256, 30 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       struct tag_TItem * item
+ *     reg   $a0       struct param_drop * param
+ *     reg   $s0       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long AttackActionCount;
+ * END PSX.SYM */
+
 /*
  * ProcItemManebue (0x8004a1d8) — the manebue (lure whistle) item processor.
  * mode 0: silence the alert, set the owner's whistling state, play the sound,

@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think3area(void);
+ *     THINK_3.C:128, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s0       short pad
+ *     reg   $s2       long xx
+ *     reg   $s1       long zz
+ *     reg   $s3       long dist
+ *     reg   $s2       long vx
+ *     reg   $s1       long vz
+ *     reg   $v0       short deg
+ *     reg   $s0       short pad
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/Think3area", Think3area);
 
 // triage: MEDIUM — 211 insns, mul/div, indirect-call, 7 callees, ~0.06 to ProcItemKusuri

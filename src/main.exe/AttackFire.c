@@ -2,6 +2,22 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void AttackFire(short sfrm, short efrm);
+ *     MOTION.C:876, 16 src lines, frame 72 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       short sfrm
+ *     param $a1       short efrm
+ *     stack sp+16     struct PARAM_ITEM_LAUNCH item
+ *     stack sp+56     struct SVECTOR vect
+ * END PSX.SYM */
+
 /*
  * AttackFire (0x8001f6b8, 0x12c bytes) — an
  * animation-frame callback (param is the frame/trigger id) for the SEVEN

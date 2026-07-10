@@ -1,6 +1,38 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemSmoke(struct tag_TItem *item);
+ *     ITEM.C:1400, 59 src lines, frame 112 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       struct tag_TItem * item
+ *     reg   $s1       struct Sprite3D * model
+ *     reg   $s0       struct param_smoke * param
+ *     reg   $s3       struct tag_TItem * item
+ *     reg   $s3       struct tag_TItem * item
+ *     stack sp+16     struct SVECTOR vec
+ *     stack sp+24     struct VECTOR pos
+ *     stack sp+56     struct TFindItemTarget find
+ *     reg   $v1       struct VECTOR * pos
+ *     reg   $s1       int i
+ *     reg   $s0       struct Humanoid * target
+ *     reg   $v0       int dist
+ *     reg   $s0       struct Humanoid * human
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int StageID;
+ *     extern long GameClock;
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern short Humans;
+ *     extern short ActionHalt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemSmoke", ProcItemSmoke);
 
 // triage: HARD — 251 insns, 4 loop, indirect-call, 13 callees, ~0.17 to ProcItemMakibishi

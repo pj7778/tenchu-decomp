@@ -2,6 +2,30 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct AfterimageType * SetupAfterimage(struct ModelType *model, short len);
+ *     EFFECT.C:1667, 35 src lines, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       struct ModelType * model
+ *     param $a1       short len
+ *     reg   $s2       struct GsIMAGE * image
+ *     reg   $s1       struct AfterimageType * afi
+ *     reg   $a1       short px
+ *     reg   $a2       short py
+ *     reg   $v1       short ph
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short motID;
+ *     extern struct SVECTOR UnitVector;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 /*
  * SetupAfterimage (0x80038e9c, 0xfc bytes) — allocate an afterimage-trail
  * effect: two SVECTOR fields seeded from UnitVector (the identity SVECTOR,

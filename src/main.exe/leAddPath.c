@@ -1,6 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void leAddPath(int id, long x, long y, long z);
+ *     WORLD.C:1303, 17 src lines, frame 56 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       int id
+ *     param $a1       long x
+ *     param $a2       long y
+ *     param $a3       long z
+ *     stack sp+16     struct VECTOR pos
+ *     stack sp+32     struct SVECTOR pow
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TEnemyLayout enemy[30];
+ *     extern struct Sprite3D *sprSmoke;
+ * END PSX.SYM */
+
 /*
  * leAddPath (0x8003c95c, 0xf0 bytes) — `le`=layout-enemy family (see
  * leResetPath.c for TEnemyLayout, recovered from the Ghidra type export):

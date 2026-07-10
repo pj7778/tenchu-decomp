@@ -2,6 +2,24 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DeleteConflict(struct ModelType *model);
+ *     CONFLICT.C:310, 15 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $t3       struct ModelType * model
+ *     reg   $t1       short i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short ConflictObjects;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ * END PSX.SYM */
+
 /*
  * DeleteConflict (0x8001a57c) — remove every conflict box owned by `model`
  * from the ConflictObject pool (see ProcItemMakibishi.c / ProcItemDrop.c, which

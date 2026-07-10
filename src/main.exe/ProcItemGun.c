@@ -1,6 +1,31 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemGun(struct tag_TItem *item);
+ *     ITEM.C:2938, 72 src lines, frame 80 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct tag_TItem * item
+ *     reg   $s2       struct param_gun * param
+ *     stack sp+24     struct SVECTOR vec
+ *     stack sp+32     struct VECTOR target
+ *     reg   $s3       struct Humanoid * IsHuman
+ *     reg   $s1       struct tag_TItem * item
+ *     reg   $v0       int t
+ *     stack sp+48     struct SVECTOR vec
+ *     reg   $s1       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern int StageID;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemGun", ProcItemGun);
 
 // triage: MEDIUM — 203 insns, indirect-call, 10 callees, ~0.22 to ProcItemLightningBolt

@@ -1,6 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void PutStrain(void);
+ *     INFOVIEW.C:218, 70 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s0       int newpow
+ *     reg   $a2       int r
+ *     reg   $s1       struct GsSPRITE * spr
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long StrainRatio;
+ *     extern struct GsSPRITE NumberImage;
+ *     extern long GameClock;
+ *     extern struct GsOT *OTablePt;
+ *     extern short motID;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PutStrain", PutStrain);
 
 // triage: MEDIUM — 146 insns, mul/div, 1 loop, 3 callees, ~0.04 to AdtFntOpen

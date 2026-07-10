@@ -1,6 +1,24 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * unsigned long * LoadAreaMap(unsigned long *adr);
+ *     CONFLICT.C:47, 23 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       unsigned long * adr
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct AreaNodeType *FieldArea;
+ * END PSX.SYM */
+
 /*
  * LoadAreaMap (0x800197a4) — installs a freshly-loaded area-map blob (`adr`)
  * as the live map: relocates every NodeIndexType record's `index` field (an

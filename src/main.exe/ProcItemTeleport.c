@@ -33,6 +33,25 @@
  */
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemTeleport(struct tag_TItem *item);
+ *     ITEM.C:1097, 39 src lines, frame 48 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsSPRITE TargetSprite[1];
+ *     extern struct GsOT *OTablePt;
+ *     extern struct TCameraStatus CamState;
+ * END PSX.SYM */
+
 /* Camera status (Ghidra: TCameraStatus, at CamState) — proven layout, see
  * PauseProc.c (same fields/offsets, restated here per-TU). */
 typedef struct

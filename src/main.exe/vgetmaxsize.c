@@ -1,6 +1,17 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * unsigned long vgetmaxsize(void);
+ *     VALLOC.C:45, 12 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned long *virtual_memory_pool;
+ * END PSX.SYM */
+
 /*
  * vgetmaxsize (0x80016c9c, 0x4c bytes) — same TU as vinit.c/vgetfreesize.c
  * (virtual_memory_pool/valloc/vfree/vgetmaxsize/vgetfreesize/vcalloc all

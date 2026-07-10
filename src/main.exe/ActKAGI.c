@@ -1,6 +1,36 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActKAGI(void);
+ *     MOTION.C:1091, 86 src lines, frame 88 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+24     struct VECTOR v
+ *     reg   $s0       long dist
+ *     stack sp+40     struct PARAM_ITEM_LAUNCH item
+ *     reg   $v1       short ry
+ *     reg   $v1       short i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionManager *dtM;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct VECTOR *dtL;
+ *     extern struct TCameraStatus CamState;
+ *     extern short motID;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern struct SVECTOR *dtR;
+ *     extern short MotionUpdateMode;
+ *     extern struct HumanAnimType CVAhuman[5];
+ *     extern struct SVECTOR *dtV;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ActKAGI", ActKAGI);
 
 // triage: HARD — 524 insns, mul/div, 5 loop, 12 callees, ~0.06 to ProcItemGoshikimai

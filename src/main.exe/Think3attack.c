@@ -1,6 +1,30 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think3attack(void);
+ *     THINK_3.C:70, 29 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $v0       short rng
+ *     reg   $s0       short pad
+ *     reg   $a2       short idx
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short EngageLevel;
+ *     extern short SR;
+ *     extern long Distance;
+ *     extern short Degree;
+ *     extern short Attrib;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/Think3attack", Think3attack);
 
 // triage: MEDIUM — 284 insns, mul/div, 5 callees, ~0.05 to bow_shoot_logic

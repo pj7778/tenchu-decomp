@@ -1,6 +1,20 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void InitSprite(struct GsIMAGE *image, struct GsSPRITE *sprite);
+ *     IMAGES.C:79, 23 src lines, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       struct GsIMAGE * image
+ *     param $s2       struct GsSPRITE * sprite
+ * END PSX.SYM */
+
 /*
  * InitSprite (0x8004e9d8, 0x118 bytes) — zero a GsSPRITE, set its default
  * grey/full-scale look, then (when `image` is given) derive its pixel

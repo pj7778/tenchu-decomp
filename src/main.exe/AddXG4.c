@@ -1,6 +1,20 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void AddXG4(void *ot, struct POLY_XG4 *ply);
+ *     EFFECT.C:1803, 3 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       void * ot
+ *     param $a1       struct POLY_XG4 * ply
+ * END PSX.SYM */
+
 /*
  * AddXG4 (0x80038d40) — adds two GPU primitives out of one buffer to an order
  * table: the primitive at +8 first, then the one at +0 (same shape as

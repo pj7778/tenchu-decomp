@@ -1,6 +1,31 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short ChasetoTarget(long length);
+ *     THINK.C:269, 21 src lines, frame 48 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s5       long length
+ *     reg   $s3       long xx
+ *     reg   $s2       long zz
+ *     reg   $s4       long * chase
+ *     reg   $s3       long vx
+ *     reg   $s2       long vz
+ *     reg   $v0       short deg
+ *     reg   $s0       short pad
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short EngageLevel;
+ *     extern short Attrib;
+ *     extern long Distance;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ChasetoTarget", ChasetoTarget);
 
 // triage: MEDIUM — 82 insns, mul/div, 4 callees, ~0.07 to SetupMotionRegist

@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void AttackBowControl(void);
+ *     MOTION.C:800, 28 src lines, frame 72 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct PARAM_ITEM_LAUNCH item
+ *     reg   $v0       struct VECTOR * pos
+ *     stack sp+56     struct SVECTOR vect
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionManager *dtM;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern short MotionUpdateMode;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/AttackBowControl", AttackBowControl);
 
 // triage: EASY — 68 insns, 5 callees, ~0.06 to ProcItemGoshikimai

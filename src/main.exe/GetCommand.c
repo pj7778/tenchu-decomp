@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short GetCommand(struct PADtype *pad);
+ *     PADCMD.C:333, 22 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $t0       struct PADtype * pad
+ *     reg   $a0       unsigned short * cmd
+ *     reg   $a2       short i
+ *     reg   $a1       short j
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned short *Command[12];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GetCommand", GetCommand);
 
 // triage: MEDIUM — 73 insns, 3 loop, 0 callees, ~0.07 to LoadAreaMap

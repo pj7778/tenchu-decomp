@@ -2,6 +2,38 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemDrop(struct tag_TItem *item);
+ *     ITEM.C:835, 68 src lines, frame 40 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       struct tag_TItem * item
+ *     reg   $s4       struct param_drop * param
+ *     reg   $a0       int cid
+ *     reg   $t1       struct Sprite3D * model
+ *     reg   $s3       struct tag_TItem * item
+ *     reg   $s3       struct tag_TItem * item
+ *     reg   $v0       int t
+ *     reg   $a0       struct ModelType * model
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $s4       struct param_korogari * param
+ *     reg   $s1       int x
+ *     reg   $s0       int y
+ *     reg   $v0       int z
+ *     reg   $s3       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern short ActionHalt;
+ * END PSX.SYM */
+
 /*
  * ProcItemDrop (0x8003e454) — the tossed/dropped item processor installed by
  * ReqItemDrop. Every frame it copies the item coordinate into the sprite and

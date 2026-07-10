@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetupStageSequence(void);
+ *     STAGE.C:77, 12 src lines, frame 80 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     unsigned char [50] name
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern struct EventSeqType *StageEvent;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern int StageID;
+ * END PSX.SYM */
+
 /*
  * SetupStageSequence (0x8004e8f4, 0x70 bytes) — reset the stage's event
  * sequence: point StagePlayer at the first live human (HumanGroup[0]), free

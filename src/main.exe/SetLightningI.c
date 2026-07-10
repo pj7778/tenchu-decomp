@@ -1,6 +1,53 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void SetLightningI(struct VECTOR *start, struct VECTOR *end, int gen, short r, int g, int b);
+ *     EFFECT.C:1500, 60 src lines, frame 152 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s6       struct VECTOR * start
+ *     param $s7       struct VECTOR * end
+ *     param stack+4294967216 int gen
+ *     param stack+4294967224 short r
+ *     param stack+16  int g
+ *     param stack+20  int b
+ *     stack sp+88     short g
+ *     stack sp+96     short b
+ *     reg   $s0       long lcount
+ *     reg   $s4       int i
+ *     stack sp+24     struct SVECTOR scr
+ *     stack sp+32     struct SVECTOR oldscr
+ *     reg   $s1       int x
+ *     reg   $s2       int y
+ *     reg   $s3       int z
+ *     stack sp+40     struct GsLINE line
+ *     reg   $v0       long x
+ *     reg   $t1       long y
+ *     reg   $t2       long z
+ *     reg   $s6       struct VECTOR * v1
+ *     reg   $s7       struct VECTOR * v2
+ *     reg   $a1       long dz
+ *     reg   $a3       long dy
+ *     reg   $t0       long dx
+ *     stack sp+56     struct VECTOR sv
+ *     reg   $s1       long x
+ *     reg   $s2       long y
+ *     reg   $s3       long z
+ *     reg   $fp       struct SVECTOR * scr
+ *     reg   $v1       int z
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TItem items[30];
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetLightningI", SetLightningI);
 
 // triage: HARD — 346 insns, mul/div, 9 callees, ~0.04 to GetVectorRotation

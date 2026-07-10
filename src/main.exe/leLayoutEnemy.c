@@ -1,6 +1,40 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void leLayoutEnemy(int mode);
+ *     WORLD.C:1197, 58 src lines, frame 104 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s5       int mode
+ *     reg   $s3       int i
+ *     reg   $s1       struct Humanoid * target
+ *     stack sp+24     struct VECTOR pos
+ *     reg   $s0       struct TraceLine * t
+ *     reg   $s0       struct TEnemyLayout * en
+ *     reg   $s1       struct Humanoid * human
+ *     reg   $s1       struct Humanoid * human
+ *     reg   $s0       struct TEnemyLayout * en
+ *     reg   $a1       struct TracePoint * tp
+ *     reg   $a0       int i
+ *     stack sp+40     struct VECTOR pos
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern short Humans;
+ *     extern enum TSystemFlag SystemFlag;
+ *     extern struct TEnemyLayout enemy[30];
+ *     extern struct TCameraStatus CamState;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern long AttackActionCount;
+ *     extern long GameClock;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/leLayoutEnemy", leLayoutEnemy);
 
 // triage: MEDIUM — 210 insns, 1 loop, 9 callees, ~0.06 to ProcItemTeleport

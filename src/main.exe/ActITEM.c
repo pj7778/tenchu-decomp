@@ -1,6 +1,22 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActITEM(void);
+ *     MOTION.C:1949, 36 src lines, frame 64 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct PARAM_ITEM_LAUNCH item
+ *     reg   $a1       short flag
+ *     reg   $a0       short mode
+ *     reg   $v0       struct VECTOR * p
+ * END PSX.SYM */
+
 /*
  * ActITEM (0x80026074) — TODO one-line description.
  *

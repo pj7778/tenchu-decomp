@@ -1,6 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void SetupFly(struct param_fly *pfly, struct VECTOR *start, struct VECTOR *end, int yw, int yh, int time);
+ *     ITEM.C:792, 39 src lines, frame 48 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct param_fly * pfly
+ *     param $a1       struct VECTOR * start
+ *     param $a2       struct VECTOR * end
+ *     param $s5       int yw
+ *     param stack+16  int yh
+ *     param stack+20  int time
+ *     reg   $s6       int yh
+ *     reg   $s0       int time
+ *     reg   $a0       long len
+ *     reg   $s1       struct tag_fly * fly
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupFly", SetupFly);
 
 // triage: MEDIUM — 166 insns, mul/div, 2 callees, ~0.10 to bow_shoot_logic

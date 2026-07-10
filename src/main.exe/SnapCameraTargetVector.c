@@ -1,6 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SnapCameraTargetVector(void);
+ *     CAMERA.C:106, 30 src lines, frame 72 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct VECTOR v
+ *     stack sp+32     struct SVECTOR sv
+ *     stack sp+40     struct SVECTOR sv2
+ *     reg   $a0       struct VECTOR * target
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct TCameraStatus CamState;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SnapCameraTargetVector", SnapCameraTargetVector);
 
 // triage: EASY — 117 insns, 3 callees, ~0.12 to DebugMenuItemSet

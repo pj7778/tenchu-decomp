@@ -1,6 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct Humanoid * CreateHumanoid(short type, unsigned long *mad);
+ *     HUMAN.C:36, 31 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       short type
+ *     param $s0       unsigned long * mad
+ *     reg   $s0       struct Humanoid * human
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short Humans;
+ *     extern struct ModelType World;
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern struct Humanoid *HumanGroup[32];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/CreateHumanoid", CreateHumanoid);
 
 // triage: MEDIUM — 127 insns, 9 callees, ~0.07 to GetAbsolutePosition

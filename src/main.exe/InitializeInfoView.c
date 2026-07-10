@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void InitializeInfoView(void);
+ *     INFOVIEW.C:119, 74 src lines, frame 64 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s0       int i
+ *     stack sp+16     unsigned char [25] image
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsSPRITE CursorImage;
+ *     extern struct WorldType WorldMap[8][8][8];
+ *     extern struct GsSPRITE NumberImage;
+ *     extern unsigned char fInitialize;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/InitializeInfoView", InitializeInfoView);
 
 // triage: MEDIUM — 88 insns, 3 loop, 6 callees, ~0.04 to AfsInit

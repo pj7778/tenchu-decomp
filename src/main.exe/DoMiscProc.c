@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DoMiscProc(void);
+ *     MISC.C:713, 19 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s1       int i
+ *     reg   $s1       int i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned char PutMapMode;
+ *     extern long GameClock;
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TMisc misc[200];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DoMiscProc", DoMiscProc);
 
 // triage: MEDIUM — 113 insns, mul/div, 2 loop, indirect-call, 1 callees, ~0.08 to ResetAllMisc

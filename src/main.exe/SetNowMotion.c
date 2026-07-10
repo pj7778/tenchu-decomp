@@ -2,6 +2,21 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short SetNowMotion(struct Humanoid *human, short mid, short move);
+ *     MOTION.C:188, 7 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * human
+ *     param $a1       short mid
+ *     param $a2       short move
+ * END PSX.SYM */
+
 /*
  * SetNowMotion (0x80026f54) — start motion `mid` on a character, unless it's
  * already in the locked state 0x11 running a non-looping (loop == -1) motion.

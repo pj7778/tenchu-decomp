@@ -1,6 +1,23 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void AttackCancelControl(short mode);
+ *     MOTION.C:726, 24 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       short mode
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct MotionManager *dtM;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/AttackCancelControl", AttackCancelControl);
 
 // triage: EASY — 95 insns, 2 callees, ~0.08 to ProcItemGoshikimai

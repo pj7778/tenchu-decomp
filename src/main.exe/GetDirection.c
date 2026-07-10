@@ -1,6 +1,21 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short GetDirection(long dx, long dz, short roty);
+ *     HUMAN.C:381, 9 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       long dx
+ *     param $a1       long dz
+ *     param $a2       short roty
+ * END PSX.SYM */
+
 /*
  * GetDirection (0x8002972c, 0x68 bytes) — angle-difference-to-target,
  * wrapped into [-0x800, 0x7FF] (a 0x1000/4096 = one full turn representation,

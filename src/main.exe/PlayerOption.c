@@ -2,6 +2,28 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void PlayerOption(void);
+ *     INFOVIEW.C:1144, 25 src lines, frame 64 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct TAdtSelect [5] option
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern int StageID;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct AreaNodeType *FieldArea;
+ *     extern short ActionHalt;
+ * END PSX.SYM */
+
 /*
  * PlayerOption (0x8005ce70) — debug menu case 4 (DoInfoViewProc.c): the
  * player-character submenu. Copies the fixed player-option menu table into a

@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void CVAsetup(void);
+ *     CHRANIM.C:64, 15 src lines, frame 88 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+24     unsigned char [50] name
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short StageCitizens;
+ *     extern int StageID;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern struct POLY_F4 TelopbgP;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/CVAsetup", CVAsetup);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/CVAsetup", reload_animations__override__prt_80050014_a9b16ba2);
 

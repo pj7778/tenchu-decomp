@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActSYURI(void);
+ *     MOTION.C:1908, 37 src lines, frame 64 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $v0       struct VECTOR * p
+ *     stack sp+16     struct PARAM_ITEM_LAUNCH item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionManager *dtM;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern short motID;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ActSYURI", ActSYURI);
 
 // triage: MEDIUM — 169 insns, 6 callees, ~0.10 to ReturnNormal

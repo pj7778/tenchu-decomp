@@ -1,6 +1,19 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DisposeBG(struct BackGround *bg);
+ *     3DCTRL.C:697, 7 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct BackGround * bg
+ * END PSX.SYM */
+
 /*
  * DisposeBG (0x8001885c) — free a tile-BG object's three dynamic buffers
  * (`cell`@0x34, `work`@0x38, `index`@0x3C) then the BackGround itself. Same

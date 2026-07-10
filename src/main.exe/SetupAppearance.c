@@ -1,6 +1,33 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetupAppearance(short mode, short stage);
+ *     APPEAR.C:109, 60 src lines, frame 160 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s7       short mode
+ *     param $fp       short stage
+ *     reg   $s2       short i
+ *     reg   $s1       short j
+ *     stack sp+16     unsigned char [100] name
+ *     reg   $a0       unsigned char * pt
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short NowStage;
+ *     extern short EngageLevel;
+ *     extern struct HumanDataType HumanData[63];
+ *     extern struct WeaponModelType WeaponModel[41];
+ *     extern struct MotionPackType *CommonMotion;
+ *     extern struct MotionPackType *PlayerMotion;
+ *     extern struct MotionPackType *StageMotion;
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupAppearance", SetupAppearance);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupAppearance", load_chosen_player_character_resources___override__prt_80029d94_407e704c);
 

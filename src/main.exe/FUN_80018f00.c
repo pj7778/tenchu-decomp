@@ -1,6 +1,17 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int AccessPower;
+ *     extern struct POLY_GT4 AccessImage;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80018f00", FUN_80018f00);
 
 // triage: EASY — 68 insns, 1 loop, 5 callees, ~0.10 to debug_menu_stage_option

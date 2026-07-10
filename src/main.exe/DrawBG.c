@@ -1,6 +1,22 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short DrawBG(struct BackGround *bg);
+ *     3DCTRL.C:686, 6 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct BackGround * bg
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 /*
  * DrawBG (0x80018818, 0x44 bytes) — sort the background layer into the GsOT
  * if it's enabled (attribute bit 0 clear); returns whether it drew.

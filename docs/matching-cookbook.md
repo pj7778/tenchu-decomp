@@ -53,8 +53,18 @@ one function is a nested-block scope, not a duplicate; and `psxsym-types.h`'s
 `.NNNfake` tags were per-TU, so a struct named after one is only meaningful with its
 file.
 
-If a function is still `FUN_…`, check `reference/psxsym-candidates.tsv` — it may have
-a suggested original name that was not confident enough to adopt.
+These same facts are stamped into the top of each `src/main.exe/*.c` as a
+`BEGIN PSX.SYM` block (`tools/symnote.py --write --all`, regenerated in place), so you
+see them whether or not you came in through a prompt. 448 of 557 files have one; the
+rest are functions `PSX.SYM` never described.
+
+If a function is still `FUN_…`, its block carries the recorded candidate name from
+`reference/psxsym-candidates.tsv` — a suggestion that was not confident enough to
+adopt. Do not rename on it without `tools/callmatch.py --verify`.
+
+Parameter names are already the authors' own wherever they could be adopted
+(`tools/symnote.py --params` lists the three still blocked by a name collision with a
+local). Match the *locals* to the original list as you draft: that is the lever.
 
 ## The workflow
 

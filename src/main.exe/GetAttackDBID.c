@@ -1,6 +1,23 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short GetAttackDBID(struct Humanoid *human, short mid);
+ *     APPEAR.C:258, 8 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * human
+ *     param $a1       short mid
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct BattleType BattleDB[78];
+ * END PSX.SYM */
+
 /*
  * GetAttackDBID (0x8002a8ec, 0x8c bytes) — resolves the character's current
  * motion to a row index into the BattleDB attack-pattern table: linear-search

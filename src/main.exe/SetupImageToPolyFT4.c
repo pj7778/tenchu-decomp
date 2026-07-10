@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetupImageToPolyFT4(struct GsIMAGE *image, struct POLY_FT4 *ply, short x, short y);
+ *     IMAGES.C:106, 21 src lines, frame 40 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct GsIMAGE * image
+ *     param $s0       struct POLY_FT4 * ply
+ *     param $a2       short x
+ *     param $a3       short y
+ *     reg   $a1       short tx
+ *     reg   $a3       short ty
+ *     reg   $t0       short th
+ * END PSX.SYM */
+
 /*
  * SetupImageToPolyFT4 (0x8004eaf0, 0x120 bytes) — POLY_FT4 analogue of
  * InitSprite.c: builds a textured GPU quad primitive from the SAME GsIMAGE

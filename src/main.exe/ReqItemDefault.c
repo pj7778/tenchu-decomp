@@ -2,6 +2,28 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ReqItemDefault(struct Humanoid *user, enum TItemType ItemID);
+ *     ITEM.C:3261, 24 src lines, frame 96 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * user
+ *     param $a1       enum TItemType ItemID
+ *     stack sp+16     struct PARAM_ITEM_LAUNCH param
+ *     stack sp+56     struct VECTOR v
+ *     stack sp+72     struct VECTOR v0
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 /*
  * ReqItemDefault (0x800475f4) — spawn an item thrown/placed in front of a
  * Humanoid (called from the ActXXX/DamageControl/ItemUse family). Builds a

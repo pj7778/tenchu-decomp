@@ -1,6 +1,30 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void ProcMiscSnowfall(struct tag_TMisc *m, enum TMiscMessage msg);
+ *     MISC.C:525, 53 src lines, frame 40 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct tag_TMisc * m
+ *     param $a1       enum TMiscMessage msg
+ *     reg   $s4       struct TSnowfall * param
+ *     reg   $s1       int i
+ *     reg   $v0       int w
+ *     reg   $v1       int h
+ *     reg   $s0       struct SVECTOR * pos
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long GameClock;
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcMiscSnowfall", ProcMiscSnowfall);
 
 // triage: MEDIUM — 155 insns, mul/div, 3 callees, ~0.14 to ProcItemKusuri

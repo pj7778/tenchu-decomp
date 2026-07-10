@@ -1,6 +1,20 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetPolyXF4(struct POLY_XF4 *ply, short attrib);
+ *     EFFECT.C:1770, 5 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct POLY_XF4 * ply
+ *     param $a1       short attrib
+ * END PSX.SYM */
+
 /*
  * SetPolyXF4 (0x80038e24) — GPU primitive-packet setup, PsyQ-macro-style
  * (a libgpu POLY_F4 quad preceded by a DR_TPAGE mode-change packet in the

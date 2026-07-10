@@ -1,6 +1,35 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActivateHumans(void);
+ *     WORLD.C:752, 41 src lines, frame 48 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s1       int i
+ *     reg   $s0       struct Humanoid * target
+ *     stack sp+16     struct VECTOR vc
+ *     reg   $s0       struct Humanoid * human
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern long GameClock;
+ *     extern short SkipFrame;
+ *     extern short motID;
+ *     extern struct StageCharType StageChar[18];
+ *     extern short Humans;
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern int StageID;
+ *     extern unsigned long *GlobalAreaMap;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ActivateHumans", ActivateHumans);
 
 // triage: HARD — 402 insns, mul/div, 2 loop, 3 callees, ~0.05 to ProcItemKusuri

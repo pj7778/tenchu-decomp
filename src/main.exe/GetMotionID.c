@@ -2,6 +2,20 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short GetMotionID(struct MotionManager *mmp, short mid);
+ *     ACTION.C:169, 9 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct MotionManager * mmp
+ *     param $a1       short mid
+ * END PSX.SYM */
+
 /*
  * GetMotionID (0x8001c510, 0x74 bytes) — search mmp's registered-motion
  * table (MotionRegistType[], sentinel mid == -1) for the row whose `mid`

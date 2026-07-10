@@ -1,6 +1,22 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short GetPad(short no);
+ *     PADCMD.C:293, 15 src lines, frame 8 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       short no
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TPadPort PadPort[2][4];
+ * END PSX.SYM */
+
 /*
  * GetPad (0x8001b144) — held-buttons for PadPort[arg0][0], the first slot of
  * port `arg0` (a `short`; unlike GetRealPad, which splits a combined
@@ -31,8 +47,8 @@
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GetPad", GetPad);
 #else
-s16 GetPad(short arg0)
+s16 GetPad(short no)
 {
-    return PadPort[arg0][0].held;
+    return PadPort[no][0].held;
 }
 #endif

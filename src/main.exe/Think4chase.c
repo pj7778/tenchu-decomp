@@ -1,6 +1,31 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think4chase(void);
+ *     THINK_4.C:75, 189 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $a0       short pad
+ *     reg   $s1       long xx
+ *     reg   $s2       long zz
+ *     reg   $s1       long vx
+ *     reg   $s2       long vz
+ *     reg   $v0       short deg
+ *     reg   $s0       short pad
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short SR;
+ *     extern short Attrib;
+ *     extern short EngageLevel;
+ *     extern short Degree;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/Think4chase", Think4chase);
 
 // triage: MEDIUM — 101 insns, mul/div, 3 callees, ~0.06 to GetVectorRotation

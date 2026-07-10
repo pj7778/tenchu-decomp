@@ -1,6 +1,19 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DoItemProc(void);
+ *     ITEM.C:3205, 52 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int StageID;
+ *     extern long GameClock;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DoItemProc", DoItemProc);
 
 // triage: EASY — 43 insns, mul/div, indirect-call, 2 callees, ~0.13 to DrawEffect

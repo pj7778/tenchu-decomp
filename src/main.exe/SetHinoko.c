@@ -1,6 +1,30 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetHinoko(struct VECTOR *pos, struct SVECTOR *power, int n);
+ *     EFFECT.C:1321, 21 src lines, frame 48 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       struct VECTOR * pos
+ *     param $s4       struct SVECTOR * power
+ *     param $s5       int n
+ *     reg   $s2       short i
+ *     reg   $s1       struct tag_EffectSlot * slot
+ *     reg   $s0       struct ExplosionType * param
+ *     reg   $a0       int i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct tag_EffectSlot EffectSlot[200];
+ *     extern int Projection;
+ *     extern struct Humanoid *HumanGroup[32];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetHinoko", SetHinoko);
 
 // triage: MEDIUM — 181 insns, mul/div, 1 loop, 1 callees, ~0.10 to ReqItemNingyo

@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetupSoundEffect(short mode, short stage);
+ *     SEMNG.C:26, 12 src lines, frame 144 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       short mode
+ *     param $a1       short stage
+ *     stack sp+24     unsigned char [100] name
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short StageCitizens;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 /*
  * SetupSoundEffect (0x8004fe70, 0xA0 bytes) — (re)load the stage's ambient
  * sound bank: dispose any previous STAGE_SOUNDS_POINTER, then (if `stage`

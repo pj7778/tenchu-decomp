@@ -1,6 +1,44 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DamageControl(void);
+ *     MOTION.C:408, 236 src lines, frame 72 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct VECTOR p
+ *     reg   $s1       struct VECTOR * pp
+ *     reg   $s2       short i
+ *     reg   $s0       short id
+ *     reg   $s4       short deg
+ *     reg   $s1       short dmg
+ *     reg   $s5       short did
+ *     reg   $s3       struct Humanoid * enemy
+ *     reg   $v1       short i
+ *     stack sp+32     struct SVECTOR pv
+ *     reg   $v1       short i
+ *     reg   $v1       short i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern short MotionUpdateMode;
+ *     extern short motID;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern struct BattleType BattleDB[78];
+ *     extern struct VECTOR *dtL;
+ *     extern short Criticals;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern short Murders;
+ *     extern struct HumanAnimType CVAhuman[5];
+ *     extern short ActionHalt;
+ * END PSX.SYM */
+
 /*
  * DamageControl (0x8001d6bc) — TODO one-line description.
  *

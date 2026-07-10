@@ -1,6 +1,29 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct BackGround * SetupBG(struct GsIMAGE *image, short w, short h);
+ *     3DCTRL.C:622, 60 src lines, frame 96 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param stack+0   struct GsIMAGE * image
+ *     param $a1       short w
+ *     param $a2       short h
+ *     reg   $s4       struct BackGround * bg
+ *     reg   $s2       struct GsCELL * cell
+ *     reg   $s5       short x
+ *     stack sp+16     short y
+ *     stack sp+24     short sy
+ *     reg   $a1       short n
+ *     reg   $s1       short pmode
+ *     stack sp+32     short size
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupBG", SetupBG);
 
 // triage: HARD — 268 insns, mul/div, 3 loop, 6 callees, ~0.04 to GetVectorRotation

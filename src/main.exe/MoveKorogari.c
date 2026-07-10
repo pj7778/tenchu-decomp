@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void MoveKorogari(struct tag_TItem *item, struct param_korogari *param);
+ *     ITEM.C:663, 63 src lines, frame 64 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct tag_TItem * item
+ *     param $s2       struct param_korogari * param
+ *     stack sp+24     struct MapVector mv
+ *     stack sp+40     struct SVECTOR vec
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern short RefrectMove[16][2];
+ *     extern int StageID;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/MoveKorogari", MoveKorogari);
 
 // triage: HARD — 371 insns, mul/div, 5 callees, ~0.06 to ProcItemKusuri

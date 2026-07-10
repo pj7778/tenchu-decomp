@@ -1,6 +1,38 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short SearchTarget(struct Humanoid *human, long *distance, short *degree);
+ *     HUMAN.C:436, 46 src lines, frame 64 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct Humanoid * human
+ *     param $s3       long * distance
+ *     param $s4       short * degree
+ *     reg   $s2       struct VECTOR * head
+ *     stack sp+16     struct VECTOR vect
+ *     stack sp+32     struct SVECTOR svect
+ *     reg   $s0       short mode
+ *     reg   $a0       long dx
+ *     reg   $a1       long dz
+ *     reg   $s0       short roty
+ *     reg   $a1       short degree
+ *     reg   $a3       short n
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long GameClock;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern long AttackActionCount;
+ *     extern void (*ActionFunc[18])();
+ *     extern unsigned long *GlobalAreaMap;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SearchTarget", SearchTarget);
 
 // triage: HARD — 282 insns, mul/div, 3 loop, 3 callees, ~0.05 to GetDirection

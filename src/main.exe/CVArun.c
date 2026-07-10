@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short CVArun(void);
+ *     CHRANIM.C:238, 47 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $a2       struct MotionManager * mmp
+ *     reg   $s1       short i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int StageID;
+ *     extern struct POLY_F4 TelopbgP;
+ *     extern struct GsOT *OTablePt;
+ *     extern struct HumanAnimType CVAhuman[5];
+ *     extern short StageCitizens;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/CVArun", CVArun);
 
 // triage: MEDIUM — 133 insns, 2 loop, 14 callees, ~0.06 to DisposeWeapon

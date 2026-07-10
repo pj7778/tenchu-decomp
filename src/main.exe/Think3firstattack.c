@@ -2,6 +2,27 @@
 #include <psxsdk/libgs.h>
 #include "game_types.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think3firstattack(void);
+ *     THINK_3.C:209, frame 16 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $a0       short pad
+ *     reg   $v1       short pad
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long Distance;
+ *     extern short SR;
+ *     extern short EngageLevel;
+ *     extern short Attrib;
+ *     extern short Degree;
+ * END PSX.SYM */
+
 /*
  * STATUS: NON_MATCHING — 28 of 260 bytes differ (right length: the residual
  * doesn't shift anything downstream; `tools/matchdiff.py` whole-image count

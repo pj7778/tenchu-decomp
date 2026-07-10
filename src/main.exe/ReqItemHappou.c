@@ -2,6 +2,35 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static int ReqItemHappou(struct PARAM_ITEM_LAUNCH *p);
+ *     ITEM.C:2541, 41 src lines, frame 72 bytes, saved-reg mask 0x80ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s4       struct PARAM_ITEM_LAUNCH * p
+ *     reg   $s5       int i
+ *     reg   $s1       struct tag_TItem * item
+ *     reg   $s3       struct param_launch * param
+ *     reg   $s0       struct tag_TItem * ret
+ *     reg   $a1       int i
+ *     reg   $a0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s1       struct tag_TItem * item
+ *     reg   $v1       struct Humanoid * aowner
+ *     reg   $a0       int atype
+ *     reg   $s2       struct VECTOR * pos
+ *     stack sp+24     struct SVECTOR rot
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct tag_TItem items[30];
+ *     extern int StageID;
+ * END PSX.SYM */
+
 /*
  * ReqItemHappou (0x80044b18) — fire an 8-shot "happou" volley (8 homing
  * projectiles fanned out by a random jitter on the aim direction). Twin of

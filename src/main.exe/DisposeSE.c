@@ -1,6 +1,19 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DisposeSE(struct SoundEffect *se);
+ *     AUDIO.C:61, 7 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct SoundEffect * se
+ * END PSX.SYM */
+
 /*
  * DisposeSE (0x80018da0) — silence all voices, close the VAB, then free a
  * sound-effect object's VAB header buffer and the SoundEffect itself. Same

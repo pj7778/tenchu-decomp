@@ -1,6 +1,30 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct OrnamentArchiveType * LoadOrnamentArchive(unsigned long *adr, struct ModelType *prnt);
+ *     WORLD.C:259, 57 src lines, frame 48 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       unsigned long * adr
+ *     param $s4       struct ModelType * prnt
+ *     reg   $a3       struct ModelType * dim
+ *     reg   $s1       struct OrnamentArchiveType * mad
+ *     reg   $s3       struct ParentingType * prntp
+ *     reg   $s5       unsigned char * tmdp
+ *     reg   $s2       short i
+ *     reg   $v1       short j
+ *     reg   $s0       struct OrnamentType * objp
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ModelType World;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/LoadOrnamentArchive", LoadOrnamentArchive);
 
 // triage: MEDIUM — 142 insns, 1 loop, 6 callees, ~0.07 to SetupMotionRegist

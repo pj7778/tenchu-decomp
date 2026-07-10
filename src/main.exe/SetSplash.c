@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetSplash(struct VECTOR *pos, short sx, short sy, int speed);
+ *     EFFECT.C:1023, 17 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct VECTOR * pos
+ *     param $a1       short sx
+ *     param $a2       short sy
+ *     param $a3       int speed
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int Projection;
+ *     extern struct tag_EffectSlot EffectSlot[200];
+ *     extern struct Humanoid *HumanGroup[32];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetSplash", SetSplash);
 
 // triage: EASY — 49 insns, 1 loop, 0 callees, ~0.08 to ReqItemManebue

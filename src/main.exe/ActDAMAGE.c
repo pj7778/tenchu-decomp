@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActDAMAGE(void);
+ *     MOTION.C:1989, 53 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $a2       struct OrnamentType ** weapon
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionManager *dtM;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct SVECTOR *dtV;
+ *     extern short motID;
+ *     extern struct VECTOR *dtL;
+ *     extern struct Humanoid *StagePlayer;
+ * END PSX.SYM */
+
 /*
  * ActDAMAGE (0x800262b0) — TODO one-line description.
  *

@@ -45,6 +45,26 @@
  */
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void ProcItemGoshikimai(struct tag_TItem *item);
+ *     ITEM.C:2223, 35 src lines, frame 72 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct tag_TItem * item
+ *     reg   $s0       struct param_goshikimai * param
+ *     reg   $s0       struct Humanoid * human
+ *     stack sp+16     struct PARAM_ITEM_LAUNCH p
+ *     reg   $s1       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short ActionHalt;
+ * END PSX.SYM */
+
 extern void NowReturnNormal(Humanoid *h);
 
 void ProcItemGoshikimai(tag_TItem *item)

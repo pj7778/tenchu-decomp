@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct Humanoid * SetupCharacterParameter(short type, struct Humanoid *human);
+ *     APPEAR.C:173, 25 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       short type
+ *     param $s1       struct Humanoid * human
+ *     reg   $a0       int idx
+ *     reg   $a2       short * idtbl
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct HumanDataType HumanData[63];
+ *     extern short NowStage;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupCharacterParameter", SetupCharacterParameter);
 
 // triage: MEDIUM — 93 insns, 2 loop, 2 callees, ~0.07 to ReqItemGoshikimai

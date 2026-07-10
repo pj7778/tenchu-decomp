@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void InitFileSystem(int mode);
+ *     FILEIO.C:62, 40 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       int mode
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int ReadMode;
+ *     extern int TotalIO;
+ *     extern unsigned long *virtual_memory_pool;
+ *     extern struct GsOT *OTablePt;
+ *     extern struct TAFS systemAFS;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/InitFileSystem", InitFileSystem);
 
 // triage: EASY — 87 insns, 7 callees, ~0.10 to initialise_default_player_cameras_

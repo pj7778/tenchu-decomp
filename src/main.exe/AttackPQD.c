@@ -2,12 +2,26 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void AttackPQD(short sfrm, short efrm);
+ *     MOTION.C:849, 23 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       short sfrm
+ *     param $a1       short efrm
+ * END PSX.SYM */
+
 /*
  * AttackPQD (0x80027688, 0xa8 bytes) — weapon holster/draw swap: on a
  * matching motion-frame trigger (dtM->count, MotionManager's proven
- * `count` field) or a wildcard trigger (arg1 == -1), draws the holstered
+ * `count` field) or a wildcard trigger (efrm == -1), draws the holstered
  * weapon at weapon[3] into weapon[0] (the active slot) and clears
- * weapon[3]; on the OTHER trigger frame (dtM->count == arg0), holsters the
+ * weapon[3]; on the OTHER trigger frame (dtM->count == sfrm), holsters the
  * active weapon[0] into weapon[2] instead. Either swap plays a sound
  * (Sound(human, seid), seid=1 for draw / 0 for holster) — unless the
  * source slot was already empty, in which case it's a silent no-op.
@@ -59,7 +73,7 @@
  *    statement order nor declaration order moved; the winning candidate
  *    also had two dead `if (!ppOVar1) {}` / bare `;` no-ops that bisection
  *    showed were NOT load-bearing (removed here).
- *  - `if (count == arg1 || arg1 == -1)` keeps Ghidra's literal polarity
+ *  - `if (count == efrm || efrm == -1)` keeps Ghidra's literal polarity
  *    (De-Morgan lever: an `||`'s THEN body is reached by the first
  *    disjunct's taken branch OR the second disjunct's fallthrough —
  *    already the asm's shape, no inversion needed here, unlike a plain
@@ -73,7 +87,7 @@ extern Humanoid *Me_MOTION_C;
 extern MotionManager *dtM;
 extern void Sound(Humanoid *h, int id);
 
-void AttackPQD(s16 arg0, s16 arg1)
+void AttackPQD(s16 sfrm, s16 efrm)
 {
     Humanoid *human;
     s16 count;
@@ -85,7 +99,7 @@ void AttackPQD(s16 arg0, s16 arg1)
     human = Me_MOTION_C;
     count = dtM->count;
     ppOVar1 = human->weapon;
-    if (count == arg1 || arg1 == -1)
+    if (count == efrm || efrm == -1)
     {
         if (ppOVar1[3] == 0)
             return;
@@ -97,7 +111,7 @@ void AttackPQD(s16 arg0, s16 arg1)
     }
     else
     {
-        if (count != arg0)
+        if (count != sfrm)
             return;
         if (ppOVar1[2] == 0)
             return;

@@ -1,6 +1,20 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * int GetVectorDistance(struct VECTOR *v1, struct VECTOR *v2);
+ *     EFFECT.C:509, 19 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct VECTOR * v1
+ *     param $a1       struct VECTOR * v2
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GetVectorDistance", GetVectorDistance);
 
 // triage: EASY — 79 insns, mul/div, 2 callees, ~0.16 to GetVectorRotation

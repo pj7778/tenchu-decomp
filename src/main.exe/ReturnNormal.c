@@ -2,6 +2,19 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ReturnNormal(void);
+ *     MOTION.C:210, 4 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern short motID;
+ * END PSX.SYM */
+
 /*
  * ReturnNormal (0x800272a0) — pick the "return to normal" motion id + move
  * flag for the current motion-manager humanoid (Me_MOTION_C), writing them

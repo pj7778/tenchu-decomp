@@ -1,6 +1,36 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void PutItemList(void);
+ *     INFOVIEW.C:366, 35 src lines, frame 56 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s3       int i
+ *     reg   $s4       int x
+ *     reg   $s0       unsigned int s
+ *     reg   $v1       int n
+ *     reg   $s2       int ou
+ *     reg   $s3       int ItemID
+ *     reg   $a0       struct GsSPRITE * spr
+ *     reg   $s3       int ItemID
+ *     reg   $a0       struct GsSPRITE * spr
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned char fInitialize;
+ *     extern struct GsSPRITE NumberImage;
+ *     extern struct GsSPRITE CursorImage;
+ *     extern struct TCameraStatus CamState;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern struct GsOT *OTablePt;
+ *     extern struct WorldType WorldMap[8][8][8];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PutItemList", PutItemList);
 
 // triage: MEDIUM — 126 insns, mul/div, 1 loop, 1 callees, ~0.06 to SetupMotionRegist

@@ -1,6 +1,21 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DrawTelop(void);
+ *     CHRANIM.C:420, 17 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct POLY_F4 TelopbgP;
+ *     extern struct GsOT *OTablePt;
+ *     extern struct tag_TItem items[30];
+ *     extern struct GsIMAGE Images[52];
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 /*
  * DrawTelop (0x8005141c, 0xb4 bytes) - draws the telop (on-screen caption)
  * background quad in two halves (top strip y in [0x5a,0x78], bottom strip y

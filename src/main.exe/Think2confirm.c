@@ -1,6 +1,14 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think2confirm(void);
+ *     THINK_2.C:14, frame 16 bytes, saved-reg mask 0x00000000
+ * END PSX.SYM */
+
 /*
  * Think2confirm (0x8002fa24, 0x30 bytes) — think-handler, same "think" TU as
  * Think1sleep.c/ThinkBasicHuman2.c (s16 return convention; shared

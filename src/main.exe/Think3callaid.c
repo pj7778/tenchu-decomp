@@ -1,6 +1,35 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think3callaid(void);
+ *     THINK_3.C:31, frame 40 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $v1       struct Humanoid * human
+ *     reg   $a0       short type
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long Distance;
+ *     extern short SR;
+ *     extern short (*Think4Func[6])();
+ *     extern int StageID;
+ *     extern short EngageLevel;
+ *     extern short Degree;
+ *     extern short (*Think1Func[10])();
+ *     extern short (*Think2Func[5])();
+ *     extern short (*Think3Func[10])();
+ *     extern struct PADtype *Pad;
+ *     extern short Attrib;
+ *     extern short StageEnemies;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/Think3callaid", Think3callaid);
 
 // triage: EASY — 102 insns, 6 callees, ~0.03 to ProcItemGoshikimai

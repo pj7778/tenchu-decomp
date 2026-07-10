@@ -1,6 +1,34 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct ModelArchiveType * LoadModelArchive(unsigned long *adr, struct ModelType *prnt);
+ *     3DCTRL.C:335, 54 src lines, frame 56 bytes, saved-reg mask 0x80ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       unsigned long * adr
+ *     param $s6       struct ModelType * prnt
+ *     reg   $a3       struct ModelType * dim
+ *     reg   $s2       struct ModelArchiveType * mad
+ *     reg   $s5       struct ParentingType * prntp
+ *     reg   $s7       unsigned char * tmdp
+ *     reg   $s3       short i
+ *     reg   $v1       short j
+ *     reg   $s0       struct ModelType * objp
+ *     reg   $s0       struct ModelType * dim
+ *     reg   $s2       struct ModelType * dim
+ *     reg   $s0       struct ModelType * objp
+ *     reg   $s0       struct ModelType * dim
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ModelType World;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/LoadModelArchive", LoadModelArchive);
 
 // triage: MEDIUM — 190 insns, 3 loop, 6 callees, ~0.13 to LoadModel

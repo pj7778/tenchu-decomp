@@ -1,6 +1,18 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int Projection;
+ *     extern struct tag_EffectSlot EffectSlot[200];
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern short motID;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80032720", FUN_80032720);
 
 // triage: MEDIUM — 140 insns, mul/div, 3 loop, 1 callees, ~0.05 to ReqItemLaunch

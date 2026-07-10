@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void DrawPause(void);
+ *     INFOVIEW.C:1224, 35 src lines, frame 304 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct DISPENV o_disp
+ *     stack sp+40     struct DRAWENV o_draw
+ *     stack sp+136    struct DRAWENV n_draw
+ *     stack sp+232    struct POLY_GT4 ply
+ *
+ * Globals it touches, as the original declared them:
+ *     extern enum TSystemFlag SystemFlag;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawPause", DrawPause);
 
 // triage: MEDIUM — 114 insns, 1 loop, 7 callees, ~0.10 to InsertConflict

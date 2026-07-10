@@ -1,6 +1,15 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_800515b0", FUN_800515b0);
 
 // triage: HARD — 259 insns, mul/div, 3 loop, 1 callees, ~0.07 to BriefingAndInventorySelectionScreen

@@ -42,6 +42,32 @@
  */
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemKusuri(struct tag_TItem *item);
+ *     ITEM.C:1485, 60 src lines, frame 80 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       struct tag_TItem * item
+ *     reg   $s0       struct Sprite3D * model
+ *     reg   $s1       int i
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $s2       struct Humanoid * human
+ *     reg   $s0       int itemID
+ *     stack sp+16     struct PARAM_ITEM_LAUNCH p
+ *     reg   $s3       struct tag_TItem * item
+ *     stack sp+16     struct VECTOR pos
+ *     stack sp+32     struct SVECTOR vec
+ *     reg   $s3       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short ActionHalt;
+ * END PSX.SYM */
+
 void ProcItemKusuri(tag_TItem *item)
 {
     Sprite3D *sprt;

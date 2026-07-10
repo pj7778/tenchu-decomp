@@ -1,6 +1,37 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short StageSequence(void);
+ *     STAGE.C:153, 92 src lines, frame 56 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s1       struct EventSeqType * ev
+ *     reg   $s0       struct Humanoid * tgt
+ *     reg   $s3       short i
+ *     reg   $s2       short flag
+ *     reg   $s0       long gc
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct Humanoid *StagePlayer;
+ *     extern short motID;
+ *     extern long StageTime;
+ *     extern struct TCameraStatus CamState;
+ *     extern short ActionHalt;
+ *     extern enum TSystemFlag SystemFlag;
+ *     extern short SkipFrame;
+ *     extern long GameClock;
+ *     extern int StageID;
+ *     extern long AttackActionCount;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern short Findenemies;
+ * END PSX.SYM */
+
 /*
  * StageSequence (0x8004df58) — TODO one-line description.
  *

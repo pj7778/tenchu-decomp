@@ -2,6 +2,20 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short PlayMotion(struct MotionManager *mmp, short mode);
+ *     ACTION.C:220, 17 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct MotionManager * mmp
+ *     param $a1       short mode
+ * END PSX.SYM */
+
 /*
  * PlayMotion (0x8001c584, 0xbc bytes) — per-frame motion-manager advance:
  * bails returning 0 if `loop` is negative (motion disabled/one-shot-done).

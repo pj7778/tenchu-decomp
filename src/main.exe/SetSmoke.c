@@ -1,6 +1,31 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetSmoke(struct VECTOR *pos, struct SVECTOR *vect, short n, short time);
+ *     EFFECT.C:835, 21 src lines, frame 56 bytes, saved-reg mask 0x80ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s5       struct VECTOR * pos
+ *     param $s6       struct SVECTOR * vect
+ *     param $s7       short n
+ *     param $s3       short time
+ *     reg   $s4       short i
+ *     reg   $s1       struct tag_EffectSlot * slot
+ *     reg   $s0       struct SmokeType * smoke
+ *     reg   $a0       int i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct tag_EffectSlot EffectSlot[200];
+ *     extern int Projection;
+ *     extern struct Humanoid *HumanGroup[32];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetSmoke", SetSmoke);
 
 // triage: MEDIUM — 197 insns, mul/div, 1 loop, 1 callees, ~0.09 to ReqItemNingyo

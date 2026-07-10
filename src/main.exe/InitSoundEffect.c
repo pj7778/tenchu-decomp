@@ -1,6 +1,14 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void InitSoundEffect(void);
+ *     AUDIO.C:28, 7 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ * END PSX.SYM */
+
 /*
  * InitSoundEffect (0x80018c80) — SPU/SoundSystem bring-up: init the SPU
  * library, switch it to VSync tick mode, start the sequencer, reset the

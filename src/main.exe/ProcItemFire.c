@@ -1,6 +1,48 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemFire(struct tag_TItem *item);
+ *     ITEM.C:2586, 116 src lines, frame 176 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct tag_TItem * item
+ *     reg   $s4       struct Sprite3D * model
+ *     reg   $s5       struct param_smoke * param
+ *     reg   $s2       struct tag_TItem * item
+ *     stack sp+24     struct VECTOR pos
+ *     stack sp+40     struct SVECTOR vec
+ *     stack sp+56     struct PARAM_ITEM_STAY rparam
+ *     reg   $s2       struct tag_TItem * item
+ *     stack sp+104    struct PARAM_ITEM_LAUNCH param
+ *     reg   $a0       int cid
+ *     reg   $s2       struct tag_TItem * item
+ *     reg   $v0       int t
+ *     reg   $a0       struct ModelType * model
+ *     reg   $v0       struct Humanoid * human
+ *     stack sp+48     struct SVECTOR vec
+ *     stack sp+80     struct VECTOR pos
+ *     reg   $s2       struct tag_TItem * item
+ *     reg   $v0       int t
+ *     reg   $s2       struct tag_TItem * item
+ *     reg   $a0       int cid
+ *     reg   $a0       struct ModelType * model
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $s1       struct ModelType * model
+ *     stack sp+96     struct VECTOR pos
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int StageID;
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemFire", ProcItemFire);
 
 // triage: HARD — 583 insns, mul/div, 1 loop, indirect-call, 20 callees, ~0.22 to ProcItemHappou

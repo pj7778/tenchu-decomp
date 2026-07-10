@@ -2,6 +2,17 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern struct VECTOR *dtL;
+ * END PSX.SYM */
+
 /*
  * FUN_80027304 (0x80027304) — publish the current motion model's ground
  * position into `dtL` (a VECTOR*, vx/vz only — skips vy, same

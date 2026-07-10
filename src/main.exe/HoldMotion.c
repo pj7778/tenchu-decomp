@@ -1,6 +1,22 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short HoldMotion(struct MotionManager *mmp);
+ *     ACTION.C:242, 26 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct MotionManager * mmp
+ *     reg   $s2       struct MotionDataType * mot
+ *     reg   $a1       struct ModelType * object
+ *     reg   $s0       short i
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/HoldMotion", HoldMotion);
 
 // triage: MEDIUM — 84 insns, mul/div, 1 loop, 1 callees, ~0.08 to update_something_for_each_visible_enemy_

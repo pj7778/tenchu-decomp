@@ -1,6 +1,54 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void MakeCameraPosition(struct VECTOR *orgpos, struct SVECTOR *orgrot, struct SVECTOR *campos, struct SVECTOR *ref, struct GsRVIEW2 *vDif);
+ *     CAMERA.C:533, 66 src lines, frame 104 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s4       struct VECTOR * orgpos
+ *     param $s5       struct SVECTOR * orgrot
+ *     param $s7       struct SVECTOR * campos
+ *     param $fp       struct SVECTOR * ref
+ *     param stack+16  struct GsRVIEW2 * vDif
+ *     reg   $v1       int fwRot
+ *     reg   $s2       struct SVECTOR * tmp
+ *     reg   $s6       struct SVECTOR * prot
+ *     reg   $s1       struct MATRIX * pmat
+ *     reg   $s4       struct VECTOR * pos
+ *     reg   $s5       struct SVECTOR * rot
+ *     reg   $a0       int d
+ *     reg   $v1       int ret
+ *     reg   $s0       int dz
+ *     reg   $s3       int dx
+ *     reg   $v0       int y2
+ *     reg   $s0       int y1
+ *     stack sp+24     struct SVECTOR dvec
+ *     stack sp+32     struct VECTOR ret
+ *     stack sp+48     struct VECTOR start
+ *     reg   $a2       int N
+ *     reg   $s4       struct VECTOR * start
+ *     reg   $a0       struct SVECTOR * v
+ *     reg   $s1       int n
+ *     reg   $s4       int pz
+ *     reg   $s2       int py
+ *     reg   $s3       int px
+ *     reg   $s5       int vz
+ *     reg   $s6       int vy
+ *     reg   $s7       int vx
+ *     reg   $s0       int i
+ *     stack sp+120    struct GsRVIEW2 * vdif
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern struct GsRVIEW2 ViewInfo;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/MakeCameraPosition", MakeCameraPosition);
 
 // triage: MEDIUM — 165 insns, mul/div, 8 callees, ~0.08 to AdtFntOpen

@@ -1,6 +1,33 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void InitEffect(void);
+ *     EFFECT.C:271, 91 src lines, frame 88 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct GsIMAGE img
+ *     reg   $s2       short i
+ *     stack sp+48     int [3] img
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int Projection;
+ *     extern struct GsSPRITE sprBlood;
+ *     extern struct GsSPRITE sprSplash;
+ *     extern struct TCameraStatus CamState;
+ *     extern struct GsSPRITE sprFrame[4];
+ *     extern struct POLY_F4 plyBleed;
+ *     extern struct tag_TItem items[30];
+ *     extern struct Sprite3D *sprSmoke;
+ *     extern struct Sprite3D *sprBomb[3];
+ *     extern short motID;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/InitEffect", InitEffect);
 
 // triage: MEDIUM — 226 insns, 2 loop, 6 callees, ~0.07 to DebugMenuItemSet

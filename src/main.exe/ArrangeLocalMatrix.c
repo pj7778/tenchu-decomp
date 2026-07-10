@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void ArrangeLocalMatrix(struct ModelType *model, struct MATRIX *t);
+ *     ITEM.C:3328, 38 src lines, frame 72 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct ModelType * model
+ *     param $s3       struct MATRIX * t
+ *     stack sp+16     struct MATRIX m
+ *     reg   $a1       int i
+ *     reg   $t4       int j
+ *     reg   $t5       int k
+ *     reg   $s1       long det
+ *     reg   $a3       long t
+ *     reg   $t1       long u
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ArrangeLocalMatrix", ArrangeLocalMatrix);
 
 // triage: MEDIUM — 159 insns, mul/div, 2 loop, 2 callees, ~0.08 to AdtFntOpen

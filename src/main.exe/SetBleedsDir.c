@@ -1,6 +1,39 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetBleedsDir(struct VECTOR *pos, struct SVECTOR *vec, short grange, short n, int time, long col);
+ *     EFFECT.C:1115, 12 src lines, frame 88 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s7       struct VECTOR * pos
+ *     param $fp       struct SVECTOR * vec
+ *     param $a2       short grange
+ *     param $s5       short n
+ *     param stack+16  int time
+ *     param stack+20  long col
+ *     reg   $s4       int time
+ *     reg   $s6       long col
+ *     stack sp+16     struct VECTOR npos
+ *     stack sp+32     struct SVECTOR v
+ *     reg   $a3       struct VECTOR * pos
+ *     reg   $t0       int time
+ *     reg   $s6       long col
+ *     reg   $v1       struct BleedType * param
+ *     reg   $a2       struct tag_EffectSlot * slot
+ *     reg   $a0       int i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int Projection;
+ *     extern struct tag_EffectSlot EffectSlot[200];
+ *     extern struct Humanoid *HumanGroup[32];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetBleedsDir", SetBleedsDir);
 
 // triage: MEDIUM — 219 insns, mul/div, 1 loop, 2 callees, ~0.08 to DebugMenuItemSet

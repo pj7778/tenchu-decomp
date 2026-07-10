@@ -1,6 +1,15 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct WorldType WorldMap[8][8][8];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8004a6bc", FUN_8004a6bc);
 
 // triage: EASY — 53 insns, 1 loop, 2 callees, ~0.18 to DisposeWeapon

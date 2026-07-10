@@ -2,6 +2,17 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionManager *dtM;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct SVECTOR *dtR;
+ * END PSX.SYM */
+
 /*
  * FUN_80027730 (0x80027730, 0xe8 bytes) — an animation-frame callback for a
  * fire/napalm-throwing attack: only fires while the currently-armed motion

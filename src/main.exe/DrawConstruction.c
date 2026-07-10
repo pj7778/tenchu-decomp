@@ -1,6 +1,60 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DrawConstruction(void);
+ *     WORLD.C:798, 234 src lines, frame 1920 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s6       short j
+ *     reg   $s4       short k
+ *     reg   $s2       unsigned long plimit
+ *     reg   $a2       int nx
+ *     reg   $a1       int ny
+ *     reg   $a0       int nz
+ *     reg   $a0       long a
+ *     reg   $a0       long a
+ *     reg   $a0       long a
+ *     stack sp+1848   int ndl
+ *     stack sp+1852   int ndt
+ *     stack sp+16     struct tag_ObjectSlotType *[153] DrawList
+ *     stack sp+632    struct tag_ObjectSlotType [100] Slot
+ *     stack sp+1832   struct ObjectSlotManager SlotMan
+ *     reg   $s0       int sx
+ *     stack sp+1856   int sy
+ *     stack sp+1860   int sz
+ *     stack sp+1864   int ex
+ *     stack sp+1868   int ey
+ *     stack sp+1872   int ez
+ *     reg   $s3       int i
+ *     reg   $s1       struct tag_ObjectSlotType * cur
+ *     reg   $v0       long y
+ *     reg   $v0       long z
+ *     reg   $a1       int sz
+ *     reg   $s3       long a
+ *     reg   $v0       long x
+ *     reg   $a3       long y
+ *     reg   $a2       long z
+ *     reg   $a1       int sz
+ *     reg   $v0       int k
+ *     reg   $s2       struct tag_ObjectSlotType ** slot
+ *     reg   $s0       struct OrnamentType * model
+ *     reg   $s0       struct tag_ObjectSlotType * cur
+ *     reg   $s0       struct tag_ObjectSlotType * cur
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short SkipFrame;
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct WorldType WorldMap[8][8][8];
+ *     extern struct GsOT *OTablePt;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawConstruction", DrawConstruction);
 
 // triage: HARD — 391 insns, mul/div, 2 loop, frame 0x7a0, 10 callees, ~0.06 to ReqItemDrop

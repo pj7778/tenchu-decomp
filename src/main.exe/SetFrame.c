@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetFrame(struct VECTOR *pos, short size, short time, struct _GsCOORDINATE2 *super);
+ *     EFFECT.C:1095, 17 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct VECTOR * pos
+ *     param $a1       short size
+ *     param $a2       short time
+ *     param $a3       struct _GsCOORDINATE2 * super
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int Projection;
+ *     extern struct tag_EffectSlot EffectSlot[200];
+ *     extern struct Humanoid *HumanGroup[32];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetFrame", SetFrame);
 
 // triage: EASY — 49 insns, 1 loop, 0 callees, ~0.07 to ReqItemManebue

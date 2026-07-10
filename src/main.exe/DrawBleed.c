@@ -1,6 +1,32 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void DrawBleed(struct tag_EffectSlot *ef);
+ *     EFFECT.C:910, 34 src lines, frame 40 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct tag_EffectSlot * ef
+ *     reg   $s1       struct BleedType * param
+ *     stack sp+16     struct SVECTOR scr
+ *     reg   $v0       long x
+ *     reg   $a1       long y
+ *     reg   $a2       long z
+ *     reg   $s0       struct SVECTOR * scr
+ *     reg   $v1       int z
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TItem items[30];
+ *     extern struct POLY_F4 plyBleed;
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawBleed", DrawBleed);
 
 // triage: MEDIUM — 133 insns, mul/div, 4 callees, ~0.06 to FUN_800396c0

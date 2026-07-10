@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short SoundEx(struct VECTOR *locate, short seid);
+ *     SEMNG.C:42, 15 src lines, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct VECTOR * locate
+ *     param $a1       short seid
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct Humanoid *StagePlayer;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern short StageCitizens;
+ *     extern struct TCameraStatus CamState;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SoundEx", SoundEx);
 
 // triage: MEDIUM — 128 insns, mul/div, 3 callees, ~0.06 to GetVectorRotation

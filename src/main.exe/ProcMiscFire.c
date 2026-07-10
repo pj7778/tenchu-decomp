@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void ProcMiscFire(struct tag_TMisc *m, enum TMiscMessage msg);
+ *     MISC.C:249, 41 src lines, frame 72 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct tag_TMisc * m
+ *     param $a1       enum TMiscMessage msg
+ *     stack sp+16     struct SVECTOR vec
+ *     stack sp+24     struct VECTOR pos
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned char PutMapMode;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcMiscFire", ProcMiscFire);
 
 // triage: MEDIUM — 89 insns, mul/div, 5 callees, ~0.09 to SetupAfterimage

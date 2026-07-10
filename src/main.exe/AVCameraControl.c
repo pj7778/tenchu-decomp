@@ -1,6 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void AVCameraControl(void);
+ *     CHRANIM.C:322, 44 src lines, frame 40 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct SVECTOR vect
+ *     reg   $s1       long xx
+ *     reg   $s0       long zz
+ *     reg   $s2       long len
+ *     reg   $a1       short ry
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern short StageCitizens;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 /*
  * AVCameraControl (0x80051228) — TODO one-line description.
  *

@@ -1,6 +1,17 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void PrepareAccess(void);
+ *     FILEIO.C:144, 8 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int AccessPower;
+ * END PSX.SYM */
+
 /*
  * PrepareAccess (0x80019768) — arm or disarm the memory-card access vsync
  * callback: if AccessPower has gone negative, install NULL; otherwise clear

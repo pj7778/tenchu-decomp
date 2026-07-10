@@ -1,6 +1,34 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetBlood(struct VECTOR *pos, struct SVECTOR *vect, short n, short time);
+ *     EFFECT.C:745, 45 src lines, frame 64 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       struct VECTOR * pos
+ *     param $s5       struct SVECTOR * vect
+ *     param $s7       short n
+ *     param $fp       short time
+ *     reg   $s4       short i
+ *     reg   $s6       struct AreaNodeType * hint
+ *     reg   $s1       struct tag_EffectSlot * slot
+ *     reg   $s0       struct BloodType * blood
+ *     reg   $a0       int i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct tag_EffectSlot EffectSlot[200];
+ *     extern struct AreaNodeType *FieldArea;
+ *     extern int Projection;
+ *     extern struct Humanoid *HumanGroup[32];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetBlood", SetBlood);
 
 // triage: MEDIUM — 193 insns, mul/div, 1 loop, 2 callees, ~0.08 to ProcItemKusuri

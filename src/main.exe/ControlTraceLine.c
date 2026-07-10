@@ -1,6 +1,29 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short ControlTraceLine(struct Humanoid *human);
+ *     HUMAN.C:526, 33 src lines, frame 48 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s5       struct Humanoid * human
+ *     reg   $s4       struct TracePoint * point
+ *     reg   $s1       struct TraceLine * trcl
+ *     reg   $s2       long dx
+ *     reg   $s0       long dz
+ *     reg   $s6       long dist
+ *     reg   $s3       short pad
+ *     reg   $s2       long dx
+ *     reg   $s0       long dz
+ *     reg   $s0       short roty
+ *     reg   $a1       short degree
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ControlTraceLine", ControlTraceLine);
 
 // triage: MEDIUM — 126 insns, mul/div, 2 callees, ~0.11 to GetDirection

@@ -1,6 +1,35 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void CameraDirection(struct Humanoid *pl, struct GsRVIEW2 *vDif);
+ *     CAMERA.C:898, 114 src lines, frame 160 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * pl
+ *     param $s3       struct GsRVIEW2 * vDif
+ *     stack sp+24     struct GsRVIEW2 target
+ *     reg   $s2       struct ModelArchiveType * mad
+ *     stack sp+56     struct SVECTOR r
+ *     stack sp+64     struct SVECTOR CamLoc
+ *     stack sp+72     struct VECTOR vc
+ *     stack sp+88     struct MATRIX mat
+ *     stack sp+120    int rx
+ *     stack sp+124    int ry
+ *     stack sp+128    short x
+ *     stack sp+130    short y
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern struct GsRVIEW2 ViewInfo;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/CameraDirection", CameraDirection);
 
 // triage: MEDIUM — 215 insns, mul/div, 6 callees, ~0.05 to ProcItemTeleport

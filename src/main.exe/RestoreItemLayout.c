@@ -1,6 +1,30 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void RestoreItemLayout(void *buf);
+ *     ITEM.C:507, 22 src lines, frame 288 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       void * buf
+ *     reg   $s3       struct TItemLayout * slot
+ *     stack sp+16     unsigned char [200] fn
+ *     reg   $s1       int i
+ *     reg   $s1       int i
+ *     stack sp+216    struct PARAM_ITEM_STAY param
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct tag_TItem items[30];
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct WorldType WorldMap[8][8][8];
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/RestoreItemLayout", RestoreItemLayout);
 
 // triage: MEDIUM — 156 insns, indirect-call, 6 callees, ~0.14 to ClearItemLayout

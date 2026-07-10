@@ -1,6 +1,29 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void Camera(void);
+ *     CAMERA.C:784, 110 src lines, frame 72 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+24     struct GsRVIEW2 vDif
+ *     reg   $s1       short pad_dat
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TItem items[30];
+ *     extern enum TSystemFlag SystemFlag;
+ *     extern short SkipFrame;
+ *     extern int Projection;
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/Camera", Camera);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/Camera", something_about_character_camera_and_fpv___override__prt_80031c34_f0048b67);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/Camera", something_about_character_camera_and_fpv___override__prt_80031c40_394600bf);

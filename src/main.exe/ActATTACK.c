@@ -1,6 +1,53 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActATTACK(void);
+ *     MOTION.C:1306, 197 src lines, frame 128 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s1       struct BattleType * battle
+ *     reg   $v1       struct ModelType ** object
+ *     stack sp+16     struct ModelType *[2] hand
+ *     reg   $a2       struct OrnamentType ** weapon
+ *     reg   $v0       struct VECTOR * pos
+ *     stack sp+24     struct PARAM_ITEM_LAUNCH item
+ *     reg   $v0       struct VECTOR * pos
+ *     stack sp+24     struct PARAM_ITEM_LAUNCH item
+ *     stack sp+104    struct SVECTOR vect
+ *     reg   $v0       struct VECTOR * pos
+ *     stack sp+64     struct PARAM_ITEM_LAUNCH item
+ *     reg   $v1       short i
+ *     reg   $v1       short i
+ *     reg   $v1       short i
+ *     reg   $a2       struct OrnamentType ** weapon
+ *     reg   $v1       short i
+ *     reg   $a2       struct OrnamentType ** weapon
+ *     reg   $v1       short i
+ *     reg   $a3       struct ModelType * waist
+ *     reg   $v1       short i
+ *     reg   $t0       struct AfterimageType * ilu
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionManager *dtM;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern short motID;
+ *     extern struct BattleType BattleDB[78];
+ *     extern struct SVECTOR *dtR;
+ *     extern struct VECTOR *dtL;
+ *     extern short dtPAD;
+ *     extern short MotionUpdateMode;
+ *     extern struct HumanAnimType CVAhuman[5];
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern struct SVECTOR *dtV;
+ *     extern short ActionHalt;
+ * END PSX.SYM */
+
 /*
  * ActATTACK (0x80021d64) — TODO one-line description.
  *

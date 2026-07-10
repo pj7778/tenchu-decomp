@@ -1,6 +1,33 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * int SetFlyWire(struct VECTOR *start, struct VECTOR *end);
+ *     EFFECT.C:1384, 40 src lines, frame 48 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a2       struct VECTOR * start
+ *     param $a3       struct VECTOR * end
+ *     reg   $s5       struct tag_EffectSlot * slot
+ *     reg   $s3       struct FlyWireType * param
+ *     reg   $s2       int dist
+ *     reg   $a1       int i
+ *     reg   $s3       struct VECTOR * v1
+ *     reg   $a0       long dz
+ *     reg   $a2       long dy
+ *     reg   $t0       long dx
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int Projection;
+ *     extern struct tag_EffectSlot EffectSlot[200];
+ *     extern struct Humanoid *HumanGroup[32];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetFlyWire", SetFlyWire);
 
 // triage: MEDIUM — 246 insns, mul/div, 1 loop, 3 callees, ~0.06 to DebugMenuItemSet

@@ -1,6 +1,32 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void PlayVoice(int id);
+ *     IMAGES.C:485, 35 src lines, frame 72 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       int id
+ *     reg   $s6       unsigned char * FileName
+ *     stack sp+24     struct CdlLOC start
+ *     stack sp+32     struct CdlLOC end
+ *     reg   $s4       struct TVoiceTable * voice
+ *     reg   $s0       unsigned char min
+ *     reg   $s1       unsigned char sec
+ *     reg   $s2       struct CdlLOC * loc
+ *     reg   $s0       unsigned char min
+ *     reg   $s1       unsigned char sec
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short StageCitizens;
+ *     extern struct StageCharType StageChar[18];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PlayVoice", PlayVoice);
 
 // triage: MEDIUM — 189 insns, 4 loop, 8 callees, ~0.07 to InsertConflict

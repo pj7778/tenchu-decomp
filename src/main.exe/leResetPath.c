@@ -1,6 +1,22 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void leResetPath(int id);
+ *     WORLD.C:1293, 6 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       int id
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TEnemyLayout enemy[30];
+ * END PSX.SYM */
+
 /*
  * leResetPath (0x8003ca4c, 0x2c bytes) — clears the path point-count on one
  * slot of the enemy-layout table (debug menu "path layout > reset path").

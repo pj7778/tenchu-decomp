@@ -1,6 +1,40 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemArrow(struct tag_TItem *item);
+ *     ITEM.C:3367, 118 src lines, frame 168 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct tag_TItem * item
+ *     reg   $s4       struct ModelType * model
+ *     reg   $s3       struct param_arrow * param
+ *     stack sp+24     struct VECTOR v1
+ *     stack sp+40     struct VECTOR v2
+ *     stack sp+136    int rx
+ *     stack sp+140    int ry
+ *     reg   $a0       int cid
+ *     reg   $s1       struct tag_TItem * item
+ *     reg   $v0       int t
+ *     reg   $a0       struct ModelType * model
+ *     reg   $s2       struct Humanoid * m
+ *     reg   $s2       struct Humanoid * human
+ *     stack sp+56     struct PARAM_ITEM_LAUNCH param
+ *     reg   $s1       struct tag_TItem * item
+ *     reg   $s0       struct ModelType * model
+ *     reg   $s1       struct tag_TItem * item
+ *     reg   $s1       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern long GameClock;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemArrow", ProcItemArrow);
 
 // triage: HARD — 332 insns, mul/div, 1 loop, indirect-call, 15 callees, ~0.28 to ProcItemHappou

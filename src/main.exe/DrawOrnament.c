@@ -1,6 +1,23 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short DrawOrnament(struct OrnamentType *objp);
+ *     3DCTRL.C:496, 10 src lines, frame 56 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct OrnamentType * objp
+ *     stack sp+16     struct MATRIX mat
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 /*
  * DrawOrnament (0x800186d4, 0x44 bytes) — like UpdateCoordinate/DrawBG's
  * sibling in this same TU: builds the local screen matrix for an ornament's

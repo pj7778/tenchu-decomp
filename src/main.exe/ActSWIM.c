@@ -1,6 +1,32 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActSWIM(void);
+ *     MOTION.C:1030, 57 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $a2       struct ModelArchiveType * mdl
+ *     reg   $a1       short i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionManager *dtM;
+ *     extern short motID;
+ *     extern short dtPAD;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct SVECTOR *dtR;
+ *     extern struct SVECTOR *dtV;
+ *     extern struct VECTOR *dtL;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern unsigned char fInitialize;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 /*
  * ActSWIM (0x80020464) — TODO one-line description.
  *

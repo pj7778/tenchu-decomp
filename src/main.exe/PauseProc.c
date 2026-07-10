@@ -52,6 +52,31 @@
  */
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void PauseProc(void);
+ *     INFOVIEW.C:1261, 56 src lines, frame 56 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s0       short pad
+ *     reg   $s2       short ForbiddenCount
+ *     reg   $s1       short push
+ *     reg   $v1       short trig
+ *     stack sp+24     struct RECT rc
+ *
+ * Globals it touches, as the original declared them:
+ *     extern enum TSystemFlag SystemFlag;
+ *     extern short SkipFrame;
+ *     extern struct TCameraStatus CamState;
+ *     extern short ActionHalt;
+ *     extern short Findenemies;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 /* Camera status (Ghidra: TCameraStatus, at CamState). Only Owner is used. */
 typedef struct
 {

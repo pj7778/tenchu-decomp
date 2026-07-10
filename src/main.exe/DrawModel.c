@@ -1,6 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short DrawModel(struct ModelType *objp);
+ *     3DCTRL.C:297, 11 src lines, frame 72 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct ModelType * objp
+ *     stack sp+16     struct MATRIX mat
+ *     reg   $s1       struct ModelType * objp
+ *     reg   $v1       long sz
+ *     reg   $s0       short atr
+ *     stack sp+48     short [2] rxy
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct SVECTOR UnitVector;
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawModel", DrawModel);
 
 // triage: EASY — 83 insns, 4 callees, ~0.10 to GetAbsolutePosition

@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short PlaySE(struct SoundEffect *se, short pt, long dv);
+ *     AUDIO.C:72, 18 src lines, frame 40 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct SoundEffect * se
+ *     param $a1       short pt
+ *     param $a2       long dv
+ *     reg   $s0       short d
+ *     reg   $v1       short v
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short SkipFrame;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PlaySE", PlaySE);
 
 // triage: EASY — 71 insns, mul/div, 2 callees, ~0.04 to AttackFire

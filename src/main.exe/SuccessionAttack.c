@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static short SuccessionAttack(long dist, short deg);
+ *     THINK_3.C:247, 15 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       long dist
+ *     param $a1       short deg
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short EngageLevel;
+ *     extern struct BattleType BattleDB[78];
+ *     extern long Distance;
+ *     extern short Degree;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SuccessionAttack", SuccessionAttack);
 
 // triage: EASY — 67 insns, mul/div, 1 callees, ~0.11 to bow_shoot_logic

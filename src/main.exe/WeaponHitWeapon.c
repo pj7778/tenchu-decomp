@@ -1,6 +1,30 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void WeaponHitWeapon(struct ModelType *hand);
+ *     MOTION.C:771, 25 src lines, frame 56 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       struct ModelType * hand
+ *     reg   $s2       struct VECTOR * p
+ *     reg   $s4       short id
+ *     reg   $s0       short i
+ *     stack sp+16     struct SVECTOR pv
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct BattleType BattleDB[78];
+ *     extern struct MotionManager *dtM;
+ *     extern struct Humanoid *StagePlayer;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/WeaponHitWeapon", WeaponHitWeapon);
 
 // triage: MEDIUM — 161 insns, mul/div, 3 loop, 6 callees, ~0.06 to SetupMotionRegist

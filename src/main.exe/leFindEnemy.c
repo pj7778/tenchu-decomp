@@ -1,6 +1,33 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * int leFindEnemy(void);
+ *     WORLD.C:1099, 31 src lines, frame 88 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s1       int i
+ *     reg   $s6       long px
+ *     reg   $s5       long py
+ *     reg   $s4       long pz
+ *     reg   $s3       int find
+ *     reg   $s2       int r
+ *     reg   $v1       int rr
+ *     stack sp+16     struct SVECTOR pow
+ *     stack sp+24     struct VECTOR pos
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern struct TEnemyLayout enemy[30];
+ *     extern struct Sprite3D *sprSmoke;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/leFindEnemy", leFindEnemy);
 
 // triage: MEDIUM — 105 insns, mul/div, 3 callees, ~0.12 to InsertConflict

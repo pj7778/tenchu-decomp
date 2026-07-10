@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void FadeOutDirect(short time, short attrib, unsigned char r, unsigned char g, int b);
+ *     EFFECT.C:1816, 32 src lines, frame 296 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       short time
+ *     param $a1       short attrib
+ *     param $a2       unsigned char r
+ *     param $a3       unsigned char g
+ *     param stack+16  int b
+ *     stack sp+16     struct DISPENV o_disp
+ *     stack sp+40     struct DRAWENV o_draw
+ *     stack sp+136    struct DRAWENV n_draw
+ *     stack sp+232    struct POLY_XF4 ply
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FadeOutDirect", FadeOutDirect);
 
 // triage: MEDIUM — 104 insns, 1 loop, 6 callees, ~0.11 to leAddPath

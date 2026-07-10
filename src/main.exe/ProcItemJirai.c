@@ -1,6 +1,43 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemJirai(struct tag_TItem *item);
+ *     ITEM.C:3527, 78 src lines, frame 104 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct tag_TItem * item
+ *     reg   $s6       struct Sprite3D * model
+ *     reg   $v1       struct param_smoke * param
+ *     reg   $s2       struct tag_TItem * item
+ *     reg   $s2       struct tag_TItem * item
+ *     reg   $v0       int t
+ *     reg   $a0       int cid
+ *     reg   $a0       struct ModelType * model
+ *     reg   $s4       struct Humanoid * human
+ *     reg   $s4       struct Humanoid * human
+ *     reg   $s3       int i
+ *     reg   $s0       struct ModelType * model
+ *     stack sp+24     struct VECTOR pos
+ *     stack sp+24     struct SVECTOR vec
+ *     stack sp+32     struct VECTOR pos
+ *     reg   $s2       struct tag_TItem * item
+ *     reg   $v0       int t
+ *     reg   $s2       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct AreaNodeType *FieldArea;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern int StageID;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemJirai", ProcItemJirai);
 
 // triage: HARD — 427 insns, mul/div, 1 loop, indirect-call, 16 callees, ~0.27 to ProcItemDrop

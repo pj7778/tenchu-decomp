@@ -1,6 +1,18 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void InitAccessInfo(void);
+ *     FILEIO.C:106, 4 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct POLY_GT4 AccessImage;
+ *     extern int AccessPower;
+ * END PSX.SYM */
+
 /*
  * InitAccessInfo (0x800194f4, 0x38 bytes) — one-shot setup for the "access"
  * (grapple/climb) HUD meter, called only from main(): fetch archive image 0x2c,

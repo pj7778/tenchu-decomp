@@ -1,6 +1,20 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long GameClock;
+ *     extern struct GsOT *OTablePt;
+ *     extern struct TCdaStatus CdaStatus;
+ *
+ * PSX.SYM suggests this may be `SetGore` (LOW confidence, EFFECT.C) — NOT
+ * adopted. Corroborate with `tools/callmatch.py --verify` before renaming.
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80036284", FUN_80036284);
 
 // triage: MEDIUM — 182 insns, mul/div, 4 callees, ~0.07 to FUN_80038c0c

@@ -2,6 +2,27 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct MapVector * StickonCheck(void);
+ *     MOTION.C:346, 17 src lines, frame 32 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $v1       short rv
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct PADCMD__141fake PadArrange;
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct VECTOR *dtL;
+ *     extern short RefrectVector[16];
+ *     extern short motID;
+ * END PSX.SYM */
+
 /*
  * STATUS: NON_MATCHING — 90 of 256 bytes differ, all from ONE reorg
  * delay-slot-fill tie (see below); every field offset/type this function

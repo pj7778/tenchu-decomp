@@ -1,6 +1,23 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short ActiveMotion(struct MotionManager *mmp);
+ *     ACTION.C:307, 31 src lines, frame 48 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct MotionManager * mmp
+ *     reg   $s0       short i
+ *     reg   $s3       short count
+ *     reg   $s1       struct ModelType * object
+ *     stack sp+16     struct SVECTOR vect
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ActiveMotion", ActiveMotion);
 
 // triage: MEDIUM — 113 insns, mul/div, 1 loop, 3 callees, ~0.12 to update_something_for_each_visible_enemy_

@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void DrawHinoko(struct tag_EffectSlot *ef);
+ *     EFFECT.C:1258, 61 src lines, frame 32 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a1       struct tag_EffectSlot * ef
+ *     reg   $a2       struct ExplosionType * param
+ *     reg   $s0       struct Sprite3D * spr
+ *     reg   $a3       unsigned char alfa
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct Sprite3D *sprBomb[3];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawHinoko", DrawHinoko);
 
 // triage: EASY — 77 insns, mul/div, 2 callees, ~0.05 to bow_shoot_logic

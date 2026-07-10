@@ -1,6 +1,20 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void UpdateTexScroll(struct TexScroll *tscr);
+ *     EFFECT.C:1884, 24 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct TexScroll * tscr
+ *     reg   $s0       struct DR_MOVE * prim
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/UpdateTexScroll", UpdateTexScroll);
 
 // triage: EASY — 68 insns, mul/div, 4 callees, ~0.08 to AddXG4

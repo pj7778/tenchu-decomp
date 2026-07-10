@@ -2,6 +2,27 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short InsertConflict(struct ModelType *model);
+ *     CONFLICT.C:283, 23 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct ModelType * model
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short ConflictObjects;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern struct tag_TItem items[30];
+ *     extern struct VECTOR UnitVector2;
+ *     extern struct SVECTOR UnitVector;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 /*
  * InsertConflict (0x8001a444) — append `model` to the ConflictObject conflict pool
  * (the inverse of DeleteConflict.c; the pool is also filled by ProcItem* via

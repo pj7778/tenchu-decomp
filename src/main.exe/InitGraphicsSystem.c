@@ -1,6 +1,22 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void InitGraphicsSystem(void);
+ *     3DCTRL.C:45, 29 src lines, frame 32 bytes, saved-reg mask 0x80010000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ModelType World;
+ *     extern struct GsFOGPARAM Fog;
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct GsOT OTable[2];
+ *     extern struct GsOT_TAG ZSortTable[2][2048];
+ *     extern struct tag_TMisc misc[200];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/InitGraphicsSystem", InitGraphicsSystem);
 
 // triage: MEDIUM — 103 insns, 17 callees, ~0.07 to CdaStop

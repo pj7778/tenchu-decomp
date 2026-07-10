@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void * vrealloc(void *pt, unsigned long size);
+ *     VALLOC.C:130, 69 src lines, frame 40 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       void * pt
+ *     param $s0       unsigned long size
+ *     reg   $a3       struct VMhead * vhp
+ *     reg   $a1       struct VMhead * svhp
+ *     stack sp+16     struct VMhead vh
+ *     reg   $s1       void * newp
+ *     reg   $a2       unsigned long size2
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/vrealloc", vrealloc);
 
 // triage: EASY — 129 insns, 4 callees, ~0.08 to AddMisc

@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void cbCheckCD(void);
+ *     OPAUDIO.C:69, 55 src lines, frame 48 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     unsigned char [8] result
+ *     reg   $s0       int ret
+ *     reg   $v1       int com
+ *     stack sp+24     struct CdlLOC loc
+ *     stack sp+24     struct CdlLOC loc
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/cbCheckCD", cbCheckCD);
 
 // triage: MEDIUM — 122 insns, 9 callees, ~0.11 to CdaStop

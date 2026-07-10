@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void InitializeItem(void);
+ *     ITEM.C:533, 40 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s1       int i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short motID;
+ *     extern struct tag_TItem items[30];
+ *     extern struct GsSPRITE TargetSprite[1];
+ *     extern int StageID;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/InitializeItem", InitializeItem);
 
 // triage: EASY — 81 insns, 1 loop, 5 callees, ~0.04 to PrepareGetScreenPositionS

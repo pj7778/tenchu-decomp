@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * unsigned long * LoadFromCDROM(unsigned char *filename);
+ *     FILEIO.C:296, 31 src lines, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       unsigned char * filename
+ *
+ * Globals it touches, as the original declared them:
+ *     extern int TotalIO;
+ *     extern struct TAFS systemAFS;
+ *     extern int ReadMode;
+ *     extern unsigned long *MemoryLoadAddress;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/LoadFromCDROM", LoadFromCDROM);
 
 // triage: EASY — 70 insns, 7 callees, ~0.13 to DoBriefingAndInventorySelection

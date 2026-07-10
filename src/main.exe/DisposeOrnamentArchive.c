@@ -2,6 +2,19 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DisposeOrnamentArchive(struct OrnamentArchiveType *mad);
+ *     WORLD.C:319, 11 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct OrnamentArchiveType * mad
+ * END PSX.SYM */
+
 /*
  * DisposeOrnamentArchive (0x8003cd5c) — free an ornament archive: dispose
  * each sub-ornament in the `object` table (DisposeOrnament handles its own

@@ -2,6 +2,19 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DisposeWeapon(struct Humanoid *human);
+ *     APPEAR.C:364, 7 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * human
+ * END PSX.SYM */
+
 /*
  * DisposeWeapon (0x8002a978, 0x68 bytes) — free all 4 of a character's
  * equipped weapon ornaments (item.h's proven `weapon[4]` @0x94) and clear

@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void GetSpline(struct SVECTOR *vect, struct SplineControlType *spc, short cnt);
+ *     ACTION.C:388, 34 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct SVECTOR * vect
+ *     param $s0       struct SplineControlType * spc
+ *     param $s1       short cnt
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionPackType *StageMotion;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern unsigned short *Command[12];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GetSpline", GetSpline);
 
 // triage: MEDIUM — 84 insns, mul/div, 2 loop, 2 callees, ~0.09 to GetAbsolutePosition

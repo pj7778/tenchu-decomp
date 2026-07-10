@@ -38,6 +38,32 @@
  */
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemMakibishi(struct tag_TItem *item);
+ *     ITEM.C:1171, 60 src lines, frame 48 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       struct tag_TItem * item
+ *     reg   $s4       struct Sprite3D * model
+ *     reg   $s2       struct param_drop * param
+ *     reg   $a0       int cid
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $v0       int t
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $a0       struct ModelType * model
+ *     reg   $s1       struct Humanoid * human
+ *     reg   $s1       struct Humanoid * human
+ *     reg   $s0       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ConflictObjectType ConflictObject[64];
+ * END PSX.SYM */
+
 /* Conflict slot (Ghidra: ConflictObjectType, 0x78 bytes; see ProcItemDrop.c). */
 typedef struct
 {

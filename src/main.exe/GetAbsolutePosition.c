@@ -2,6 +2,27 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct VECTOR * GetAbsolutePosition(struct ModelType *model, short x, short y, short z);
+ *     3DCTRL.C:221, 15 src lines, frame 80 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct ModelType * model
+ *     param $a1       short x
+ *     param $a2       short y
+ *     param $a3       short z
+ *     stack sp+16     struct MATRIX mat
+ *     stack sp+48     struct SVECTOR offset
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short motID;
+ * END PSX.SYM */
+
 /*
  * GetAbsolutePosition (0x800182a8) — world-space position of a local offset
  * (x, y, z) on a model. Pulls the model's local->world matrix (GsGetLw), makes

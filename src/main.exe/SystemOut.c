@@ -1,6 +1,19 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SystemOut(unsigned char *string);
+ *     VALLOC.C:305, 3 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       unsigned char * string
+ * END PSX.SYM */
+
 /*
  * SystemOut (0x80016e8c, 0x8 bytes) — same TU as vinit.c/vsize.c. The fatal
  * "system halt" hook: it never returns, and never even reads `string` (the

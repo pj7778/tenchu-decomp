@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct Sprite3D * SetupSprite(struct Sprite3D *orgsprt, struct GsIMAGE *image);
+ *     3DCTRL.C:546, 43 src lines, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       struct Sprite3D * orgsprt
+ *     param $s3       struct GsIMAGE * image
+ *     reg   $s2       struct Sprite3D * sprt
+ *     reg   $s2       struct ModelType * dim
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ModelType World;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupSprite", SetupSprite);
 
 // triage: EASY — 116 insns, 1 loop, 5 callees, ~0.41 to InitSprite

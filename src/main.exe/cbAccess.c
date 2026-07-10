@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void cbAccess(void);
+ *     FILEIO.C:115, 27 src lines, frame 240 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct DISPENV o_disp
+ *     stack sp+40     struct DRAWENV o_draw
+ *     stack sp+136    struct DRAWENV n_draw
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct POLY_GT4 AccessImage;
+ *     extern int AccessPower;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/cbAccess", cbAccess);
 
 // triage: EASY — 69 insns, 1 loop, 4 callees, ~0.11 to debug_menu_stage_option

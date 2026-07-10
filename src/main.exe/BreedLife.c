@@ -1,6 +1,32 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct Humanoid * BreedLife(short type, long x, long y, long z, long r);
+ *     APPEAR.C:202, 50 src lines, frame 160 bytes, saved-reg mask 0x80ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s4       short type
+ *     param $s5       long x
+ *     param $s7       long y
+ *     param $s6       long z
+ *     param stack+16  long r
+ *     reg   $v0       long r
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $s2       unsigned long * model
+ *     reg   $s0       unsigned long idx
+ *     stack sp+16     unsigned char [100] name
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct HumanDataType HumanData[63];
+ *     extern unsigned long *GlobalAreaMap;
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/BreedLife", BreedLife);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/BreedLife", create_character__override__prt_8002a100_aee7b64a);
 

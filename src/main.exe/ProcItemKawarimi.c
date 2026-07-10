@@ -1,6 +1,24 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemKawarimi(struct tag_TItem *item);
+ *     ITEM.C:1571, 35 src lines, frame 80 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       struct tag_TItem * item
+ *     reg   $s4       struct param_drop * param
+ *     reg   $s2       int i
+ *     stack sp+16     struct VECTOR pos
+ *     stack sp+32     struct SVECTOR vec
+ *     reg   $s0       struct tag_TItem * item
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemKawarimi", ProcItemKawarimi);
 
 // triage: MEDIUM — 196 insns, mul/div, indirect-call, 5 callees, ~0.35 to ProcItemKusuri

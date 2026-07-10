@@ -1,6 +1,15 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct tag_EffectSlot EffectSlot[200];
+ * END PSX.SYM */
+
 /*
  * FUN_80039c14 (0x80039c14, 0x40 bytes) — resets every slot of the
  * EffectSlot[] pool (200 entries, tag_EffectSlot from the Ghidra type

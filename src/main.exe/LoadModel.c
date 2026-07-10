@@ -2,6 +2,22 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct ModelType * LoadModel(unsigned long *adr);
+ *     3DCTRL.C:269, 24 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       unsigned long * adr
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ModelType World;
+ * END PSX.SYM */
+
 /*
  * LoadModel (0x80018448, 0xb0 bytes) - near-twin of CreateCloneModel.c (both
  * ModelType constructors in this TU): allocate+zero-init a ModelType the

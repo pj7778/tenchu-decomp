@@ -1,6 +1,25 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void PadProc(void);
+ *     PADCMD.C:249, 25 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $a0       int ct
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned char ComBuf[2][34];
+ *     extern struct tag_TItem items[30];
+ *     extern struct PADCMD__141fake PadArrange;
+ *     extern struct TPadPort PadPort[2][4];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PadProc", PadProc);
 
 // triage: MEDIUM — 92 insns, mul/div, 1 callees, ~0.06 to bow_shoot_logic

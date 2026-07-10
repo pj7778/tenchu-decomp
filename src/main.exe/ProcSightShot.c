@@ -1,6 +1,34 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcSightShot(struct tag_TItem *item);
+ *     ITEM.C:939, 83 src lines, frame 128 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct tag_TItem * item
+ *     reg   $v1       struct param_launch * param
+ *     reg   $s1       struct tag_TItem * item
+ *     reg   $a1       struct ModelType * model
+ *     stack sp+16     struct PARAM_ITEM_LAUNCH param
+ *     stack sp+56     struct SVECTOR rot
+ *     stack sp+64     int rx
+ *     stack sp+68     int ry
+ *     stack sp+72     struct PARAM_ITEM_LAUNCH param
+ *     reg   $s1       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsSPRITE TargetSprite[1];
+ *     extern struct GsOT *OTablePt;
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcSightShot", ProcSightShot);
 
 // triage: MEDIUM — 264 insns, mul/div, indirect-call, 11 callees, ~0.20 to ProcItemKusuri

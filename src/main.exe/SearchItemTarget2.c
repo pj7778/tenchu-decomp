@@ -1,6 +1,36 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static struct Humanoid * SearchItemTarget2(struct Humanoid *owner, struct SVECTOR *rot, struct VECTOR *start, struct VECTOR *target);
+ *     ITEM.C:352, 62 src lines, frame 136 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $fp       struct Humanoid * owner
+ *     param $s1       struct SVECTOR * rot
+ *     param $s5       struct VECTOR * start
+ *     param $s7       struct VECTOR * target
+ *     reg   $s1       int i
+ *     reg   $s4       int dist
+ *     reg   $s6       struct Humanoid * ret
+ *     stack sp+16     struct MATRIX mat
+ *     stack sp+48     struct SVECTOR rrot
+ *     stack sp+56     struct SVECTOR v
+ *     reg   $s0       struct VECTOR * gpv
+ *     reg   $s0       struct Humanoid * human
+ *     stack sp+64     struct VECTOR tv
+ *     stack sp+80     struct VECTOR lv
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern short Humans;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SearchItemTarget2", SearchItemTarget2);
 
 // triage: MEDIUM — 182 insns, 7 callees, ~0.09 to AfsRead

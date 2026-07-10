@@ -1,6 +1,24 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * long DrawClip(struct ModelType *objp, long *xy);
+ *     3DCTRL.C:240, 23 src lines, frame 40 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct ModelType * objp
+ *     param $a1       long * xy
+ *     stack sp+16     short [2] rxy
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct SVECTOR UnitVector;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawClip", DrawClip);
 
 // triage: EASY — 74 insns, 1 callees, ~0.05 to DoBriefingAndInventorySelection

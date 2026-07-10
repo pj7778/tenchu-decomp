@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void MoveFly(struct tag_TItem *item, struct param_fly *param);
+ *     ITEM.C:742, 43 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $t4       struct tag_TItem * item
+ *     param $a2       struct param_fly * param
+ *     reg   $t3       long x
+ *     reg   $t0       long y
+ *     reg   $a3       long z
+ *     reg   $v0       long t
+ *     reg   $a0       long Q
+ *     reg   $a1       long R
+ *     reg   $a2       struct param_korogari * param
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/MoveFly", MoveFly);
 
 // triage: MEDIUM — 122 insns, mul/div, 1 callees, ~0.07 to bow_shoot_logic

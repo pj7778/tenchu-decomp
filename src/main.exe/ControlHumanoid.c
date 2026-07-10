@@ -1,6 +1,32 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ControlHumanoid(struct Humanoid *human);
+ *     HUMAN.C:107, 44 src lines, frame 72 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       struct Humanoid * human
+ *     reg   $s1       struct ModelArchiveType * model
+ *     reg   $s2       long m
+ *     stack sp+24     struct MATRIX mat
+ *
+ * Globals it touches, as the original declared them:
+ *     extern enum TSystemFlag SystemFlag;
+ *     extern short SkipFrame;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern struct PADCMD__141fake PadArrange;
+ *     extern short Humans;
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern short ActionHalt;
+ *     extern struct TCameraStatus CamState;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ControlHumanoid", ControlHumanoid);
 
 // triage: HARD — 394 insns, mul/div, 13 callees, ~0.05 to ProcItemDrop

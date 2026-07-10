@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void PutNumber(int x, int y, int cols, int n);
+ *     INFOVIEW.C:197, 17 src lines, frame 32 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       int x
+ *     param $a1       int y
+ *     param $a2       int cols
+ *     param $a3       int n
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsSPRITE NumberImage;
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PutNumber", PutNumber);
 
 // triage: EASY — 44 insns, mul/div, 1 loop, 1 callees, ~0.09 to SetupMotionRegist

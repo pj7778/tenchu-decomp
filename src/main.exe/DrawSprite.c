@@ -1,6 +1,30 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short DrawSprite(struct Sprite3D *sprt);
+ *     3DCTRL.C:593, 14 src lines, frame 72 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct Sprite3D * sprt
+ *     stack sp+16     struct MATRIX mat
+ *     reg   $a2       long sz
+ *     reg   $s1       struct ModelType * objp
+ *     reg   $s2       long * xy
+ *     reg   $v1       long sz
+ *     reg   $s0       short atr
+ *     stack sp+48     short [2] rxy
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct SVECTOR UnitVector;
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawSprite", DrawSprite);
 
 // triage: MEDIUM — 111 insns, mul/div, 4 callees, ~0.07 to GetAbsolutePosition

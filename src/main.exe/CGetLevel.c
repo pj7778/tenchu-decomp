@@ -1,6 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * long CGetLevel(struct AreaNodeType **hint, long x, long y, long z, unsigned long flag);
+ *     EFFECT.C:220, 34 src lines, frame 32 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct AreaNodeType ** hint
+ *     param $a1       long x
+ *     param $a2       long y
+ *     param $a3       long z
+ *     param stack+16  unsigned long flag
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct AreaNodeType *FieldArea;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/CGetLevel", CGetLevel);
 
 // triage: MEDIUM — 98 insns, mul/div, 2 callees, ~0.05 to GetAreaMapLevel

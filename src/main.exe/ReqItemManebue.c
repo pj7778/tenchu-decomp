@@ -2,6 +2,33 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static int ReqItemManebue(struct PARAM_ITEM_LAUNCH *p);
+ *     ITEM.C:1290, 12 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct PARAM_ITEM_LAUNCH * p
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * ret
+ *     reg   $a1       int i
+ *     reg   $a0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $v1       struct Humanoid * aowner
+ *     reg   $a0       int atype
+ *     reg   $a0       struct VECTOR * pos
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct tag_TItem items[30];
+ *     extern int StageID;
+ *     extern struct WorldType WorldMap[8][8][8];
+ * END PSX.SYM */
+
 /*
  * ReqItemManebue (0x8003f72c) — spawn a "manebue" (decoy whistle) item.
  * Near-clone of ReqItemKusuri (same item TU, same pool round-robin, same

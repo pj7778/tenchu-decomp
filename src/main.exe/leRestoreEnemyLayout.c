@@ -1,6 +1,22 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void leRestoreEnemyLayout(void *buf);
+ *     WORLD.C:1286, 2 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       void * buf
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TEnemyLayout enemy[30];
+ * END PSX.SYM */
+
 /*
  * leRestoreEnemyLayout (0x8003ca78, 0x2c bytes) — bulk-restore the whole
  * enemy-layout table from a caller-supplied buffer (the inverse of a save;

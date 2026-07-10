@@ -2,6 +2,39 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DoInfoViewProc(void);
+ *     INFOVIEW.C:1413, 132 src lines, frame 344 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s1       long trig
+ *     stack sp+32     struct TAdtSelect [12] Option
+ *     reg   $v1       int i
+ *     stack sp+128    struct TAdtSelect [4] Num
+ *     stack sp+128    struct TAdtSelect [25] ItemName
+ *     reg   $s0       int i
+ *     stack sp+168    struct TAdtSelect [3] OkCancel
+ *     stack sp+128    struct TAdtSelect [5] Option
+ *     reg   $v1       int i
+ *     stack sp+128    struct TAdtSelect [5] option
+ *     reg   $v1       int c
+ *     reg   $v1       int c
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern unsigned char fInitialize;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern enum TSystemFlag SystemFlag;
+ *     extern short Humans;
+ *     extern unsigned char PutMapMode;
+ *     extern long GameClock;
+ * END PSX.SYM */
+
 /*
  * DoInfoViewProc (0x8004ba5c) — per-frame in-game HUD/info processor: debug
  * menu dispatch (once the cheat sets SystemFlag&2, holding exactly L2+R2 opens

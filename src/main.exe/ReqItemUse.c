@@ -1,6 +1,158 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * int ReqItemUse(struct PARAM_ITEM_LAUNCH *p);
+ *     ITEM.C:3631, 386 src lines, frame 440 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct PARAM_ITEM_LAUNCH * p
+ *     reg   $s1       int i
+ *     stack sp+16     struct PARAM_ITEM_DROP param
+ *     stack sp+56     struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+76     int ry
+ *     stack sp+72     int rx
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s2       struct param_launch * param
+ *     reg   $s0       struct tag_TItem * ret
+ *     reg   $a0       int i
+ *     reg   $v1       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $v1       struct Humanoid * aowner
+ *     reg   $a0       int atype
+ *     reg   $a0       struct VECTOR * pos
+ *     stack sp+96     struct PARAM_ITEM_LAUNCH param
+ *     stack sp+72     struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     stack sp+144    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     stack sp+160    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     stack sp+176    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     stack sp+192    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     stack sp+208    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     stack sp+224    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     stack sp+240    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     stack sp+256    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     stack sp+272    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     stack sp+288    struct PARAM_ITEM_DROP param
+ *     stack sp+328    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * ret
+ *     reg   $a0       int i
+ *     reg   $v1       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $v1       struct Humanoid * aowner
+ *     reg   $a0       int atype
+ *     reg   $a0       struct VECTOR * pos
+ *     stack sp+344    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * ret
+ *     reg   $a0       int i
+ *     reg   $v1       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $v1       struct Humanoid * aowner
+ *     reg   $a0       int atype
+ *     reg   $a0       struct VECTOR * pos
+ *     stack sp+368    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     stack sp+384    struct VECTOR v
+ *     reg   $a0       struct ModelArchiveType * model
+ *     reg   $a3       int rz
+ *     stack sp+140    int ry
+ *     stack sp+136    int rx
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * ret
+ *     reg   $a0       int i
+ *     reg   $v1       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $v1       struct Humanoid * aowner
+ *     reg   $a0       int atype
+ *     reg   $a0       struct VECTOR * pos
+ *     stack sp+400    struct VECTOR target
+ *     stack sp+416    int rx
+ *     stack sp+420    int ry
+ *     stack sp+136    struct SVECTOR rot
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s2       struct param_napalm * param
+ *     reg   $s0       struct tag_TItem * ret
+ *     reg   $a0       int i
+ *     reg   $v1       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $v1       struct Humanoid * aowner
+ *     reg   $a0       int atype
+ *     reg   $a0       struct VECTOR * pos
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TItem items[30];
+ *     extern int StageID;
+ *     extern short motID;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern long GameClock;
+ * END PSX.SYM */
+
 /*
  * ReqItemUse (0x80048afc) — TODO one-line description.
  *

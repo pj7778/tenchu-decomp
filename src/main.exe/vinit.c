@@ -1,10 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void vinit(void *adr, unsigned long size);
+ *     VALLOC.C:33, 8 src lines, frame 8 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       void * adr
+ *     param $a1       unsigned long size
+ *     stack sp+0      struct VMhead vh
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned long *virtual_memory_pool;
+ * END PSX.SYM */
+
 /*
  * vinit (0x80016c48) — initializes the "virtual memory" free-list allocator
  * (the valloc/vfree/vgetmaxsize/vgetfreesize family: valloc is at 0x8001656c,
- * right after vgetfreesize at 0x80016ce8). Installs `addr` (or the default
+ * right after vgetfreesize at 0x80016ce8). Installs `adr` (or the default
  * MemoryPool buffer when NULL) as the pool base and writes a single free
  * block header covering the whole pool: size in words (derived from `size`,
  * or a hardcoded default word count when size==0) and a null `next` link.
@@ -45,12 +63,12 @@ typedef struct PoolBlock
 
 extern PoolBlock *virtual_memory_pool;
 
-void vinit(void *addr, u32 size)
+void vinit(void *adr, u32 size)
 {
     PoolBlock h;
 
-    virtual_memory_pool = addr;
-    if (addr == 0)
+    virtual_memory_pool = adr;
+    if (adr == 0)
         virtual_memory_pool = (PoolBlock *)0x800DC000;
 
     if (size != 0)

@@ -1,6 +1,18 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short ControlAllHumanoid(void);
+ *     HUMAN.C:97, 6 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short Humans;
+ *     extern struct Humanoid *HumanGroup[32];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ControlAllHumanoid", ControlAllHumanoid);
 
 // triage: EASY — 49 insns, 1 loop, 2 callees, ~0.14 to update_something_for_each_visible_enemy_

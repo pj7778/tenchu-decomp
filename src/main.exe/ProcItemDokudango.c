@@ -1,6 +1,49 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemDokudango(struct tag_TItem *item);
+ *     ITEM.C:1632, 141 src lines, frame 128 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s4       struct tag_TItem * item
+ *     reg   $s0       struct Sprite3D * model
+ *     reg   $s6       struct param_dokudango * param
+ *     reg   $s4       struct tag_TItem * item
+ *     stack sp+16     struct TFindItemTarget find
+ *     reg   $s5       struct Humanoid * target
+ *     reg   $s7       int targetlen
+ *     reg   $v0       struct TFindItemTarget * find
+ *     reg   $v1       struct VECTOR * pos
+ *     reg   $s7       int dist
+ *     reg   $s3       struct TFindItemTarget * find
+ *     reg   $s1       int i
+ *     reg   $s0       struct Humanoid * target
+ *     reg   $v0       int dist
+ *     stack sp+48     struct PARAM_ITEM_LAUNCH param
+ *     reg   $s4       struct tag_TItem * item
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $v0       struct VECTOR * tv
+ *     reg   $s6       struct param_korogari * param
+ *     reg   $s1       int x
+ *     reg   $s0       int y
+ *     reg   $v0       int z
+ *     reg   $s1       struct Humanoid * human
+ *     reg   $s1       struct Humanoid * human
+ *     reg   $s4       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long GameClock;
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern short Humans;
+ *     extern short ActionHalt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemDokudango", ProcItemDokudango);
 
 // triage: VERY-HARD — 617 insns, mul/div, 4 loop, indirect-call, 15 callees, ~0.20 to ProcItemDrop

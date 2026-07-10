@@ -2,6 +2,23 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * int ReqItemStay(struct PARAM_ITEM_STAY *p);
+ *     ITEM.C:1140, 27 src lines, frame 64 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct PARAM_ITEM_STAY * p
+ *     stack sp+16     struct PARAM_ITEM_LAUNCH param
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned long *GlobalAreaMap;
+ * END PSX.SYM */
+
 /*
  * ReqItemStay (0x8004a2ec) — spawn a stationary/placed item (e.g. from
  * DebugMenuItemSet/LoadConstruction/RestoreItemLayout: level-authored item

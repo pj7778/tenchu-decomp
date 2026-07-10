@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short UpdateMotion(struct MotionManager *mmp, short mid);
+ *     ACTION.C:182, 34 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       struct MotionManager * mmp
+ *     param $t0       short mid
+ *     reg   $a0       struct MotionRegistType * mrp
+ *     reg   $a2       short i
+ *     reg   $a1       short j
+ *     reg   $a3       short * xyz
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionRegistType MOTcommon[41];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/UpdateMotion", UpdateMotion);
 
 // triage: MEDIUM — 158 insns, 4 loop, 1 callees, ~0.10 to GetMotionID

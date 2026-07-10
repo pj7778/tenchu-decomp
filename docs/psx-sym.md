@@ -118,8 +118,58 @@ file, which nothing bounds — when the implied code density is at least 2 bytes
 line (verified spans sit at a median of 13.3). 431 of 442 survive; median 24 source
 lines, p90 83. Useful as a sanity prior on how much C a body should be.
 
-`tools/matcher-prompt.py` injects the prototype, the TU and the storage class into
-every matcher-agent launch prompt automatically.
+## Putting the facts in front of the code
+
+`tools/matcher-prompt.py` injects the prototype, TU, storage class, locals and
+touched globals into every matcher-agent launch prompt. But the facts belong next to
+the code too — a human reading a parked `NON_MATCHING` file, or an agent that opens a
+`.c` without a prompt, should see what the authors wrote.
+
+```console
+$ tools/symnote.py --write --all     # stamp/refresh every src/main.exe/*.c
+$ tools/symnote.py --check --all     # non-zero if any block is stale (CI)
+```
+
+It inserts one `BEGIN PSX.SYM … END PSX.SYM` comment after the last `#include`,
+regenerated in place and idempotent. **448 of 557 files carry one**; the other 109 are
+functions PSX.SYM never described. Comments change no bytes, so `./Build check` is the
+gate.
+
+```c
+/* BEGIN PSX.SYM — the original source's own facts …
+ * short DrawSprite(struct Sprite3D *sprt);
+ *     3DCTRL.C:593, 14 src lines, frame 72 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals …
+ *     param $s1       struct Sprite3D * sprt
+ *     stack sp+16     struct MATRIX mat
+ *     reg   $s1       struct ModelType * objp
+ *     stack sp+48     short [2] rxy
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+```
+
+A `FUN_…` file gets its recorded candidate name instead, with the warning not to adopt
+it without `callmatch.py --verify`.
+
+### Adopting the original parameter names
+
+```console
+$ tools/symnote.py --params           # worklist: our names vs the originals
+$ tools/symnote.py --rename-params    # adopt them (code only), then ./Build check
+```
+
+A parameter rename cannot change codegen, so `./Build check` is a hard gate. The guard
+is *capture*: the tool refuses when the original name already means something else in
+that file. 8 of 11 were adopted (`GetVectorRotation(from,to)` → `(start,end)`,
+`vinit(addr)` → `(adr)`, `AttackPQD(arg0,arg1)` → `(sfrm,efrm)`); 3 are blocked —
+`AddMisc` wants `a,b,c`, `GetAreaMapLevel` wants `area`, `PathFileRead` wants `path`,
+each already taken by a local. Renaming the local first would unblock them.
+
+It rewrites **code only**. If a file's prose comment used the old name, fix it by hand
+— `--params` shows you exactly which functions changed.
 
 **The addresses in PSX.SYM are useless.** It describes an *earlier, lost build* —
 its `.text` starts at `0x8001387c`, the demo's own `PSX.EXE` at `0x8001389c`, and a

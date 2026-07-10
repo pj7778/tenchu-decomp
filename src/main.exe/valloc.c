@@ -1,6 +1,31 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void * valloc(unsigned long size);
+ *     VALLOC.C:76, 50 src lines, frame 1080 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $t0       unsigned long size
+ *     stack sp+24     struct VMhead vh
+ *     reg   $a2       struct VMhead * vhp
+ *     reg   $s1       unsigned long * vmpt
+ *     stack sp+32     struct VMhead vh
+ *     stack sp+40     unsigned char [1024] str
+ *     reg   $a3       unsigned long maxsize
+ *     reg   $a0       struct VMhead * vhp
+ *     reg   $a1       unsigned long freesize
+ *     reg   $v1       struct VMhead * vhp
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned long *virtual_memory_pool;
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/valloc", valloc);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/valloc", allocate_memory_in_mem_pool___override__prt_80016710_891e8130);
 

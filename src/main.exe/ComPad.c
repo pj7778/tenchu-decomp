@@ -1,6 +1,31 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ComPad(int port, unsigned char *rxbuf);
+ *     PADCMD.C:136, 100 src lines, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       int port
+ *     param $s2       unsigned char * rxbuf
+ *     reg   $s0       struct TPadPort * pad
+ *     reg   $s1       int initlevel
+ *     reg   $s0       int i
+ *     reg   $s3       int port
+ *     reg   $v1       int i
+ *     reg   $v1       int i
+ *     reg   $a1       int i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TPadPort PadPort[2][4];
+ *     extern short ConflictObjects;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ComPad", ComPad);
 
 // triage: MEDIUM — 120 insns, 1 loop, 5 callees, ~0.07 to GetRealPad

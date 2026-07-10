@@ -1,6 +1,22 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void ProcMiscSprite(struct tag_TMisc *m, enum TMiscMessage msg);
+ *     MISC.C:582, 50 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct tag_TMisc * m
+ *     param $a1       enum TMiscMessage msg
+ *     reg   $v1       int type
+ *     reg   $s0       struct Sprite3D * s
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ProcMiscSprite", ProcMiscSprite);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ProcMiscSprite", debug_menu_sprite_spawner__override__prt_8004d8b8_394600bf);
 

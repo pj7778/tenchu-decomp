@@ -1,6 +1,17 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void CdaStop(void);
+ *     OPAUDIO.C:176, 10 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 /*
  * CdaStop (0x8004fb00, 0x80 bytes) — stops CD-audio playback if it's
  * currently active (CdaStatus.flag bit0): re-silences the SPU stream

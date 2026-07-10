@@ -1,6 +1,24 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * struct Humanoid * GetNearestHumanoid(struct Humanoid *human, short distance);
+ *     HUMAN.C:408, 24 src lines, frame 48 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * human
+ *     param $a1       short distance
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short Humans;
+ *     extern struct Humanoid *HumanGroup[32];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GetNearestHumanoid", GetNearestHumanoid);
 
 // triage: MEDIUM — 91 insns, mul/div, 1 loop, 1 callees, ~0.09 to GetVectorRotation

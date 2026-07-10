@@ -1,6 +1,60 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetWire(struct VECTOR *start, struct VECTOR *end, struct VECTOR *center, long len);
+ *     EFFECT.C:1428, 68 src lines, frame 120 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       struct VECTOR * start
+ *     param $s2       struct VECTOR * end
+ *     param $s1       struct VECTOR * center
+ *     param $s0       long len
+ *     stack sp+16     struct VECTOR StockCenter
+ *     reg   $s4       long lcount
+ *     reg   $s0       int i
+ *     reg   $s5       int ecount
+ *     stack sp+32     struct SVECTOR scr
+ *     stack sp+40     struct SVECTOR oldscr
+ *     stack sp+72     int x
+ *     stack sp+76     int y
+ *     reg   $s6       int z
+ *     stack sp+48     struct GsLINE line
+ *     reg   $v0       long x
+ *     reg   $a1       long y
+ *     reg   $a2       long z
+ *     reg   $s3       struct VECTOR * v1
+ *     reg   $s2       struct VECTOR * v2
+ *     reg   $a1       long dz
+ *     reg   $a3       long dy
+ *     reg   $t0       long dx
+ *     reg   $v0       long t
+ *     reg   $a0       long Q
+ *     reg   $a2       long R
+ *     stack sp+72     long x
+ *     stack sp+76     long y
+ *     reg   $s6       long z
+ *     reg   $v1       int z
+ *     stack sp+64     int rx
+ *     stack sp+68     int ry
+ *     reg   $s3       struct VECTOR * start
+ *     reg   $s2       struct VECTOR * end
+ *     reg   $s0       int dz
+ *     reg   $s2       int dy
+ *     reg   $s1       int dx
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TItem items[30];
+ *     extern struct GsOT *OTablePt;
+ *     extern short motID;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetWire", SetWire);
 
 // triage: HARD — 372 insns, mul/div, 9 callees, ~0.10 to GetVectorRotation

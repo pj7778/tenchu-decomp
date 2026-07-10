@@ -1,6 +1,15 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TPadPort PadPort[2][4];
+ * END PSX.SYM */
+
 /*
  * FUN_8001b174 (0x8001b174) — reads byte offset 6 of PadPort[arg0][0] (the low
  * byte of controller_input.unk_2[2]); GetPad's twin, same index math and the

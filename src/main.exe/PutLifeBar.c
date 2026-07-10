@@ -1,6 +1,37 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void PutLifeBar(int x, int y, int n, int mx, int style);
+ *     INFOVIEW.C:292, 32 src lines, frame 72 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       int x
+ *     param $s4       int y
+ *     param $s1       int n
+ *     param $a3       int mx
+ *     param stack+16  int style
+ *     reg   $s5       int style
+ *     stack sp+16     struct POLY_F4 poly
+ *     reg   $a3       int w
+ *     reg   $v0       int x
+ *     reg   $a0       int y
+ *     reg   $a3       int n
+ *     reg   $s2       int ou
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsSPRITE NumberImage;
+ *     extern struct WorldType WorldMap[8][8][8];
+ *     extern struct GsOT *OTablePt;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern long GameClock;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PutLifeBar", PutLifeBar);
 
 // triage: MEDIUM — 135 insns, mul/div, 1 loop, 1 callees, ~0.07 to ReqItemNingyo

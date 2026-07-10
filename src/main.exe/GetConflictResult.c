@@ -2,6 +2,28 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short GetConflictResult(struct ModelType *model, short index);
+ *     CONFLICT.C:382, 25 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct ModelType * model
+ *     param $a2       short index
+ *     reg   $t0       short i
+ *     reg   $t1       short idx
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short ConflictObjects;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern struct SVECTOR ConflictDistance;
+ *     extern struct ModelType *ConflictModel;
+ * END PSX.SYM */
+
 /*
  * GetConflictResult (0x8001a9b8) — query the ConflictObject conflict pool for a
  * live collision against `model`. `model->id` is its own slot in the pool; the

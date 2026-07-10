@@ -1,6 +1,41 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SaveSI(int target, unsigned char *name, void *mem, long size);
+ *     INFOVIEW.C:525, 89 src lines, frame 8488 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       int target
+ *     param $s5       unsigned char * name
+ *     param $fp       void * mem
+ *     param $s6       long size
+ *     stack sp+24     unsigned char [200] fn
+ *     reg   $s0       int fd
+ *     reg   $s3       unsigned char * msg
+ *     stack sp+8416   long cmd
+ *     stack sp+8420   long result
+ *     reg   $s4       long chan
+ *     stack sp+224    unsigned char [8192] block
+ *     reg   $s2       struct TCardHeader * hd
+ *     reg   $s7       void * data
+ *     reg   $s2       struct TCardHeader * hd
+ *     reg   $t1       unsigned char * icon3
+ *     reg   $s1       unsigned char * icon2
+ *     reg   $s0       unsigned char * icon1
+ *     stack sp+8424   struct TAdtSelect [3] sel
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short StageCitizens;
+ *     extern unsigned char *ImagePath;
+ *     extern int StageID;
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SaveSI", SaveSI);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SaveSI", save_layout_to_card_or_disk__override__prt_8005bdec_aee7b64a);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SaveSI", save_layout_to_card_or_disk__override__prt_8005bea0_8cf8befb);

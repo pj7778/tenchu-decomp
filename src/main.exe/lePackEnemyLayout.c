@@ -1,6 +1,23 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void lePackEnemyLayout(void *buf, long size);
+ *     WORLD.C:1275, 7 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       void * buf
+ *     param $a1       long size
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TEnemyLayout enemy[30];
+ * END PSX.SYM */
+
 /*
  * lePackEnemyLayout (0x8003caa4, 0x48 bytes) — the save-side counterpart of
  * leRestoreEnemyLayout: if the caller's buffer is big enough (>= sizeof

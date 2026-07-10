@@ -1,6 +1,42 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcItemNemuri(struct tag_TItem *item);
+ *     ITEM.C:2738, 93 src lines, frame 112 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct tag_TItem * item
+ *     reg   $s4       struct Sprite3D * model
+ *     reg   $s3       struct param_napalm * param
+ *     reg   $s2       struct tag_TItem * item
+ *     reg   $v0       struct VECTOR * pos
+ *     reg   $s2       struct tag_TItem * item
+ *     reg   $v0       int t
+ *     reg   $s1       int env
+ *     reg   $v0       int bright
+ *     reg   $a0       int cid
+ *     reg   $a0       struct ModelType * model
+ *     reg   $s3       struct Humanoid * human
+ *     reg   $s3       struct Humanoid * human
+ *     stack sp+16     struct VECTOR pos
+ *     stack sp+32     struct SVECTOR vec
+ *     stack sp+48     struct VECTOR pos
+ *     reg   $s3       struct Humanoid * human
+ *     reg   $s2       struct tag_TItem * item
+ *     reg   $s2       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern int StageID;
+ *     extern unsigned long *GlobalAreaMap;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemNemuri", ProcItemNemuri);
 
 // triage: HARD — 422 insns, mul/div, 1 loop, indirect-call, 18 callees, ~0.26 to ProcItemDrop

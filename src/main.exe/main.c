@@ -1,6 +1,29 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * int main(void);
+ *     START.C:102, 167 src lines, frame 56 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s3       short i
+ *     reg   $s2       unsigned long * dat
+ *     stack sp+24     struct RECT rect
+ *
+ * Globals it touches, as the original declared them:
+ *     extern enum TSystemFlag SystemFlag;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern short Humans;
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern short ConflictObjects;
+ *     extern short SkipFrame;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/main", main);
 
 // triage: MEDIUM — 143 insns, 1 loop, 38 callees, ~0.06 to ThinkBasicHuman1

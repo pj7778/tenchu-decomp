@@ -2,6 +2,16 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionManager *dtM;
+ *     extern struct NodeIndexType *FieldIndex;
+ * END PSX.SYM */
+
 /*
  * FUN_800274e8 (0x800274e8, 0x6c bytes) - an animation-frame callback (this
  * TU's dtM/Me_MOTION_C family, see AttackFire.c /

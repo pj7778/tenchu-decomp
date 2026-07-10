@@ -1,6 +1,18 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void InitPadControl(void);
+ *     PADCMD.C:82, 13 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned char ComBuf[2][34];
+ *     extern struct TPadPort PadPort[2][4];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/InitPadControl", InitPadControl);
 
 // triage: EASY — 40 insns, 1 loop, 7 callees, ~0.08 to DoBriefingAndInventorySelection

@@ -1,6 +1,38 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void AddEnemy(void);
+ *     INFOVIEW.C:695, 58 src lines, frame 2064 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+24     unsigned char [70][20] names
+ *     stack sp+1424   struct TAdtSelect [70] ItemName
+ *     reg   $s4       short i
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $s7       long type
+ *     reg   $s5       long x
+ *     reg   $s2       long y
+ *     reg   $s0       long z
+ *     reg   $s3       short r
+ *     reg   $s2       short think
+ *     stack sp+1984   struct VECTOR pos
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct HumanDataType HumanData[63];
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern struct WeaponModelType WeaponModel[41];
+ *     extern int StageID;
+ *     extern short StageCitizens;
+ *     extern struct ThinkDBtype ThinkDB[20];
+ *     extern struct TCameraStatus CamState;
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/AddEnemy", AddEnemy);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/AddEnemy", debug_menu_enemy_layout_add__override__prt_8005b740_aee7b64a);
 

@@ -1,6 +1,37 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void StateTransition(struct Humanoid *human);
+ *     THINK.C:99, 109 src lines, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * human
+ *     reg   $s2       short pad
+ *     reg   $s1       short atr0
+ *     reg   $s3       long ssr
+ *     reg   $s0       short motid
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct Humanoid *StagePlayer;
+ *     extern long StrainRatio;
+ *     extern short EngageLevel;
+ *     extern struct PADtype *Pad;
+ *     extern short Attrib;
+ *     extern short motID;
+ *     extern short ActionHalt;
+ *     extern long AttackActionCount;
+ *     extern long Distance;
+ *     extern short Degree;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern short SR;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/StateTransition", StateTransition);
 
 // triage: VERY-HARD — 944 insns, mul/div, indirect-call, 15 callees, ~0.04 to ProcItemKusuri

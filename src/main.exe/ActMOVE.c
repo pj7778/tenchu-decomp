@@ -1,6 +1,24 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActMOVE(void);
+ *     MOTION.C:994, 32 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionManager *dtM;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern short dtPAD;
+ *     extern short motID;
+ *     extern struct VECTOR *dtL;
+ *     extern struct SVECTOR *dtR;
+ *     extern unsigned char fInitialize;
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 /*
  * ActMOVE (0x80020108) — TODO one-line description.
  *

@@ -1,6 +1,39 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActSTICKON(void);
+ *     MOTION.C:1799, 101 src lines, frame 40 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $v1       struct MapVector * map
+ *     reg   $s0       struct ModelArchiveType * model
+ *     reg   $a2       short y
+ *     reg   $s2       short rv
+ *     reg   $s1       short pd
+ *     stack sp+16     struct SVECTOR vect
+ *     reg   $v1       short i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionManager *dtM;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct SVECTOR *dtR;
+ *     extern short RefrectVector[16];
+ *     extern short dtCMD;
+ *     extern short motID;
+ *     extern short MotionUpdateMode;
+ *     extern struct HumanAnimType CVAhuman[5];
+ *     extern short dtPAD;
+ *     extern struct SVECTOR *dtV;
+ *     extern struct TCameraStatus CamState;
+ *     extern unsigned char fInitialize;
+ * END PSX.SYM */
+
 /*
  * ActSTICKON (0x80025120) — TODO one-line description.
  *

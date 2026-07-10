@@ -1,6 +1,30 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ProcKaginawa(struct tag_TItem *item);
+ *     ITEM.C:1026, 67 src lines, frame 40 bytes, saved-reg mask 0x80070000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       struct tag_TItem * item
+ *     stack sp+16     int rx
+ *     stack sp+20     int ry
+ *     reg   $s0       struct tag_TItem * item
+ *     reg   $v0       int dist
+ *     reg   $s0       struct tag_TItem * item
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct GsSPRITE TargetSprite[1];
+ *     extern struct GsOT *OTablePt;
+ *     extern struct TCameraStatus CamState;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcKaginawa", ProcKaginawa);
 
 // triage: MEDIUM — 186 insns, indirect-call, 8 callees, ~0.20 to ProcItemTeleport

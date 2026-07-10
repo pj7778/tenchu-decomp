@@ -1,6 +1,24 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void JumpControl(void);
+ *     MOTION.C:367, 37 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct VECTOR *dtL;
+ *     extern struct MotionManager *dtM;
+ *     extern short motID;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern struct ConflictObjectType ConflictObject[64];
+ *     extern struct SVECTOR *dtV;
+ *     extern short dtPAD;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/JumpControl", JumpControl);
 
 // triage: MEDIUM — 146 insns, 4 callees, ~0.17 to FUN_80027304

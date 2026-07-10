@@ -1,6 +1,34 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void * vmemoryGC(void *pt);
+ *     VALLOC.C:259, 40 src lines, frame 56 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       void * pt
+ *     reg   $s3       struct VMhead * vhp
+ *     reg   $a3       struct VMhead * svhp
+ *     stack sp+16     struct VMhead vh
+ *     reg   $s1       unsigned long * vmpt
+ *     reg   $s6       unsigned long size
+ *     reg   $s2       void * pt
+ *     reg   $s2       void * pt
+ *     reg   $a0       struct VMhead * svhp
+ *     reg   $s0       struct VMhead * vhp
+ *     reg   $s1       void * pt
+ *     reg   $a0       struct VMhead * svhp
+ *     reg   $s0       struct VMhead * vhp
+ *
+ * Globals it touches, as the original declared them:
+ *     extern unsigned long *virtual_memory_pool;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/vmemoryGC", vmemoryGC);
 
 // triage: MEDIUM — 195 insns, 3 loop, 3 callees, ~0.06 to ReqItemMakibishi

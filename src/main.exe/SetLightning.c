@@ -1,6 +1,23 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetLightning(struct VECTOR *start, struct VECTOR *end, short r, short g, int b);
+ *     EFFECT.C:1562, 3 src lines, frame 32 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct VECTOR * start
+ *     param $a1       struct VECTOR * end
+ *     param $a2       short r
+ *     param $a3       short g
+ *     param stack+16  int b
+ * END PSX.SYM */
+
 /*
  * SetLightning (0x80038f98, 0x44 bytes) — thin forwarder to SetLightningI,
  * inserting a constant `1` and re-widening its own narrow params.

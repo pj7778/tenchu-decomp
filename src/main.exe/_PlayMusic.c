@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void _PlayMusic(int MusicNo, int mode);
+ *     IMAGES.C:438, 37 src lines, frame 264 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       int MusicNo
+ *     param $s4       int mode
+ *     stack sp+24     unsigned char [200] fname
+ *     stack sp+224    struct CdlLOC start
+ *     stack sp+232    struct CdlLOC end
+ *     reg   $s2       struct TMusicTable * music
+ *     reg   $s0       unsigned char min
+ *     reg   $s1       unsigned char sec
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/_PlayMusic", _PlayMusic);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/_PlayMusic", play_stage_music__override__prt_8004ed94_2feb0bc8);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/_PlayMusic", play_stage_music__override__prt_8004edf4_f3434af);

@@ -1,6 +1,17 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void InitializeImage(void);
+ *     IMAGES.C:32, 16 src lines, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsIMAGE Images[52];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/InitializeImage", InitializeImage);
 
 // triage: EASY — 43 insns, 1 loop, 6 callees, ~0.12 to FileWrite

@@ -1,6 +1,27 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short LoadCard(int target, unsigned char *name);
+ *     MEMCARD.C:119, 35 src lines, frame 8448 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       int target
+ *     param $a1       unsigned char * name
+ *     stack sp+24     unsigned char [200] fn
+ *     stack sp+8416   long cmd
+ *     stack sp+8420   long result
+ *     stack sp+224    unsigned char [8192] block
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short StageCitizens;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/LoadCard", LoadCard);
 
 // triage: MEDIUM — 69 insns, 1 loop, frame 0x2100, 6 callees, ~0.08 to UpdateOrnament

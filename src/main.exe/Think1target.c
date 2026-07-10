@@ -1,6 +1,33 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think1target(void);
+ *     THINK_1.C:154, 110 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $a0       long xx
+ *     reg   $a1       long zz
+ *     reg   $a0       long vx
+ *     reg   $a1       long vz
+ *     reg   $v0       short deg
+ *     reg   $s0       short pad
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short EngageLevel;
+ *     extern long GameClock;
+ *     extern short SR;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern short Attrib;
+ *     extern long AttackActionCount;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/Think1target", Think1target);
 
 // triage: MEDIUM — 214 insns, mul/div, 6 callees, ~0.20 to Think1watch

@@ -1,6 +1,37 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * long GetAreaMapLevel(unsigned long *area, long x, long y, long z, int mode);
+ *     CONFLICT.C:107, 69 src lines, frame 64 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       unsigned long * area
+ *     param $s5       long x
+ *     param stack+8   long y
+ *     param $s6       long z
+ *     param stack+16  int mode
+ *     stack sp+16     short mode
+ *     reg   $s3       struct NodeIndexType * index
+ *     reg   $s0       struct AreaNodeType * node
+ *     reg   $fp       long y2
+ *     reg   $s4       long yy
+ *     reg   $v1       long sy
+ *     reg   $s1       long n
+ *     reg   $s7       long nn
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern short FieldAttrib;
+ *     extern struct GsOT *OTablePt;
+ *     extern struct AreaNodeType *FieldArea;
+ * END PSX.SYM */
+
 /*
  * GetAreaMapLevel (0x80019a10) — area-map floor-height query (this is the
  * map/collision TU, not the item TU). Coordinates are divided by 10 into

@@ -1,6 +1,14 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void PrepareGetScreenPositionS(void);
+ *     EFFECT.C:577, 9 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ * END PSX.SYM */
+
 /*
  * PrepareGetScreenPositionS (0x80039684, 0x3c bytes) — zeroes the translation vector of
  * the GTE scratchpad MATRIX (fixed PS1 scratchpad RAM at 0x1F800000, Ghidra

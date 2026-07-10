@@ -1,6 +1,21 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void UpdateSplineControl(struct SplineControlType *spc);
+ *     ACTION.C:365, 19 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $t0       struct SplineControlType * spc
+ *     reg   $a2       struct MotionElementType * key0p
+ *     reg   $a3       struct MotionElementType * key1n
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/UpdateSplineControl", UpdateSplineControl);
 
 // triage: MEDIUM — 108 insns, mul/div, 0 callees, ~0.05 to bow_shoot_logic

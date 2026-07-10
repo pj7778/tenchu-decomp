@@ -1,6 +1,34 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void MakeDifSub(struct VECTOR *src, struct VECTOR *target, struct VECTOR *dest, struct TMakeDifInfo *info);
+ *     CAMERA.C:377, 40 src lines, frame 56 bytes, saved-reg mask 0x807f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $t0       struct VECTOR * src
+ *     param $a1       struct VECTOR * target
+ *     param $s5       struct VECTOR * dest
+ *     param $s4       struct TMakeDifInfo * info
+ *     reg   $s2       int len
+ *     reg   $s6       int mspd
+ *     reg   $s0       long theta
+ *     reg   $s0       long dx
+ *     reg   $s3       long dy
+ *     reg   $s1       long dz
+ *     stack sp+16     struct SVECTOR nv
+ *     reg   $v1       struct SVECTOR * a
+ *     reg   $s0       struct SVECTOR * b
+ *     reg   $s0       long slab
+ *     reg   $s0       long sla
+ *     reg   $s1       long ip
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/MakeDifSub", MakeDifSub);
 
 // triage: MEDIUM — 183 insns, mul/div, 1 callees, ~0.08 to GetVectorRotation

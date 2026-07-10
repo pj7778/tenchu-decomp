@@ -1,6 +1,33 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short DrawModelArchive(struct ModelArchiveType *mad, long gap);
+ *     3DCTRL.C:393, 28 src lines, frame 88 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s2       struct ModelArchiveType * mad
+ *     param $s3       long gap
+ *     reg   $s0       struct ModelType * objp
+ *     stack sp+16     struct MATRIX mat
+ *     stack sp+48     struct SVECTOR pos
+ *     reg   $s1       short i
+ *     reg   $s2       struct ModelType * objp
+ *     reg   $v1       long sz
+ *     reg   $s0       short atr
+ *     stack sp+56     short [2] rxy
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short SkipFrame;
+ *     extern struct SVECTOR UnitVector;
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawModelArchive", DrawModelArchive);
 
 // triage: MEDIUM — 122 insns, 1 loop, 4 callees, ~0.05 to update_something_for_each_visible_enemy_

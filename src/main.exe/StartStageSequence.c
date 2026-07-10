@@ -1,6 +1,37 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void StartStageSequence(void);
+ *     STAGE.C:93, 56 src lines, frame 48 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s2       struct StageCharType * stg
+ *     reg   $s0       struct Humanoid * human
+ *     reg   $v0       long y
+ *     reg   $a1       short i
+ *     reg   $a0       short tp
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct StageCharType StageChar[18];
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern int StageID;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern short Humans;
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern short StageCitizens;
+ *     extern short StageEnemies;
+ *     extern short FriendHits;
+ *     extern struct EventSeqType *StageEvent;
+ *     extern long GameClock;
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/StartStageSequence", StartStageSequence);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/StartStageSequence", INIT_STAGE_STATS);
 

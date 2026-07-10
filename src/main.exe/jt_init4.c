@@ -1,6 +1,18 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void jt_init4(void);
+ *     WORLD.C:1329, 110 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct tag_TItem items[30];
+ *     extern struct TCdaStatus CdaStatus;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/jt_init4", jt_init4);
 
 // triage: MEDIUM — 156 insns, 0 callees, ~0.07 to initialise_font

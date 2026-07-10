@@ -1,6 +1,19 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern struct tag_TItem items[30];
+ *
+ * PSX.SYM suggests this may be `RequestItem` (LOW confidence, ITEM.C) — NOT
+ * adopted. Corroborate with `tools/callmatch.py --verify` before renaming.
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8003d768", FUN_8003d768);
 
 // triage: MEDIUM — 168 insns, mul/div, 3 callees, ~0.09 to GetVectorRotation

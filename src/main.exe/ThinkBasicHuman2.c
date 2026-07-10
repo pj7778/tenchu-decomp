@@ -1,6 +1,14 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short ThinkBasicHuman2(void);
+ *     THINK.C:247, 2 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ * END PSX.SYM */
+
 /*
  * ThinkBasicHuman2 (0x8002f8c4, 0x24 bytes) — think-handler that just
  * forwards port-1 held-buttons (same "think" TU as Think1sleep.c; s16

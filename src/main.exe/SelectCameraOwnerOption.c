@@ -1,6 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void SelectCameraOwnerOption(void);
+ *     INFOVIEW.C:796, 27 src lines, frame 592 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct TAdtSelect [31] targets
+ *     stack sp+264    unsigned char [30][10] msg
+ *     reg   $s1       int i
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short Humans;
+ *     extern struct Humanoid *HumanGroup[32];
+ *     extern short StageCitizens;
+ *     extern struct TCameraStatus CamState;
+ *     extern struct GsRVIEW2 ViewInfo;
+ * END PSX.SYM */
+
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SelectCameraOwnerOption", SelectCameraOwnerOption);
 INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SelectCameraOwnerOption", debug_menu_enemy_layout_select_camera_owner__override__prt_8005ba50_8d2134c3);
 

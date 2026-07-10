@@ -1,6 +1,24 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void DrawFlyWire(struct tag_EffectSlot *ef);
+ *     EFFECT.C:1346, 36 src lines, frame 72 bytes, saved-reg mask 0x80030000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s1       struct tag_EffectSlot * ef
+ *     reg   $s0       struct FlyWireType * param
+ *     stack sp+24     struct VECTOR pos
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawFlyWire", DrawFlyWire);
 
 // triage: MEDIUM — 145 insns, mul/div, 4 callees, ~0.05 to EquipWeapon

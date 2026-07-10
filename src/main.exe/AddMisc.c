@@ -1,6 +1,31 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void AddMisc(enum MiscType type, int x, int y, int z, int a, int b, int c);
+ *     MISC.C:636, 47 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $t0       enum MiscType type
+ *     param $a1       int x
+ *     param $a2       int y
+ *     param $a3       int z
+ *     param stack+16  int a
+ *     param stack+20  int b
+ *     param stack+24  int c
+ *     reg   $a0       int a
+ *     reg   $t1       int b
+ *     reg   $t2       int c
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct tag_TMisc misc[200];
+ * END PSX.SYM */
+
 /*
  * AddMisc (0x8004d13c) — the misc-object/effect spawner (fire, doors,
  * pitfalls, snowfall, sprites, water TIM swaps...). Scans the misc[] pool for

@@ -2,6 +2,27 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void LayoutEnemyOption(void);
+ *     INFOVIEW.C:849, 55 src lines, frame 192 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct TAdtSelect [11] ItemName
+ *     stack sp+104    struct TAdtSelect [3] OkCancel
+ *     stack sp+128    struct TAdtSelect [7] ItemName
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern short StageCitizens;
+ *     extern short Humans;
+ * END PSX.SYM */
+
 /*
  * LayoutEnemyOption (0x8005bb18, 644 bytes) — the debug menu's "enemy layout
  * option" submenu (DoInfoViewProc dispatch case 0): add/remove/layout enemies,

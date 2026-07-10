@@ -1,6 +1,44 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void DrawBlood(struct tag_EffectSlot *ef);
+ *     EFFECT.C:657, 85 src lines, frame 80 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s0       struct tag_EffectSlot * ef
+ *     reg   $s2       struct BloodType * blood
+ *     reg   $s3       struct GsSPRITE * spr
+ *     reg   $s2       struct AreaNodeType ** hint
+ *     reg   $t3       long x
+ *     reg   $t2       long y
+ *     reg   $a3       long z
+ *     reg   $a2       int sz
+ *     reg   $t1       int sy
+ *     reg   $a1       int sx
+ *     reg   $v1       long rety
+ *     reg   $a0       struct AreaNodeType * area
+ *     stack sp+24     struct VECTOR pos
+ *     stack sp+40     struct SVECTOR vec
+ *     reg   $s3       struct GsSPRITE * sprt
+ *     reg   $s0       long scale
+ *     stack sp+24     struct SVECTOR scr
+ *     reg   $a0       int z
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsSPRITE sprBlood;
+ *     extern struct GsOT *OTablePt;
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct AreaNodeType *FieldArea;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern long GameClock;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawBlood", DrawBlood);
 
 // triage: HARD — 540 insns, mul/div, 8 callees, ~0.08 to ProcItemKusuri

@@ -1,6 +1,19 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void leClearLayout(void);
+ *     WORLD.C:1065, 9 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TEnemyLayout enemy[30];
+ *     extern struct tag_TMisc misc[200];
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 /*
  * leClearLayout (0x8003cc08, 0x44 bytes) - `le`=layout-enemy family sibling
  * of leResetEnemyLayout.c: clears the whole enemy-layout table by marking

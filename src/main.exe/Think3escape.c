@@ -2,6 +2,21 @@
 #include <psxsdk/libgs.h>
 #include "game_types.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think3escape(void);
+ *     THINK_3.C:103, 21 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long Distance;
+ *     extern short SR;
+ *     extern short Degree;
+ *     extern short Attrib;
+ *     extern short EngageLevel;
+ * END PSX.SYM */
+
 /*
  * STATUS: NON_MATCHING — 84 of 280 bytes differ (right length: matchdiff's
  * whole-image count equals the function-local count, so nothing downstream

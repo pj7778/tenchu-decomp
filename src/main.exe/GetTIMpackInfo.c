@@ -1,6 +1,22 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short GetTIMpackInfo(unsigned long *adr, struct GsIMAGE *image, int idx);
+ *     3DCTRL.C:802, 17 src lines, frame 32 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       unsigned long * adr
+ *     param $a1       struct GsIMAGE * image
+ *     param $a2       int idx
+ *     stack sp+16     struct RECT rect
+ * END PSX.SYM */
+
 /*
  * GetTIMpackInfo (0x80018ae8) — index a TIM-pack's offset table (same
  * "skip the leading u_long ID word" convention as GetTIMInfo.c/LoadTIM.c):

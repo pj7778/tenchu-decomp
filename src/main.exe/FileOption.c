@@ -1,6 +1,34 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void FileOption(void);
+ *     INFOVIEW.C:1021, 119 src lines, frame 7888 bytes, saved-reg mask 0x801f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     stack sp+16     struct TAdtSelect [17] ItemName
+ *     stack sp+152    struct TAdtSelect [5] SelectIO
+ *     stack sp+192    struct TAdtSelect [18] SelectSlot
+ *     reg   $s2       int TargetIO
+ *     reg   $s1       unsigned char * fname
+ *     reg   $s0       void * pBuf
+ *     stack sp+336    unsigned char [7000] Buf
+ *     reg   $s1       int i
+ *     stack sp+7552   unsigned char [26][12] msg
+ *     stack sp+7336   struct TAdtSelect [27] targets
+ *
+ * Globals it touches, as the original declared them:
+ *     extern enum TSystemFlag SystemFlag;
+ *     extern int StageID;
+ *     extern short StageCitizens;
+ *     extern short EngageLevel;
+ * END PSX.SYM */
+
 /*
  * FileOption (0x8005c5a8, 1108 bytes) — the debug menu's file/save submenu
  * (dispatch case 3 in DoInfoViewProc): save/load layouts to the memory card,

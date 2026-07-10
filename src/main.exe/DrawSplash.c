@@ -1,6 +1,34 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void DrawSplash(struct tag_EffectSlot *ef);
+ *     EFFECT.C:978, 43 src lines, frame 88 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       struct tag_EffectSlot * ef
+ *     reg   $s1       struct SplashType * param
+ *     reg   $s2       struct GsSPRITE * spr
+ *     stack sp+24     struct SVECTOR scr
+ *     reg   $v0       long x
+ *     reg   $a1       long y
+ *     reg   $a2       long z
+ *     reg   $s0       struct SVECTOR * scr
+ *     stack sp+32     struct VECTOR pos
+ *     reg   $v1       int z
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsRVIEW2 ViewInfo;
+ *     extern struct tag_TItem items[30];
+ *     extern int Projection;
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawSplash", DrawSplash);
 
 // triage: MEDIUM — 246 insns, mul/div, 6 callees, ~0.06 to InsertConflict

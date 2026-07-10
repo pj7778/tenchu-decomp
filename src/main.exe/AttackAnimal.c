@@ -1,6 +1,24 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static short AttackAnimal(void);
+ *     THINK_3.C:583, 26 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s0       short pad
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short EngageLevel;
+ *     extern long Distance;
+ *     extern short Degree;
+ * END PSX.SYM */
+
 /*
  * AttackAnimal (0x8002f170, 0xe4 bytes) — animal-enemy attack-decision
  * think-helper: while jumping/landing (character_status 7/9) resets

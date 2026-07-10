@@ -1,6 +1,62 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static short LoadConstruction(unsigned long *data);
+ *     WORLD.C:436, 191 src lines, frame 416 bytes, saved-reg mask 0xc0ff0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param stack+0   unsigned long * data
+ *     stack sp+352    int ObjectID
+ *     stack sp+356    unsigned long * MapModel
+ *     stack sp+360    struct WorldDataType * wlddt
+ *     reg   $s2       struct OrnamentType * model
+ *     reg   $s4       long x
+ *     reg   $s3       long y
+ *     reg   $s0       long z
+ *     stack sp+364    long n
+ *     reg   $s5       long i
+ *     stack sp+32     unsigned char [256] name
+ *     reg   $s3       int nModel
+ *     reg   $s1       struct OrnamentArchiveType * mad
+ *     reg   $s0       int i
+ *     reg   $s1       struct OrnamentArchiveType * mad
+ *     reg   $s0       int i
+ *     reg   $s3       int n
+ *     reg   $s0       int i
+ *     reg   $a0       long a
+ *     reg   $a0       long a
+ *     reg   $a0       long a
+ *     stack sp+288    struct SVECTOR center
+ *     stack sp+296    int size
+ *     reg   $s3       struct tag_ObjectSlotType ** slot
+ *     reg   $s2       struct OrnamentType * model
+ *     reg   $s6       short shifty
+ *     stack sp+304    struct PARAM_ITEM_STAY param
+ *     reg   $s6       int i
+ *     stack sp+368    struct ParentingType * ix
+ *     reg   $fp       int msize
+ *     reg   $a0       long a
+ *     reg   $a0       long a
+ *     reg   $a0       long a
+ *     reg   $s3       struct tag_ObjectSlotType ** slot
+ *     reg   $s1       struct OrnamentType * model
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct WorldType WorldMap[8][8][8];
+ *     extern unsigned long *GlobalAreaMap;
+ *     extern struct Sprite3D *sprSmoke;
+ *     extern unsigned char *ImagePath;
+ *     extern struct ObjectSlotManager ModelSlot;
+ *     extern int StageID;
+ *     extern struct ModelType World;
+ * END PSX.SYM */
+
 /*
  * LoadConstruction (0x8003ab60) — TODO one-line description.
  *

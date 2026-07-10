@@ -1,6 +1,17 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ResetAllMisc(void);
+ *     MISC.C:147, 11 src lines, frame 32 bytes, saved-reg mask 0x80030000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct tag_TMisc misc[200];
+ * END PSX.SYM */
+
 /*
  * ResetAllMisc (0x8004d514, 0x5c bytes) — walks the misc[] pool (200 entries,
  * tag_TMisc from AddMisc.c's sibling spawner, same TU/proven struct) and force

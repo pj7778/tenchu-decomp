@@ -2,6 +2,20 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void EquipWeapon(struct Humanoid *human, short mode);
+ *     APPEAR.C:380, 33 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * human
+ *     param $a1       short mode
+ * END PSX.SYM */
+
 /*
  * EquipWeapon (0x8002a9e0) — toggle a character's "weapon drawn" attribute
  * bit (0x40) and, on the transition, rotate the equipped-weapon slots

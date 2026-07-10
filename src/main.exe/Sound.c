@@ -2,6 +2,35 @@
 #include "main.exe.h"
 #include "item.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Sound(struct Humanoid *human, short seid);
+ *     SEMNG.C:61, 8 src lines, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * human
+ *     param $a1       short seid
+ *     reg   $a0       struct VECTOR * locate
+ *     reg   $a1       short seid
+ *     reg   $s0       long volume
+ *     reg   $s1       long zz
+ *     reg   $s2       long xx
+ *     reg   $a1       struct VECTOR * player
+ *     reg   $a0       struct VECTOR * locate
+ *     reg   $a1       short seid
+ *     reg   $s0       long volume
+ *     reg   $s1       long zz
+ *     reg   $s2       long xx
+ *     reg   $a1       struct VECTOR * player
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short StageCitizens;
+ * END PSX.SYM */
+
 /*
  * Sound (0x8004fef8) — play a character's sound effect. `seid` with any of the
  * high nibble set (0xf0) is an explicit id: play it at the character's position.

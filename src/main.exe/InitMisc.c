@@ -1,6 +1,33 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void InitMisc(void);
+ *     MISC.C:162, 83 src lines, frame 40 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $s1       int i
+ *     reg   $a0       int iDoor1
+ *     reg   $s1       int iDoor2
+ *     reg   $v0       struct ModelType * data
+ *     reg   $a0       int id1
+ *     reg   $s1       int id2
+ *     reg   $v0       struct ModelType * data
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct tag_TMisc misc[200];
+ *     extern struct tag_TItem items[30];
+ *     extern struct MISC__183fake DoorData[11];
+ *     extern struct MISC__185fake SpriteData[2];
+ *     extern struct MISC__184fake PitfallData[2];
+ *     extern unsigned char PutMapMode;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/InitMisc", InitMisc);
 
 // triage: MEDIUM — 90 insns, 4 loop, 4 callees, ~0.07 to ResetAllMisc

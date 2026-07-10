@@ -1,6 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void EndDrawing(short sync);
+ *     3DCTRL.C:151, 48 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       short sync
+ *
+ * Globals it touches, as the original declared them:
+ *     extern long GameClock;
+ *     extern short SkipFrame;
+ *     extern struct GsOT OTable[2];
+ *     extern short DrawingPage;
+ *     extern struct GsOT *OTablePt;
+ *     extern struct GsFOGPARAM Fog;
+ *     extern struct tag_TItem items[30];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/EndDrawing", EndDrawing);
 
 // triage: MEDIUM — 134 insns, mul/div, 7 callees, ~0.04 to ProcItemDrop

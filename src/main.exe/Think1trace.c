@@ -2,6 +2,30 @@
 #include <psxsdk/libgs.h>
 #include "game_types.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think1trace(void);
+ *     THINK_1.C:16, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     reg   $a0       long xx
+ *     reg   $a1       long zz
+ *     reg   $t0       short pad
+ *     reg   $a0       long vx
+ *     reg   $a1       long vz
+ *     reg   $v0       short deg
+ *     reg   $s0       short pad
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short EngageLevel;
+ *     extern short Degree;
+ *     extern short Attrib;
+ * END PSX.SYM */
+
 /*
  * Think1trace (0x8002bfec, 0xd8 bytes) — think-handler (same "think" TU as
  * Think1sleep.c/Think2confirm.c/think_setting_go_towards_player.c). Two

@@ -1,6 +1,17 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct POLY_FT4 TelopP;
+ *     extern struct tag_TItem items[30];
+ *     extern enum TSystemFlag SystemFlag;
+ * END PSX.SYM */
+
 /*
  * FUN_8005fe88 (0x8005fe88, 0x44 bytes) — writes two bytes (0x25, 0x23) into
  * a static scratch buffer, reports it via AdtMessageBox, then stashes a

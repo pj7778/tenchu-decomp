@@ -1,6 +1,21 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short LoadTIM(unsigned long *adr);
+ *     3DCTRL.C:718, 27 src lines, frame 64 bytes, saved-reg mask 0x80010000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       unsigned long * adr
+ *     stack sp+16     struct RECT rect
+ *     stack sp+24     struct GsIMAGE tim
+ * END PSX.SYM */
+
 /*
  * LoadTIM (0x80018904, 0xb0 bytes) - loads a TIM's pixel data (and, when the
  * TIM carries a CLUT per GsIMAGE's pmode bit 3, its CLUT too) via the PSYQ

@@ -1,6 +1,35 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * static void DrawFrame(struct tag_EffectSlot *ef);
+ *     EFFECT.C:1044, 49 src lines, frame 104 bytes, saved-reg mask 0x800f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s3       struct tag_EffectSlot * ef
+ *     reg   $s1       struct FrameType * param
+ *     reg   $s2       struct GsSPRITE * spr
+ *     stack sp+16     struct SVECTOR scr
+ *     stack sp+24     struct SVECTOR sv
+ *     stack sp+40     struct MATRIX mat
+ *     stack sp+72     long p
+ *     stack sp+76     long flag
+ *     reg   $v0       long x
+ *     reg   $a1       long y
+ *     reg   $a2       long z
+ *     reg   $s0       struct SVECTOR * scr
+ *     reg   $v1       int z
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct GsSPRITE sprFrame[4];
+ *     extern struct GsOT *OTablePt;
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawFrame", DrawFrame);
 
 // triage: MEDIUM — 139 insns, mul/div, 5 callees, ~0.05 to ReqItemShinsoku

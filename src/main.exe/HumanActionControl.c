@@ -1,6 +1,30 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void HumanActionControl(struct Humanoid *human);
+ *     MOTION.C:145, 21 src lines, frame 24 bytes, saved-reg mask 0x80000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * human
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern short dtPAD;
+ *     extern short dtCMD;
+ *     extern short motID;
+ *     extern struct SVECTOR *dtV;
+ *     extern struct VECTOR *dtL;
+ *     extern struct SVECTOR *dtR;
+ *     extern struct MotionManager *dtM;
+ *     extern void (*ActionFunc[18])();
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/HumanActionControl", HumanActionControl);
 
 // triage: EASY — 73 insns, indirect-call, 6 callees, ~0.12 to InitSoundEffect

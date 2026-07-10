@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SetupThinkFunction(struct Humanoid *human, short type);
+ *     THINK.C:212, 12 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * human
+ *     param $a1       short type
+ *
+ * Globals it touches, as the original declared them:
+ *     extern short (*Think1Func[10])();
+ *     extern short (*Think2Func[5])();
+ *     extern short (*Think3Func[10])();
+ *     extern short (*Think4Func[6])();
+ * END PSX.SYM */
+
 /*
  * SetupThinkFunction (0x8002f73c, 0xb8 bytes) — installs the four
  * think_settingN behaviour-function-pointer slots of a character_state

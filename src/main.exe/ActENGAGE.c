@@ -1,6 +1,28 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActENGAGE(void);
+ *     MOTION.C:1181, 56 src lines, frame 24 bytes, saved-reg mask 0x80010000
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct MotionManager *dtM;
+ *     extern short dtPAD;
+ *     extern short motID;
+ *     extern short dtCMD;
+ *     extern struct NodeIndexType *FieldIndex;
+ *     extern short ActionHalt;
+ *     extern struct SVECTOR *dtR;
+ *     extern struct SVECTOR *dtV;
+ *     extern struct Humanoid *StagePlayer;
+ *     extern long GameClock;
+ *     extern struct VECTOR *dtL;
+ *     extern unsigned char fInitialize;
+ * END PSX.SYM */
+
 /*
  * ActENGAGE (0x80021270) — TODO one-line description.
  *

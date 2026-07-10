@@ -1,6 +1,51 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void CameraType1(struct Humanoid *pl, struct GsRVIEW2 *vDif);
+ *     CAMERA.C:603, 176 src lines, frame 200 bytes, saved-reg mask 0x803f0000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $s5       struct Humanoid * pl
+ *     param $s3       struct GsRVIEW2 * vDif
+ *     reg   $s2       struct ModelArchiveType * mad
+ *     stack sp+24     struct VECTOR pos
+ *     stack sp+40     struct SVECTOR vecl
+ *     stack sp+48     struct SVECTOR vecr
+ *     reg   $s0       int levfl
+ *     reg   $s1       int levfr
+ *     reg   $v0       int levbl
+ *     reg   $s2       int levbr
+ *     reg   $s0       int levmap
+ *     stack sp+56     struct SVECTOR campos
+ *     stack sp+64     struct SVECTOR ref
+ *     stack sp+72     struct SVECTOR campos
+ *     stack sp+80     struct SVECTOR ref
+ *     stack sp+88     struct SVECTOR campos
+ *     stack sp+96     struct SVECTOR ref
+ *     stack sp+104    struct SVECTOR campos
+ *     stack sp+112    struct SVECTOR ref
+ *     stack sp+120    struct SVECTOR campos
+ *     stack sp+128    struct SVECTOR ref
+ *     stack sp+136    struct SVECTOR campos
+ *     stack sp+144    struct SVECTOR ref
+ *     stack sp+152    struct SVECTOR campos
+ *     stack sp+160    struct SVECTOR ref
+ *     stack sp+56     struct SVECTOR campos
+ *     stack sp+64     struct SVECTOR ref
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct TCameraStatus CamState;
+ *     extern struct TCdaStatus CdaStatus;
+ *     extern int Projection;
+ *     extern unsigned long *GlobalAreaMap;
+ * END PSX.SYM */
+
 /*
  * CameraType1 (0x80030c74) — TODO one-line description.
  *

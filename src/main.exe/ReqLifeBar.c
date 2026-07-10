@@ -1,6 +1,24 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * int ReqLifeBar(struct Humanoid *h);
+ *     INFOVIEW.C:89, 26 src lines, frame 0 bytes, saved-reg mask 0x00000000
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate:
+ *     param $a0       struct Humanoid * h
+ *     reg   $a1       int i
+ *     reg   $a2       int g
+ *
+ * Globals it touches, as the original declared them:
+ *     extern struct INFOVIEW__198fake LifeBar[4];
+ * END PSX.SYM */
+
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ReqLifeBar", ReqLifeBar);
 
 // triage: EASY — 60 insns, 1 loop, 0 callees, ~0.05 to leResetPath
