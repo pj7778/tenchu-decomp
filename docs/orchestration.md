@@ -339,6 +339,33 @@ against context prototypes), so a small m2c fix-up layer is where more zeros hid
 
 ## Tooling backlog (recurring friction → build these)
 
+- **Carve every remaining game function ("once and for all")? Measured: feasible,
+  but it is a project, not a flag.** 304 of the 555 game functions are still
+  un-carved (237,656 bytes) — they live inside the 99 `data` blobs that are really
+  raw code. Carving them all gives every function a per-function `.s`, which is
+  what `permute.py` / m2c / the auto-draft sweep need (the sweep currently
+  bulk-carves into a throwaway worktree to get them).
+  Tried it end-to-end in a worktree:
+  * **276 plain functions carve cleanly** with `reverse.py`'s `split_config` +
+    `write_src`. Build time goes ~13s → ~24s. Image stays linkable.
+  * **24 of them are `__override__prt_` two-piece splits**: a single INCLUDE_ASM
+    stub leaves `undefined reference to .L<addr>` at link. `reverse.py`'s
+    `expand_stub` fixes all 24 — a bulk carver must call it, not just `write_src`.
+    (This is a good consistency check: the carve *finds* boundary bugs that
+    `coverage.py` cannot, because they are wrong split points, not gaps.)
+  * **29 are jump-table functions and are the real blocker.** Without them the
+    image is 48 bytes short (one missing 12-entry table) and every later address
+    shifts — so "carve everything except the jump tables" is not a valid
+    intermediate state. Each needs `split-scaffold.py`, which today needs:
+    (a) a `switchD_<a>__switchdataD_<t>` symbol per table (some lack one, e.g.
+    `StartStageSequence`), and (b) their `.rodata` carve tagged
+    `linker_section_order: .text` — they sit in the TEXT run, unlike today's six
+    leading carves. `rodata_sub` now emits that tag, but no such carve exists yet,
+    so it is untested in anger.
+  Verdict: **not now.** Carving on demand is one `reverse.py` command, and the
+  only consumer that needs mass carving (the sweep) already works via a throwaway
+  worktree. Do it as a deliberate change once the jump-table path is solid.
+
 - **Productize the sweep as `tools/sweep.py`** (see the section above). Needs:
   resolve the permuter's source + python env from the `permuter.py` wrapper
   rather than hardcoding `/nix/store` paths, generate the cpp'd context itself,

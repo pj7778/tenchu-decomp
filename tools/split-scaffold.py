@@ -42,12 +42,31 @@ GHIDRA_C = ".shake/ghidra-export/c/{addr:08x}.c"
 
 
 def func_bounds(name):
+    """(start, end) vram. Resolves renamed-via-sibling functions too.
+
+    A function renamed in config/symbols keeps its `FUN_<addr>` name in the Ghidra
+    export, so a name lookup alone misses it (reverse.py has the same problem and
+    solves it by address). Fall back to the symbol's address and match the export
+    row by address."""
+    rows = []
     for line in open(TSV):
         p = line.rstrip("\n").split("\t")
-        if len(p) == 3 and p[2] == name:
-            a, s = int(p[0], 16), int(p[1])
+        if len(p) == 3:
+            try:
+                rows.append((int(p[0], 16), int(p[1]), p[2]))
+            except ValueError:
+                pass
+    for a, s, n in rows:
+        if n == name:
             return a, a + s
-    sys.exit(f"split-scaffold: {name} not in {TSV}")
+    m = re.search(rf"^{re.escape(name)}\s*=\s*(0x[0-9A-Fa-f]+)\s*;",
+                  open(SYMBOLS).read(), re.M)
+    if m:
+        addr = int(m.group(1), 16)
+        for a, s, n in rows:
+            if a == addr:
+                return a, a + s
+    sys.exit(f"split-scaffold: {name} not in {TSV} (nor resolvable via {SYMBOLS})")
 
 
 def switchdata_addrs():

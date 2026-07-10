@@ -111,11 +111,16 @@ def data_sub(indent, off):
 
 
 def rodata_sub(indent, off, name):
-    """A `.rodata` carve line, tagged into the right linker order group."""
-    if off < TEXT_FOFF:
-        return (f"{indent}- {{ start: 0x{off:X}, type: .rodata, name: {name}, "
-                f"linker_section_order: .data }}\n")
-    return f"{indent}- [0x{off:X}, .rodata, {name}]\n"
+    """A `.rodata` carve line, tagged into the right linker order group.
+
+    A jump table belonging to an un-carved function lives inside the TEXT run, so
+    such a carve must join the `.text` order group — untagged it would land in the
+    (trailing) `.rodata` group and silently move. Today's six carves are all in
+    the leading run; this keeps the next one honest.
+    """
+    group = ".data" if off < TEXT_FOFF else ".text"
+    return (f"{indent}- {{ start: 0x{off:X}, type: .rodata, name: {name}, "
+            f"linker_section_order: {group} }}\n")
 
 
 def parse_subsegments(text):
