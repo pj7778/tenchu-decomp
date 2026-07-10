@@ -1,21 +1,17 @@
 #include "common.h"
 #include "main.exe.h"
+#include "effect.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
  * docs/psx-sym.md. Do not hand-edit.
  *
  * void SetExplosion(struct VECTOR *pos, struct SVECTOR *vect);
- *     EFFECT.C:1236, 18 src lines, frame 48 bytes, saved-reg mask 0x800f0000 (DEMO build -- see below)
+ *     EFFECT.C:1236, 18 src lines, frame 48 bytes, saved-reg mask 0x800f0000
  *
  * Original parameters and locals (the demo build's register allocation may
  * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
- * over). A repeated name is a nested-block scope, not a duplicate.
- * The frame size and saved-reg mask above are the DEMO's: retail often needs
- * FEWER callee-saved registers (measured: Think1random exact; Think1chase's
- * 0x800f0000 = s0-s3+ra vs retail's s0,s1,ra). Treat them as an upper bound
- * and a hint at how many values stay live, never as a spec. The asm wins.
- * Locals:
+ * over). A repeated name is a nested-block scope, not a duplicate:
  *     param $s2       struct VECTOR * pos
  *     param $s3       struct SVECTOR * vect
  *     reg   $s1       struct tag_EffectSlot * slot
@@ -26,7 +22,97 @@
  *     extern struct tag_EffectSlot EffectSlot[200];
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetExplosion", SetExplosion);
+/*
+ * Matching notes (all verified against the original bytes):
+ *  - Same EffectSlot[200] pool search as SetImpact (see its header): a
+ *    real `do { ... } while (count < 200);`, not a hand-rolled goto — the
+ *    give-up path's `ef = &dmy;` sits AFTER the loop, not inside it, so
+ *    loop.c doesn't get a chance to hoist that address.
+ *  - UNLIKE SetImpact, `count = count + 1;` here comes BEFORE the
+ *    `if (slot->proc == 0)` test, not after (both Ghidra's own rendering
+ *    and the raw asm's delay-slot fill agree: the branch testing
+ *    `slot->proc` has `count++` in its delay slot, executed regardless of
+ *    outcome — only possible if count++ is the statement immediately
+ *    preceding the if in source). Each EffectSlot-pool inserter in this TU
+ *    apparently wrote this test/increment order slightly differently;
+ *    don't assume one sibling's shape for another without checking.
+ *  - `ef->param` is `ExplosionType` (see DrawExplosion.c/DrawHinoko.c):
+ *    Ghidra's `blood.py/pz/scale` and `smoke.*` names are its own wrong
+ *    union guess for the same proven offsets (pos@0x8, vec@0x0, time@0x20,
+ *    mode@0x21).
+ *  - `param->scale = 0x1000;` is a plain independent constant store that
+ *    floats into the `jal rand`'s delay slot (unrelated to the call);
+ *    write it as the first statement, before `rand()`, matching Ghidra.
+ *  - `vect->vz` is captured into a temp and stored to `param->vec.vz`
+ *    LAST (after time/mode), the same delayed-store idiom as
+ *    SetFrame/SetSplash/SetBleed's `pos->vz` capture.
+ *  - `vect->vx/vy/vz` read via `lhu` despite SVECTOR's fields being
+ *    signed `short`: a pure narrowing copy (read then immediately written
+ *    back at the same 16-bit width, no arithmetic) doesn't need the sign
+ *    bits, so cc1 picks the cheaper unsigned load.
+ *  - `SetBleeds` takes SIX arguments (`VECTOR *pos, short grange, short
+ *    srange, short n, int time, long col` — reference/psxsym-protos.h);
+ *    Ghidra's call rendering drops the two stack-passed args past the
+ *    4 register ones (cookbook: Ghidra under-counts stack args). The raw
+ *    `.s` shows all six: pos, 200, 0x96, 0x14, 0x1e, 0xFFFF00.
+ */
+extern void DrawExplosion(TEffectSlot *ef);
+extern void SetBleeds(VECTOR *pos, short grange, short srange, short n, int time, long col);
+
+void SetExplosion(VECTOR *pos, SVECTOR *vect)
+{
+    int idx;
+    TEffectSlot *base;
+    TEffectSlot *slot;
+    int count;
+    TEffectSlot *ef;
+    ExplosionType *param;
+    int r;
+    short vz;
+
+    count = 0;
+    base = EffectSlot;
+    idx = CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_;
+    slot = base + idx;
+    do
+    {
+        idx = idx + 1;
+        slot = slot + 1;
+        if (199 < idx)
+        {
+            slot = base;
+            idx = 0;
+        }
+        count = count + 1;
+        if (slot->proc == 0)
+        {
+            CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_ = idx + 1;
+            if (199 < idx + 1)
+            {
+                CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_ = 0;
+            }
+            ef = slot;
+            goto found;
+        }
+    } while (count < 200);
+    ef = &dmy;
+found:
+    param = &ef->param.explosion;
+    param->scale = 0x1000;
+    r = rand();
+    param->rotate = (r % 360) * 0x1000;
+    param->pos.vx = pos->vx;
+    param->pos.vy = pos->vy;
+    param->pos.vz = pos->vz;
+    param->vec.vx = vect->vx;
+    param->vec.vy = vect->vy;
+    vz = vect->vz;
+    param->time = 5;
+    param->mode = 0;
+    param->vec.vz = vz;
+    ef->proc = (void (*)())DrawExplosion;
+    SetBleeds(pos, 200, 0x96, 0x14, 0x1e, 0xFFFF00);
+}
 
 // triage: MEDIUM — 96 insns, mul/div, 1 loop, 2 callees, ~0.07 to AdtFntOpen
 // likely-relevant cookbook sections:

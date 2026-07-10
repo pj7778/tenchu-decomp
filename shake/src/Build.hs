@@ -161,6 +161,8 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     -- Think1sleep.c is a fragment of the original think TU, which defines these.
     syms "Think1sleep" = ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"]
     syms "DrawSprite" = ["OTablePt"]
+    syms "SetImpact" = ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"]
+    syms "SetExplosion" = ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"]
     syms "Think1random" = ["Me_THINK_C", "Attrib"]
     syms "Think1chase" = ["Me_THINK_C"]
     syms "ItemUse" = ["Me_THINK_C", "Degree"]

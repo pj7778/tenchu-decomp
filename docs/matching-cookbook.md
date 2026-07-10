@@ -476,6 +476,15 @@ plain C is the matched file.
   a fresh `li $a2,1` like the original (cse tables don't follow the taken
   edge).
 
+### An `&&`-chain's body is always the fallthrough after the last test
+
+If the target has the *opposite* body as the fallthrough, no `goto` ladder and no
+restructuring that preserves the guard's polarity will fix it — the tests compile to
+the same instructions either way, only the body layout differs. The single lever is
+De Morgan: invert the `&&`-chain into an early-return `||` guard, which changes which
+body is "the then". `CGetLevel`'s 6-way guard needed exactly this; Ghidra had rendered
+the polarity backwards.
+
 ### A guard returning the constant its own test produced wants a bare `goto`
 
 `if (cond) return X;` followed by more code, where `X` is a compile-time constant
@@ -605,6 +614,15 @@ reach it with a single branch (`ItemUse`'s `item[4]==0` and `d >= 300` guards).
   `NOTE_INSN_LOOP_BEG` and does no invariant motion at all. Applies even when the
   loop is an otherwise ordinary top-tested pool search (SetFrame/SetSplash/
   SetBleed, the `EffectSlot[200]` scan).
+
+  **But check where the give-up fallback actually lives before reaching for the
+  hand-rolled `goto`.** The hazard above exists only when the fallback (`ef = &dmy;`)
+  sits *inside* the loop body, giving loop.c an invariant `la` to hoist. When it sits
+  *after* the loop — `SetImpact`, `SetExplosion`, same `EffectSlot[200]` pool — there
+  is nothing to hoist, and only a genuine bottom-tested `do { … } while (count < 200);`
+  reproduces the target's `idx++`/`idx--` delay-slot-steal-and-compensate pattern; the
+  hand-rolled `goto` form does not. Two valid shapes, selected by fallback placement:
+  do not assume the family's established idiom carries over.
 
 - **You cannot flip a `break`'s branch polarity by negating the test.** `if (c)
   break;` and `if (!c) { … } break;` canonicalise to byte-identical code — cc1's
@@ -847,6 +865,11 @@ reach it with a single branch (`ItemUse`'s `item[4]==0` and `d >= 300` guards).
   `it->owner=`/`it->type=` stores end up 4 insns apart with other stores
   interleaved; `us = p->user; ty = p->type;` then the stores matched, while
   inline loads cost 26 bytes).
+
+**A pure narrowing struct-field copy uses `lhu`/`lbu` even for signed fields.** A
+field read and immediately written back at the same width, with no arithmetic in
+between, loads unsigned regardless of the field's signedness — the sign bits can't
+matter. Do not fight it with named temps or casts.
 
 ## Stack objects
 
@@ -1372,6 +1395,14 @@ their definitions before reaching for the permuter.
   FileOption case 0xd, CURRENT(2).
 
 ## Shared tails
+
+**Two otherwise byte-identical `return expr;` tails can fail to cross-jump-merge in
+this cc1.** Route all but one through `goto` to a single shared `return` — in
+`CGetLevel`, funnelling three arms into one `ret` variable plus one
+`goto done; … done: return ret;` was what merged the epilogues. Related but distinct
+from the `li`-suppressing bare-`goto` rule under Dispatch: that one is about the value,
+this one is about the tail.
+
 
 - **A store shared by both branch paths via the branch delay slot**: load the
   condition into a temp first, store between the temp and the branch
