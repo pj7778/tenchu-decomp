@@ -20,122 +20,162 @@
  *     extern enum TSystemFlag SystemFlag;
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawPause", DrawPause);
+/*
+ * DrawPause (0x8004b18c, 0x1C8 bytes) — draws the pause-screen "wobbling
+ * brightness ring" overlay: swaps in a screen-sized clip/offset draw
+ * environment (from the current display env), draws a pulsing quad using
+ * the current stage's title image, then restores the original draw env.
+ * Called by PauseProc (already matched) with the pause frame counter.
+ *
+ * MATCH. Matching notes (all verified against the original bytes):
+ *  - PSX.SYM records `static void DrawPause(void);` (no parameter) but the
+ *    body reads $a0 meaningfully (Ghidra's "in_a0" / m2c's arg0) for the
+ *    sin-based wobble, and the ALREADY-MATCHED caller PauseProc.c declares
+ *    `extern void DrawPause(int frame);` and calls `DrawPause(cnt);` — the
+ *    asm wins over the stale void prototype (cookbook: "the asm wins").
+ *  - `n_draw = o_draw;` is a PLAIN WHOLE-STRUCT ASSIGNMENT, not Ghidra's
+ *    hand-unrolled field-by-field copy: DRAWENV is 0x5C bytes, and cc1's
+ *    emit_block_move for a word-aligned struct that size compiles to
+ *    EXACTLY this shape — a 5-iteration 4-word (0x10-byte) loop over the
+ *    aligned 0x50-byte bulk, then a 3-word (0xC-byte) tail (cookbook
+ *    "Stack objects": DeleteConflict's 0x78-byte struct assignment is the
+ *    same mechanism at a different size). Ghidra's pDVar17/pDVar18 walking
+ *    pointers and named temps are its own rendering of that generated loop,
+ *    not source structure.
+ *  - `n_draw.clip = o_disp.disp;` (a RECT-to-RECT struct assignment) is
+ *    ALSO a plain struct copy: RECT is four `s16` fields (align 2), so cc1
+ *    emits the align-2 lwl/lwr + swl/swr block-move idiom for it — matches
+ *    m2c's own "(unaligned s32)" tag on this exact copy (cookbook "Stack
+ *    objects": SVECTOR's align-2 lwl/lwr pattern is the same mechanism).
+ *    `n_draw.ofs[0]/[1] = o_disp.disp.x/y;` stay two plain scalar copies
+ *    (ofs is a separate 2-`s16` array, not part of the RECT copy).
+ *  - The frame-based wobble angle `(s16)frame * 0x44` is computed ONCE into
+ *    a named temp and reused for both `rsin` calls (`t` and `t + 0x200`,
+ *    a quarter-turn apart) — m2c's own `temp_s0` shows this shared value.
+ *  - RECT/DRAWENV/DISPENV are the proven layouts from AdtReleaseDisp.c
+ *    (already matched, same TU family) — reused verbatim rather than
+ *    re-derived. POLY_GT4 is reference/psxsym-types.h's proven layout.
+ *  - `t = (s16)frame * 0x44;` needed a `do{}while(0)` wrapper (byte-neutral
+ *    scheduling lever, permuter-found) to make cc1 build the multiply chain
+ *    into its own scratch register and copy the result into the persistent
+ *    one, matching the target — without the wrapper, cc1 folds the
+ *    assignment straight into the first `rsin` call's argument setup (`a0`)
+ *    and only copies to the callee-saved home afterward, an 11-instruction
+ *    register-identity swap for no byte-length change.
+ *  - `(v >> 0xC) + 0x80` (permuter-found): the literal `+0x80` compiles to
+ *    `addiu` with the immediate encoded as `-128` (byte-equivalent mod 256,
+ *    since the result only ever feeds an 8-bit store) instead of the
+ *    target's `+128` — going through a named `s32 bias = 0x80;` local used
+ *    at both addition sites keeps the literal's encoding as `+128`. Neither
+ *    an explicit narrowing cast on the shift result nor writing straight to
+ *    the struct field (skipping a scratch var) affected this; only routing
+ *    the ADDEND itself through a named variable did.
+ */
+typedef struct
+{
+    s16 x, y, w, h;
+} RECT; /* 0x8 (PSYQ libgpu.h) */
 
-// triage: MEDIUM — 114 insns, 1 loop, 7 callees, ~0.10 to InsertConflict
-// likely-relevant cookbook sections:
-//   - Loops: 1 back-edge(s) — for/while/do vs goto shape
+typedef struct
+{
+    RECT clip;                     /* +0x00 */
+    s16 ofs[2];                    /* +0x08 */
+    RECT tw;                       /* +0x0c */
+    u16 tpage;                     /* +0x14 */
+    u8 dtd, dfe, isbg, r0, g0, b0; /* +0x16..+0x1b */
+    u32 dr_env[16];                /* +0x1c: tag + code[15] */
+} DRAWENV;                         /* 0x5c (PSYQ libgpu.h) */
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// /* WARNING: Type propagation algorithm not settling */
-// /* WARNING: Unknown calling convention -- yet parameter storage is locked */
-//
-// void DrawPause(void)
-//
-// {
-//   short sVar1;
-//   short sVar2;
-//   short sVar3;
-//   short sVar4;
-//   short sVar5;
-//   u_short uVar6;
-//   u_char uVar7;
-//   u_char uVar8;
-//   u_char uVar9;
-//   u_char uVar10;
-//   u_char uVar11;
-//   DRAWENV *pDVar12;
-//   DRAWENV *pDVar13;
-//   GsIMAGE *image;
-//   int iVar14;
-//   short in_a0;
-//   undefined4 uVar15;
-//   u_char uVar16;
-//   DRAWENV *pDVar17;
-//   DRAWENV *pDVar18;
-//   DISPENV local_120;
-//   DRAWENV local_108;
-//   DRAWENV local_a8;
-//   POLY_GT4 PStack_48;
-//
-//   if ((SystemFlag & 1) == 0) {
-//     GetDrawEnv(&local_108);
-//     GetDispEnv(&local_120);
-//     pDVar12 = &local_a8;
-//     pDVar18 = &local_108;
-//     do {
-//       pDVar17 = pDVar18;
-//       pDVar13 = pDVar12;
-//       sVar1 = (pDVar17->clip).y;
-//       sVar2 = (pDVar17->clip).w;
-//       sVar3 = (pDVar17->clip).h;
-//       uVar15 = *(undefined4 *)pDVar17->ofs;
-//       sVar4 = (pDVar17->tw).x;
-//       sVar5 = (pDVar17->tw).y;
-//       (pDVar13->clip).x = (pDVar17->clip).x;
-//       (pDVar13->clip).y = sVar1;
-//       (pDVar13->clip).w = sVar2;
-//       (pDVar13->clip).h = sVar3;
-//       *(undefined4 *)pDVar13->ofs = uVar15;
-//       (pDVar13->tw).x = sVar4;
-//       (pDVar13->tw).y = sVar5;
-//       pDVar18 = (DRAWENV *)&(pDVar17->tw).w;
-//       pDVar12 = (DRAWENV *)&(pDVar13->tw).w;
-//     } while (pDVar18 != (DRAWENV *)(local_108.dr_env.code + 0xc));
-//     sVar1 = (pDVar17->tw).h;
-//     uVar6 = pDVar17->tpage;
-//     uVar16 = pDVar17->dtd;
-//     uVar7 = pDVar17->dfe;
-//     uVar8 = pDVar17->isbg;
-//     uVar9 = pDVar17->r0;
-//     uVar10 = pDVar17->g0;
-//     uVar11 = pDVar17->b0;
-//     (pDVar13->tw).w = (pDVar17->tw).w;
-//     (pDVar13->tw).h = sVar1;
-//     pDVar13->tpage = uVar6;
-//     pDVar13->dtd = uVar16;
-//     pDVar13->dfe = uVar7;
-//     pDVar13->isbg = uVar8;
-//     pDVar13->r0 = uVar9;
-//     pDVar13->g0 = uVar10;
-//     pDVar13->b0 = uVar11;
-//     local_a8.clip.x = local_120.disp.x;
-//     local_a8.clip.y = local_120.disp.y;
-//     local_a8.clip.w = local_120.disp.w;
-//     local_a8.clip.h = local_120.disp.h;
-//     local_a8.ofs[0] = local_120.disp.x;
-//     local_a8.ofs[1] = local_120.disp.y;
-//     PutDrawEnv(&local_a8);
-//     image = GetImage(0x3d);
-//     SetupImageToPolyGT4(image,&PStack_48,image->pw * -2 + 0xa0,0x78 - (image->ph >> 1));
-//     iVar14 = rsin(in_a0 * 0x44);
-//     iVar14 = iVar14 * 0x7d;
-//     if (iVar14 < 0) {
-//       iVar14 = iVar14 + 0xfff;
-//     }
-//     uVar16 = (char)(iVar14 >> 0xc) + 0x80;
-//     iVar14 = rsin(in_a0 * 0x44 + 0x200);
-//     iVar14 = iVar14 * 0x7d;
-//     if (iVar14 < 0) {
-//       iVar14 = iVar14 + 0xfff;
-//     }
-//     PStack_48.r0 = (char)(iVar14 >> 0xc) + 0x80;
-//     PStack_48.g0 = PStack_48.r0;
-//     PStack_48.b0 = PStack_48.r0;
-//     PStack_48.r1 = PStack_48.r0;
-//     PStack_48.g1 = PStack_48.r0;
-//     PStack_48.b1 = PStack_48.r0;
-//     PStack_48.r2 = uVar16;
-//     PStack_48.g2 = uVar16;
-//     PStack_48.b2 = uVar16;
-//     PStack_48.r3 = uVar16;
-//     PStack_48.g3 = uVar16;
-//     PStack_48.b3 = uVar16;
-//     DrawPrim(&PStack_48);
-//     PutDrawEnv(&local_108);
-//   }
-//   return;
-// }
+typedef struct
+{
+    RECT disp;                       /* +0x00 */
+    RECT screen;                     /* +0x08 */
+    u8 isinter, isrgb24, pad0, pad1; /* +0x10..+0x13 */
+} DISPENV;                           /* 0x14 (PSYQ libgpu.h) */
+
+typedef struct
+{
+    u32 tag;
+    u8 r0, g0, b0, code;
+    s16 x0, y0;
+    u8 u0, v0;
+    u16 clut;
+    u8 r1, g1, b1, p1;
+    s16 x1, y1;
+    u8 u1, v1;
+    u16 tpage;
+    u8 r2, g2, b2, p2;
+    s16 x2, y2;
+    u8 u2, v2;
+    u16 pad2;
+    u8 r3, g3, b3, p3;
+    s16 x3, y3;
+    u8 u3, v3;
+    u16 pad3;
+} POLY_GT4; /* 0x34 (PSYQ libgpu.h) */
+
+extern u32 SystemFlag;
+
+extern void GetDrawEnv(DRAWENV *env);
+extern void GetDispEnv(DISPENV *env);
+extern void PutDrawEnv(DRAWENV *env);
+extern GsIMAGE *GetImage(s32 id);
+extern void SetupImageToPolyGT4(GsIMAGE *image, void *quad, s32 w, s32 h);
+extern s32 rsin(s32 a);
+extern void DrawPrim(POLY_GT4 *prim);
+
+void DrawPause(int frame)
+{
+    DISPENV o_disp;
+    DRAWENV o_draw;
+    DRAWENV n_draw;
+    POLY_GT4 ply;
+    GsIMAGE *image;
+    s32 t;
+    s32 v;
+    s32 bias;
+    u8 far_col;
+
+    if ((SystemFlag & 1) == 0)
+    {
+        GetDrawEnv(&o_draw);
+        GetDispEnv(&o_disp);
+        n_draw = o_draw;
+        n_draw.clip = o_disp.disp;
+        n_draw.ofs[0] = o_disp.disp.x;
+        n_draw.ofs[1] = o_disp.disp.y;
+        PutDrawEnv(&n_draw);
+        image = GetImage(0x3D);
+        SetupImageToPolyGT4(image, &ply, (s16)(0xA0 - image->pw * 2), (s16)(0x78 - (image->ph >> 1)));
+        do
+        {
+            t = (s16)frame * 0x44;
+        } while (0);
+        bias = 0x80;
+        v = rsin(t) * 0x7D;
+        if (v < 0)
+        {
+            v = v + 0xFFF;
+        }
+        far_col = (v >> 0xC) + bias;
+        v = rsin(t + 0x200) * 0x7D;
+        if (v < 0)
+        {
+            v = v + 0xFFF;
+        }
+        ply.r0 = (v >> 0xC) + bias;
+        ply.g0 = ply.r0;
+        ply.b0 = ply.r0;
+        ply.r1 = ply.r0;
+        ply.g1 = ply.r0;
+        ply.b1 = ply.r0;
+        ply.r2 = far_col;
+        ply.g2 = far_col;
+        ply.b2 = far_col;
+        ply.r3 = far_col;
+        ply.g3 = far_col;
+        ply.b3 = far_col;
+        DrawPrim(&ply);
+        PutDrawEnv(&o_draw);
+    }
+}

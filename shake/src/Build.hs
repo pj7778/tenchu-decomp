@@ -234,6 +234,8 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "InitMisc" = ["EFFECT_SPAWNERS_INITIALISED"]
     syms "InitializeItem" = ["D_80097F48", "D_80097F4C", "D_80097F50", "HAPPOU_SCRATCH_MODEL", "D_80097F5C", "D_80097F60", "D_80097AC8"]
     syms "DoMiscProc" = ["EFFECT_SPAWNERS_INITIALISED"]
+    syms "LoadSI" = ["D_80097D8C"]
+    syms "InitializeInfoView" = ["fInitialize"]
     syms _ = []
 
 as :: FilePath

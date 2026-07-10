@@ -140,6 +140,8 @@ GP_EXTERNS = {
     "InitMisc": ["EFFECT_SPAWNERS_INITIALISED"],
     "InitializeItem": ["D_80097F48", "D_80097F4C", "D_80097F50", "HAPPOU_SCRATCH_MODEL", "D_80097F5C", "D_80097F60", "D_80097AC8"],
     "DoMiscProc": ["EFFECT_SPAWNERS_INITIALISED"],
+    "LoadSI": ["D_80097D8C"],
+    "InitializeInfoView": ["fInitialize"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs

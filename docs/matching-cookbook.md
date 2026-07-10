@@ -1518,6 +1518,21 @@ absolute → keep the symbol off the list (a plain small extern).
 
 ## Toolchain gotchas
 
+- **A literal added to a value that only ever feeds a NARROW (byte) store can
+  canonicalize to its negative-equivalent immediate**: `x + 0x80` compiles as
+  `addiu ...,-128` because only the low 8 bits survive the `sb`. If the target
+  shows the positive encoding, route the literal through a named variable
+  (`s32 bias = 0x80;`) used at both addition sites (SelectCameraOwnerOption).
+
+- **A repeated `&local` passed to the same callee twice does NOT reliably get
+  recomputed.** cc1 can CSE the address across an intervening conditional even
+  when a genuine two-predecessor `CODE_LABEL` sits between the call sites — which
+  contradicts the "a label breaks the CSE window" expectation elsewhere in this
+  file. If the target recomputes the stack address fresh at each site and your
+  draft caches it in two extra callee-saved registers, there is currently no
+  known source lever (LoadSI, parked; wants a `-dg`/`-di` dump session).
+
+
 - **The PsyQ SDK block (`0x80060000+`: CRT/libcd/libapi) was built by a DIFFERENT
   compiler — don't source-shape it.** `Exec`/`__main`/`__SN_ENTRY_POINT`/`Cd*`/
   `PC*`/`EVENT_OBJ_*`/`DeliverEvent`/`_SN_*` are precompiled library objects, not
