@@ -3,72 +3,59 @@
 #include "game_types.h"
 
 /*
- * STATUS: NON_MATCHING — 76 of 480 bytes differ (whole function, right
- * length: the residual doesn't shift anything downstream).
- *
  * turn_towards_player_ (0x8002b990, 0x1E0 bytes) — the shared "which way to
  * turn, and is it safe to step" helper called by nearly every AI think
  * handler in this TU (Think1sleep/Think2confirm/think_setting_go_towards_-
  * player and many unmatched Think* siblings). Result is a bitmask of
  * button-like turn/walk bits (0x1000 "close enough to stop turning",
- * 0x2000/0x8000 "turn right/left") truncated to s16 on return (same
- * shared-tail sll/sra-once shape as GetDirection).
+ * 0x2000/0x8000 "turn right/left") truncated to s16 on return.
  *
  * Deliberately does NOT include main.exe.h: this file needs `Attrib` and
  * `Degree` read as u16 (`lhu`), conflicting with main.exe.h's `s16 Attrib`
  * (used by Think1sleep.c/Think2confirm.c) — same per-file respelling as
  * think_setting_go_towards_player.c.
  *
- * Structure (verified against the raw .s, not just Ghidra/m2c's flattening) —
- * everything below is BYTE-PROVEN except the final residual:
- *  - `dir` is u16 (matches m2c): raw GetDirection()/Degree bits, given an
- *    explicit `(s16)` cast at each of its 3 separate comparison sites
- *    (turn-vs-dir, dir-vs-turn, abs-for-500) rather than a cached temp — the
- *    asm shows ONE shared truncation reused for the first two comparisons
- *    (they're in the same extended basic block) but a FRESH one for the
- *    third (past the if/else-if join's CODE_LABEL, outside cse's window).
- *  - The turn/dir clamp is GetDirection's own default-then-override shape:
- *    default (0) was set at function entry, not immediately before the if.
- *  - `cached` (D_80097F10) is read once into a callee-saved local — it
- *    survives both GetAreaMapLevel calls and is re-tested afterward.
+ * Matching notes (all byte-proven):
+ *  - `dir` is u16: raw GetDirection()/Degree bits, given an explicit `(s16)`
+ *    cast at each of its 3 separate comparison sites rather than a cached
+ *    temp — the asm shows ONE shared truncation for the first two compares
+ *    (same extended basic block) but a FRESH one for the third (past the
+ *    if/else-if join's CODE_LABEL, outside cse's window).
  *  - The two GetAreaMapLevel calls each re-read
- *    `Me_THINK_C->some_kind_of_current_position` fresh (no cached pointer
- *    var) — proven by the asm reloading it independently both times.
- *  - The final flag computation is a goto-shared store: read literally off
- *    m2c's structure (a comma-expression side effect inside the second `&&`
- *    is exactly what the asm's unconditional delay-slot `li` proves).
- *
- * RESIDUAL (the whole 76-byte gap): the `flag`/`(result & 0x8000)` test
- * register assignment in the final flag-computation block. The target keeps
- * `flag` in $v1 in BOTH branches (a direct `lui $v1,...` in the first, an
- * explicit `move $v1,$v0` in the second, after $v0 was needed transiently
- * for the `d2==0x80000000` compare) and reserves $v0 for the `result&0x8000`
- * test value across the intervening `goto` — this draft's cc1 instead puts
- * `flag` in $v0 for the first branch and the test in $v1, an internally
- * self-consistent but registers-swapped allocation (confirmed by
- * `tools/regalloc.py`: a `v0 -> v1` copy-chain at the `flag` merge point that
- * the target doesn't have). Tried and rejected (all produced IDENTICAL
- * asm to the comma-expression baseline, or worse):
- *   - hoisting `result & 0x8000` into an explicit `test8000` local computed
- *     right before the first `if` (no change — cc1 still picks the same
- *     registers) or before the two GetAreaMapLevel calls (WORSE: extends
- *     test8000's live range across both calls, forcing an extra
- *     callee-saved register and growing the frame by 8 bytes);
- *   - replacing the second condition's comma-expression with an equivalent
- *     nested-if + goto (produced byte-IDENTICAL output to the
- *     comma-expression form — cc1 desugars both the same way, so this
- *     wasn't the lever);
- *   - swapping the `s32 d1, d2, flag;` / `test8000` declaration order
- *     (no effect).
- *   - `tools/permute.py turn_towards_player_ -- --stop-on-zero -j4`, a
- *     bounded ~7 minute run: best score 400 (worse than this draft),
- *     never found 0 — consistent with the cookbook's sub-C-level
- *     early-stop guidance (permuter-immune within budget).
- * decomp.me (psyq4.3 preset) would be the next arbiter if this is revisited.
+ *    `Me_THINK_C->some_kind_of_current_position` fresh (no cached pointer).
+ *  - The blocked-direction flag is D2 REUSED (one variable, double duty):
+ *    the target keeps the flag in $v1 — the same register that holds d2 —
+ *    and gcc 2.8.1 never splits a live range, so the source overwrote `d2`
+ *    with the 0x20000000/0x80000000 flag value instead of naming a `flag`
+ *    local. The apparently "unconditional" delay-slot `move $v1,$v0` after
+ *    `beq $v1,$v0` is NOT a comma-expression pre-assignment: it is reorg
+ *    stealing the fallthrough arm's first insn (`d2 = 0x80000000`, cse'd to
+ *    a copy of the compare constant) into the branch's delay slot, safe
+ *    because $v1 is dead on the taken (else) path. With d2 live at the
+ *    second if's compare, reorg also can't invert the first if's
+ *    `beq s0,s2` (stealing `lui $v1,0x2000` would clobber live $v1), which
+ *    reproduces the target's beq/nop/j/lui shape and the single early
+ *    `andi 0x8000` shared by both paths.
+ *  - `d2 |= 0x1e;` then store (in-place or) — NOT `... = d2 | 0x1e;`. The
+ *    fresh or-temp of the compound-expression form is colored by local-alloc
+ *    before the (longer-lived) Me_THINK_C pointer temp, stealing $v0 and
+ *    pushing Me to $v1, which then pushes d2 off $v1 entirely (to $a0).
+ *  - The `if (cached != 0x80000000) return result;` guard is a LITERAL EARLY
+ *    RETURN, and it is load-bearing for the epilogue schedule: a second
+ *    `return` statement makes expand emit a jump to return_label, so at
+ *    sched2 time (which runs BEFORE jump2/cross-jump in this cc1 — verified
+ *    via -da dumps: the .jump2 dump already carries sched2's dep lists) the
+ *    label pins the return truncation's `sra` ABOVE the epilogue restore
+ *    loads. With a single structured return the sll/sra/use flow straight
+ *    into the threaded epilogue as one block and sched2 sinks the sra below
+ *    all four `lw`s (loads have longer latency chains to the blockage insn).
+ *    Cross-jump then merges the duplicate [sll][sra][use][jump] return body
+ *    away and jump2 re-inverts the guard branch, so the early return costs
+ *    zero bytes elsewhere. Guard 3 is the only safe site: guards 1/2 share
+ *    one `lhu Attrib` and guard 4 shares the `Me_THINK_C` load with the
+ *    body, and an early-return body between them would break those cse
+ *    windows (cse follows the fallthrough path only).
  */
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/turn_towards_player_", turn_towards_player_);
-#else
 extern character_state *Me_THINK_C;
 extern u16 Attrib;
 extern u16 Degree;
@@ -121,44 +108,46 @@ s16 turn_towards_player_(s32 x_diff, s32 z_diff)
             s32 cached;
 
             cached = D_80097F10;
-            if (cached == 0x80000000)
+            if (cached != 0x80000000)
             {
-                if (Me_THINK_C->field76_0xb0 == 0)
-                {
-                    SVECTOR local;
-                    s32 d1, d2, flag;
+                return result;
+            }
+            if (Me_THINK_C->field76_0xb0 == 0)
+            {
+                SVECTOR local;
+                s32 d1, d2;
 
-                    GetMoveSpeed(&local,
-                                 Me_THINK_C->something_about_player_rotation_perhaps->character_rotation,
-                                 0, Me_THINK_C->field6_0xc);
-                    d1 = GetAreaMapLevel(GlobalAreaMap,
-                                         Me_THINK_C->some_kind_of_current_position->vx + local.vx,
-                                         Me_THINK_C->some_kind_of_current_position->vy - 500,
-                                         Me_THINK_C->some_kind_of_current_position->vz + local.vz,
-                                         0x1a);
-                    d2 = GetAreaMapLevel(GlobalAreaMap,
-                                         Me_THINK_C->some_kind_of_current_position->vx - local.vx,
-                                         Me_THINK_C->some_kind_of_current_position->vy - 500,
-                                         Me_THINK_C->some_kind_of_current_position->vz - local.vz,
-                                         0x1a);
-                    if ((result & 0x2000) && (d1 != cached))
-                    {
-                        flag = 0x20000000;
-                        goto apply;
-                    }
-                    if ((result & 0x8000) && (flag = 0x80000000, d2 != 0x80000000))
-                    {
-                    apply:
-                        Me_THINK_C->field76_0xb0 = flag | 0x1e;
-                    }
-                    else
-                    {
-                        result = 0;
-                    }
+                GetMoveSpeed(&local,
+                             Me_THINK_C->something_about_player_rotation_perhaps->character_rotation,
+                             0, Me_THINK_C->field6_0xc);
+                d1 = GetAreaMapLevel(GlobalAreaMap,
+                                     Me_THINK_C->some_kind_of_current_position->vx + local.vx,
+                                     Me_THINK_C->some_kind_of_current_position->vy - 500,
+                                     Me_THINK_C->some_kind_of_current_position->vz + local.vz,
+                                     0x1a);
+                d2 = GetAreaMapLevel(GlobalAreaMap,
+                                     Me_THINK_C->some_kind_of_current_position->vx - local.vx,
+                                     Me_THINK_C->some_kind_of_current_position->vy - 500,
+                                     Me_THINK_C->some_kind_of_current_position->vz - local.vz,
+                                     0x1a);
+                if ((result & 0x2000) && (d1 != cached))
+                {
+                    d2 = 0x20000000;
+                    goto apply;
+                }
+                if ((result & 0x8000) && (d2 != 0x80000000))
+                {
+                    d2 = 0x80000000;
+                apply:
+                    d2 |= 0x1e;
+                    Me_THINK_C->field76_0xb0 = d2;
+                }
+                else
+                {
+                    result = 0;
                 }
             }
         }
     }
     return result;
 }
-#endif

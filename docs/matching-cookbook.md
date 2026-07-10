@@ -1306,6 +1306,40 @@ no C-level fix. Found by reading `-dg` on `vrealloc`: pseudo 85 was the top-prio
 allocno with an explicit `preferences: 6` (hard `$a2`) inherited from the give-up
 path's `memcpy` third argument; it took `$a2` first and rotated everything after it.
 
+### A shared-return `sra` above the epilogue restores means a SECOND `return`
+
+If the epilogue's truncating `sra` sits ABOVE the `lw` register restores (target)
+but your build emits `[lw restores][sra]`, the source had a second literal `return`
+statement. sched2 runs BEFORE jump2/cross-jump in this cc1 (verified: the `.jump2`
+dump already carries sched2's dependency lists), so with a single structured return
+the `[sll][sra][use]` flows into the threaded epilogue as one block and sched2 sinks
+the `sra` below the restores (the loads have longer latency chains to the blockage
+insn). A second `return` makes `expand` jump to `return_label`, whose CODE_LABEL pins
+the `sra` above the loads at sched2 time; cross-jump then deletes the duplicated
+`[sll][sra][use][jump]` body and jump2 re-inverts the guard, so the early return
+costs nothing elsewhere. Constraint: place the early-return site so its inline body
+does NOT sit between two blocks sharing a cse'd value (a shared `lhu` of a global, a
+shared struct-pointer load) — cse follows only the fallthrough path
+(`turn_towards_player_`; its `cached != 0x80000000` guard is the unique safe site).
+
+### An "unconditional" delay-slot move after a compare is NOT a comma-expression
+
+reorg steals the fallthrough arm's first instruction into a conditional branch's
+delay slot whenever the written register is dead on the taken path, so a plain
+`if (a && b != K) { x = K; ... }` produces the identical "executed on both paths"
+placement that a comma-expression `(x = K, b != K)` would. Check register deadness on
+the taken path before reaching for the comma spelling — the comma form assigns `x`
+too early and changes the allocation (`turn_towards_player_`; the parked draft had
+been blocked by exactly this misreading).
+
+### `x |= C; store x;` vs `store = x | C;` is a local-alloc lever
+
+The expression form creates a fresh or-temp whose refs/length priority beats a
+longer-lived sibling temp in the same block, rotating which one gets `$v0` and
+cascading into a global pseudo's colouring. The in-place compound leaves the sibling
+alone (`turn_towards_player_`: in-place `d2 |= 0x1e` kept `Me_THINK_C` in `$v0` and
+`d2` in `$v1`; the expression form pushed both).
+
 ### A `li` in a branch delay slot means the constant was defined in that test's block
 
 Signature: `lw / nop / bltz / lui`, i.e. a constant `li` sitting in a conditional
