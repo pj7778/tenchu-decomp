@@ -26,8 +26,11 @@ both from the primary worktree. It is idempotent.
 **Run the permuter SYNCHRONOUSLY and bounded — never as a background task you then
 wait on.** Always wrap it: `nix develop --command bash -c 'timeout 420 tools/permute.py <Name> -- --stop-on-zero -j4'`.
 It either finds a zero and prints it, or the timeout ends it and you move on. Do
-NOT spawn it in the background and end your turn "waiting for the permuter" — that
-has repeatedly stalled agents for no gain, and there is NO other agent and NO sub-agent
+NOT spawn it in the background and end your turn "waiting for the permuter", and do
+NOT use a Monitor / background-wait / sleep-until tool to watch a permuter process —
+run it in the FOREGROUND (blocking, inside the single `timeout ... bash -c '...'`) so
+its exit returns control to you directly. Waiting on it out-of-band has repeatedly
+stalled agents across many turns for no gain, and there is NO other agent and NO sub-agent
 involved: you are one matcher working alone in your own worktree. A bounded run that
 plateaus is a PARK signal, not a reason to wait. If the permuter prints an improved
 candidate, re-verify it with `tools/matchdiff.py` before believing it (its score
