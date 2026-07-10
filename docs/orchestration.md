@@ -285,6 +285,17 @@ lens.
 
 ## Gotchas (all learned the hard way)
 
+- **Run `tools/symcheck.py` during every harvest.** It asserts that a symbol named
+  `D_<HEX>` resolves to `0x<HEX>`. A missing `--gp-extern` entry silently relocates a
+  whole data region -- the link succeeds and the image is just wrong. Measured: one
+  missing entry moved 388 symbols by +16 bytes.
+
+- **Spawn matcher agents with `isolation: "worktree"`.** `.claude/agents/matcher.md`
+  does NOT declare isolation, so an agent launched without it edits the MAIN working
+  tree and shares one `.shake/` database with every sibling agent and with you. Six
+  agents launched this way fought over the build lock, corrupted each other's builds,
+  and silently invalidated experiments running in the main tree. There is no warning.
+
 - **The linker map's `LOAD .text ADDR SIZE` line is not authoritative for final
   placement.** When one function in a batch has the wrong length, that line can make
   an *earlier, already-matched* function look broken. Only the map's symbol table

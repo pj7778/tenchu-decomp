@@ -1,21 +1,17 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
  * docs/psx-sym.md. Do not hand-edit.
  *
  * void UpdateEvent(short n, short id);
- *     STAGE.C:249, 18 src lines, frame 32 bytes, saved-reg mask 0x80030000 (DEMO build -- see below)
+ *     STAGE.C:249, 18 src lines, frame 32 bytes, saved-reg mask 0x80030000
  *
  * Original parameters and locals (the demo build's register allocation may
  * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
- * over). A repeated name is a nested-block scope, not a duplicate.
- * The frame size and saved-reg mask above are the DEMO's: retail often needs
- * FEWER callee-saved registers (measured: Think1random exact; Think1chase's
- * 0x800f0000 = s0-s3+ra vs retail's s0,s1,ra). Treat them as an upper bound
- * and a hint at how many values stay live, never as a spec. The asm wins.
- * Locals:
+ * over). A repeated name is a nested-block scope, not a duplicate:
  *     param $a0       short n
  *     param $a1       short id
  *     reg   $a3       short i
@@ -25,69 +21,129 @@
  *     extern struct Humanoid *StagePlayer;
  * END PSX.SYM */
 
+/*
+ * STATUS: NON_MATCHING — 98 of 368 bytes differ, all downstream of a
+ * SINGLE 2-instruction gap (see residual below); every earlier byte diff
+ * is address drift from that gap, not a separate issue.
+ *
+ * UpdateEvent (0x8004e624, 0x170 bytes) — searches `StageEvent[]` (a
+ * proven `EventSeqType[]`, item.h/reference/psxsym-types.h, stride 0x14)
+ * for the entry matching `id`, resolving sequence slot `n`'s cached found
+ * entry (`D_80097F78[n]`) and its target `Humanoid *` (`D_80097F80[n]`) —
+ * both plain arrays (word-sized elements: pointer/pointer), indexed by the
+ * short parameter `n` via the ordinary 2-instruction sign-extend+scale
+ * (`sll 16`/`sra 14` = `*4`), ABSOLUTE in this TU (STAGE.C defines them —
+ * SetupStageSequence.c, same TU, already lists them gp-relative for ITS
+ * OWN references; per-TU gp-vs-absolute, not a symbol property).
+ *
+ * `StageEvent[i].id/.event/.next1/.next2` (the first 4 packed `u8` fields)
+ * are read and compared to -1 as ONE `s32` — a `0xFFFFFFFF` terminator
+ * sentinel across all four bytes at once, both for the initial "list
+ * empty" guard and the loop's own exit test. Ghidra's per-byte
+ * `._0_1_`/`._1_1_` rendering is exactly this union read; write it as a
+ * direct `*(s32 *)&StageEvent[i]` cast, matching the raw `lw`+`-1` compare.
+ *
+ * The status/motion guard (`if (h->status==0x11 && h->motion->loop==-1)
+ * goto clear;`) bypasses the `id`/`life` check entirely when true — but
+ * the `id`/`life` check itself is NOT a single nested
+ * `if (range) { if (life>0) return; }` (that shape falls through to the
+ * shared `D_80097F78[n]=0;` clear whenever `range` is false, clearing state
+ * the target actually PRESERVES): the raw asm's range test branches
+ * STRAIGHT to the epilogue on failure, bypassing the clear entirely. It's
+ * TWO independent early returns: `if (!range) return; if (life>0)
+ * return;` — a real behavioral difference from the nested-if reading, not
+ * just a scheduling artifact (verified: the nested-if draft clears
+ * `D_80097F78[n]` on out-of-range `id`, the target does not).
+ * `h->motion->loop` is item.h's `MotionManager.loop` @0x4 (a different
+ * struct than Ghidra's raw `*(int*)+0x5c` pointer-then-offset-4 rendering
+ * suggests by name).
+ *
+ * `(u16)(id - 2) < 2` (id==2 or id==3) recomputes `id - 2` FRESH on each
+ * incoming path (the guard-taken path and the guard-skipped path both
+ * materialize their own `addiu`) rather than sharing one register — plain
+ * repeated inline `id - 2` reproduces this (no named temp).
+ *
+ * Residual (root-caused): the final `D_80097F80[n]->life` read
+ * RE-LOADS the array slot's address-then-value (`lw` via the cached
+ * array-base register, then a second `lw`+`lh`) in the target, while this
+ * draft's cc1 recognizes `D_80097F80[n]` as unchanged since the earlier
+ * null/status/motion checks (no intervening call) and reuses THEIR
+ * already-loaded value register directly — 2 fewer instructions (no
+ * reload, no filler nop in the now-empty delay slot). Tried and had no
+ * effect: naming vs. not naming a `Humanoid *h` local for the repeated
+ * `D_80097F80[n]` dereferences (cc1's cse recognizes the equivalence
+ * either way). Likely a genuine register-pressure/live-range difference
+ * between the two builds' surrounding code, not reachable from source
+ * spelling alone.
+ */
+typedef struct
+{
+    u8 id;     /* 0x0 */
+    u8 event;  /* 0x1 */
+    u8 next1;  /* 0x2 */
+    u8 next2;  /* 0x3 */
+    u8 target; /* 0x4 */
+    u8 mode;   /* 0x5 */
+    s16 status; /* 0x6 */
+    s16 x[2];  /* 0x8 */
+    s16 y[2];  /* 0xC */
+    s16 z[2];  /* 0x10 */
+} EventSeqType; /* 0x14 */
+
+extern EventSeqType *D_80097F78[];
+extern Humanoid *D_80097F80[];
+extern EventSeqType *StageEvent;
+extern Humanoid *StagePlayer;
+
+extern Humanoid *GetHumanoid(short type);
+
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/UpdateEvent", UpdateEvent);
+#else
+void UpdateEvent(short n, short id)
+{
+    EventSeqType *ev;
+    short i;
 
-// triage: EASY — 92 insns, 1 loop, 1 callees, ~0.05 to update_something_for_each_visible_enemy_
-// likely-relevant cookbook sections:
-//   - Loops: 1 back-edge(s) — for/while/do vs goto shape
-//   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py
+    D_80097F78[n] = 0;
+    if (id == 0xFF)
+        return;
+    if (*(s32 *)&StageEvent[0] == -1)
+        return;
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// void UpdateEvent(int param_1,ushort param_2)
-//
-// {
-//   Humanoid *pHVar1;
-//   int iVar2;
-//   int iVar3;
-//   int iVar4;
-//   EventSeqType *pEVar5;
-//   undefined4 *puVar6;
-//   int iVar7;
-//   int *piVar8;
-//
-//   iVar4 = (param_1 << 0x10) >> 0xe;
-//   puVar6 = (undefined4 *)((int)&DAT_80097f78 + iVar4);
-//   *puVar6 = 0;
-//   if ((param_2 != 0xff) &&
-//      (iVar2._0_1_ = StageEvent->id, iVar2._1_1_ = StageEvent->event, iVar2._2_1_ = StageEvent->next1
-//      , iVar2._3_1_ = StageEvent->next2, iVar7 = 0, iVar2 != -1)) {
-//     piVar8 = (int *)((int)&DAT_80097f80 + iVar4);
-//     iVar4 = 0;
-//     do {
-//       pEVar5 = StageEvent + (iVar4 >> 0x10);
-//       iVar7 = iVar7 + 1;
-//       if (pEVar5->id == param_2) {
-//         *puVar6 = pEVar5;
-//         if (pEVar5->target == 0xff) {
-//           *piVar8 = (int)StagePlayer;
-//         }
-//         else {
-//           pHVar1 = GetHumanoid((ushort)pEVar5->target);
-//           *piVar8 = (int)pHVar1;
-//         }
-//         iVar4 = *piVar8;
-//         if ((iVar4 != 0) &&
-//            ((*(short *)(iVar4 + 2) != 0x11 || (*(short *)(*(int *)(iVar4 + 0x5c) + 4) != -1)))) {
-//           if (1 < (ushort)(param_2 - 2)) {
-//             return;
-//           }
-//           if (0 < *(short *)(*piVar8 + 8)) {
-//             return;
-//           }
-//         }
-//         *puVar6 = 0;
-//         return;
-//       }
-//       pEVar5 = StageEvent + (iVar7 * 0x10000 >> 0x10);
-//       iVar3._0_1_ = pEVar5->id;
-//       iVar3._1_1_ = pEVar5->event;
-//       iVar3._2_1_ = pEVar5->next1;
-//       iVar3._3_1_ = pEVar5->next2;
-//       iVar4 = iVar7 * 0x10000;
-//     } while (iVar3 != -1);
-//   }
-//   return;
-// }
+    i = 0;
+    do
+    {
+        ev = &StageEvent[i];
+        if (ev->id == id)
+        {
+            D_80097F78[n] = ev;
+            if (ev->target == 0xFF)
+            {
+                D_80097F80[n] = StagePlayer;
+            }
+            else
+            {
+                D_80097F80[n] = GetHumanoid(ev->target);
+            }
+            if (D_80097F80[n] != 0)
+            {
+                if (!(D_80097F80[n]->status == 0x11 && D_80097F80[n]->motion->loop == -1))
+                {
+                    if (!((u16)(id - 2) < 2))
+                    {
+                        return;
+                    }
+                    if (D_80097F80[n]->life > 0)
+                    {
+                        return;
+                    }
+                }
+            }
+            D_80097F78[n] = 0;
+            return;
+        }
+        i = i + 1;
+    } while (*(s32 *)&StageEvent[i] != -1);
+}
+#endif

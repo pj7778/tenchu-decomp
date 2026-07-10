@@ -159,6 +159,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     extra "ComputeAreaLevel" = ["--expand-div"]
     extra "PadProc" = ["--expand-div"]
     extra "IsVisible" = ["--expand-div"]
+    extra "PutLifeBar" = ["--expand-div"]
     extra "SuccessionAttack" = ["--expand-div"]
     extra "GetSpline" = ["--expand-div"]
     extra _ = []
@@ -178,6 +179,15 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "CVArun" = ["D_80097CC0", "CHOSEN_EVENT_LIST_THING_LOCATION"]
     syms "CVAsetup" = ["PERSISTENT_EVENT_LIST_THING"]
     syms "CreateHumanoid" = ["Humans"]
+    -- PutItemList.c is also part of the info-view TU; it defines/uses both
+    -- selected-item-kind smalls gp-relatively.
+    syms "PutItemList" = ["CURRENTLY_SELECTED_ITEM_KIND_0_", "CURRENTLY_SELECTED_ITEM_KIND_1_"]
+    -- PutMap.c is also part of the info-view TU; it DEFINES PutMapMode (the
+    -- "PutMap latch" DoInfoViewProc.c also references) plus the wipe
+    -- position pair.
+    syms "PutMap" = ["PutMapMode", "D_80097F6C", "D_80097F70"]
+    -- UpdateEvent.c is also part of the original STAGE.C TU.
+    syms "UpdateEvent" = ["StageEvent", "StagePlayer"]
     syms "KillHumanoid" = ["Humans"]
     syms "GetNearestHumanoid" = ["Humans"]
     syms "SetExplosion" = ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"]

@@ -1657,17 +1657,21 @@ to `CamState + 0x10` = `CamState.Owner`'s address — check an m2c "mystery
 symbol"'s arithmetic against already-proven struct layouts before treating it
 as new.
 
-**An auto-derived `D_` symbol can link +4/+0xC off its own name as soon as any
-*compiled* C (not just an `INCLUDE_ASM` stub) references it, if a SIBLING file in
-the same TU family lacks the matching `--gp-extern`.** maspsx then synthesizes a
-stray local placeholder that the linker silently prefers over the real symbol, and
-nothing complains -- the image just comes out wrong. Hit for real by the CVA family
-(`D_80097CC0/CC4/CC8/CCA/CCC`, sandwiched between `CHOSEN_EVENT_LIST_THING_LOCATION`
-and `CARRY_30_ITEMS_CHEAT_APPLIED`). Two-part fix: pin the absolute addresses in
-`config/symbols.<target>.txt`, AND extend the gp-extern list to every sibling stub
-file that shares those symbols -- `AVCameraControl`, `CVAsequence`, `CVAupdate` had
-to be listed even though they are still asm. Check the map: a `D_XXXX.NON_MATCHING`
-entry at a different address from the plain `D_XXXX` is the tell.
+**A missing `--gp-extern` entry silently relocates a whole data region.** Drop one
+file's entry from `maspsxGpExterns` and maspsx synthesizes stray local placeholders
+that the linker prefers over the real symbols; the link SUCCEEDS and the image is
+simply wrong. Measured: removing `CVArun`'s entry moved **388 symbols by +16 bytes**
+each. `tools/symcheck.py` catches this in one second by asserting the invariant that
+a symbol named `D_<HEX>` must resolve to `0x<HEX>`. Run it after any build in which
+you converted an `INCLUDE_ASM` stub to real C.
+
+Two corrections to what was first believed about this bug, both established by
+removing each change independently on a clean tree:
+- The load-bearing fix is **the matched function's own gp-extern list**. Nothing else.
+- Pinning `D_XXXX = 0xXXXX;` in `config/symbols.<target>.txt`, and adding gp-extern
+  entries for *sibling stub files* still on `INCLUDE_ASM`, are **defensive no-ops**
+  today: the build is byte-identical without them. Keep them (they cost nothing and
+  may matter once the siblings are matched) but do not reach for them first.
 
 Practical rule: `tools/gpsyms.py <Name> --write` derives the set from the
 split asm's `%gp_rel(...)` and syncs both lists for you. Build.hs exposes the

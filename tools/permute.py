@@ -41,6 +41,9 @@ AS_FLAGS = ("-EL -Iinclude -march=r3000 -mtune=r3000 -no-pad-sections -O1 -G0").
 # shake/src/Build.hs (ASPSX gp-addresses only TU-local definitions; these are the
 # small globals the function's ORIGINAL translation unit defined).
 GP_EXTERNS = {
+    "PutItemList": ["CURRENTLY_SELECTED_ITEM_KIND_0_", "CURRENTLY_SELECTED_ITEM_KIND_1_"],
+    "PutMap": ["PutMapMode", "D_80097F6C", "D_80097F70"],
+    "UpdateEvent": ["StageEvent", "StagePlayer"],
     "CreateHumanoid": ["Humans"],
     "KillHumanoid": ["Humans"],
     "GetNearestHumanoid": ["Humans"],
@@ -176,6 +179,7 @@ GP_EXTERNS = {
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
 # maspsxGpExterns (e.g. --expand-div for TUs that divide by a variable).
 MASPSX_EXTRA = {
+    "PutLifeBar": ["--expand-div"],
     "IsVisible": ["--expand-div"],
     "ComputeAreaLevel": ["--expand-div"],
     "PadProc": ["--expand-div"],
