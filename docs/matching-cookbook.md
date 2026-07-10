@@ -545,6 +545,19 @@ is what you need whenever several case bodies must converge on a *single* shared
 return via cross-jump. Three separate `return EXPR;` statements each compile their
 own full tail instead. (See also the shared-tails rule.)
 
+### Guard-clause `return 0;`s all cross-jump into the LAST plain island
+
+Every `return 0;` compiles to its own `[v0=0; j]` island, and jump2's cross-jump merges
+them ALL into the last plain island in emission order. So an `if (cond) { body }
+return 0;` at the end puts the shared `return 0` at the function END, while an inline
+`if (cond) return 0;` guard keeps it mid-function — and which mid-function label the
+guards branch to in the target tells you which form the original used. Related: a
+conditional store block falling into a shared `return 0` — `if (c) { stores } return 0;`
+vs `if (!c) return 0; stores; return 0;` — differ ONLY in basic-block boundaries:
+same-block `v0=0` gets hoisted by sched1 into a load-delay hole (inline `move v0,zero` +
+direct `j` to the epilogue), separate-block `v0=0` survives for cross-jump (`j` to a
+return-0 island). Both shapes can coexist in one function (`HangCheck`).
+
 ### A guard returning the constant its own test produced wants a bare `goto`
 
 `if (cond) return X;` followed by more code, where `X` is a compile-time constant
@@ -975,6 +988,21 @@ permuter-immune sub-C tie (SetBlood, SetHinoko). For such an outer-loop spawner,
 `while (1) { if (!(i < n)) break; …; i++; }` (NOT a hand-rolled goto) to place `base` in
 the target's callee-saved register — SetHinoko's goto form shifted every param register
 up one (55-byte cascade); the while/break form collapsed it to the 2-byte addu tie.
+
+**`a - (C - b)` and `a - (b - C)` survive fold; `a - C + b` gets reassociated.**
+split_tree builds `a - (C - b)` as `(a - C) + b` and `a - (b - C)` as `(a + C) - b`
+(it builds, does not refold), so the constant folds into an existing operand. The naive
+`a - C + b` is reassociated to `a + (b - C)`, whose `b - C` is an INDEPENDENT instruction
+that drifts into a delay slot — one off. Spell the subtraction with the parenthesised
+`C - b` / `b - C` grouping the target's `addiu`+`addu`/`subu` pair implies (`HangCheck`:
+`dtL->vy - (0x69 - y)` → `addiu vy,-105; addu +y`).
+
+**An address-taken local's loads never schedule above ANY pointer store** (the scheduler
+is alias-conservative: a true dep to every store). If the target reads such a local
+BETWEEN two field stores, the source statement order put that read earlier — reorder the
+STATEMENTS, do not chase the scheduler (`HangCheck`'s vx/vz-then-vy commit order: `vect`
+escaped, so its `lh` reads carry deps on every earlier `*dtL` store, and storing vy last
+lets the vz read fill the load-delay hole with no hazard nop).
 
 **Pointer arithmetic normalises to base+index; only INTEGER addition keeps operand
 order.** `p = (SVECTOR *)(idx * 0x20 + (s32)tbl);` emits `addu p,index,base`, whereas

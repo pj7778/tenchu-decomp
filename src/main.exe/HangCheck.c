@@ -37,47 +37,6 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — draft is 1 instruction (4 bytes) short of the 1220-byte
- * target (304 vs 305 insns; 75 differing asmdiff lines). RIGHT STRUCTURE, wrong
- * register coloring — a genuine sub-C register-allocation residual.
- *
- * Root cause: the target commits a SEVENTH callee-saved register ($s6) that ours
- * does not. When the ledge is caught it must keep the committed ledge height
- * (`oy`, the first successful GetAreaMapLevel result) live across the facing-snap
- * plus the two re-probe calls, for the revert path `dtL->vy = dtL->vy - oy + 5`.
- * The target holds `oy` in $s0 through the first half, then RELOCATES it with
- * `move $s6,$s0` (scheduled into the ry&0xFF guard's delay slot) because it
- * reuses $s0 for the re-probe result `y`. Ours has fewer values live (the demo's
- * 6-local structure leaves a register free), so `oy` stays put in $s3 with no
- * relocation move — hence 1 instruction short — and, with a spare register, ours
- * CACHES `dtL` (in $a1) across the `status==0xA` check where the target RELOADS it
- * fresh (`lw $a0,%gp_rel(dtL)` + load-delay nop). That single coloring decision
- * cascades: dtL cache-vs-reload at three sites, the return-0 tails cross-jumping
- * to one shared `move v0,zero` vs ours emitting a couple inline, and the two
- * `dtL->vy = dtL->vy - 0x69 + result` accumulations scheduling their add/addiu in
- * a different order. All are register/schedule choices with no C-level lever.
- *
- * What was tried (progressively cut the residual from 972 bytes to 4):
- *  - `Me_MOTION_C->width >> 1` etc. read the field PLAIN (not via a `(u16)` cast):
- *    the fused `sll16/sra17` divergent-width read falls out of the `>> 1` on a
- *    signed field, and forcing `(u16)` gave a WRONG `srl` (972-byte regression).
- *  - The first re-probe reuses `yy` (`yy - 400`), NOT a recompute — the target's
- *    `addiu $a2,$s0,-0x190` and m2c's `temp_s0 - 0x190` both prove reuse (only the
- *    SECOND batch, after `dtL->vy` is modified, genuinely recomputes).
- *  - Consolidating to the demo's 6 locals (`yy`,`y`,`ry`,`oy`,`i` + `vect`): one
- *    reused `y` for every tested-then-dead GetAreaMapLevel result, `oy` for the
- *    surviving committed height. Cut 96→80→75 differing lines.
- *  - `ry` is a SIGNED `long` (the read is `lh`, not `lhu`) — a `u16 ry` compiles a
- *    wrong `lhu`.
- *  - `dtL->vy - oy + 5` (not `+ 5 - oy`): fold's dependent-first evaluation keeps
- *    the target's load-delay ordering; the `+ 5 - oy` spelling filled a delay slot
- *    with an independent op, running 1 further instruction short.
- * autorules found no width/&&/inline win; regalloc.py shows the cross-call
- * pressure ($s0/$s1/$s2/$s3 all live across calls) with no breakable copy-chain;
- * a 600s / ~19000-iteration `permute.py --stop-on-zero -j4` run held at 146 errors
- * and NEVER reached score 0 — the reload/coloring class the cookbook marks
- * permuter-immune. Parked per the Iteration-protocol attempt cap.
- *
  * HangCheck (0x8001ceb0, 0x4c4 bytes) — per-frame ledge-hang detector
  * (MOTION.C, called from ActCHASE/ActHANG/ActMOVE/HumanActionControl). Bails
  * immediately for a "type 0xA_" special character, or unless the player is
@@ -109,14 +68,75 @@
  *    elsewhere in this function read them signed (`lh`) instead — two
  *    un-CSE'd loads of one value, same divergence class as
  *    DeleteConflict's `ConflictObjects`.
- *  - The SECOND feet-height (`yy` reused, `(dtL->vy - height) - 400` for the y3/y4
- *    re-probes) genuinely recomputes because `dtL->vy` was modified by the
- *    intervening `dtL->vy = dtL->vy - 0x69 + oy` commit; the FIRST batch reuses the
- *    original `yy`. Both the target asm and m2c confirm this split.
- *  - The committed ledge height is its OWN local (`oy`) distinct from the reused
- *    `y`: it is read again for the revert `dtL->vy = dtL->vy - oy + 5` after the y3
- *    re-probe's own call has reused `y`'s register — a genuine cross-call data
- *    dependency (this is the value the target relocates into $s6; see STATUS).
+ *  - EVERY early bail is a guard clause (`return 0;`), NOT an `if (a && b &&
+ *    c) { body } return 0;` wrapper: each `return 0` expands to its own
+ *    [v0=0; j return_label] island and jump2's cross-jump merges them all
+ *    into the LAST plain island — the oy-guard's inline `return 0` at
+ *    0x8001d0d4 — which is where every earlier guard branches. The wrapper
+ *    form instead emits the shared `move v0,zero` at the very END (after the
+ *    return-1 tail), retargeting every guard branch and reshaping the tail.
+ *  - The wall-path nudge is a CONDITIONAL body falling into a SHARED return:
+ *    `if (dtL->vy < y) { nudge stores } return 0;` — the label between the
+ *    stores and the [v0=0; j] island stops sched1 from hoisting the v0=0
+ *    into the stores' load-delay holes (it is a separate basic block), so
+ *    cross-jump later merges this island into the oy island, giving the
+ *    target's `j .L8001D0D4` with the last `sw` in the delay slot. Spelled
+ *    as `... if (y <= dtL->vy) return 0; stores; return 0;` the v0=0 shares
+ *    the stores' block, sched1 (reverse list scheduler, priorities =
+ *    depth-from-top, so a depth-1 constant-set always loses the bottom slot)
+ *    buries it mid-block, cross-jump then can't match the tail, and the
+ *    function runs one insn long with a knock-on register cascade.
+ *  - By contrast the y3-failure revert (`{ dtL->vy = ...; return 0; }`
+ *    INSIDE the if-arm, same basic block as its stores) is the shape whose
+ *    v0=0 legitimately DOES get hoisted into the `lw` delay hole and whose
+ *    `j` goes straight to the return label — both shapes appear in this one
+ *    function, distinguished only by block boundaries.
+ *  - The probe result is always the SAME reused `y` ($s0), including the
+ *    committed 400-probe; the surviving ledge height is a separate `oy = y;`
+ *    COPY made after the commit (the target's `move $s6,$s0` in the ry&0xFF
+ *    guard's delay slot). gcc 2.8.1 never splits a live range, so the copy
+ *    insn PROVES two pseudos: `y` is clobbered by the y3 re-probe while `oy`
+ *    stays live for the revert. Assigning the probe straight into `oy`
+ *    (no copy) runs one insn short.
+ *  - `dy` is ONE variable assigned twice — `dy = yy - 300;` (the y2 probe's
+ *    height arg) and later `dy = (dtL->vy - height) - 400;` (the y3/y4
+ *    base) — which is why it colors into callee-saved $s1 even though the
+ *    first segment crosses no call. The first assignment must sit BEFORE
+ *    `if (y < dtL->vy)`: as the first statement of the ledge path it lands
+ *    in the same basic block as its single use and combine folds it into
+ *    the call arg (`addiu a2,s0,-300`), never materializing $s1. Placed
+ *    before the branch it is cross-block, survives combine, and reorg pulls
+ *    it into the wall-branch delay slot exactly like the target.
+ *  - The facing snap masks into a TEMP then assigns back (`yc = ry & 0xC00;
+ *    if (ry & 0x200) yc += 0x400; ry = yc;`) — target has the `move s2,v1`
+ *    join copy and tests `ry & 0x200` against the UNmodified ry. Masking
+ *    `ry` in place compiles two insns shorter.
+ *  - fold-const association dictates the commit/revert spellings:
+ *    `dtL->vy - (0x69 - y)` hits split_tree's CON-VAR case (varsign=-1,
+ *    MINUS flips to PLUS) building PLUS(PLUS(vy,-105), y) → the target's
+ *    `addiu vy,-105; addu +y` with vy first; the plain `dtL->vy - 0x69 + y`
+ *    is reassociated to vy + (y-105), computing `y-105` as an independent
+ *    insn that drifts into a delay slot. Likewise `dtL->vy - (oy - 5)`
+ *    negates the const and refolds the inner term to PLUS(vy,5), giving
+ *    `addiu vy,+5; subu -oy`; both `+ 5 - oy` and `- oy + 5` get mangled to
+ *    vy - (oy-5).
+ *  - The success-path commit writes vx, vz, THEN vy (`dtL->vx += vect.vx;
+ *    dtL->vz += vect.vz; dtL->vy = dtL->vy - (0x69 - y);`): `vect`'s stack
+ *    slot is address-taken so its `lh` reads can NEVER be disambiguated
+ *    from the `*dtL` stores (sched adds a true dependence on every earlier
+ *    store) — with vy stored second, `lh vect.vz` is pinned below the vy
+ *    store and the block needs a hazard nop (one insn long); with vy last,
+ *    the vz read precedes it in expand order and the scheduler interleaves
+ *    the vy chain into the load-delay holes byte-exactly.
+ *  - The SECOND feet-height (`(dtL->vy - height) - 400` into `dy`) genuinely
+ *    recomputes because `dtL->vy` was modified by the intervening commit;
+ *    the FIRST batch reuses the original `yy` (`yy - 400` inline, target's
+ *    `addiu $a2,$s0,-0x190`). Both the target asm and m2c confirm the split.
+ *  - `ry` is a SIGNED `long` (the read is `lh`, not `lhu`); the s16 copy
+ *    `rys` passed to GetMoveSpeed is its own CSE'd narrowing ($s3).
+ *  - `Me_MOTION_C->width >> 1` reads the field PLAIN: the fused `sll16/sra17`
+ *    falls out of `>> 1` on the signed field; a `(u16)` cast compiles a
+ *    wrong `srl`.
  *  - The CVAhuman scan is IDENTICAL to MotionAndMove.c's proven shape
  *    (`tag_CVAHumanEntry`, `short i`, provably-true `i=0` entry test folded
  *    away leaving a bottom-tested do/while-equivalent `for`) — reused
@@ -150,115 +170,110 @@ extern short SetNowMotion(Humanoid *human, short mid, short move);
 extern void Sound(Humanoid *h, int id);
 extern void PadShockAR(int port, int pow, int attack, int release);
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/HangCheck", HangCheck);
-#else
 short HangCheck(void)
 {
     SVECTOR vect;
     long yy;
     long y;
     long ry;
-    u16 uVar4;
-    short rys;
+    long dy;
     long oy;
+    long yc;
+    short rys;
     short i;
 
     if ((Me_MOTION_C->type & 0xF0) == 0xA0)
     {
         return 0;
     }
-    if (0 < Me_MOTION_C->map.height && motID != 0x901 && Me_MOTION_C->active_item != 0xB)
+    if (Me_MOTION_C->map.height <= 0 || motID == 0x901 || Me_MOTION_C->active_item == 0xB)
     {
-        yy = dtL->vy - Me_MOTION_C->height;
-        GetMoveSpeed(&vect, dtR->vy, Me_MOTION_C->width >> 1, 0);
-        y = GetAreaMapLevel(GlobalAreaMap, dtL->vx + vect.vx, yy - 0x122, dtL->vz + vect.vz, 0);
-        if (y < dtL->vy)
+        return 0;
+    }
+    yy = dtL->vy - Me_MOTION_C->height;
+    GetMoveSpeed(&vect, dtR->vy, Me_MOTION_C->width >> 1, 0);
+    y = GetAreaMapLevel(GlobalAreaMap, dtL->vx + vect.vx, yy - 0x122, dtL->vz + vect.vz, 0);
+    dy = yy - 300;
+    if (y < dtL->vy)
+    {
+        y = GetAreaMapLevel(GlobalAreaMap, dtL->vx - vect.vx, yy - 0x122, dtL->vz - vect.vz, 0);
+        if (y == 0x80000000)
         {
-            y = GetAreaMapLevel(GlobalAreaMap, dtL->vx - vect.vx, yy - 0x122, dtL->vz - vect.vz, 0);
-            if (y == 0x80000000)
-            {
-                return 0;
-            }
-            if (y <= dtL->vy)
-            {
-                return 0;
-            }
-            dtL->vx = dtL->vx - (vect.vx >> 1);
-            dtL->vz = dtL->vz - (vect.vz >> 1);
             return 0;
         }
-        else
+        if (dtL->vy < y)
         {
-            y = GetAreaMapLevel(GlobalAreaMap, dtL->vx, yy - 300, dtL->vz, 0);
-            if (y < dtL->vy - Me_MOTION_C->height)
+            dtL->vx = dtL->vx - (vect.vx >> 1);
+            dtL->vz = dtL->vz - (vect.vz >> 1);
+        }
+        return 0;
+    }
+    y = GetAreaMapLevel(GlobalAreaMap, dtL->vx, dy, dtL->vz, 0);
+    if (y < dtL->vy - Me_MOTION_C->height)
+    {
+        return 0;
+    }
+    GetMoveSpeed(&vect, dtR->vy, (Me_MOTION_C->width >> 1) + 300, 0);
+    y = GetAreaMapLevel(GlobalAreaMap, dtL->vx + vect.vx, yy - 400, dtL->vz + vect.vz, 2);
+    if (y == 0x80000000 || y >= 0x191)
+    {
+        return 0;
+    }
+    dtL->vy = dtL->vy - (0x69 - y);
+    if (Me_MOTION_C->status == 0xA)
+    {
+        return 1;
+    }
+    ry = dtR->vy;
+    oy = y;
+    if (ry & 0xFF)
+    {
+        yc = ry & 0xC00;
+        if (ry & 0x200)
+        {
+            yc = yc + 0x400;
+        }
+        ry = yc;
+    }
+    rys = ry;
+    GetMoveSpeed(&vect, rys, (Me_MOTION_C->width >> 1) + 300, 0);
+    dy = (dtL->vy - Me_MOTION_C->height) - 400;
+    y = GetAreaMapLevel(GlobalAreaMap, dtL->vx + vect.vx, dy, dtL->vz + vect.vz, 2);
+    if (y == 0x80000000 || y >= 0x191)
+    {
+        dtL->vy = dtL->vy - (oy - 5);
+        return 0;
+    }
+    dtR->vy = ry;
+    GetMoveSpeed(&vect, rys, (Me_MOTION_C->width >> 1) + 100, 0);
+    y = GetAreaMapLevel(GlobalAreaMap, dtL->vx + vect.vx, dy, dtL->vz + vect.vz, 2);
+    if (y != 0x80000000 && y < 0x191)
+    {
+        GetMoveSpeed(&vect, dtR->vy, -200, 0);
+        dtL->vx = dtL->vx + vect.vx;
+        dtL->vz = dtL->vz + vect.vz;
+        dtL->vy = dtL->vy - (0x69 - y);
+    }
+    motID = 0xA01;
+    D_80097F0E = 1;
+    if (MotionUpdateMode != 0)
+    {
+        for (i = 0; i < 5; i++)
+        {
+            if (CVAhuman[i].human == Me_MOTION_C)
             {
-                return 0;
+                goto found;
             }
-            GetMoveSpeed(&vect, dtR->vy, (Me_MOTION_C->width >> 1) + 300, 0);
-            oy = GetAreaMapLevel(GlobalAreaMap, dtL->vx + vect.vx, yy - 400, dtL->vz + vect.vz, 2);
-            if (oy == 0x80000000 || oy >= 0x191)
-            {
-                return 0;
-            }
-            dtL->vy = dtL->vy - 0x69 + oy;
-            if (Me_MOTION_C->status == 0xA)
-            {
-                return 1;
-            }
-            ry = dtR->vy;
-            if (ry & 0xFF)
-            {
-                uVar4 = ry & 0x200;
-                ry = ry & 0xC00;
-                if (uVar4 != 0)
-                {
-                    ry = ry + 0x400;
-                }
-            }
-            rys = ry;
-            GetMoveSpeed(&vect, rys, (Me_MOTION_C->width >> 1) + 300, 0);
-            yy = (dtL->vy - Me_MOTION_C->height) - 400;
-            y = GetAreaMapLevel(GlobalAreaMap, dtL->vx + vect.vx, yy, dtL->vz + vect.vz, 2);
-            if (y == 0x80000000 || y >= 0x191)
-            {
-                dtL->vy = dtL->vy - oy + 5;
-                return 0;
-            }
-            dtR->vy = ry;
-            GetMoveSpeed(&vect, rys, (Me_MOTION_C->width >> 1) + 100, 0);
-            y = GetAreaMapLevel(GlobalAreaMap, dtL->vx + vect.vx, yy, dtL->vz + vect.vz, 2);
-            if (y != 0x80000000 && y < 0x191)
-            {
-                GetMoveSpeed(&vect, dtR->vy, -200, 0);
-                dtL->vx = dtL->vx + vect.vx;
-                dtL->vy = dtL->vy - 0x69 + y;
-                dtL->vz = dtL->vz + vect.vz;
-            }
-            motID = 0xA01;
-            D_80097F0E = 1;
-            if (MotionUpdateMode != 0)
-            {
-                for (i = 0; i < 5; i++)
-                {
-                    if (CVAhuman[i].human == Me_MOTION_C)
-                    {
-                        goto found;
-                    }
-                }
-            }
-            SetNowMotion(Me_MOTION_C, motID, D_80097F0E);
-            D_80097F0E = -1;
-        found:
-            Sound(Me_MOTION_C, 0x1B);
-            if (StagePlayer != Me_MOTION_C)
-            {
-                return -1;
-            }
-            PadShockAR(0, 0x7F, 0, 0x1E);
-            return -1;
         }
     }
-    return 0;
+    SetNowMotion(Me_MOTION_C, motID, D_80097F0E);
+    D_80097F0E = -1;
+found:
+    Sound(Me_MOTION_C, 0x1B);
+    if (StagePlayer != Me_MOTION_C)
+    {
+        return -1;
+    }
+    PadShockAR(0, 0x7F, 0, 0x1E);
+    return -1;
 }
-#endif /* NON_MATCHING */
