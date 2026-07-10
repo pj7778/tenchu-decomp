@@ -86,12 +86,45 @@ def from_ghidra(export, name):
              f"— pass --addr/--size")
 
 
+# File offset of the first function (vram 0x80016134). Everything below this is
+# the leading .data run; everything above is the text run, whose `data`
+# subsegments are really UN-CARVED CODE. splat's grouped linker-script generation
+# needs each entry tagged with the ORDER GROUP its address belongs to — see the
+# section_order comment in config/splat.main.exe.yaml.
+TEXT_FOFF = 0x5934
+
+# `- [0x123, data]` / `- [0x123, c, Name]`
+LIST_SUB = re.compile(
+    r"(\s*)- \[\s*(0x[0-9A-Fa-f]+)\s*,\s*([\w.]+)\s*(?:,\s*([\w.]+)\s*)?\]")
+# `- { start: 0x123, type: data, linker_section_order: .text }`
+DICT_SUB = re.compile(
+    r"(\s*)- \{\s*start:\s*(0x[0-9A-Fa-f]+)\s*,\s*type:\s*([\w.]+)\s*"
+    r"(?:,\s*name:\s*([\w.]+)\s*)?(?:,\s*linker_section_order:\s*[\w.]+\s*)?\}")
+
+
+def data_sub(indent, off):
+    """A `data` subsegment line, tagged into the right linker order group."""
+    if off >= TEXT_FOFF:
+        return (f"{indent}- {{ start: 0x{off:X}, type: data, "
+                f"linker_section_order: .text }}\n")
+    return f"{indent}- [0x{off:X}, data]\n"
+
+
+def rodata_sub(indent, off, name):
+    """A `.rodata` carve line, tagged into the right linker order group."""
+    if off < TEXT_FOFF:
+        return (f"{indent}- {{ start: 0x{off:X}, type: .rodata, name: {name}, "
+                f"linker_section_order: .data }}\n")
+    return f"{indent}- [0x{off:X}, .rodata, {name}]\n"
+
+
 def parse_subsegments(text):
     """Return (pre, items, post). items mixes parsed entries
     ("e", indent, off, type, name, raw) with verbatim passthrough lines
     ("raw", line) — comments and anything else hand-maintained in the
     subsegment list survive a rewrite (a dropped `.rodata` carve once broke
-    the jump-table link)."""
+    the jump-table link). Both the plain list form and the dict form (which
+    carries `linker_section_order`) are recognised."""
     lines = text.splitlines(keepends=True)
     start = next(i for i, l in enumerate(lines) if l.strip() == "subsegments:")
     # the segment ends at the top-level terminator `  - [0x....]` (2-space indent)
@@ -99,8 +132,7 @@ def parse_subsegments(text):
                if re.match(r"  - \[0x[0-9A-Fa-f]+\]\s*$", lines[i]))
     items = []
     for l in lines[start + 1:end]:
-        m = re.match(r"(\s*)- \[\s*(0x[0-9A-Fa-f]+)\s*,\s*([\w.]+)\s*(?:,\s*([\w.]+)\s*)?\]",
-                     l)
+        m = LIST_SUB.match(l) or DICT_SUB.match(l)
         if m:
             items.append(("e", m.group(1), int(m.group(2), 16), m.group(3),
                           m.group(4), l))
@@ -129,10 +161,10 @@ def split_config(fstart, fend, name):
 
     new = []
     if off < fstart:
-        new.append(f"{ind}- [0x{off:X}, data]\n")   # leading data (keeps original offset)
+        new.append(data_sub(ind, off))   # leading data (keeps original offset)
     new.append(f"{ind}- [0x{fstart:X}, c, {name}]\n")
     if fend < nxt:
-        new.append(f"{ind}- [0x{fend:X}, data]\n")
+        new.append(data_sub(ind, fend))
     out = list(pre)
     for i, it in enumerate(items):
         if i == item_i:

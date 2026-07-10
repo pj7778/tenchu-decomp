@@ -12,12 +12,6 @@ options:
   use_legacy_include_asm: no
   migrate_rodata_to_functions: no
 
-  # splat >= 0.4x imposes `section_order` on linker-script generation and then
-  # refuses our deliberately-unlisted `.rodata` (see the note on section_order
-  # below). Listing `.rodata` instead appends an auto `all .c.o(.rodata)` pile
-  # that shifts `.text` and blows PC16 branch ranges. Legacy generation keeps the
-  # pre-0.4x behaviour these carves were designed around.
-  ld_legacy_generation: True
 
   # splat GENERATES include/{macro.inc,include_asm.h,labels.inc,gte_macros.inc}
   # on every run. Its macro.inc has no `li`/`move`, so re-inject ours here or the
@@ -59,17 +53,27 @@ options:
     #include "main.exe.h"
   string_encoding: ASCII
   section_order:
-    # - ".rodata"
-    # - ".text"
-    # - ".data"
-    # ".rodata" is intentionally NOT listed: rodata here is interleaved with
-    # data (jump tables inside the raw data bins), and splat's section-order
-    # tracker would reject a dotted .rodata carve between data subsegments.
-    # Omitting it also drops the auto "all .c.o(.rodata)" end pile, so each
-    # TU's rodata must be carved explicitly at its original address (see the
-    # BriefingAndInventorySelectionScreen jump table below).
-    - ".text"
+    # The image interleaves two runs that splat's (non-legacy) grouped
+    # linker-script generation cannot express directly:
+    #   * [0x800, 0x5934)  — leading .data with six .rodata jump-table carves
+    #                        cut into it;
+    #   * [0x5934, 0x87800) — carved `c` files interleaved with `data` blobs
+    #                        that are really UN-CARVED CODE linked as raw bytes.
+    # Upstream's answer is `linker_section_order` (Segments.md): it overrides
+    # which ORDER GROUP an entry joins while leaving the section it actually
+    # links into alone. So the leading .rodata carves declare
+    # `linker_section_order: .data` and the text-region data blobs declare
+    # `linker_section_order: .text`. Each group then holds one contiguous run in
+    # address order, and `ld_legacy_generation` is not needed.
+    #
+    # `.rodata` must still be listed: splat emits an (empty) .rodata entry per C
+    # object, and a listed-but-empty group costs nothing. `align: 4` on the
+    # segment matters — splat pads the END of every section group to
+    # `segment.align` (default 16), and the leading run ends at 0x80016134,
+    # which is 4- but not 16-aligned; padding it to 16 shifts .text by 12 bytes.
     - ".data"
+    - ".text"
+    - ".rodata"
     - ".sdata"
     - ".sbss"
     - ".bss"
@@ -79,45 +83,46 @@ segments:
   # - [0x84, bin, zeroPadding] # Zero Padding
   - name: main.exe
     type: code
+    align: 4
     start: 0x00000800
     vram: 0x80011000
     # vram: 0x80016134
     subalign: 4
     subsegments:
       - [0x800, data]
-      - [0x10F0, .rodata, EquipWeapon]
+      - { start: 0x10F0, type: .rodata, name: EquipWeapon, linker_section_order: .data }
       - [0x1160, data]
       # AddMisc's switch jump table (vram 0x800127E8), same scheme.
-      - [0x1FE8, .rodata, AddMisc]
+      - { start: 0x1FE8, type: .rodata, name: AddMisc, linker_section_order: .data }
       - [0x2008, data]
       # BriefingAndInventorySelectionScreen's switch jump table (vram
       # 0x80013B30): linked from the C object's .rodata so the compiled table
       # lands at the original address (the raw data bin is split around it).
-      - [0x3330, .rodata, BriefingAndInventorySelectionScreen]
+      - { start: 0x3330, type: .rodata, name: BriefingAndInventorySelectionScreen, linker_section_order: .data }
       - [0x33B0, data]
       # LayoutEnemyOption's switch jump table (vram 0x80014798), same scheme.
-      - [0x3F98, .rodata, LayoutEnemyOption]
+      - { start: 0x3F98, type: .rodata, name: LayoutEnemyOption, linker_section_order: .data }
       # FileOption's switch jump table (vram 0x800147B8) directly follows.
-      - [0x3FB8, .rodata, FileOption]
+      - { start: 0x3FB8, type: .rodata, name: FileOption, linker_section_order: .data }
       # debug_menu_stage_option's switch jump table (vram 0x800147F0), same scheme.
-      - [0x3FF0, .rodata, debug_menu_stage_option]
+      - { start: 0x3FF0, type: .rodata, name: debug_menu_stage_option, linker_section_order: .data }
       - [0x400C, data]
-      - [0x5934, data]
+      - { start: 0x5934, type: data, linker_section_order: .text }
       - [0x5CE0, c, DoBriefingAndInventorySelection]
-      - [0x5D6C, data]
+      - { start: 0x5D6C, type: data, linker_section_order: .text }
       - [0x6448, c, vinit]
       - [0x649C, c, vgetmaxsize]
       - [0x64E8, c, vgetfreesize]
       - [0x652C, c, vcalloc]
-      - [0x657C, data]
+      - { start: 0x657C, type: data, linker_section_order: .text }
       - [0x6680, c, vsize]
       - [0x668C, c, SystemOut]
-      - [0x6694, data]
+      - { start: 0x6694, type: data, linker_section_order: .text }
       - [0x79D4, c, StartDrawing]
       - [0x7A48, c, UpdateCoordinate]
       - [0x7A78, c, FUN_80018278]
       - [0x7AA8, c, GetAbsolutePosition]
-      - [0x7B20, data]
+      - { start: 0x7B20, type: data, linker_section_order: .text }
       - [0x7C48, c, LoadModel]
       - [0x7CF8, c, DisposeModel]
       - [0x7D1C, c, FUN_8001851c]
@@ -132,100 +137,100 @@ segments:
       - [0x80AC, c, LoadTIMAndFree]
       - [0x80D8, c, LoadTIMpackAndFree]
       - [0x8104, c, LoadTIM]
-      - [0x81B4, data]
+      - { start: 0x81B4, type: data, linker_section_order: .text }
       - [0x82C8, c, GetTIMInfo]
       - [0x82E8, c, GetTIMpackInfo]
-      - [0x8364, data]
+      - { start: 0x8364, type: data, linker_section_order: .text }
       - [0x8480, c, InitSoundEffect]
       - [0x84E8, c, SetupSE]
       - [0x85A0, c, DisposeSE]
-      - [0x85EC, data]
+      - { start: 0x85EC, type: data, linker_section_order: .text }
       - [0x8B94, c, PathFileRead]
       - [0x8BCC, c, FileWrite]
-      - [0x8C48, data]
+      - { start: 0x8C48, type: data, linker_section_order: .text }
       - [0x8CF4, c, InitAccessInfo]
-      - [0x8D2C, data]
+      - { start: 0x8D2C, type: data, linker_section_order: .text }
       - [0x8E2C, c, LoadFromMEMORY]
-      - [0x8E50, data]
+      - { start: 0x8E50, type: data, linker_section_order: .text }
       - [0x8F68, c, PrepareAccess]
       - [0x8FA4, c, LoadAreaMap]
-      - [0x906C, data]
+      - { start: 0x906C, type: data, linker_section_order: .text }
       - [0x9210, c, GetAreaMapLevel]
-      - [0x96A0, data]
+      - { start: 0x96A0, type: data, linker_section_order: .text }
       - [0x9C44, c, InsertConflict]
       - [0x9D7C, c, DeleteConflict]
-      - [0x9E88, data]
+      - { start: 0x9E88, type: data, linker_section_order: .text }
       - [0xA1B8, c, GetConflictResult]
       - [0xA328, c, DisposeAreaMap]
       - [0xA364, c, handle_balmer_acm_]
-      - [0xA3A0, data]
+      - { start: 0xA3A0, type: data, linker_section_order: .text }
       - [0xA838, c, SetCommand]
       - [0xA944, c, GetPad]
       - [0xA974, c, FUN_8001b174]
-      - [0xA9A4, data]
+      - { start: 0xA9A4, type: data, linker_section_order: .text }
       - [0xAA60, c, GetRealPad]
       - [0xAAB8, c, FUN_8001b2b8]
-      - [0xAAF4, data]
+      - { start: 0xAAF4, type: data, linker_section_order: .text }
       - [0xAC04, c, PadShock]
       - [0xAC64, c, PadShockAR]
-      - [0xAC80, data]
+      - { start: 0xAC80, type: data, linker_section_order: .text }
       - [0xACBC, c, FUN_8001b4bc]
       - [0xACE0, c, FUN_8001b4e0]
-      - [0xAD14, data]
+      - { start: 0xAD14, type: data, linker_section_order: .text }
       - [0xBBB0, c, SetupMotionRegist]
       - [0xBC3C, c, SetupMotionManager]
       - [0xBCD8, c, DisposeMotionManager]
       - [0xBD10, c, GetMotionID]
       - [0xBD84, c, PlayMotion]
-      - [0xBE40, data]
+      - { start: 0xBE40, type: data, linker_section_order: .text }
       - [0xBF30, c, FUN_8001c730]
-      - [0xC00C, data]
+      - { start: 0xC00C, type: data, linker_section_order: .text }
       - [0xCB74, c, StickonCheck]
-      - [0xCC74, data]
+      - { start: 0xCC74, type: data, linker_section_order: .text }
       - [0xEEB8, c, handle_char_state_attacking_SEVEN_]
-      - [0xEFE4, data]
+      - { start: 0xEFE4, type: data, linker_section_order: .text }
       - [0x1674C, c, FUN_80026f4c]
       - [0x16754, c, SetNowMotion]
       - [0x16804, c, NowReturnNormal]
-      - [0x168C8, data]
+      - { start: 0x168C8, type: data, linker_section_order: .text }
       - [0x16A10, c, MotionAndMove]
       - [0x16AA0, c, ReturnNormal]
       - [0x16B04, c, FUN_80027304]
-      - [0x16B6C, data]
+      - { start: 0x16B6C, type: data, linker_section_order: .text }
       - [0x16CE8, c, FUN_800274e8]
       - [0x16D54, c, bow_shoot_logic]
       - [0x16E88, c, FUN_80027688]
       - [0x16F30, c, FUN_80027730]
-      - [0x17018, data]
+      - { start: 0x17018, type: data, linker_section_order: .text }
       - [0x170DC, c, ActCEILHANG]
-      - [0x170E4, data]
+      - { start: 0x170E4, type: data, linker_section_order: .text }
       - [0x18B68, c, update_something_for_each_visible_enemy_]
       - [0x18C6C, c, GetHumanoid]
       - [0x18CDC, c, is_character_state_present_on_stage_]
       - [0x18D2C, c, MoveHumanoid]
-      - [0x18E60, data]
+      - { start: 0x18E60, type: data, linker_section_order: .text }
       - [0x18F2C, c, GetDirection]
-      - [0x18F94, data]
+      - { start: 0x18F94, type: data, linker_section_order: .text }
       - [0x1A0EC, c, GetAttackDBID]
       - [0x1A178, c, DisposeWeapon]
       - [0x1A1E0, c, EquipWeapon]
-      - [0x1A2D0, data]
+      - { start: 0x1A2D0, type: data, linker_section_order: .text }
       - [0x1B190, c, turn_towards_player_]
-      - [0x1B370, data]
+      - { start: 0x1B370, type: data, linker_section_order: .text }
       - [0x1B7EC, c, Think1trace]
-      - [0x1B8C4, data]
+      - { start: 0x1B8C4, type: data, linker_section_order: .text }
       - [0x1BA38, c, Think1ninja]
-      - [0x1BB9C, data]
+      - { start: 0x1BB9C, type: data, linker_section_order: .text }
       - [0x1C774, c, Think3chase]
-      - [0x1C8B0, data]
+      - { start: 0x1C8B0, type: data, linker_section_order: .text }
       - [0x1CD20, c, Think3escape]
-      - [0x1CE38, data]
+      - { start: 0x1CE38, type: data, linker_section_order: .text }
       - [0x1D308, c, Think3firstattack]
-      - [0x1D40C, data]
+      - { start: 0x1D40C, type: data, linker_section_order: .text }
       - [0x1E970, c, AttackAnimal]
-      - [0x1EA54, data]
+      - { start: 0x1EA54, type: data, linker_section_order: .text }
       - [0x1EF3C, c, SetupThinkFunction]
-      - [0x1EFF4, data]
+      - { start: 0x1EFF4, type: data, linker_section_order: .text }
       - [0x1F018, c, ThinkBasicNone]
       - [0x1F020, c, ThinkBasicHuman1]
       - [0x1F0C4, c, ThinkBasicHuman2]
@@ -233,9 +238,9 @@ segments:
       - [0x1F198, c, Think1sleep]
       - [0x1F224, c, Think2confirm]
       - [0x1F254, c, think_setting_go_towards_player]
-      - [0x1F2BC, data]
+      - { start: 0x1F2BC, type: data, linker_section_order: .text }
       - [0x217CC, c, initialise_default_player_cameras_]
-      - [0x21888, data]
+      - { start: 0x21888, type: data, linker_section_order: .text }
       - [0x2840C, c, FUN_80038c0c]
       - [0x284E0, c, FUN_80038ce0]
       - [0x28510, c, FUN_80038d10]
@@ -247,16 +252,16 @@ segments:
       - [0x28658, c, DisposeAfterimage]
       - [0x2869C, c, SetupAfterimage]
       - [0x28798, c, SetLightning]
-      - [0x287DC, data]
+      - { start: 0x287DC, type: data, linker_section_order: .text }
       - [0x28D44, c, FUN_80039544]
       - [0x28E10, c, FUN_80039610]
       - [0x28E84, c, FUN_80039684]
       - [0x28EC0, c, FUN_800396c0]
       - [0x28F5C, c, GetVectorRotation]
-      - [0x29008, data]
+      - { start: 0x29008, type: data, linker_section_order: .text }
       - [0x293BC, c, DrawEffect]
       - [0x29414, c, FUN_80039c14]
-      - [0x29454, data]
+      - { start: 0x29454, type: data, linker_section_order: .text }
       - [0x2C15C, c, leAddPath]
       - [0x2C24C, c, leResetPath]
       - [0x2C278, c, leRestoreEnemyLayout]
@@ -269,52 +274,52 @@ segments:
       - [0x2C478, c, load_layout]
       - [0x2C504, c, FUN_8003cd04]
       - [0x2C55C, c, DisposeOrnamentArchive]
-      - [0x2C5E4, data]
+      - { start: 0x2C5E4, type: data, linker_section_order: .text }
       - [0x2DC54, c, ProcItemDrop]
       - [0x2E0AC, c, ReqItemDrop]
-      - [0x2E284, data]
+      - { start: 0x2E284, type: data, linker_section_order: .text }
       - [0x2E98C, c, ProcItemTeleport]
       - [0x2EB04, c, ProcItemMakibishi]
       - [0x2ED70, c, ReqItemMakibishi]
       - [0x2EF2C, c, ReqItemManebue]
-      - [0x2F0A0, data]
+      - { start: 0x2F0A0, type: data, linker_section_order: .text }
       - [0x2F5E0, c, ReqItemShinsoku]
-      - [0x2F768, data]
+      - { start: 0x2F768, type: data, linker_section_order: .text }
       - [0x2FB54, c, ReqItemSmoke]
       - [0x2FD00, c, ProcItemKusuri]
       - [0x30298, c, ReqItemKusuri]
-      - [0x3040C, data]
+      - { start: 0x3040C, type: data, linker_section_order: .text }
       - [0x3071C, c, ReqItemKawarimi]
-      - [0x30890, data]
+      - { start: 0x30890, type: data, linker_section_order: .text }
       - [0x31234, c, ReqItemDokudango]
-      - [0x313F4, data]
+      - { start: 0x313F4, type: data, linker_section_order: .text }
       - [0x317AC, c, ReqItemGosin]
-      - [0x31920, data]
+      - { start: 0x31920, type: data, linker_section_order: .text }
       - [0x321F0, c, ReqItemNingyo]
-      - [0x3241C, data]
+      - { start: 0x3241C, type: data, linker_section_order: .text }
       - [0x329C8, c, ReqItemHenshin]
       - [0x32B3C, c, ProcItemGoshikimai]
       - [0x32D6C, c, ReqItemGoshikimai]
-      - [0x32F10, data]
+      - { start: 0x32F10, type: data, linker_section_order: .text }
       - [0x3340C, c, ReqItemKaengeki]
-      - [0x335D4, data]
+      - { start: 0x335D4, type: data, linker_section_order: .text }
       - [0x33ED0, c, ReqItemNinken]
       - [0x3408C, c, ProcItemHappou]
       - [0x34318, c, ReqItemHappou]
-      - [0x345E0, data]
+      - { start: 0x345E0, type: data, linker_section_order: .text }
       - [0x34EFC, c, ReqItemFire]
-      - [0x350A8, data]
+      - { start: 0x350A8, type: data, linker_section_order: .text }
       - [0x35740, c, ReqItemNemuri]
       - [0x358D0, c, ProcItemLightningBolt]
       - [0x35B58, c, ReqItemLightningBolt]
-      - [0x35D28, data]
+      - { start: 0x35D28, type: data, linker_section_order: .text }
       - [0x36DF4, c, ReqItemDefault]
       - [0x36F38, c, ReqItemLaunch]
-      - [0x37118, data]
+      - { start: 0x37118, type: data, linker_section_order: .text }
       - [0x378C4, c, ReqItemArrow]
-      - [0x37AAC, data]
+      - { start: 0x37AAC, type: data, linker_section_order: .text }
       - [0x38158, c, ReqItemJirai]
-      - [0x382FC, data]
+      - { start: 0x382FC, type: data, linker_section_order: .text }
       - [0x399D8, c, ProcItemManebue]
       - [0x39AEC, c, ReqItemStay]
       - [0x39B68, c, FUN_8004a368]
@@ -322,70 +327,70 @@ segments:
       - [0x39C2C, c, FUN_8004a42c]
       - [0x39D00, c, ClearItemLayout]
       - [0x39D98, c, FUN_8004a598]
-      - [0x39DCC, data]
+      - { start: 0x39DCC, type: data, linker_section_order: .text }
       - [0x3A554, c, PutLifeBarS]
-      - [0x3A5E4, data]
+      - { start: 0x3A5E4, type: data, linker_section_order: .text }
       - [0x3A7DC, c, DebugMenuItemSet]
-      - [0x3A98C, data]
+      - { start: 0x3A98C, type: data, linker_section_order: .text }
       - [0x3ACC0, c, PauseProc]
-      - [0x3B048, data]
+      - { start: 0x3B048, type: data, linker_section_order: .text }
       - [0x3B25C, c, DoInfoViewProc]
-      - [0x3B7A4, data]
+      - { start: 0x3B7A4, type: data, linker_section_order: .text }
       - [0x3B824, c, FUN_8004c024]
       - [0x3B844, c, DemoPatchInit]
       - [0x3B894, c, PutItemCursor]
       - [0x3B8E4, c, PutItemIcon]
-      - [0x3B938, data]
+      - { start: 0x3B938, type: data, linker_section_order: .text }
       - [0x3C93C, c, AddMisc]
-      - [0x3CB50, data]
+      - { start: 0x3CB50, type: data, linker_section_order: .text }
       - [0x3CD14, c, ResetAllMisc]
-      - [0x3CD70, data]
+      - { start: 0x3CD70, type: data, linker_section_order: .text }
       - [0x3E0F4, c, SetupStageSequence]
       - [0x3E164, c, init_score_stats]
       - [0x3E1D8, c, InitSprite]
       - [0x3E2F0, c, load_sprite_info_perhaps]
-      - [0x3E410, data]
+      - { start: 0x3E410, type: data, linker_section_order: .text }
       - [0x3E9D8, c, get_tim_from_archive]
-      - [0x3EA7C, data]
+      - { start: 0x3EA7C, type: data, linker_section_order: .text }
       - [0x3EB7C, c, GetArcData]
-      - [0x3EC4C, data]
+      - { start: 0x3EC4C, type: data, linker_section_order: .text }
       - [0x3ED98, c, FUN_8004f598]
       - [0x3EDDC, c, PlayMusicFromID]
       - [0x3EE8C, c, FUN_8004f68c]
       - [0x3EEC0, c, FUN_8004f6c0]
       - [0x3EF70, c, FUN_8004f770]
-      - [0x3EFB4, data]
+      - { start: 0x3EFB4, type: data, linker_section_order: .text }
       - [0x3F300, c, CdaStop]
       - [0x3F380, c, CdaGetCurrentLength]
       - [0x3F3E4, c, CdaReady]
       - [0x3F3F4, c, FUN_8004fbf4]
       - [0x3F408, c, FUN_8004fc08]
-      - [0x3F470, data]
+      - { start: 0x3F470, type: data, linker_section_order: .text }
       - [0x3F670, c, SetupSoundEffect]
       - [0x3F710, c, Sound]
-      - [0x3F798, data]
+      - { start: 0x3F798, type: data, linker_section_order: .text }
       - [0x40C1C, c, DrawTelop]
       - [0x40CD0, c, FUN_800514d0]
-      - [0x40CD8, data]
+      - { start: 0x40CD8, type: data, linker_section_order: .text }
       - [0x41884, c, BriefingAndInventorySelectionScreen]
-      - [0x426A8, data]
+      - { start: 0x426A8, type: data, linker_section_order: .text }
       - [0x45DF0, c, FUN_800565f0]
-      - [0x45E3C, data]
+      - { start: 0x45E3C, type: data, linker_section_order: .text }
       - [0x45EC0, c, FUN_800566c0]
-      - [0x45EFC, data]
+      - { start: 0x45EFC, type: data, linker_section_order: .text }
       - [0x460B8, c, FUN_800568b8]
-      - [0x46110, data]
+      - { start: 0x46110, type: data, linker_section_order: .text }
       - [0x465F8, c, ChkCard]
-      - [0x46630, data]
+      - { start: 0x46630, type: data, linker_section_order: .text }
       - [0x466C4, c, DeleteCard]
       - [0x46718, c, FormatCard]
       - [0x46750, c, LoadCard]
-      - [0x468B8, data]
+      - { start: 0x468B8, type: data, linker_section_order: .text }
       - [0x46E98, c, initialise_font]
       - [0x46EE8, c, FUN_800576e8]
-      - [0x46F8C, data]
+      - { start: 0x46F8C, type: data, linker_section_order: .text }
       - [0x47380, c, FUN_80057b80]
-      - [0x48254, data]
+      - { start: 0x48254, type: data, linker_section_order: .text }
       - [0x48470, c, FUN_80058c70]
       - [0x48808, c, FUN_80059008]
       - [0x48BA0, c, FUN_800593a0]
@@ -393,16 +398,16 @@ segments:
       - [0x49308, c, FUN_80059b08]
       - [0x497F4, c, FUN_80059ff4]
       - [0x49BCC, c, FUN_8005a3cc]
-      - [0x49FA4, data]
+      - { start: 0x49FA4, type: data, linker_section_order: .text }
       - [0x4B318, c, LayoutEnemyOption]
-      - [0x4B59C, data]
+      - { start: 0x4B59C, type: data, linker_section_order: .text }
       - [0x4BDA8, c, FileOption]
       - [0x4C1FC, c, debug_menu_stage_option]
-      - [0x4C3BC, data]
+      - { start: 0x4C3BC, type: data, linker_section_order: .text }
       - [0x4C670, c, PlayerOption]
-      - [0x4C810, data]
+      - { start: 0x4C810, type: data, linker_section_order: .text }
       - [0x4C81C, c, SetDepthQ]
-      - [0x4C82C, data]
+      - { start: 0x4C82C, type: data, linker_section_order: .text }
       - [0x4C8D4, c, FUN_8005d0d4]
       - [0x4C9FC, c, FUN_8005d1fc]
       - [0x4CB54, c, FUN_8005d354]
@@ -419,19 +424,19 @@ segments:
       - [0x4DB30, c, FUN_8005e330]
       - [0x4DCBC, c, FUN_8005e4bc]
       - [0x4DE58, c, FUN_8005e658]
-      - [0x4E034, data]
+      - { start: 0x4E034, type: data, linker_section_order: .text }
       - [0x4E0F0, c, FUN_8005e8f0]
       - [0x4E148, c, FUN_8005e948]
-      - [0x4E150, data]
+      - { start: 0x4E150, type: data, linker_section_order: .text }
       - [0x4E680, c, AfsInit]
       - [0x4E6E4, c, AfsFilenameFix]
-      - [0x4E734, data]
+      - { start: 0x4E734, type: data, linker_section_order: .text }
       - [0x4E7D0, c, AfsClose]
       - [0x4E808, c, AfsFileSize]
       - [0x4E848, c, AfsRead]
-      - [0x4E90C, data]
+      - { start: 0x4E90C, type: data, linker_section_order: .text }
       - [0x4E9C0, c, AfsGetHeader]
-      - [0x4EA78, data]
+      - { start: 0x4EA78, type: data, linker_section_order: .text }
       - [0x4ED58, c, cd_close]
       - [0x4ED90, c, cd_read]
       - [0x4EE34, c, cd_seek]
@@ -440,18 +445,18 @@ segments:
       - [0x4EF38, c, cd_control]
       - [0x4EF98, c, cd_tell]
       - [0x4EFD0, c, FUN_8005f7d0]
-      - [0x4EFF4, data]
+      - { start: 0x4EFF4, type: data, linker_section_order: .text }
       - [0x4F3C8, c, AdtQuiet]
       - [0x4F3DC, c, AdtFntOpen]
       - [0x4F464, c, AdtFntLoad]
-      - [0x4F4A4, data]
+      - { start: 0x4F4A4, type: data, linker_section_order: .text }
       - [0x4F534, c, AdtDmyPadRead]
-      - [0x4F53C, data]
+      - { start: 0x4F53C, type: data, linker_section_order: .text }
       - [0x4F688, c, FUN_8005fe88]
       - [0x4F6CC, c, AdtSelect]
-      - [0x4F9D4, data]
+      - { start: 0x4F9D4, type: data, linker_section_order: .text }
       - [0x4FA24, c, PClseek]
-      - [0x4FA48, data]
+      - { start: 0x4FA48, type: data, linker_section_order: .text }
       - [0x717EC, c, MemCardCallback]
-      - [0x71800, data]
+      - { start: 0x71800, type: data, linker_section_order: .text }
   - [0x87800]

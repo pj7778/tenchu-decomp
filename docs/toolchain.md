@@ -277,16 +277,48 @@ Two config settings are load-bearing:
    rejects duplicates unless disambiguated by segment/rom, which our file cannot
    express (it doubles as an ld script — no comment syntax). There were **716
    duplicate names over 181 addresses**, almost all Ghidra
-   `switchD_<a>__caseD_<n>` aliases for cases sharing a block. `tools/dedupe-symbols.py`
-   drops them, keeping any name our sources reference (exactly two:
-   `switchD_8002aa7c__caseD_2`, `switchD_8005c6cc__caseD_e`). `--check` gates it.
-   `import_symbols.py` only RENAMES, so this stays fixed; re-run after a fresh
-   Ghidra import.
-2. **`ld_legacy_generation: True`** in the yaml. 0.4x imposes `section_order` on
-   linker-script generation and then refuses our deliberately-unlisted `.rodata`.
-   Listing `.rodata` instead appends an auto `all .c.o(.rodata)` pile that shifts
-   `.text` and blows PC16 branch ranges (`relocation truncated to fit … against
-   switchD_8005c6cc__caseD_e`).
+   `switchD_<a>__caseD_<n>` aliases for cases sharing a block.
+   `tools/dedupe-symbols.py` drops them, keeping any name our sources reference
+   (exactly two). `--check` gates it. `import_symbols.py` only RENAMES, so this
+   stays fixed; re-run after a fresh Ghidra import.
+
+2. **`linker_section_order` on the interleaved entries — NOT `ld_legacy_generation`.**
+   splat >= 0.4x no longer follows yaml order: it groups linker entries by
+   section, emitting all `.text` then all `.data` then all `.rodata`. Our image
+   interleaves two runs and cannot be expressed that way directly:
+   * `[0x800, 0x5934)` — leading `.data` with six `.rodata` jump-table carves cut
+     into it;
+   * `[0x5934, 0x87800)` — carved `c` files interleaved with `data` blobs that are
+     really **un-carved code** linked as raw bytes (an artifact of incremental
+     decompilation, not real data).
+
+   Upstream calls `ld_legacy_generation` "a last resort" that "may be removed in
+   the future", and points at **`linker_section_order`** (Segments.md): it
+   overrides which ORDER GROUP an entry joins while leaving the section it
+   actually links into untouched. So the six leading `.rodata` carves declare
+   `linker_section_order: .data`, and the 99 text-region `data` blobs declare
+   `linker_section_order: .text`. Each group then holds one contiguous run in
+   address order and the script matches the image.
+
+   Three details that cost real debugging:
+   * **`.rodata` must still be listed** in `section_order`. splat emits an
+     (empty) `.rodata` entry per C object; omitting the section makes generation
+     abort with `section '.rodata' not found`. Only our six carves have non-empty
+     `.rodata`, so a listed-but-otherwise-empty group costs nothing.
+   * **`align: 4` on the segment.** splat pads the END of every section group to
+     `segment.align`, which defaults to **16**. The leading run ends at
+     `0x80016134` — 4-aligned but not 16 — so the default padded it and shifted
+     `.text` by exactly 12 bytes (and grew the file by 16).
+   * **The tools must keep emitting the tags.** `reverse.py` splits a `data`
+     subsegment on every carve and `split-scaffold.py` inserts `.rodata` carves;
+     both now go through `reverse.py`'s `data_sub`/`rodata_sub`, which tag an
+     entry from its address (`TEXT_FOFF = 0x5934`). Both parse the dict form too.
+
+**Shake already tracks the generated includes.** The cpp rule does
+`need [mainGen, src]`, so splat regenerates `include/` before anything reads it;
+cpp's `-MMD` picks up `include_asm.h` and `as --MD` (see `neededAsmDeps`) picks up
+`macro.inc` and, through it, `gte_macros.inc`. Verified: perturbing
+`generated_macro_inc_content` rebuilds 104 steps and `./Build check` stays green.
 
 **splat now GENERATES `include/{macro.inc,include_asm.h,labels.inc,gte_macros.inc}`
 on every run**, overwriting the first two. That silently dropped our ASPSX `li`

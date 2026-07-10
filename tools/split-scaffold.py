@@ -19,7 +19,7 @@ Prerequisite: run `tools/reverse.py <Name>` first (adds the function's `c`
 carve and lets splat generate the pieces). Then:
 
   tools/split-scaffold.py <Name>      scaffold + carve, leave ./Build green
-  tools/split-scaffold.py <Name> -n   don't touch the yaml, just print the carve
+  tools/split-scaffold.py <Name> -n   dry run: touch nothing, just print the carve
 
 Run inside the nix devShell. If <Name> turned out to have no jump table (a
 single .s piece), it says so and changes nothing — reverse.py's seed is fine.
@@ -149,19 +149,24 @@ def build_c(name, addr, pieces, tables):
 
 # ---- yaml carve insertion (line-preserving, mirrors reverse.py) ----------
 def insert_rodata_carves(name, carves, dry):
-    """carves = [(fileoff, size)]; insert `- [off, .rodata, name]` (+ trailing
-    data split) into the subsegments, splitting whichever `data` entry covers it."""
+    """carves = [(fileoff, size)]; insert the `.rodata` carve (+ trailing data
+    split) into the subsegments, splitting whichever `data` entry covers it.
+
+    Entry lines come from reverse.py's `data_sub`/`rodata_sub`, which tag each
+    entry with the `linker_section_order` its address needs — splat groups the
+    linker script by section, and our data/rodata runs interleave."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import reverse
     text = open(YAML).read()
     lines = text.splitlines(keepends=True)
     start = next(i for i, l in enumerate(lines) if l.strip() == "subsegments:")
     end = next(i for i in range(start + 1, len(lines))
                if re.match(r"  - \[0x[0-9A-Fa-f]+\]\s*$", lines[i]))
-    row = re.compile(r"(\s*)- \[\s*(0x[0-9A-Fa-f]+)\s*,\s*([\w.]+)\s*(?:,\s*[\w.]+\s*)?\]")
 
     def entries():
         out = []
         for i in range(start + 1, end):
-            m = row.match(lines[i])
+            m = reverse.LIST_SUB.match(lines[i]) or reverse.DICT_SUB.match(lines[i])
             if m:
                 out.append((i, m.group(1), int(m.group(2), 16), m.group(3)))
         return out
@@ -169,7 +174,7 @@ def insert_rodata_carves(name, carves, dry):
     printed = []
     for off, size in sorted(carves):
         ind = "      "
-        printed.append(f"{ind}- [0x{off:X}, .rodata, {name}]")
+        printed.append(reverse.rodata_sub(ind, off, name).rstrip("\n"))
         es = entries()
         # the covering `data` entry (largest start <= off that is data)
         cover = None
@@ -181,10 +186,10 @@ def insert_rodata_carves(name, carves, dry):
             printed.append(f"{ind}  # (adjacent to existing rodata — place by hand)")
             continue
         i, ic, o, nxt = cover
-        block = [f"{ic}- [0x{o:X}, data]\n"] if o < off else []
-        block.append(f"{ic}- [0x{off:X}, .rodata, {name}]\n")
+        block = [reverse.data_sub(ic, o)] if o < off else []
+        block.append(reverse.rodata_sub(ic, off, name))
         if nxt is None or off + size < nxt:
-            block.append(f"{ic}- [0x{off + size:X}, data]\n")
+            block.append(reverse.data_sub(ic, off + size))
         if not dry:
             lines[i:i + 1] = block
             open(YAML, "w").write("".join(lines))
@@ -200,7 +205,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("name")
     ap.add_argument("-n", "--no-yaml", action="store_true",
-                    help="don't edit the yaml, just print the .rodata carve")
+                    help="dry run: write neither the .c nor the yaml; print the carve")
     args = ap.parse_args()
     name = args.name
 
@@ -218,10 +223,24 @@ def main():
         n = table_len(tv, fstart, fend, table_starts)
         tables[sw] = (tv, read_words(tv, n))
 
+    # Never clobber a function that already MATCHES. The stub we would write is
+    # byte-identical to the original, so `./Build check` stays green and the
+    # regression is invisible — the function just silently stops being matched.
+    target = os.path.join(SRC, name + ".c")
+    if os.path.exists(target) and not re.search(
+            r"^\s*INCLUDE_ASM", open(target).read(), re.M):
+        sys.exit(f"split-scaffold: {target} is already MATCHED (no INCLUDE_ASM). "
+                 f"Refusing to overwrite it with a stub — there is nothing to "
+                 f"scaffold. Delete the .c first if you really mean to restart.")
+
     # Build the content BEFORE opening for write: draft_seed reads the current
     # file to preserve an existing #else draft, and open(...,"w") truncates.
     content = build_c(name, fstart, pieces, tables)
-    open(os.path.join(SRC, name + ".c"), "w").write(content)
+    if args.no_yaml:
+        print(f"split-scaffold: --no-yaml — not writing {target} either "
+              f"({len(content.splitlines())} lines would be written).")
+    else:
+        open(target, "w").write(content)
 
     carves = [(FILE_OFF + (tv - TEXT_START), len(w) * 4) for tv, w in tables.values()]
     printed = insert_rodata_carves(name, carves, args.no_yaml)
