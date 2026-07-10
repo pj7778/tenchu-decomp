@@ -1020,6 +1020,13 @@ matter. Do not fight it with named temps or casts.
 
 ## Stack objects
 
+**Two same-type address-taken stack objects get their slots by REFERENCE order, not
+declaration order.** When a memset scratch VECTOR and its struct-copy destination
+(passed to a call) land in swapped stack slots vs the target, swapping the
+DECLARATIONS does nothing — swap which one is memset'd and which is the call argument.
+`leLayoutEnemy`: making `pos` the memset scratch and `tmp` the SetBleeds argument put
+`pos@sp+24`/`tmp@sp+40` to match, cutting the diff in half.
+
 **cc1 pads EACH separately-declared aggregate stack local up to a multiple of 8
 bytes.** Four adjacent aggregates that were really contiguous fields of one original
 struct must be declared as ONE combined struct local, or each is individually
@@ -1262,6 +1269,21 @@ uses from the SImode copy while only the divergent-path use reads the variable;
 cross-jump re-merges the identical `sll/sra/jal` tails. Refines the
 "one logical value in two registers = two variables" rule: the second "variable"
 can be cc1's own parameter split (`Sound`).
+
+### A negative non-power-of-two multiply is spelled as its strength reduction
+
+`sync * -0xF0` must be written `((sync - (sync << 4)) << 4) - 0xA` (the shift/sub
+sequence cc1's own strength reduction emits) to match; the literal `* -0xF0` compiles
+differently. And a `(u16)x << 1` widening needs a `u32` intermediate — a `u16` one
+collapses the double-shift to a single `sll` (`EndDrawing`).
+
+### A narrowing store through a widened temp differs by a reload's signedness
+
+`dp = sk - (u16)DrawingPage; DrawingPage = dp;` (with `sk` an `s16`, `dp` an `s32`)
+matches, where the direct `DrawingPage = sk - (u16)DrawingPage;` reads as a narrowing
+use and lets cc1 satisfy it with a wrongly-unsigned `lhu` reload; spelling `sk` as
+`s32` instead lets cse substitute a live constant. One instruction off in opposite
+directions (`EndDrawing`).
 
 ### A `(short)` cast on an int `|` call argument is a SCHEDULER lever
 
