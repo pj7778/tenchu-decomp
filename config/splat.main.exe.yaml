@@ -11,6 +11,43 @@ options:
   find_file_boundaries: yes
   use_legacy_include_asm: no
   migrate_rodata_to_functions: no
+
+  # splat >= 0.4x imposes `section_order` on linker-script generation and then
+  # refuses our deliberately-unlisted `.rodata` (see the note on section_order
+  # below). Listing `.rodata` instead appends an auto `all .c.o(.rodata)` pile
+  # that shifts `.text` and blows PC16 branch ranges. Legacy generation keeps the
+  # pre-0.4x behaviour these carves were designed around.
+  ld_legacy_generation: True
+
+  # splat GENERATES include/{macro.inc,include_asm.h,labels.inc,gte_macros.inc}
+  # on every run. Its macro.inc has no `li`/`move`, so re-inject ours here or the
+  # build silently falls back on GNU as's builtins.
+  generated_macro_inc_content: |
+    .macro .def #
+    .endm
+
+    .macro li reg, num
+    .if \num < 0x8000 && \num > 0
+      # ASPSX >= 2.56 (Tenchu uses 2.77) loads a signed-16-bit-positive immediate
+      # with `addiu $zero`, not `ori` (see maspsx aspsx/test_expand_li.py). GNU as's
+      # own `li` does the same; this override must match it or gp-less `li`s mismatch.
+      addiu \reg, $0, \num
+    .elseif \num > 0xFFFF
+      lui \reg, %hi(\num)
+    .elseif \num > 0
+      ori \reg, $0, \num & 0xFFFF
+    .elseif \num == -0x8000
+      addiu \reg, $0, \num & 0xFFFF
+    .elseif \num > -0x8000
+      addiu \reg, $0, \num
+    .else
+      lui \reg, %hi(\num)
+    .endif
+    .endm
+
+    .macro move a, b
+        addu \a, \b, $zero
+    .endm
   gp_value: 0x80097698
   ld_script_path: .shake/gen/main.exe/linker/main.exe.ld
   symbol_addrs_path: config/symbols.main.exe.txt

@@ -134,10 +134,15 @@ mipsel-unknown-linux-gnu-as {asflags} -o "$OUT" "$TMP/b.s"
 
 
 def piece_addr(path):
-    """VRAM of a nonmatching piece's first instruction (its comment column)."""
+    """VRAM of a nonmatching piece's first instruction (its comment column).
+
+    splat >= 0.4x INDENTS instruction lines, so don't anchor at the line start —
+    an anchored regex silently returns the sentinel for every piece and the
+    jump-table pieces then sort in file order, which is wrong.
+    """
     import re
     for line in open(path):
-        m = re.match(r"/\* \w+ ([0-9A-Fa-f]{8}) ", line)
+        m = re.search(r"/\* \w+ ([0-9A-Fa-f]{8}) [0-9A-Fa-f]{8} \*/", line)
         if m:
             return int(m.group(1), 16)
     return 1 << 62

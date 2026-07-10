@@ -115,11 +115,11 @@ MULDIV = {"mult", "multu", "div", "divu"}
 # COP2 data moves: `as` assembles these, but there is no C spelling for them.
 COP2_MOVES = {"lwc2", "swc2", "mfc2", "mtc2", "cfc2", "ctc2"}
 # objdump renders a GTE *command* (RTPS/NCLIP/MVMVA/...) as a bare `c2`.
-# `as` cannot assemble those mnemonics, but `tools/gte2word.py` (wired into the
-# splat step in Build.hs) rewrites them to `.word`, so the region IS splittable
-# and every one of these functions is carved. What still blocks a MATCH is that
-# no C construct emits a GTE opcode: that needs the inline-asm policy decision
-# (same one as GetPad/PClseek). Keep them de-ranked, but say why accurately.
+# `as` cannot assemble those mnemonics on its own, but splat >= 0.4x generates
+# include/gte_macros.inc (68 macros) which macro.inc includes, so the region IS
+# splittable and every one of these functions is carved. What still blocks a
+# MATCH is that no C construct emits a GTE opcode: that needs the inline-asm
+# policy decision (same one as GetPad/PClseek). Keep them de-ranked, say why.
 GTE_CMD = "c2"
 
 
@@ -238,9 +238,9 @@ def docs_for(f):
                   "sll16/sra-split sign-extension — no natural-C form; see GetPad.c"))
     if f["gtecmd"]:
         d.append(("Toolchain gotchas",
-                  "GTE command opcodes — tools/gte2word.py makes the split "
-                  "assemble; a MATCH still needs the inline-asm policy, since no "
-                  "C construct emits a GTE opcode"))
+                  "GTE command opcodes — splat's generated gte_macros.inc makes "
+                  "the split assemble; a MATCH still needs the inline-asm policy, "
+                  "since no C construct emits a GTE opcode"))
     elif f["cop2"]:
         d.append(("Toolchain gotchas",
                   "COP2 data moves — assemble, but have no C spelling; blocked on "

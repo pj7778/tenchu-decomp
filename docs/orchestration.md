@@ -86,7 +86,7 @@ Everything the pipeline needs, in the order you touch it:
 | `tools/matchdiff.py <Name>` / `tools/asmdiff.py <Name>` | iterate. matchdiff = whole-image gate; asmdiff = aligned view for big/split functions. |
 | `tools/autorules.py <Name>` | once the draft compiles: mechanically sweep the *local* cookbook rules (type-width flips; `&&` split/merge and single-use temp inline via tree-sitter) and greedily keep what shrinks the asmdiff, reporting which edit helped. Deterministic first pass; a "no win" verdict means the residual is structure/regalloc, not a local rule. |
 | `tools/permute.py <Name>` | decomp-permuter for pure register-allocation ties (the stochastic search; autorules is its deterministic, explainable complement). |
-| `tools/gte2word.py <dir>` | rewrite splat's GTE command mnemonics (`RTPT`…) to `.word` so `as` can assemble them. **Runs automatically from Build.hs after `split.py`** — you never invoke it by hand. Byte-exact (the `.word` is the byte-SWAP of splat's WORD comment). |
+| `tools/dedupe-symbols.py [--check]` | one name per address in `config/symbols.main.exe.txt`. splat >= 0.4x refuses duplicates, and our file cannot disambiguate them (it doubles as an ld script, no comment syntax). Re-run after any Ghidra symbol import. |
 | `tools/coverage.py [--all]` | code claimed by NO function — finds under-sized `functions.tsv` entries (a truncated carve still builds green; the tail becomes a `.data` blob that defines the `.L` labels, so nothing complains). `LoadCard` and `FUN_800593a0` are the two in game code. |
 | `tools/regalloc.py <Name>` | **diagnose a register tie** — runs `cc1 -dg` and surfaces which values are live across calls (forced callee-saved), the pseudo→hard-reg map, and the copy-chains that bias the coloring. Run this BEFORE blindly permuting a sub-C tie; it tells you which copy-chain to break. |
 
@@ -362,12 +362,13 @@ against context prototypes), so a small m2c fix-up layer is where more zeros hid
   `regalloc.py` then break the copy-chain / shorten the live range it points at,
   instead of blind permuting. (Open v2: diff our greg allocation against the
   target asm's registers to auto-flag the divergent value.)
-- **DONE — the GTE→`.word` pass is built** (`tools/gte2word.py`, run from
-  Build.hs after `split.py`). All 25 GTE functions are carved and `./Build check`
-  is byte-identical. **What remains is the OWNER'S POLICY CALL**: matching them
-  needs register-pinned locals / inline asm, because no C construct emits a GTE
-  opcode and the region uses a non-ABI calling convention (values live in
+- **GTE splitting is DONE, upstream.** splat >= 0.4x generates
+  `include/gte_macros.inc`, so `as` assembles the GTE command opcodes; all 25 GTE
+  functions are carved and `./Build check` is byte-identical. (Our stopgap
+  `tools/gte2word.py` is deleted.) **What remains is the OWNER'S POLICY CALL**:
+  matching them needs register-pinned locals / inline asm, because no C construct
+  emits a GTE opcode and the region uses a non-ABI calling convention (values in
   `$t2..$t5`/`$s0` at entry). The same decision unblocks `GetPad`/`GetPadXY`/
-  `FUN_8001b174` (the sign-extension trio) and `PClseek`'s `break 0x107`. Until
-  it is made, those ~29 functions stay VERY-HARD/parked. m2c can already read the
-  region (`--input-regs`), so a decision is all that is missing.
+  `FUN_8001b174` (the sign-extension trio), `DrawTMD`/`ArrangeLocalMatrix`, and
+  `PClseek`'s `break 0x107`. Until it is made, those ~31 functions stay
+  VERY-HARD/parked. m2c can already read the region (`--input-regs`).
