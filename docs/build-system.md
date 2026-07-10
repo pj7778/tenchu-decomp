@@ -113,12 +113,21 @@ still whole, but the build carries all of them:
 | `run.exe` | 47104 | `0x80110000` | `0x8011af20` | loader — note the different vram |
 
 `tools/newexe.py <name>...` generates `config/splat.<name>.yaml` plus an empty
-`config/symbols.<name>.txt` for any of them. The generated config has one `data`
-subsegment spanning the whole image: splat dumps it to `.word` asm and the build
-reassembles it byte-identically. Carving a function out is then exactly the
-`main.exe` workflow — `tools/reverse.py` grows `c` subsegments in the same shape.
-`newexe.py` refuses to overwrite a config that already has `c` subsegments unless
-you pass `--force`, so regenerating is safe.
+`config/symbols.<name>.txt` for any of them. The generated config has one `textbin`
+subsegment spanning the whole image: splat `.incbin`s it and the build reassembles
+it byte-identically. Carving a function out is then the `main.exe` workflow — the
+config grows `c` subsegments in the same shape. `newexe.py` refuses to overwrite a
+config that already has `c` subsegments unless you pass `--force`.
+
+**`textbin`, not `data` — splat groups a segment's subsegments by section, not by
+address.** The output section for each subsegment is chosen by type (`c`/`asm` →
+`.text`, `data` → `.data`), and the linker script emits them grouped, in
+`section_order`. So carving a `c` subsegment out of a `data` blob puts the compiled
+`.text` *after* every `.data` blob and shifts the whole image. `main.exe` gets away
+with `data` only by accident of layout: all its data (`0x800..0x400c`) precedes all
+its code (`0x5934..`). `textbin` puts the raw bytes in `.text`, where they interleave
+with carved C in address order. Four of the five carried exes now contain real
+compiled C on exactly this basis.
 
 Each exe gets its own `.shake/gen/<name>/`, `.shake/build/<name>/`,
 `src/<name>/`, `config/splat.<name>.yaml`, and `config/symbols.<name>.txt`.

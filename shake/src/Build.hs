@@ -427,6 +427,10 @@ objRules = do
         src = genDir </> target </> asmDir </> dropDirectory1 (dropExtension fileComponent)
     need [src]
     liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    -- A `textbin` subsegment assembles to `.incbin "<assets>/NNN.textbin.bin"`, and
+    -- `as` reads that blob before --MD can tell us it did. neededAsmDeps declares it
+    -- afterwards; allow exactly that read, as the .c.o rule does for macro.inc.
+    trackAllow [genDir </> target </> assetsDir <//> "*"]
     withTempFile $ \depFile -> do
       cmd_ as asFlags ["--MD", depFile, "-o", out, src]
       neededAsmDeps depFile

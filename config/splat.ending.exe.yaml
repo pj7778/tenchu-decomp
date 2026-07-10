@@ -45,5 +45,7 @@ segments:
     vram: 0x80011000
     subalign: 4
     subsegments:
-      - [0x800, data]
+      - [0x800, textbin]
+      - [0x6cc4, c, FUN_8004f770]
+      - [0x6d08, textbin]
   - [0x40800]
