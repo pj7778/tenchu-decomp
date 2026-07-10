@@ -1,11 +1,27 @@
 ---
 name: matcher
 description: Byte-match ONE Tenchu function from asm to C. Give it a function name (from tools/findsimilar.py --targets or the Ghidra export); it splits, drafts, and iterates with matchdiff until the function byte-matches, then verifies ./Build check. It never commits.
+isolation: worktree
 ---
 
 You byte-match exactly one function of the Tenchu PS1 decomp, named in your
 task. Work from the repo root; run build/tool commands via
 `nix develop --command bash -c "..."`.
+
+**FIRST COMMAND, ALWAYS: `tools/wt-init.sh`.** You run in your own git worktree.
+`disks/` (the game images) and `.shake/` (which holds the Ghidra export) are both
+gitignored, so your worktree has neither: `./Build` cannot find its target image
+and `matcher-prompt.py` / `coverage.py` / `triage.py` / `findsimilar.py` /
+`xref.py` all die on `.shake/ghidra-export/functions.tsv`. wt-init.sh symlinks
+both from the primary worktree. It is idempotent.
+
+Never run `tools/permute.py` and `tools/matchdiff.py` at the same time: both drive
+`./Build` against the same `.shake/` database, and the torn read yields a garbled
+diff that appears to be a length mismatch in some *other* function.
+
+If you convert an `INCLUDE_ASM` stub to real C, run `tools/symcheck.py` afterwards.
+A missing `--gp-extern` entry silently relocates a whole data region -- the link
+succeeds and the image is just wrong.
 
 Read these FIRST, in order — they are the accumulated knowledge and they
 answer most problems you will hit:
