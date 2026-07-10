@@ -154,6 +154,29 @@ gate.
 A `FUN_…` file gets its recorded candidate name instead, with the warning not to adopt
 it without `callmatch.py --verify`.
 
+### How much to trust it
+
+Measured across the first agent batches that had it. **Struct layouts are reliable;
+local lists are a strong prior that retail sometimes overwrote.**
+
+| what | verdict |
+|---|---|
+| Struct/union layouts and field names | Reliable. `POLY_GT4` gave `SetupImageToPolyGT4` every offset in the `.s`, first try. The `TAFS`/`TAFSElement`/`TAFSFileHandle` layouts carried two AFS functions with no debug info of their own. |
+| Prototypes and parameter names | Reliable. |
+| **Local count and types** | The single biggest lever *when right* — `FileRead`'s exact 2-local list is what matched it. But **wrong twice in five functions**. |
+| **Array bounds in globals** | Suspect. PSX.SYM says `LifeBar[4]`; retail's asm plainly walks `LifeBar[5]`. |
+
+The two failures, both the same shape — the demo is an *earlier build*:
+
+* `SetupImageToPolyGT4`: PSX.SYM lists 3 locals (`tx`, `ty`, `th`). Retail rewrote the
+  function into `SetupImageToPolyFT4`'s shape and needs 10.
+* `LoadFromDEVPC`: PSX.SYM records 1 local. Retail's asm plainly needs `fd`, `size`,
+  `buff`.
+
+So: transcribe the local list first, then **check it against the `.s` before you trust
+the count**. `tools/access.py` settles any field offset or width. When they disagree,
+the asm wins — every time.
+
 ### Adopting the original parameter names
 
 ```console

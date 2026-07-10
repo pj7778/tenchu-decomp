@@ -398,6 +398,14 @@ plain C is the matched file.
       (`if (idx != -1) { …; return f(0); } return 0;`) so the call's result
       (already in `$v0`) is the last code before the epilogue with no extra move
       (leRemoveEnemy).
+    - **…and flip back when the SUCCESS arm is the longer one.** The literal-
+      polarity rule assumes the error arm is short (a `return E;` that folds into
+      the epilogue). When success is the long arm — several statements, a nested
+      `if`, a handful of calls — and especially when a local is live across both
+      arms, Ghidra's literal polarity compiles backwards. **Nest the long arm**
+      (`if (fd != 0) { …; return buff; } error; return E;`), leaving the short
+      error tail unnested and last (LoadFromCDROM). The one-line test: which arm
+      would you rather have fall through into the epilogue? The short one.
 - **Don't reuse the switch variable inside case bodies across calls**: a
   dispatch-only variable dies at the case tree and lives in a caller-saved
   reg (`move $v1,$v0` after the call that produced it). Assigning a later
@@ -904,6 +912,34 @@ plain C is the matched file.
   one `addiu scale,scale,±16` (the target keeps the temp shape).
 
 ## Register allocation steering
+
+### A default-then-override temp keeps the object's address alive
+
+If your draft is **N instructions SHORT** and the missing instructions are an
+address recomputation (`lui`/`addiu` + the `sll`/`addu` index scaling) for an
+lvalue you already stored to earlier, look for a temp feeding that store:
+
+```c
+cnt = 100;                     /* or: if (h->life == 0) cnt = 100; else cnt = 300; */
+if (cond) cnt = 300;
+LifeBar[g].count = cnt;        /* one store, address pseudo now live... */
+if (LifeBar[g].max < 1) { … }  /* ...so cc1 REUSES it here. Target recomputes. */
+```
+
+The shared temp keeps `&LifeBar[g]` live in a register across the following
+access. Write the two arms as **independent stores** instead:
+
+```c
+if (h->life == 0) LifeBar[g].count = 100;
+else              LifeBar[g].count = 300;
+```
+
+cc1 cross-jump-merges those into the *identical single store*, but the later
+`LifeBar[g]` access is now a genuinely fresh pseudo and gets recomputed from
+scratch — base and index registers swapped, exactly as the target does
+(ReqLifeBar; 9 instructions / 36 bytes recovered). Verified empirically; the
+`cse.c` mechanism that declines to merge the second occurrence is not root-caused,
+so treat this as a shape to try, not a law.
 
 > **Diagnose before you steer: `tools/regalloc.py <Name>`.** It runs `cc1 -dg`
 > and shows which values are live across calls (forced into callee-saved
