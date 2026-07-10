@@ -361,6 +361,21 @@ plain C is the matched file.
 - A hand-rolled `label: if (...) goto...` loop also keeps the top test but
   **loses hoisting** (no loop notes → loop.c skips it): magic divisors and
   invariant addresses get rematerialized per iteration. Wrong.
+- **Index the table (`T[i].f`) rather than walking a pointer (`e++`) when the
+  loop touches two or more fields.** With a walking pointer cc1 strength-reduces
+  the induction variable so that the LAST field it touches sits at offset 0 —
+  the base comes out biased (`addiu $a2,$v0,8`, accesses at `-4($a2)`/`0($a2)`).
+  Array indexing keeps the giv at the table base, so the accesses stay at their
+  natural `4($a2)`/`8($a2)` (FUN_800568b8; the `addiu $a2,$a2,0xC` bottom
+  increment is identical either way, so the *bias* is the only tell).
+- **Keep a compared memory read INLINE in both `&&` operands (cc1 CSEs the
+  address); hoisting it into a temp can swap two registers.**
+  `if (p[n] != K && mx < p[n]) p[n] = mx;` with `mx` declared *before* the `if`
+  colours the address into `$v1` and `mx` into `$a1`; rewriting it as
+  `cur = p[n]; if (cur != K && mx < cur)` swaps them. autorules and regalloc.py
+  both come up empty on this one (no copy-chain, no call) — it is a real 5-byte
+  tie the permuter cracks in ~400 iterations (FUN_800568b8). Note the compared
+  temp must still be `int`, or a `u8 < u8` compare narrows `slt` to `sltu`.
 - **A loop-invariant store value hoists, but its `li` lands AFTER the counter's
   init unless you pre-assign it to a named local before the loop.**
   `for (i=N; i>=0; i--) arr[i].f = -1;` hoists the `-1` yet orders its `li`

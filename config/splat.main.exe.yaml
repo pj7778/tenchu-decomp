@@ -307,6 +307,8 @@ segments:
       - [0x45E3C, data]
       - [0x45EC0, c, FUN_800566c0]
       - [0x45EFC, data]
+      - [0x460B8, c, FUN_800568b8]
+      - [0x46110, data]
       - [0x46E98, c, initialise_font]
       - [0x46EE8, c, FUN_800576e8]
       - [0x46F8C, data]
