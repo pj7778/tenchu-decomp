@@ -228,3 +228,38 @@ git format-patch --no-signature -o /path/to/tenchu-decomp/nix/m2c <new-upstream-
 Do **not** re-add the `uv.lock`/pytest dev-deps commit that lives on the original
 `tenchu` branch: it is 245 KB, irrelevant to the nix build, and irrelevant to
 upstream review.
+
+## spimdisasm: we do NOT use `pkgs.spimdisasm`, and bumping it changes nothing
+
+`splat` bundles its own spimdisasm (its `requirements.txt` pins `>=1.13.0`; its
+nix env ships **1.13.3**, under python **3.10**). Nothing in this repo imports
+spimdisasm — `grep -rn "import spimdisasm" tools/ shake/` is empty. So the
+`spimdisasm` overlay input only ever contributed the CLI to the devShell.
+
+**Measured:** bumping `Fuuzetsu/spimdisasm-overlay` to spimdisasm **1.42.2**
+leaves the generated asm byte-for-byte identical (415 `.s` files, sha256
+`e23e40a6…4bfd` before and after) and `./Build check` byte-identical. There is no
+upside — splat never sees it.
+
+**There is a downside, and it broke the build.** The updated overlay exposes
+spimdisasm as a `buildPythonApplication`. Putting one in a devShell drags its
+site-packages and every propagated dep onto `PYTHONPATH`, which *every*
+interpreter honours — including splat's python 3.10. splat then imported our
+1.42.2 (built for 3.13) instead of its own 1.13.3, called
+`rabbitizer.Utils.escapeString` (an API its bundled rabbitizer 1.7 predates) and
+died with:
+
+```
+SystemError: PY_SSIZE_T_CLEAN macro must be defined for '#' formats
+```
+
+The traceback blames rabbitizer; the cause is the PYTHONPATH hijack. Confirm it
+in one line: `env -u PYTHONPATH ./Build check` passes on the bumped pin.
+
+**Fixed upstream in the overlay** (`spimdisasm-overlay`, "Expose only the
+executables…"): `packages.spimdisasm` is now a `runCommandLocal` symlinking only
+`$out/bin`, so it exports nothing; the library remains as
+`packages.spimdisasm-python`. A `spimdisasm-does-not-leak-pythonpath` check
+guards it. **Bump `spimdisasm` here only once that fix is pushed** — until then
+`nix flake update spimdisasm` reintroduces the hijack. Even after, the bump is
+cosmetic; the CLI is the only thing it buys.
