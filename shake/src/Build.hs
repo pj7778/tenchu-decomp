@@ -194,6 +194,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "initialise_default_player_cameras_" = ["CAMERA_PTR_ARRAY_START"]
     syms "vgetfreesize" = ["virtual_memory_pool"]
     syms "vgetmaxsize" = ["virtual_memory_pool"]
+    syms "InitAccessInfo" = ["AccessPower"]
     syms _ = []
 
 as :: FilePath

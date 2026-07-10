@@ -103,6 +103,7 @@ GP_EXTERNS = {
     "initialise_default_player_cameras_": ["CAMERA_PTR_ARRAY_START"],
     "vgetfreesize": ["virtual_memory_pool"],
     "vgetmaxsize": ["virtual_memory_pool"],
+    "InitAccessInfo": ["AccessPower"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
