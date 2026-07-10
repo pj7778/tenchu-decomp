@@ -3,16 +3,6 @@
 #include "item.h"
 
 /*
- * STATUS: NON_MATCHING — dispose_weapon_data_of_char_ was never CARVED (no `c` subsegment), so its
- * .c was never linked and never actually compared: its bytes came from the
- * raw data blob and matchdiff reported a false MATCH. Carved now, and the
- * draft below does not reproduce the original. matchdiff/progress refuse to
- * count an un-carved function from now on.
- */
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/dispose_weapon_data_of_char_", dispose_weapon_data_of_char_);
-#else
-/*
  * dispose_weapon_data_of_char_ (0x800270c8) — NOT a null-checked disposer
  * despite the name: the raw asm has no branch at all. Same original TU as
  * NowReturnNormal.c (adjacent addresses, 0x80027004/0x800270c8; shares its
@@ -25,6 +15,11 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/dispose_weapon_data_
  * no alias) even though Ghidra/source order writes Me_MOTION_C first —
  * trust the source order, not the asm position (cookbook: independent loads
  * hoist above unrelated stores).
+ *
+ * Both `Me_MOTION_C` and `dtM` are gp-relative in the target (`sw a0,N(gp)`)
+ * so this file needs a maspsx --gp-extern entry (see shake/src/Build.hs
+ * maspsxGpExterns / tools/permute.py GP_EXTERNS) or cc1 materializes a full
+ * lui/addiu address instead, which is both longer and the wrong instructions.
  */
 extern Humanoid *Me_MOTION_C;
 extern MotionManager *dtM;
@@ -36,4 +31,3 @@ void dispose_weapon_data_of_char_(Humanoid *h, int a)
     dtM = h->motion;
     AttackCancelControl(a);
 }
-#endif /* NON_MATCHING */
