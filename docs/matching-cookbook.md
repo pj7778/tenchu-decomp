@@ -1213,6 +1213,51 @@ variable doing double duty** — and its call-argument copy-preference travels w
 into the other region. (`vrealloc`: the grow-branch mask and the memcpy length are
 the same variable.)
 
+### A promoted `short` parameter is TWO pseudos for free
+
+cc1 gives a promoted `short` parameter two pseudos with no source-level copy: the
+raw SImode argument-register copy, and the HImode declared variable. So a target
+whose early tests read the raw arg register (`$a1`) while one later use reads a
+copied register (`move $v1,$a1` in a branch delay slot) needs NO explicit copy
+variable in the source — it needs the USES split per path. Two literal
+`return SoundEx(...)` calls rather than one shared call let cse serve the early
+uses from the SImode copy while only the divergent-path use reads the variable;
+cross-jump re-merges the identical `sll/sra/jal` tails. Refines the
+"one logical value in two registers = two variables" rule: the second "variable"
+can be cc1's own parameter split (`Sound`).
+
+### A `(short)` cast on an int `|` call argument is a SCHEDULER lever
+
+Not just an instruction-shape lever. `(short)(seid | human->sound)` versus the
+uncast `int` expression changes where the truncating `sll/sra` sits: uncast,
+extend-then-or shortens the argument's dependence chain, and sched1 then floats a
+SIBLING argument's load (`$a0 = human->locate`) above it — a hard-`$a0` def while
+the base pointer is still live, which evicts the base from `$a0` and costs an
+instruction plus a whole-image shift. The cast (or-then-extend) restores the chain
+depth so the eviction never happens. When a two-call restructuring seems to
+"repartition `$a0`/`$a1` wholesale", check the argument expression's TYPE before
+abandoning the structure (`Sound`; this is why an earlier two-call attempt looked
+worse and was wrongly parked).
+
+### Min/clamp reload-vs-reuse is a coloring tie, not a source bug
+
+`x = a; if (b < x) x = b;` where the target reuses the already-loaded `b` in the
+assignment (`move x,b`) but our cc1 RELOADS it (a second `lbu`/`lh` in the branch)
+is a register-coloring tie, not something the C controls. It happens when cc1 keeps
+the POINTER to `b` alive into the assign-branch, freeing `b`'s value register for
+the compare result so it must be reloaded. Permuter-immune. Do not "fix" it with an
+explicit temp for `b` — a fresh local adds a move and shifts the frame; field-vs-
+local and counter-reuse are all identical or worse. Park after one bounded permuter
+run (`UpdateMotion`'s `min(model->n, motion->n)` — one such decision cascaded into
+all 13 of its diffs).
+
+### The abs idiom's `negu` source register is not a C-level choice
+
+`at = t; if (t < 0) at = -at;` and `at = (t < 0) ? -t : t;` compile identically:
+cc1 folds `-at` back to `negu <dst>,<t_reg>`, negating the original `t`, not the
+copy. Which register `negu` sources from is a coloring artifact — do not chase it
+by respelling the conditional (`UpdateMotion`).
+
 ### Two same-role temps with DISJOINT live ranges may be ONE reused variable
 
 The exact inverse of the rule above, and also a global-alloc priority lever.

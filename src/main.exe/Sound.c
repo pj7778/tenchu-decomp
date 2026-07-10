@@ -12,8 +12,6 @@
  * Original parameters and locals (the demo build's register allocation may
  * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
  * over). A repeated name is a nested-block scope, not a duplicate.
- * A ZERO-locals record is unverified, not a claim that the function has none:
- * vfree lists zero locals yet its byte-matched source needs seven.
  * The frame size and saved-reg mask above are the DEMO's: retail often needs
  * FEWER callee-saved registers (measured: Think1random exact; Think1chase's
  * 0x800f0000 = s0-s3+ra vs retail's s0,s1,ra). Treat them as an upper bound
@@ -36,53 +34,49 @@
  * END PSX.SYM */
 
 /*
- * Sound (0x8004fef8) — play a character's sound effect. `seid` with any of the
+ * Sound (0x8004ff10) — play a character's sound effect. `seid` with any of the
  * high nibble set (0xf0) is an explicit id: play it at the character's position.
  * Otherwise it's a "category" (< 0x10): ids >= 6 are gated by a global mute
  * (D_80097CB4) and the character's 0x80 attribute (e.g. dead/silent), and the
  * character's own default sound (Humanoid.sound) is OR'd in.
  *
- * Matching notes:
- *  - Written `if (seid & 0xf0) {simple} else {gated}` (opposite polarity to
- *    Ghidra's `== 0`): the beqz branches to the gated body and the simple body
- *    falls through with a `j` to the shared SoundEx call.
- *  - `seid` is a short: the >5 test and each arg pass sign-extend it (sll/sra).
+ * Matching notes (this was a parked 5-byte NON_MATCHING; the fix needed BOTH
+ * edits below — RTL story from cc1 -dl/-dg dumps):
+ *  - TWO literal `return SoundEx(...)` calls, not one shared call with a
+ *    `locate`/`seid` funnel. cc1 itself gives a promoted `short seid` param two
+ *    pseudos — the raw SImode $a1 copy (read by the & 0xf0 test, the >5 compare
+ *    and the first call's arg) and the HImode declared variable (the target's
+ *    `move v1,a1` in the beqz delay slot, read only by the second call's `or`).
+ *    A single shared call reads ONE variable in both arms, so its sign-extend
+ *    reads $v1 on the if-path too (5-byte residual, permuter-immune at ~447k
+ *    iterations). Cross-jump merges the two calls' identical `sll/sra/jal`
+ *    tails back into one physical copy.
+ *  - The second call's arg must be `(short)(seid | human->sound)`. Without the
+ *    cast it is an int expression: the sign-extend chain lands BEFORE the ior,
+ *    and sched1 then floats the `$a0 = human->locate` load above the sound
+ *    load, defining $a0 while `human`'s pseudo is still live — that conflict
+ *    evicts human off $a0 (`move v1,a0` at entry, everything repartitioned).
+ *    The cast folds the truncation into the ior (or-then-extend, the target's
+ *    shape); the deeper or-chain then wins sched1's priority race, the sound
+ *    lhu schedules first, human dies at the $a0 load, and human/seid coalesce
+ *    to $a0/$v1 exactly as the target.
  *  - SoundEx returns s16 here (item.h) — the result is Sound's return, so the
- *    `return -1` paths share its sign-extend tail (cross-jump merge).
- *
- * STATUS: NON_MATCHING — 5 bytes (a pure register-allocation tie). The draft is
- * arithmetically correct and the right length; only the `seid | human->sound`
- * else-branch differs: the target loads `human->sound` into the arg reg $a1 and
- * ORs `seid` (kept in $v1) into it (`lhu a1; or a1,v1,a1`), whereas cc1 here
- * loads sound into $v0 and reassigns `seid`/$v1 (`lhu v0; or v1,v1,v0; sll
- * a1,v1`). Every source form that avoids reassigning `seid` (inline arg, separate
- * temp, two shared-tail returns) makes cc1 repartition $a0/$a1 wholesale (worse).
- * A decomp-permuter run of ~447k iterations never beat the score-25 base, so the
- * swap is below the C level (a scheduler/allocator tie source can't steer here).
+ *    `return -1` guards branch straight to the epilogue past its sign-extend.
  */
 extern s16 D_80097CB4;
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/Sound", Sound);
-#else
 short Sound(Humanoid *human, short seid)
 {
-    VECTOR *locate;
-
     if (seid & 0xf0) {
-        locate = human->locate;
-    } else {
-        if (seid > 5) {
-            if (D_80097CB4 != 0) {
-                return -1;
-            }
-            if ((human->attribute & 0x80) != 0) {
-                return -1;
-            }
-        }
-        locate = human->locate;
-        seid = seid | human->sound;
+        return SoundEx(human->locate, seid);
     }
-    return SoundEx(locate, seid);
+    if (seid > 5) {
+        if (D_80097CB4 != 0) {
+            return -1;
+        }
+        if ((human->attribute & 0x80) != 0) {
+            return -1;
+        }
+    }
+    return SoundEx(human->locate, (short)(seid | human->sound));
 }
-#endif
