@@ -12,14 +12,18 @@
     splat = {
       url = "github:Fuuzetsu/splat-overlay";
     };
-    # m2c (mips2c) straight from upstream, pinned to a rev we patch on top of.
-    # The old Fuuzetsu/m2c-overlay pin was ~343 commits (3 years) stale and had
-    # no PS1 GTE/COP2 support, so it emitted `M2C_ERROR(unknown instruction:
-    # lwc2 ...)` for the whole renderer region. See nix/m2c/*.patch.
-    m2c-src = {
-      url = "github:matt-kempster/m2c/94098d4de68c2fcc13fb8cf1096a1520eb171abe";
-      flake = false;
+    # m2c (mips2c). The overlay is the BASE: it owns the upstream m2c pin and
+    # resolves m2c's PEP-621 deps with pyproject-nix. We don't consume its
+    # `overlays.default` (that `pkgs.m2c` is unpatched); instead we `follows` its
+    # two inputs and re-apply the same recipe on a patched source, so bumping the
+    # overlay bumps us. Our patches (nix/m2c/*.patch) add PS1 GTE/COP2 support —
+    # without them the whole renderer region decompiles to
+    # `M2C_ERROR(unknown instruction: lwc2 ...)`.
+    m2c = {
+      url = "github:Fuuzetsu/m2c-overlay";
     };
+    m2c-src.follows = "m2c/m2c";
+    pyproject-nix.follows = "m2c/pyproject-nix";
     spimdisasm = {
       url = "github:Fuuzetsu/spimdisasm-overlay";
     };
@@ -49,7 +53,9 @@
     , flake-utils
     , flake-compat
     , splat
+    , m2c        # the overlay: we consume its pins, not its `pkgs.m2c`
     , m2c-src
+    , pyproject-nix
     , asm-differ
     , spimdisasm
     , maspsx
@@ -111,9 +117,14 @@
         exec ${pkgs.python3}/bin/python3 ${maspsx-src}/maspsx.py "$@"
       '';
 
-      # m2c, upstream master + our PS1 patch series (nix/m2c/*.patch, authored by
-      # Patrick Gill and kept as standalone commits so they stay upstreamable).
-      # What they buy us, in order of value to this repo:
+      # m2c = the m2c-overlay's own upstream pin + our PS1 patch series
+      # (nix/m2c/*.patch, authored by Patrick Gill and kept as standalone commits
+      # so they stay upstreamable). `m2c-src`/`pyproject-nix` FOLLOW the overlay's
+      # inputs, so `nix flake update m2c` bumps the base and we just re-apply on
+      # top; the build below is the overlay's own recipe (pyproject-nix resolves
+      # m2c's PEP-621 [project] deps) pointed at the patched tree.
+      #
+      # What the patches buy us, in order of value to this repo:
       #   * PSX GTE/COP2 support — the ~25 renderer functions used to decompile
       #     to `M2C_ERROR(unknown instruction: lwc2 ...)` and nothing else.
       #   * `--input-regs a,b,...` — declares registers live at function entry, so
@@ -126,13 +137,19 @@
       # snapshot the series itself had left stale.
       m2c-patched = pkgs.applyPatches {
         name = "m2c-patched";
-        src = inputs.m2c-src;
+        src = m2c-src;
         patches = lib.filesystem.listFilesRecursive ./nix/m2c;
       };
       m2c-bin =
-        let pyenv = pkgs.python3.withPackages (ps: [ ps.graphviz ]);
-        in pkgs.writeShellScriptBin "m2c.py" ''
-          exec ${pyenv}/bin/python3 ${m2c-patched}/m2c.py "$@"
+        let
+          project = pyproject-nix.lib.project.loadPyproject {
+            projectRoot = m2c-patched;
+          };
+          python = pkgs.python3.withPackages
+            (project.renderers.withPackages { python = pkgs.python3; });
+        in
+        pkgs.writeShellScriptBin "m2c.py" ''
+          exec ${python}/bin/python ${m2c-patched}/m2c.py "$@"
         '';
 
       # The PS1 GCC 2.8.1 compiler (cc1). Pinned by sha256 to decompals/old-gcc

@@ -1353,9 +1353,12 @@ absolute → keep the symbol off the list (a plain small extern).
     policy — the same open question as `GetPad`/`PClseek`. `triage.py` says
     `GTE CMD — split OK, no C form (inline-asm policy)` and keeps them VERY-HARD.
   - **m2c can now read them**: our m2c carries a PSX GTE/COP2 patch series
-    (`nix/m2c/*.patch`). Pass `--input-regs v0,t0,t3,t5,s0` (or whichever the
-    function reads at entry) or every use becomes
-    `M2C_ERROR(Read from unset register)`.
+    (`nix/m2c/*.patch`). You MUST pass `--input-regs`, or every entry-live value
+    becomes `M2C_ERROR(Read from unset register)`. Guessing a narrow set leaves
+    stragglers (`v0,t0,t3,t5,s0` still errors on `$t2`/`$t9` in `FUN_8005d1fc`) —
+    hand it the whole caller-saved file and let m2c ignore the unused ones:
+    `--input-regs v0,v1,a0,a1,a2,a3,t0,t1,t2,t3,t4,t5,t6,t7,t8,t9,s0`
+    → zero `M2C_ERROR` on `FUN_8005d1fc`.
 - **maspsx's `break` wants the single-value form `break 0x107`, not the
   two-operand disassembly `break 0, 263`.** maspsx (`elif op == "break"`) takes
   one immediate and splits it into the two 10-bit fields itself; the

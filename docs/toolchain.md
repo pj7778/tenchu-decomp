@@ -182,3 +182,49 @@ positive constant `≤ 0x7FFF` depends on this.
 -G0 -O2 -funsigned-char -fpeephole -ffunction-cse -fpcc-struct-return -fcommon
 -fverbose-asm -fgnu-linker -mgas -msoft-float` (only `-G0` → `-G8` changes).
 `-mcpu=3000` is harmless — maspsx rewrites it to `-mtune=` for GNU `as`.
+
+## m2c: the overlay is the base, our PS1 patches go on top
+
+`m2c` comes from **`github:Fuuzetsu/m2c-overlay`** (ours). The overlay owns the
+upstream `matt-kempster/m2c` pin and resolves m2c's PEP-621 `[project]` deps with
+`pyproject-nix`. We do **not** consume its `overlays.default` — that `pkgs.m2c`
+is unpatched. Instead `flake.nix` declares
+
+```nix
+m2c-src.follows      = "m2c/m2c";
+pyproject-nix.follows = "m2c/pyproject-nix";
+```
+
+and rebuilds the overlay's own recipe against `pkgs.applyPatches { src = m2c-src;
+patches = nix/m2c/*.patch; }`. So the overlay stays the single source of truth for
+*which* m2c we use, and our patches ride on top.
+
+**Why we patch at all:** stock m2c has no PS1 GTE/COP2 support, so the ~25
+renderer functions decompile to `M2C_ERROR(unknown instruction: lwc2 …)` and
+nothing else. The series (13 commits, authored by Patrick Gill, kept as
+`git format-patch` files so they stay upstreamable) adds GTE/COP2, `--input-regs`
+for the region's non-ABI calling convention, and several correctness fixes
+(`swc2` was silently dropping its memory write; PSX `lwr`-before-`lwl` order;
+`rfe`/`bltzal`/`bgezal`/`bc0f`/`bc0t`/`bc2f`/`bc2t` no longer abort a function).
+m2c's own `run_tests.py` is **393/393** with the series applied (upstream master
+alone: 380/380 — the extra tests come from the series).
+
+### Bumping m2c
+
+1. `nix flake update m2c` — this moves the overlay, and `m2c-src` follows it.
+2. If upstream moved, `applyPatches` will fail **loudly** at build time. Rebase:
+
+```sh
+git clone https://github.com/matt-kempster/m2c && cd m2c
+git checkout -b tenchu <new-upstream-rev>
+git am /path/to/tenchu-decomp/nix/m2c/*.patch      # fix conflicts if any
+python3 run_tests.py                                # must be green
+git format-patch --no-signature -o /path/to/tenchu-decomp/nix/m2c <new-upstream-rev>..HEAD
+```
+
+3. `nix develop --command m2c.py --help | grep input-regs` as a smoke test, then
+   `./Build check`.
+
+Do **not** re-add the `uv.lock`/pytest dev-deps commit that lives on the original
+`tenchu` branch: it is 245 KB, irrelevant to the nix build, and irrelevant to
+upstream review.
