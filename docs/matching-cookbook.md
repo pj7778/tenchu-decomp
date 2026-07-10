@@ -1251,6 +1251,20 @@ local and counter-reuse are all identical or worse. Park after one bounded permu
 run (`UpdateMotion`'s `min(model->n, motion->n)` — one such decision cascaded into
 all 13 of its diffs).
 
+### Reuse a DYING variable to carry a later call-crossing value (coalesce upward)
+
+The inverse of the usual "reduce callee-saved usage" levers. Sometimes the TARGET
+uses one MORE callee-saved register than your draft, because it coalesces two values
+into one register across a call. When a call result dies exactly where a
+call-crossing value is born, spell the second value by REUSING the dying variable,
+not as a fresh local: `dist = SquareRoot0(...); ...; dist = 0x7f - (dist<<7)/18000;
+dist = (dist*(10000-dy))/10000; vol = (angle<<8) | dist;` coalesces `dist` and the
+volume into one `$s1` (frame 0x30), where a separate `vol` local keeps `dist`
+caller-saved in a distinct register and spends an EXTRA callee-saved one (frame 0x28)
+— rotating the whole register file (`SoundEx`: 61 diff lines → 5). Reach for this
+when the target's frame is LARGER than yours and a call result dies near a
+call-surviving definition.
+
 ### The abs idiom's `negu` source register is not a C-level choice
 
 `at = t; if (t < 0) at = -at;` and `at = (t < 0) ? -t : t;` compile identically:

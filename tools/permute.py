@@ -41,6 +41,7 @@ AS_FLAGS = ("-EL -Iinclude -march=r3000 -mtune=r3000 -no-pad-sections -O1 -G0").
 # shake/src/Build.hs (ASPSX gp-addresses only TU-local definitions; these are the
 # small globals the function's ORIGINAL translation unit defined).
 GP_EXTERNS = {
+    "SoundEx": ["STAGE_SOUNDS_POINTER"],
     "dispose_weapon_data_of_char_": ["Me_MOTION_C", "dtM"],
     "AdtMessageBox": ["AdtReadPadFunc", "D_80097E94"],
     "PutItemList": ["CURRENTLY_SELECTED_ITEM_KIND_0_", "CURRENTLY_SELECTED_ITEM_KIND_1_"],

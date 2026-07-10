@@ -174,6 +174,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "SetupCharacterParameter" = ["NowStage"]
     syms "AdtMessageBox" = ["AdtReadPadFunc", "D_80097E94"]
     syms "dispose_weapon_data_of_char_" = ["Me_MOTION_C", "dtM"]
+    syms "SoundEx" = ["STAGE_SOUNDS_POINTER"]
     syms "AVCameraSetup" = ["CHOSEN_EVENT_LIST_THING_LOCATION", "D_80097CC4"]
     syms "AVCameraControl" = ["D_80097CCA", "D_80097CC8", "D_80097CC4"]
     syms "CVAsequence" = ["PERSISTENT_EVENT_LIST_THING", "CHOSEN_EVENT_LIST_THING_LOCATION", "D_80097CC4", "D_80097CCC", "D_80097CC0"]
