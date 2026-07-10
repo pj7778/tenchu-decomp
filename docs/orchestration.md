@@ -295,6 +295,12 @@ lens.
 
 ## Gotchas (all learned the hard way)
 
+- **Never read `matchdiff`/`asmdiff` output from a build whose `./Build check` did not
+  return 0.** A failed or torn build leaves stale/inconsistent artifacts, and the diff
+  against them is fiction. I "diagnosed" a phantom 2-byte gp-offset bug in a
+  correct EndDrawing draft this way, after my own item.h clobber had failed the build.
+  Confirm the build is green FIRST, then diff.
+
 - **An agent can confidently report a MATCH that is incomplete — verify length, not
   just the agent's word.** One agent this session claimed SetSmoke "done" (pure C,
   no guard) when its draft linked 748 bytes into a 788-byte carve — 40 bytes of
