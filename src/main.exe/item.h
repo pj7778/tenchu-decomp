@@ -221,9 +221,11 @@ typedef struct
                                     weapon_kind` (enum weapon_kind, stored
                                     as 2 bytes) — kept unsigned per that
                                     proven sibling and the raw lhu width) */
-    u8 pad2c[0x4];               /* 0x90 (Ghidra: wepid[2]; character_state:
-                                    field58_0x90..field61_0x93; untouched by
-                                    any matched function yet) */
+    s16 wepid[2];                /* 0x90 (GetWeaponData: `human->wepid[wpid]
+                                    = i;`, an `sh` store — proves this field;
+                                    Ghidra's own independently-built Humanoid
+                                    names it `wepid[2]` too; character_state:
+                                    field58_0x90..field61_0x93) */
     OrnamentType *weapon[4];     /* 0x94 (equipped weapon ornaments — right/
                                     left active + right/left inactive per
                                     game_types.h's character_state sibling
@@ -309,3 +311,7 @@ extern char D_800121CC[];
 extern tag_TItem items[];
 
 #endif
+
+/* TENCHU_POSITIONAL_DATA_AREA_ is `struct { Sprite3D sprite; GsSPRITE gsp; } *[6]`.
+ * Proof: SetupSprite's valloc(0x8C) == sizeof(Sprite3D) + sizeof(GsSPRITE) exactly,
+ * and CVAsetup's fade bytes are the embedded GsSPRITE's .r/.g/.b. */

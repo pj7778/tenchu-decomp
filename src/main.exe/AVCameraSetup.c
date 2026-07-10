@@ -1,21 +1,17 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
  * docs/psx-sym.md. Do not hand-edit.
  *
  * void AVCameraSetup(void);
- *     CHRANIM.C:289, 29 src lines, frame 32 bytes, saved-reg mask 0x80000000 (DEMO build -- see below)
+ *     CHRANIM.C:289, 29 src lines, frame 32 bytes, saved-reg mask 0x80000000
  *
  * Original parameters and locals (the demo build's register allocation may
  * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
- * over). A repeated name is a nested-block scope, not a duplicate.
- * The frame size and saved-reg mask above are the DEMO's: retail often needs
- * FEWER callee-saved registers (measured: Think1random exact; Think1chase's
- * 0x800f0000 = s0-s3+ra vs retail's s0,s1,ra). Treat them as an upper bound
- * and a hint at how many values stay live, never as a spec. The asm wins.
- * Locals:
+ * over). A repeated name is a nested-block scope, not a duplicate:
  *     stack sp+16     struct SVECTOR vect
  *     reg   $a1       struct Humanoid * human
  *
@@ -24,55 +20,129 @@
  *     extern struct tag_TItem items[30];
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/AVCameraSetup", AVCameraSetup);
+/*
+ * AVCameraSetup (0x80051074, 0x1b4 bytes) — sets ViewInfo's target position
+ * (vpx/vpy/vpz) from a "camera event" record (CHOSEN_EVENT_LIST_THING_
+ * LOCATION, already-named — a cursor into PERSISTENT_EVENT_LIST_THING) whose
+ * `.mode`@0x2 dispatches: 4 = fixed point (x/y/z@0x4/0x6/0x8, scaled *100);
+ * 0..3 = orbit D_80097CC4 (the active camera-owner Humanoid, set by
+ * CVAsequence to StagePlayer) at a computed angle via GetMoveSpeed, offset
+ * by D_80097CC4->locate; 5 = re-target a NEW humanoid (GetHumanoid(event's
+ * `.param`@0xA), bailing with no GsSetRefView2 call if not found) and adopt
+ * it as the new D_80097CC4. item.h's Humanoid (rotate@0x3C, locate@0x38,
+ * height@0xE) accounts for every field read here.
+ *
+ * Matching notes (docs/matching-cookbook.md):
+ *  - `event->mode` is read ONCE and reused across the whole dispatch (no
+ *    reload) — a plain repeated `event->mode` dereference CSEs to one load
+ *    within the function's single extended basic block, no named local
+ *    needed (matches PSX.SYM listing no such local).
+ *  - **Dispatch body order differs from test order**: the tests fire
+ *    4, <5, ==5 but the target lays the bodies out <5(orbit), 4, 5 in
+ *    memory (the orbit body ends with an explicit jump to the shared
+ *    tail; the `==4` body also jumps; the `==5` body is textually LAST
+ *    and falls through with no trailing jump). A plain if/else-if always
+ *    inlines each body right after its own test, giving the wrong layout
+ *    — this needs the cookbook's `if (cond) goto L;` ladder, with the
+ *    goto LABELS placed in the target's memory order while the tests stay
+ *    in their own (different) order.
+ *  - The orbit branch's angle (`(u16)rotate->vy + mode*0x400`, explicitly
+ *    unsigned per Ghidra's own `(ushort)` cast — SVECTOR.vy is otherwise
+ *    signed) is computed ONCE into a shared `s32` temp, stored to
+ *    `vect.pad` (a plain field write, matching Ghidra's own
+ *    `local_10.pad = (short)iVar2` rendering) THEN passed (truncated) as
+ *    GetMoveSpeed's `ry` — writing it twice inline would double the
+ *    load/shift instead of reusing one register.
+ *  - **The `ordr` default-3000-else-override must be the inline ternary
+ *    call ARGUMENT itself**, not a preceding `ordr = cond ? a : b;`
+ *    statement (even though the value is used nowhere else): assigning it
+ *    to a named local first — whether via if/else, a temp read of
+ *    `event->param`, or a ternary — makes cc1 read `event->param` a
+ *    SECOND time (an extra unsigned `lhu`, since a bare argument pass
+ *    doesn't need sign extension) instead of reusing the first (signed)
+ *    read from the zero-test, costing 3 extra instructions and shuffling
+ *    the whole function's register colors. Folding the ternary directly
+ *    into the call's 3rd argument position fixed it in one edit.
+ */
 
-// triage: EASY — 109 insns, 3 callees, ~0.05 to PrepareGetScreenPositionS
-// likely-relevant cookbook sections:
-//   - Dispatch: if/switch ladder — reload vs CSE, signed vs unsigned
-//   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py
+typedef struct
+{
+    long vpx, vpy, vpz;
+    long vrx, vry, vrz;
+    long rz;
+    void *super;
+} GsRVIEW2;
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// void AVCameraSetup(void)
-//
-// {
-//   Humanoid *pHVar1;
-//   int iVar2;
-//   short ordr;
-//   SVECTOR local_10;
-//
-//   iVar2 = (int)*(short *)(DAT_80097cbc + 2);
-//   if (iVar2 == 4) {
-//     ViewInfo.vpx = *(short *)(DAT_80097cbc + 4) * 100;
-//     ViewInfo.vpy = *(short *)(DAT_80097cbc + 6) * 100;
-//     ViewInfo.vpz = *(short *)(DAT_80097cbc + 8) * 100;
-//   }
-//   else if (iVar2 < 5) {
-//     if (-1 < iVar2) {
-//       iVar2 = (uint)(ushort)DAT_80097cc4->rotate->vy + iVar2 * 0x400;
-//       local_10.pad = (short)iVar2;
-//       ordr = 3000;
-//       if (*(short *)(DAT_80097cbc + 10) != 0) {
-//         ordr = *(short *)(DAT_80097cbc + 10);
-//       }
-//       GetMoveSpeed(&local_10,(short)((uint)(iVar2 * 0x10000) >> 0x10),ordr,0);
-//       ViewInfo.vpx = DAT_80097cc4->locate->vx + (int)local_10.vx;
-//       ViewInfo.vpy = (DAT_80097cc4->locate->vy - (int)DAT_80097cc4->height) + 300;
-//       ViewInfo.vpz = DAT_80097cc4->locate->vz + (int)local_10.vz;
-//     }
-//   }
-//   else if (iVar2 == 5) {
-//     pHVar1 = GetHumanoid(*(short *)(DAT_80097cbc + 10));
-//     if (pHVar1 == (Humanoid *)0x0) {
-//       return;
-//     }
-//     ViewInfo.vpx = pHVar1->locate->vx;
-//     ViewInfo.vpy = (pHVar1->locate->vy - (int)pHVar1->height) + 300;
-//     ViewInfo.vpz = pHVar1->locate->vz;
-//     DAT_80097cc4 = pHVar1;
-//   }
-//   GsSetRefView2(&ViewInfo);
-//   return;
-// }
+extern GsRVIEW2 ViewInfo;
+
+typedef struct
+{
+    s16 unk0; /* 0x0 */
+    s16 mode; /* 0x2 */
+    s16 x;    /* 0x4 */
+    s16 y;    /* 0x6 */
+    s16 z;    /* 0x8 */
+    s16 param; /* 0xA (orbit ordr override, or the mode-5 humanoid id) */
+} EventListEntry;
+
+extern EventListEntry *CHOSEN_EVENT_LIST_THING_LOCATION;
+extern Humanoid *D_80097CC4;
+
+extern Humanoid *GetHumanoid(s16 type);
+extern void GetMoveSpeed(SVECTOR *vect, s16 ry, s16 ordr, s16 side);
+extern void GsSetRefView2(GsRVIEW2 *view);
+
+void AVCameraSetup(void)
+{
+    EventListEntry *event;
+    Humanoid *human;
+    SVECTOR vect;
+    s32 ry;
+
+    event = CHOSEN_EVENT_LIST_THING_LOCATION;
+    if (event->mode == 4)
+    {
+        goto case4;
+    }
+    if (event->mode < 5)
+    {
+        goto case_orbit;
+    }
+    if (event->mode == 5)
+    {
+        goto case5;
+    }
+    goto tail;
+
+case_orbit:
+    if (event->mode >= 0)
+    {
+        ry = (u16)D_80097CC4->rotate->vy + (event->mode << 10);
+        vect.pad = (s16)ry;
+        GetMoveSpeed(&vect, (s16)ry, (event->param != 0) ? event->param : 3000, 0);
+        ViewInfo.vpx = D_80097CC4->locate->vx + vect.vx;
+        ViewInfo.vpy = (D_80097CC4->locate->vy - D_80097CC4->height) + 300;
+        ViewInfo.vpz = D_80097CC4->locate->vz + vect.vz;
+    }
+    goto tail;
+
+case4:
+    ViewInfo.vpx = event->x * 100;
+    ViewInfo.vpy = event->y * 100;
+    ViewInfo.vpz = event->z * 100;
+    goto tail;
+
+case5:
+    human = GetHumanoid(event->param);
+    if (human == 0)
+    {
+        return;
+    }
+    ViewInfo.vpx = human->locate->vx;
+    ViewInfo.vpy = (human->locate->vy - human->height) + 300;
+    ViewInfo.vpz = human->locate->vz;
+    D_80097CC4 = human;
+
+tail:
+    GsSetRefView2(&ViewInfo);
+}

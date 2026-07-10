@@ -41,6 +41,13 @@ AS_FLAGS = ("-EL -Iinclude -march=r3000 -mtune=r3000 -no-pad-sections -O1 -G0").
 # shake/src/Build.hs (ASPSX gp-addresses only TU-local definitions; these are the
 # small globals the function's ORIGINAL translation unit defined).
 GP_EXTERNS = {
+    "SetupCharacterParameter": ["NowStage"],
+    "AVCameraSetup": ["CHOSEN_EVENT_LIST_THING_LOCATION", "D_80097CC4"],
+    "AVCameraControl": ["D_80097CCA", "D_80097CC8", "D_80097CC4"],
+    "CVAsequence": ["PERSISTENT_EVENT_LIST_THING", "CHOSEN_EVENT_LIST_THING_LOCATION", "D_80097CC4", "D_80097CCC", "D_80097CC0"],
+    "CVAupdate": ["CHOSEN_EVENT_LIST_THING_LOCATION", "D_80097CCC", "D_80097CC4", "D_80097CCA", "D_80097CC8", "PERSISTENT_EVENT_LIST_THING"],
+    "CVArun": ["D_80097CC0", "CHOSEN_EVENT_LIST_THING_LOCATION"],
+    "CVAsetup": ["PERSISTENT_EVENT_LIST_THING"],
     "valloc": ["virtual_memory_pool"],
     "FUN_80018f00": ["AccessPower"],
     "GetAreaMapVector": ["FieldAttrib", "FieldArea", "FieldIndex"],

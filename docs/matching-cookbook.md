@@ -932,6 +932,17 @@ address; spelling it `vh.next = nb;` drops the reload the target has, because cc
 will not refetch what it can already see live in a register. Provable equality is not
 a licence to reuse the variable.
 
+**A value used ONLY as a conditional call argument must be the inline ternary in the
+call's argument position**, not assigned to a named local first (even via a ternary).
+Assigning it first makes cc1 re-read the tested field a second time, with the wrong
+signedness -- three extra instructions in `AVCameraSetup`'s `ordr`.
+
+**Ghidra's own SSA rendering tells you when the target reloads.** If Ghidra shows a
+second, separately-named dereference of an address instead of reusing its earlier
+temp, the target really does refetch: reusing your cached local there costs an
+instruction (`CVArun`'s `GsSortSprite` re-read, `CVAsetup`'s post-loop nudge). This
+is the Ghidra-side tell for the `vrealloc` fresh-field-dereference rule above.
+
 **`GsSortSprite`'s `int pri` argument needs an explicit `(u16)` cast at the call
 site** to reproduce the `andi $a2,$a2,0xffff` that sits in the `jal`'s delay slot.
 
@@ -1618,6 +1629,18 @@ globals: `CURRENTLY_SELECTED_CHARACTER_STATE_PTR` (item TU) is byte-identical
 to `CamState + 0x10` = `CamState.Owner`'s address — check an m2c "mystery
 symbol"'s arithmetic against already-proven struct layouts before treating it
 as new.
+
+**An auto-derived `D_` symbol can link +4/+0xC off its own name as soon as any
+*compiled* C (not just an `INCLUDE_ASM` stub) references it, if a SIBLING file in
+the same TU family lacks the matching `--gp-extern`.** maspsx then synthesizes a
+stray local placeholder that the linker silently prefers over the real symbol, and
+nothing complains -- the image just comes out wrong. Hit for real by the CVA family
+(`D_80097CC0/CC4/CC8/CCA/CCC`, sandwiched between `CHOSEN_EVENT_LIST_THING_LOCATION`
+and `CARRY_30_ITEMS_CHEAT_APPLIED`). Two-part fix: pin the absolute addresses in
+`config/symbols.<target>.txt`, AND extend the gp-extern list to every sibling stub
+file that shares those symbols -- `AVCameraControl`, `CVAsequence`, `CVAupdate` had
+to be listed even though they are still asm. Check the map: a `D_XXXX.NON_MATCHING`
+entry at a different address from the plain `D_XXXX` is the tell.
 
 Practical rule: `tools/gpsyms.py <Name> --write` derives the set from the
 split asm's `%gp_rel(...)` and syncs both lists for you. Build.hs exposes the
