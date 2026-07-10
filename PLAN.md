@@ -148,6 +148,18 @@ Best remaining leads, roughly in value order:
 
 Detailed dev docs live in [`docs/`](docs/). Ranked next steps:
 
+0. **The `Act*` character-action family — one coherent batch.** `ActNORMAL`,
+   `ActMOVE`, `ActSQUAT`, `ActACTION`, `ActITEM`, `ActATTACK`, `ActENGAGE`,
+   `ActCHASE`, `ActDAMAGE`, `ActHANG`, `ActSWIM`, `ActSTICKON`, `ActSTATE` are the
+   character-state machine (one THINK-family TU). They are large (700 B – 6.6 KB;
+   `ActATTACK` is the single biggest unmatched function in the game) so they are
+   Fable/RTL work, not quick Sonnet targets. They ALL share the same gp-extern set
+   — `dtM, Me_MOTION_C, dtV, dtPAD, MotionUpdateMode, motID, D_80097F0E` (plus a few
+   per-function extras; run `tools/gpsyms.py <Name>` after a build) — so add every
+   sibling's entry together, and run `tools/symcheck.py` after each, or a converted
+   stub silently relocates the shared data region. `HumanActionControl` (the
+   dispatcher) is already drafted with the full list; use it as the template.
+
 1. **Reverse more functions.** The pipeline is now proven end-to-end on a
    gp-using function (`Think1sleep`). Use `tools/reverse.py <name> --ghidra-export
    .shake/ghidra-export` to split the next one, turn Ghidra's C in the comment into
