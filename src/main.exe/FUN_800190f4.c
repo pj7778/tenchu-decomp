@@ -1,115 +1,110 @@
 #include "common.h"
 #include "main.exe.h"
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_800190f4", FUN_800190f4);
+/*
+ * MATCH.
+ *
+ * FUN_800190f4 (0x800190f4, 0x144 bytes) — the demo/loading-screen splash:
+ * loads two TIMs ("loading.tim", "load_ten.tim") straight off the CD into
+ * two POLY_FT4 quads (SetupImageToPolyFT4, already matched at this address
+ * under its real name — Ghidra's own decompile still calls it
+ * `FUN_8004eaf0`, an unrelated stale label), snapshots the CURRENT draw/
+ * display environment, builds a NEW draw environment by copying the current
+ * one wholesale and then overwriting its clip rect + offset from the
+ * display environment's own `disp` rect, and finally draws both TIM quads
+ * through it before restoring the original draw environment.
+ *
+ * Matching notes:
+ *  - `draw2 = draw;` (a whole DRAWENV struct assignment, 0x5c/92 bytes,
+ *    align 4) is the proven `emit_block_move` shape: a 5x 16-byte-chunk
+ *    loop (80 bytes) + a 12-byte (3-word) tail, exactly like DeleteConflict's
+ *    0x78-byte pool-swap assignment — no hand-written loop needed.
+ *  - `draw2.clip = disp.disp;` (RECT, align 2, 8 bytes) is the align-2
+ *    struct-copy idiom (`lwl/lwr`+`swl/swr` word-pair copy, same family as
+ *    an SVECTOR assignment) — Ghidra's own decompile renders this same copy
+ *    as an opaque masked bit-op it couldn't identify as a struct field.
+ *  - The two TIM path strings are bound `D_`-symbols the pre-conversion
+ *    `.s` still referenced; keep them as `extern char D_XXXXXXXX[];` (never
+ *    write fresh string literals here) — see config/symbols.main.exe.txt.
+ */
+typedef struct
+{
+    s16 x, y, w, h;
+} RECT; /* 0x8 (PSYQ libgpu.h) */
 
-// triage: MEDIUM — 81 insns, 1 loop, 9 callees, ~0.23 to initialise_font
-// likely-relevant cookbook sections:
-//   - Loops: 1 back-edge(s) — for/while/do vs goto shape
+typedef struct
+{
+    RECT clip;                     /* +0x00 */
+    s16 ofs[2];                    /* +0x08 */
+    RECT tw;                       /* +0x0c */
+    u16 tpage;                     /* +0x14 */
+    u8 dtd, dfe, isbg, r0, g0, b0; /* +0x16..+0x1b */
+    u32 dr_env[16];                /* +0x1c: tag + code[15] */
+} DRAWENV;                         /* 0x5c (PSYQ libgpu.h) */
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// /* WARNING: Type propagation algorithm not settling */
-//
-// void FUN_800190f4(void)
-//
-// {
-//   undefined1 *puVar1;
-//   uint uVar2;
-//   uint *puVar3;
-//   short sVar4;
-//   short sVar5;
-//   short sVar6;
-//   short sVar7;
-//   short sVar8;
-//   u_short uVar9;
-//   u_char uVar10;
-//   u_char uVar11;
-//   u_char uVar12;
-//   u_char uVar13;
-//   u_char uVar14;
-//   u_char uVar15;
-//   DRAWENV *pDVar16;
-//   ulong *puVar17;
-//   DRAWENV *pDVar18;
-//   undefined4 uVar19;
-//   DRAWENV *pDVar20;
-//   DRAWENV *pDVar21;
-//   GsIMAGE GStack_150;
-//   undefined1 auStack_130 [40];
-//   undefined1 auStack_108 [40];
-//   DISPENV local_e0;
-//   DRAWENV local_c8;
-//   DRAWENV local_68;
-//
-//   puVar17 = FileRead("K:\\WORK\\CDIMAGE\\DEMO\\loading.tim");
-//   GetTIMInfo(puVar17,&GStack_150);
-//   LoadTIMAndFree(puVar17);
-//   FUN_8004eaf0(&GStack_150,auStack_130,0xd4,0xde);
-//   puVar17 = FileRead("K:\\WORK\\CDIMAGE\\DEMO\\load_ten.tim");
-//   GetTIMInfo(puVar17,&GStack_150);
-//   LoadTIMAndFree(puVar17);
-//   FUN_8004eaf0(&GStack_150,auStack_108,0xd4,0xc0);
-//   GetDrawEnv(&local_c8);
-//   GetDispEnv(&local_e0);
-//   pDVar16 = &local_68;
-//   pDVar21 = &local_c8;
-//   do {
-//     pDVar20 = pDVar21;
-//     pDVar18 = pDVar16;
-//     sVar4 = (pDVar20->clip).y;
-//     sVar5 = (pDVar20->clip).w;
-//     sVar6 = (pDVar20->clip).h;
-//     uVar19 = *(undefined4 *)pDVar20->ofs;
-//     sVar7 = (pDVar20->tw).x;
-//     sVar8 = (pDVar20->tw).y;
-//     (pDVar18->clip).x = (pDVar20->clip).x;
-//     (pDVar18->clip).y = sVar4;
-//     (pDVar18->clip).w = sVar5;
-//     (pDVar18->clip).h = sVar6;
-//     *(undefined4 *)pDVar18->ofs = uVar19;
-//     (pDVar18->tw).x = sVar7;
-//     (pDVar18->tw).y = sVar8;
-//     pDVar21 = (DRAWENV *)&(pDVar20->tw).w;
-//     pDVar16 = (DRAWENV *)&(pDVar18->tw).w;
-//   } while (pDVar21 != (DRAWENV *)(local_c8.dr_env.code + 0xc));
-//   sVar4 = (pDVar20->tw).h;
-//   uVar9 = pDVar20->tpage;
-//   uVar10 = pDVar20->dtd;
-//   uVar11 = pDVar20->dfe;
-//   uVar12 = pDVar20->isbg;
-//   uVar13 = pDVar20->r0;
-//   uVar14 = pDVar20->g0;
-//   uVar15 = pDVar20->b0;
-//   (pDVar18->tw).w = (pDVar20->tw).w;
-//   (pDVar18->tw).h = sVar4;
-//   pDVar18->tpage = uVar9;
-//   pDVar18->dtd = uVar10;
-//   pDVar18->dfe = uVar11;
-//   pDVar18->isbg = uVar12;
-//   pDVar18->r0 = uVar13;
-//   pDVar18->g0 = uVar14;
-//   pDVar18->b0 = uVar15;
-//   puVar1 = (undefined1 *)((int)&local_68.clip.y + 1);
-//   uVar2 = (uint)puVar1 & 3;
-//   puVar3 = (uint *)(puVar1 + -uVar2);
-//   *puVar3 = *puVar3 & -1 << (uVar2 + 1) * 8 | (uint)local_e0.disp._0_4_ >> (3 - uVar2) * 8;
-//   local_68.clip.x = local_e0.disp.x;
-//   local_68.clip.y = local_e0.disp.y;
-//   puVar1 = (undefined1 *)((int)&local_68.clip.h + 1);
-//   uVar2 = (uint)puVar1 & 3;
-//   puVar3 = (uint *)(puVar1 + -uVar2);
-//   *puVar3 = *puVar3 & -1 << (uVar2 + 1) * 8 | (uint)local_e0.disp._4_4_ >> (3 - uVar2) * 8;
-//   local_68.clip.w = local_e0.disp.w;
-//   local_68.clip.h = local_e0.disp.h;
-//   local_68.ofs[0] = local_e0.disp.x;
-//   local_68.ofs[1] = local_e0.disp.y;
-//   PutDrawEnv(&local_68);
-//   DrawPrim(auStack_130);
-//   DrawPrim(auStack_108);
-//   DrawSync(0);
-//   PutDrawEnv(&local_c8);
-//   return;
-// }
+typedef struct
+{
+    RECT disp;                       /* +0x00 */
+    RECT screen;                     /* +0x08 */
+    u8 isinter, isrgb24, pad0, pad1; /* +0x10..+0x13 */
+} DISPENV;                           /* 0x14 (PSYQ libgpu.h) */
+
+typedef struct
+{
+    u_long tag;
+    u_char r0, g0, b0, code;
+    short x0, y0;
+    u_char u0, v0;
+    u_short clut;
+    short x1, y1;
+    u_char u1, v1;
+    u_short tpage;
+    short x2, y2;
+    u_char u2, v2;
+    u_short pad1;
+    short x3, y3;
+    u_char u3, v3;
+    u_short pad2;
+} POLY_FT4;
+
+extern char D_8001118C[];
+extern char D_800111B0[];
+extern u_long *FileRead(char *path);
+extern void SetupImageToPolyFT4(GsIMAGE *image, POLY_FT4 *ply, short x, short y);
+extern void GetDrawEnv(DRAWENV *env);
+extern void GetDispEnv(DISPENV *env);
+extern void PutDrawEnv(DRAWENV *env);
+extern void DrawPrim(u8 *prim);
+extern int DrawSync(int mode);
+
+void FUN_800190f4(void)
+{
+    u_long *tim;
+    GsIMAGE img;
+    POLY_FT4 poly1;
+    POLY_FT4 poly2;
+    DISPENV disp;
+    DRAWENV draw;
+    DRAWENV draw2;
+
+    tim = FileRead(D_8001118C);
+    GetTIMInfo(tim, &img);
+    LoadTIMAndFree(tim);
+    SetupImageToPolyFT4(&img, &poly1, 0xD4, 0xDE);
+    tim = FileRead(D_800111B0);
+    GetTIMInfo(tim, &img);
+    LoadTIMAndFree(tim);
+    SetupImageToPolyFT4(&img, &poly2, 0xD4, 0xC0);
+    GetDrawEnv(&draw);
+    GetDispEnv(&disp);
+    draw2 = draw;
+    draw2.clip = disp.disp;
+    draw2.ofs[0] = disp.disp.x;
+    draw2.ofs[1] = disp.disp.y;
+    PutDrawEnv(&draw2);
+    DrawPrim((u8 *)&poly1);
+    DrawPrim((u8 *)&poly2);
+    DrawSync(0);
+    PutDrawEnv(&draw);
+}
+

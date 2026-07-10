@@ -10,65 +10,98 @@
  *     extern struct GsOT *OTablePt;
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8003a148", FUN_8003a148);
+/*
+ * MATCH.
+ *
+ * FUN_8003a148 (0x8003a148, 0x160 bytes) — same "project a 3D point and
+ * sort-draw a sprite there" tail as FUN_8003a2a8 (the [0, 0x4e1] clamp +
+ * GsSortSprite), but with a CHOICE of projection: when `coord` (param_6) is
+ * non-NULL it goes through the GsGetLs/SetLsMatrix/RotTransPers path (same
+ * scratchpad idiom as DrawOrnament/DrawModel — install `coord`'s local
+ * system as the GTE's matrix, then rotate-translate-perspective the
+ * (x,y,z) point written into the scratchpad SVECTOR @ 0x1F800020);
+ * otherwise it falls back to FUN_800396c0 (the already-matched
+ * camera-relative-transform + RotTransPers helper). Either path leaves the
+ * projected (x,y) and OTZ in one local SVECTOR `scr` (x,y from the
+ * RotTransPers/FUN_800396c0 out-param, z/otz narrowed from the return
+ * value) exactly like FUN_8003a2a8's `scr`. The `pri` clamp additionally
+ * folds in `param_7` (added to otz before the `>>2`), unlike FUN_8003a2a8's
+ * plain otz.
+ *
+ * Matching notes (see FUN_8003a2a8.c for the shared idioms in full):
+ *  - This TU divides by a runtime value (`size*300/otz`): needs
+ *    `--expand-div` (Build.hs maspsxGpExterns' `extra` list + permute.py's
+ *    MASPSX_EXTRA), same as FUN_8003a2a8. Ghidra's `trap(0x1c00)`/
+ *    `trap(0x1800)` are ASPSX's automatic divide-by-zero/overflow guards,
+ *    not literal source calls — plain `/` reproduces them once the
+ *    function is on the expand-div list.
+ *  - `if (coord != 0) {GsGetLs path} else {FUN_800396c0}` — the opposite
+ *    polarity of Ghidra's literal `if (coord == 0) {FUN_800396c0} else
+ *    {GsGetLs}` rendering: the target's branch is `beqz coord, ...` with
+ *    the GsGetLs block as the FALL-THROUGH, so the C needs the condition
+ *    that puts GsGetLs first (the `if (cond) A; else B;`-makes-A-the-
+ *    fallthrough rule).
+ *  - The [0, 0x4e1] clamp reuses FUN_8003a2a8's exact `goto zero;` shape,
+ *    comparing `(scr.vz + d) >> 2` instead of the twin's `(u16)otz << 16 >>
+ *    0x12`. The RHS must re-read the struct field `scr.vz`, not the
+ *    already-live `otz` local: the target's asm re-loads it fresh (`lh`)
+ *    right there even though `otz` (from the `if (otz > 0x24)` test) is
+ *    numerically identical and already in a register — same "target's own
+ *    SSA rendering tells you it reloads" tell as `vrealloc`/FUN_8003a2a8's
+ *    own `scr.vz` re-read for `t`. Reusing `otz` here is 4 bytes short
+ *    (cc1 doesn't refetch a value it can already see live).
+ */
+extern GsOT *OTablePt;
+extern void FUN_800396c0(s32 x, s32 y, s32 z, s32 *out);
+extern void GsGetLs(GsCOORDINATE2 *coord, MATRIX *m);
+extern void GsSetLsMatrix(MATRIX *m);
+extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
+extern void GsSortSprite(GsSPRITE *sp, GsOT *ot, int pri);
 
-// triage: MEDIUM — 88 insns, mul/div, 5 callees, ~0.06 to ReqItemShinsoku
-// likely-relevant cookbook sections:
-//   - Dispatch: if/switch ladder — reload vs CSE, signed vs unsigned
-//   - Expressions: mult/div — magic-multiply constants, fold
+void FUN_8003a148(GsSPRITE *sp, s32 x, s32 y, s32 z, s32 size, GsCOORDINATE2 *coord, short d)
+{
+    SVECTOR scr;
+    s32 otz;
+    s16 sc;
+    s32 t;
+    s32 pri;
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// void FUN_8003a148(GsSPRITE *param_1,undefined4 param_2,undefined4 param_3,undefined4 param_4,
-//                  int param_5,GsCOORDINATE2 *param_6,short param_7)
-//
-// {
-//   short sVar1;
-//   long lVar2;
-//   int iVar3;
-//   int iVar4;
-//   undefined4 local_18;
-//   short local_14;
-//
-//   if (param_6 == (GsCOORDINATE2 *)0x0) {
-//     FUN_800396c0(param_2,param_3,param_4,&local_18);
-//   }
-//   else {
-//     Scratchpad._32_2_ = (undefined2)param_2;
-//     Scratchpad._34_2_ = (undefined2)param_3;
-//     Scratchpad._36_2_ = (undefined2)param_4;
-//     GsGetLs(param_6,(MATRIX *)Scratchpad);
-//     GsSetLsMatrix((MATRIX *)Scratchpad);
-//     lVar2 = RotTransPers((SVECTOR *)(Scratchpad + 0x20),&local_18,(long *)(Scratchpad + 0x28),
-//                          (long *)(Scratchpad + 0x2c));
-//     local_14 = (short)lVar2;
-//   }
-//   iVar3 = (int)local_14;
-//   if (0x24 < iVar3) {
-//     if (iVar3 == 0) {
-//       trap(0x1c00);
-//     }
-//     if ((iVar3 == -1) && (param_5 * 300 == -0x80000000)) {
-//       trap(0x1800);
-//     }
-//     sVar1 = (short)((param_5 * 300) / iVar3) + 1;
-//     param_1->scaley = sVar1;
-//     param_1->scalex = sVar1;
-//     param_1->x = (short)local_18;
-//     param_1->y = local_18._2_2_;
-//     iVar3 = (int)local_14 + (int)param_7 >> 2;
-//     if (iVar3 < 0) {
-//       iVar4 = 0;
-//     }
-//     else {
-//       iVar4 = 0x4e1;
-//       if (iVar3 < 0x4e2) {
-//         iVar4 = iVar3;
-//       }
-//     }
-//     GsSortSprite(param_1,OTablePt,(ushort)iVar4);
-//   }
-//   return;
-// }
+    if (coord != 0)
+    {
+        SVECTOR *sv = (SVECTOR *)0x1F800020;
+        sv->vx = x;
+        sv->vy = y;
+        sv->vz = z;
+        GsGetLs(coord, (MATRIX *)0x1F800000);
+        GsSetLsMatrix((MATRIX *)0x1F800000);
+        scr.vz = (s16)RotTransPers(sv, (s32 *)&scr, (void *)0x1F800028, (void *)0x1F80002C);
+    }
+    else
+    {
+        FUN_800396c0(x, y, z, (s32 *)&scr);
+    }
+    otz = scr.vz;
+    if (otz > 0x24)
+    {
+        sc = (s16)((size * 300) / otz) + 1;
+        sp->scaley = sc;
+        sp->scalex = sc;
+        sp->x = scr.vx;
+        sp->y = scr.vy;
+        t = (scr.vz + (s32)d) >> 2;
+        if (t < 0)
+        {
+            goto zero;
+        }
+        pri = 0x4e1;
+        if (t < 0x4e2)
+        {
+            pri = t;
+        }
+        goto done;
+    zero:
+        pri = 0;
+    done:
+        GsSortSprite(sp, OTablePt, (u16)pri);
+    }
+}

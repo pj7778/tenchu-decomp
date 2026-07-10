@@ -193,6 +193,8 @@ GP_EXTERNS = {
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
 # maspsxGpExterns (e.g. --expand-div for TUs that divide by a variable).
 MASPSX_EXTRA = {
+    "FUN_8003a148": ["--expand-div"],
+    "FUN_80039fb0": ["--expand-div"],
     "SetBleedsDir": ["--expand-div"],
     "SetBlood": ["--expand-div"],
     "SetHinoko": ["--expand-div"],

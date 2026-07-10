@@ -1044,6 +1044,15 @@ call's argument position**, not assigned to a named local first (even via a tern
 Assigning it first makes cc1 re-read the tested field a second time, with the wrong
 signedness -- three extra instructions in `AVCameraSetup`'s `ordr`.
 
+**Two stores of the same struct field to DIFFERENT objects, even with zero
+intervening statements, need a named temp for a single shared load** — if the struct's
+address has already escaped (passed to a callee earlier), cc1 stops CSEing repeat reads
+of it even across adjacent statements. `sx = out.vx; sp2->x = sx; sp1->x = sx;`
+(`FUN_80039fb0`). The clamp counterpart: a clamp's final expression must re-read the
+struct field directly (`scr.vz`) rather than reuse an already-live local, because the
+target's asm shows a fresh `lh` reload there even at a numerically-identical value
+(`FUN_8003a148`).
+
 **Ghidra's own SSA rendering tells you when the target reloads.** If Ghidra shows a
 second, separately-named dereference of an address instead of reusing its earlier
 temp, the target really does refetch: reusing your cached local there costs an
