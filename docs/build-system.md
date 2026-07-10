@@ -125,13 +125,17 @@ Each exe gets its own `.shake/gen/<name>/`, `.shake/build/<name>/`,
 In `Build.hs` a `Target` record carries the name, image path, and pinned sha256,
 and `exeRules` is applied over `targets`. Two things that are easy to get wrong:
 
-- **splat is serialised across targets.** Every config regenerates the *shared*
-  `include/{macro.inc,include_asm.h,labels.inc,gte_macros.inc}` on every run, so
-  concurrent splits race on those four files. `exeRules` takes a
-  `newResource "splat" 1` and wraps the `split.py` call in `withResource`. Each
-  config must also re-inject our `li`/`move` overrides via
-  `generated_macro_inc_content` (splat's own `macro.inc` has neither) — otherwise
-  whichever config ran last silently breaks the others' `li` expansion.
+- **`include/*.inc` are sources, not outputs.** By default every splat config
+  rewrites the *shared* `include/{macro.inc,include_asm.h,labels.inc,gte_macros.inc}`
+  on every run, so six configs would race on four files. They are checked in, and
+  splat's writer is idempotent (it skips the write when the content already
+  matches), so the race was latent rather than active — it could only fire if the
+  files were missing. Rather than lock around it, every config now sets
+  `generate_asm_macros_files: no`: nobody writes them, the six splits run
+  concurrently, and `as --MD` + `neededAsmDeps` makes them ordinary tracked
+  dependencies. `config/splat.main.exe.yaml` keeps `generated_macro_inc_content`
+  (our `li`/`move` overrides — splat's stock `macro.inc` has neither) and documents
+  how to regenerate: flip the flag to `yes`, re-split, commit, flip back.
 - **`src/<name>/` may not exist.** The `.elf` rule probes for it before globbing;
   an exe nobody has started has generated sources only.
 

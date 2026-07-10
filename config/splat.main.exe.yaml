@@ -16,6 +16,13 @@ options:
   # splat GENERATES include/{macro.inc,include_asm.h,labels.inc,gte_macros.inc}
   # on every run. Its macro.inc has no `li`/`move`, so re-inject ours here or the
   # build silently falls back on GNU as's builtins.
+  # include/{macro,labels,gte_macros}.inc and include/include_asm.h are CHECKED-IN
+  # SOURCES, not build outputs. splat rewrites them on every run of every config
+  # (idempotently -- it skips the write when content matches), which means six
+  # configs racing on four shared files for no benefit. Regeneration is off; if you
+  # change `generated_macro_inc_content` below, flip this to `yes`, run
+  # `split.py config/splat.main.exe.yaml`, commit the new include/*.inc, flip back.
+  generate_asm_macros_files: no
   generated_macro_inc_content: |
     .macro .def #
     .endm

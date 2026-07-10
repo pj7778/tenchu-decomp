@@ -32,37 +32,6 @@ IMAGES = {
     "slps_019.01": "disks/slps_019.01",
 }
 
-# splat regenerates include/{macro.inc,...} on EVERY run, for every config. Its
-# macro.inc has no `li`/`move`, so each config must re-inject ours or whichever
-# splat ran last silently breaks the others. Keep this byte-identical to
-# config/splat.main.exe.yaml's copy.
-MACRO_INC = '''  generated_macro_inc_content: |
-    .macro .def #
-    .endm
-
-    .macro li reg, num
-    .if \\num < 0x8000 && \\num > 0
-      # ASPSX >= 2.56 (Tenchu uses 2.77) loads a signed-16-bit-positive immediate
-      # with `addiu $zero`, not `ori` (see maspsx aspsx/test_expand_li.py). GNU as's
-      # own `li` does the same; this override must match it or gp-less `li`s mismatch.
-      addiu \\reg, $0, \\num
-    .elseif \\num > 0xFFFF
-      lui \\reg, %hi(\\num)
-    .elseif \\num > 0
-      ori \\reg, $0, \\num & 0xFFFF
-    .elseif \\num == -0x8000
-      addiu \\reg, $0, \\num & 0xFFFF
-    .elseif \\num > -0x8000
-      addiu \\reg, $0, \\num
-    .else
-      lui \\reg, %hi(\\num)
-    .endif
-    .endm
-
-    .macro move a, b
-        addu \\a, \\b, $zero
-    .endm
-'''
 
 
 def psx_exe_info(path: str) -> dict:
@@ -109,7 +78,11 @@ options:
   find_file_boundaries: no
   use_legacy_include_asm: no
   migrate_rodata_to_functions: no
-{MACRO_INC}{gp}  ld_script_path: .shake/gen/{name}/linker/{name}.ld
+  # include/{{macro,labels,gte_macros}}.inc and include_asm.h are checked-in sources
+  # (config/splat.main.exe.yaml documents how to regenerate them). Six configs all
+  # writing them would race; nobody writes them.
+  generate_asm_macros_files: no
+{gp}  ld_script_path: .shake/gen/{name}/linker/{name}.ld
   symbol_addrs_path: config/symbols.{name}.txt
   undefined_funcs_auto_path: .shake/gen/{name}/meta/undefined_functions_auto.{name}.txt
   undefined_syms_auto_path: .shake/gen/{name}/meta/undefined_symbols_auto.{name}.txt

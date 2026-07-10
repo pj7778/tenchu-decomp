@@ -413,11 +413,9 @@ rules :: Rules ()
 rules = do
   _ <- addOracle (liftIO . runIdOracle)
   _ <- addOracle (\(GpFlags f) -> pure (maspsxGpExterns f))
-  -- Every splat config rewrites include/*.inc, so only one may run at a time.
-  splatRes <- newResource "splat" 1
   want [mainExe]
   objRules
-  mapM_ (exeRules splatRes) targets
+  mapM_ exeRules targets
   mainExtraRules
   phonyRules
 
@@ -494,7 +492,7 @@ objRules = do
     -- before we can know which ones -- that is what --MD is for, and
     -- neededAsmDeps declares them afterwards with `needed`. --lint-fsatrace
     -- still sees a read-before-need, so allow exactly that directory.
-    trackAllow [mainGenDir </> asmDir <//> "*", "include/*.inc"]
+    trackAllow [genDir </> target </> asmDir <//> "*", "include/*.inc"]
     withTempFile $ \depFile -> do
       cmd_ (FileStdin processed) as asFlags ["--MD", depFile, "-o", out]
       neededAsmDeps depFile
@@ -512,8 +510,8 @@ objRules = do
 -- | Rules for one executable. Identical for every target: splat -> asm/C -> objects
 -- -> elf -> raw binary. `main.exe` is the only one with C sources today; the others
 -- are one `data` blob each, and everything below is oblivious to the difference.
-exeRules :: Resource -> Target -> Rules ()
-exeRules splatRes t = do
+exeRules :: Target -> Rules ()
+exeRules t = do
   let gen = tgGen t
       genD = tgGenDir t
       exe = tgExe t
@@ -524,25 +522,11 @@ exeRules splatRes t = do
   priority 2 $ generator gen [genD <//> "*"] $ do
     need [tgSplat t, tgImage t, definedSymbols]
     liftIO $ mapM_ (\d -> IO.createDirectoryIfMissing True (genD </> d)) splatDirs
-    -- EVERY splat config regenerates include/{macro.inc,include_asm.h,labels.inc,
-    -- gte_macros.inc}, so two targets splitting concurrently would race on them.
-    -- Each config re-injects our `li`/`move` overrides via
-    -- `generated_macro_inc_content`, so the content is identical -- but the writes
-    -- must still be serialised.
-    withResource splatRes 1 $ cmd_ "split.py" [tgSplat t]
-    produces
-      [ "include" </> "macro.inc",
-        "include" </> "gte_macros.inc",
-        "include" </> "labels.inc",
-        "include" </> "include_asm.h"
-      ]
-    trackAllow
-      [ genD <//> "*",
-        "include/macro.inc",
-        "include/gte_macros.inc",
-        "include/labels.inc",
-        "include/include_asm.h"
-      ]
+    -- Every config sets `generate_asm_macros_files: no`, so splat writes nothing
+    -- outside genD and the six targets can split concurrently. include/*.inc are
+    -- checked-in sources; `as --MD` + `neededAsmDeps` picks them up as deps.
+    cmd_ "split.py" [tgSplat t]
+    trackAllow [genD <//> "*"]
     -- splat bakes `buildDir/<target>/<genDir>/...` into the linker script; we put
     -- objects directly under `buildDir/<target>`.
     let beforeAsm = tBuildDir </> genD </> asmDir
