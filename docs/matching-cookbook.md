@@ -1141,6 +1141,19 @@ wrong: caseD_1f before caseD_2, switchD last).
 
 ## gp vs absolute globals (item-TU vs think-TU)
 
+**A bare `lui $rN, 0xHHHH` with NO following `addiu`, whose register is then
+reused as a base for several `lbu/sb`-style accesses (often hoisted into a
+branch delay slot so both arms share it), means the source held the address in a
+LOCAL via a literal pointer cast** — `PersistentState *ps = (PersistentState
+*)0x80010000;`, the convention already used by
+`BriefingAndInventorySelectionScreen.c`'s `PSTATE`, `FUN_800565f0.c`,
+`FUN_800566c0.c`. Spell the same access as a plain `extern u8 D_80010047;` and
+cc1 folds the absolute address into each memory operand instead, so `as`
+re-materialises `%hi` per use through `$at` (`lui $at,0x8001; sb $v0,71($at)`) —
+extra `lui`s and the *wrong length*, not merely a register tie. The `lui`
+survives alone only because the object's `%lo` is 0, so the cast's constant
+needs exactly one instruction (FUN_8001b2b8).
+
 ASPSX gp-addresses only symbols **defined in the TU being assembled**;
 externs are always absolute (`lui $at`/dest-reg expansion of the one-line
 macro). Our per-file `maspsxGpExterns` list in `Build.hs` encodes "smalls the
