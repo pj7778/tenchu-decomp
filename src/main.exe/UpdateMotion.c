@@ -29,35 +29,6 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 26 of 632 bytes differ (13 instructions), pure
- * register-allocation coloring tie below the C level. The whole-image diff is
- * exactly those 26 bytes (the function is the correct LENGTH and every later
- * object is byte-identical), so the arithmetic/structure is right — only the
- * register colors differ. autorules found no win; the decomp-permuter was run
- * twice (~3400 iters then a full 600s bounded run, -j4 --best-only) and never
- * reached score 0 (best 210 vs base 580, and its score ignores stack slots).
- *
- * Root cause — ONE coloring decision cascades into all 13 diffs. In the
- * min `mmp->n = min(mmp->model->n, mmp->motion->n)`, the target colors the
- * result `i` to $a0 (coalesced with the `lh model->n` that loads into $a0) and
- * keeps `motion->n` alive in $v1 across the `slt` (whose result goes to $v0),
- * so the taken branch is a free `move a0,v1` with no reload. Our cc1 instead
- * keeps the `mmp->motion` POINTER alive in $a0, loads `motion->n` into $v0
- * (clobbered by the `slt`), and colors `i` to $a2 — forcing a reload
- * (`lbu a2,0(a0)`) in the branch. That single a0-vs-a2 choice then dictates:
- *   - the delay-slot fill of the SetupSpline call (target must store mmp->n
- *     BEFORE `move a0,s0` because `i` is in $a0; ours is free to put the store
- *     in the delay slot because `i` is in $a2);
- *   - the bone-fixup `negu` source ($v0 the copy vs $v1 the original — a CSE
- *     artifact, `at=-at` folds back to `negu v0,v1` regardless of source form);
- *   - the fixup store registers (target moves the address to $v0 and stores the
- *     value from $v1 reusing t's register; ours keeps the address in $a0 and
- *     the value in $v0).
- * None of these is reachable from C: verified by trying the min against the
- * field vs the local, an explicit s16/s32 `mn` temp (added an extra move and a
- * 4-byte length shift), reusing `j`, and both abs spellings — all identical or
- * worse. This is the reload/coloring class the cookbook marks permuter-immune.
- *
  * UpdateMotion (0x8001b65c, 0x278 bytes) — switch mmp's active motion to
  * `mid`, unless it's already the current motion (returns -1, a no-op).
  * Search mmp's own registered-motion table (mmp->motreg, sentinel
@@ -101,14 +72,45 @@
  *    xyz[j] once and reuses the register for every use on the RHS before
  *    the one store, exactly like the asm's single `lh`/single `sh` per
  *    fixup (two `lh`s total per component, one per statement).
+ *  - The min MUST be the ternary `(motion->n < model->n) ? motion->n :
+ *    model->n` — fold/expr.c's min/max path loads BOTH operands into SI
+ *    registers first, then `i = op_model; if (motion < model) i = op_motion`
+ *    where the conditional arm is a register MOVE (`move a0,v1`). The
+ *    two-statement form (`i = model->n; if (motion->n < i) i = motion->n;`)
+ *    re-expands the memory read in the arm as a zero_extend:HI (i is s16) that
+ *    cannot CSE with the compare's zero_extend:SI — a reload (`lbu`) plus a
+ *    whole different coloring (13 instructions). This one spelling fixed 22 of
+ *    the 26 differing bytes.
+ *  - The abs MUST be spelled INLINE in the comparison —
+ *    `if (((t < 0) ? -t : t) > 0x800)` — so it becomes ABS_EXPR -> the MIPS
+ *    `abssi2` insn: ONE opaque insn whose output template is exactly
+ *    `bgez;move;subu %0,$0,%0` (negu of the COPY, numeric `1:` label).
+ *    Assigning the same ternary to a named temp (`at = (t<0) ? -t : t;`) goes
+ *    through expr.c's COND_EXPR singleton path instead: separate copy/branch/
+ *    neg-in-place insns that cse's canon_reg immediately rewrites to
+ *    `negu v0,v1` (operand canonicalized to the class's first reg — the source
+ *    variable always outlives the temp, so the temp can never win
+ *    make_regs_eqv's qty_first promotion).
+ *  - The +-0x1000 snap is ONE assignment whose ternary arms update t IN PLACE
+ *    and whose CONDITION re-reads the memory:
+ *    `xyz[j] = (xyz[j] < 0) ? (t += 0x1000) : (t -= 0x1000);`
+ *    Three things hang on this exact spelling: the compound arms give the
+ *    in-place `addiu v1,v1,+-0x1000`; the single assignment expands the
+ *    destination address BEFORE the branch (expand_assignment computes to_rtx
+ *    first), which cse folds into a pre-branch copy of the lh's address
+ *    (`move v0,a0`, stolen into the bgez delay slot) with the store through
+ *    the copy (`sh v1,0(v0)`); and the mem-read in the CONDITION (not `t < 0`,
+ *    byte-identical semantics since t == xyz[j] here) shifts the pre-cse
+ *    reference structure so cse1's taken-path window keeps the copy alive in
+ *    both arms instead of canonicalizing the store back to `0(a0)` (found by
+ *    the permuter after hand analysis pinned everything but this last cell;
+ *    `t < 0` in the condition = 4 bytes off: nop instead of the move, sh via
+ *    a0).
  */
 
 extern MotionRegistType MOTcommon[41];
 extern void SetupSpline(MotionManager *mmp);
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/UpdateMotion", UpdateMotion);
-#else
 s16 UpdateMotion(MotionManager *mmp, s16 mid)
 {
     MotionRegistType *mrp;
@@ -153,9 +155,7 @@ s16 UpdateMotion(MotionManager *mmp, s16 mid)
     if (sweep & 0x80)
         mmp->count = sweep - 0x100;
     mmp->loop = 0;
-    i = mmp->model->n;
-    if (mmp->motion->n < i)
-        i = mmp->motion->n;
+    i = (mmp->motion->n < mmp->model->n) ? mmp->motion->n : mmp->model->n;
     mmp->n = i;
     SetupSpline(mmp);
 
@@ -165,14 +165,8 @@ s16 UpdateMotion(MotionManager *mmp, s16 mid)
         for (j = 0; j < 3; j++)
         {
             t = xyz[j];
-            at = (t < 0) ? -t : t;
-            if (at > 0x800)
-            {
-                if (t < 0)
-                    xyz[j] = t + 0x1000;
-                else
-                    xyz[j] = t - 0x1000;
-            }
+            if (((t < 0) ? -t : t) > 0x800)
+                xyz[j] = (xyz[j] < 0) ? (t += 0x1000) : (t -= 0x1000);
             t = xyz[j];
             at = t;
             if (t < 0)
@@ -182,4 +176,3 @@ s16 UpdateMotion(MotionManager *mmp, s16 mid)
     }
     return 1;
 }
-#endif

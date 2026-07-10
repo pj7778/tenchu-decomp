@@ -1310,6 +1310,17 @@ depth so the eviction never happens. When a two-call restructuring seems to
 abandoning the structure (`Sound`; this is why an earlier two-call attempt looked
 worse and was wrongly parked).
 
+### A conditional min/max against a MEMORY operand must be the ternary
+
+`i = (a < b) ? a : b;` reaches fold/expr.c's min path, which loads both operands into
+SI registers and makes the conditional arm a register MOVE. The two-statement
+`x = a; if (b < x) x = b;` re-expands the arm's memory read in the DESTINATION's narrow
+mode (HImode for an `s16` local), which cannot CSE with the compare's SImode load — a
+reload plus a full coloring cascade. On `UpdateMotion` this one spelling change
+(`i = (mmp->motion->n < mmp->model->n) ? mmp->motion->n : mmp->model->n;`) fixed 22 of
+26 residual bytes. This SUPERSEDES the older "min/clamp reload is a coloring tie, park
+it" note below for the memory-operand case — it IS reachable from C, via the ternary.
+
 ### Min/clamp reload-vs-reuse is a coloring tie, not a source bug
 
 `x = a; if (b < x) x = b;` where the target reuses the already-loaded `b` in the
@@ -1335,6 +1346,28 @@ caller-saved in a distinct register and spends an EXTRA callee-saved one (frame 
 — rotating the whole register file (`SoundEx`: 61 diff lines → 5). Reach for this
 when the target's frame is LARGER than yours and a call result dies near a
 call-surviving definition.
+
+### An abs `negu` that negates the COPY is the `abssi2` insn — reach it inline
+
+A `negu $v0,$v0` (negating the copy, not the source) is the MIPS backend's `abssi2`
+insn, emitted as one opaque `bgez %1,1f; move %0,%1; subu %0,$0,%0; 1:` (tell: it
+survives cse untouched). Only an abs ternary used INLINE in a comparison —
+`if (((t < 0) ? -t : t) > 0x800)` — reaches it; assigning the same ternary to a named
+temp (`at = (t<0)?-t:t;`) takes expr.c's COND_EXPR singleton path, whose separate `neg`
+insn cse canonicalises to `negu dst,src`, and no variable arrangement wins
+`make_regs_eqv`'s promotion (the source var outlives the temp). Refines the rule below:
+the negate-the-copy form IS reachable, but only inline (`UpdateMotion`).
+
+### A conditional store via a pre-branch address copy is one assignment, conditional RHS
+
+`move $v0,$a0` in a branch delay slot feeding `sh …,0($v0)` means the source is ONE
+assignment with a conditional right-hand side (`xyz[j] = (cond) ? (t += K) : (t -= K);`),
+not two stores. expand_assignment computes the destination address BEFORE expanding the
+ternary, and cse folds the recompute into a copy of the earlier load's address register.
+Use compound-assignment arms (`t += K`) to keep the value updates in place, and the
+ternary's condition may need to re-read the target memory (`xyz[j] < 0` rather than the
+equivalent `t < 0`) to keep cse1's taken-path window from canonicalising the store back
+onto the original address register (`UpdateMotion`, last 4 bytes).
 
 ### The abs idiom's `negu` source register is not a C-level choice
 
