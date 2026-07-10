@@ -171,6 +171,11 @@ Commit the `.c` + `config/splat.main.exe.yaml` + `shake/src/Build.hs` +
   dep-tracking latent issue). `./Build clean` (~7s) fixes it; harvests in a
   churny region (e.g. the 0x8005fxxx CD block) may as well `./Build clean` up
   front.
+- **Write the commit message to a file and use `git commit -F`.** These messages
+  are full of backticks (`` `as` ``, `` `c2` ``, `` `--parked` ``); inside a
+  double-quoted `-m "…"` bash runs them as command substitution. `` `as` ``
+  invokes the assembler, which blocks reading stdin — the commit just hangs until
+  the tool times out (and leaves an `a.out` behind).
 - **A function splat splits into TWO non-contiguous pieces can't be
   NON_MATCHING-stubbed** — the INCLUDE_ASM covers only the first piece, so a
   cross-piece `.L<addr>` branch target goes undefined at link. Such a function
@@ -256,6 +261,15 @@ lens.
   and the 5272B `ReqItemUse` dispatcher.
 
 ## Tooling backlog (recurring friction → build these)
+
+- **Drop the 79 `__override__prt_` non-symbols from `config/symbols.main.exe.txt`.**
+  They are Ghidra call-SITE prototype overrides, not functions, but splat consumes
+  the file as `symbol_addrs` and starts a new `.s` piece at each one — silently
+  splitting 34 ordinary functions (30 still unmatched) in two. `reverse.py` now
+  works around it (seeds every piece; see the cookbook), but the root fix is to
+  stop emitting them. Blocked on `FileOption.c`, whose parked 18-piece stub
+  `INCLUDE_ASM`s an override piece *by name*; fix that stub first, then also
+  filter them in `tools/import_symbols.py` so they don't come back.
 
 - **A register-preference/tie diagnoser** — BUILT: `tools/regalloc.py <Name>`.
   Parses cc1 `-dg` into the pseudo→hard-reg map, the values live across calls

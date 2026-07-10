@@ -177,6 +177,39 @@ INCLUDE_TMPL = (
     '#include "common.h"\n#include "main.exe.h"\n\n'
     'INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/{name}", {name});\n')
 
+INCLUDE_RE = re.compile(r'^INCLUDE_ASM\("([^"]+)",\s*([^)]+)\);')
+
+
+def piece_symbols(genstub):
+    """The symbol of each .s piece splat generated for this function, in order."""
+    out = []
+    for line in open(genstub):
+        m = INCLUDE_RE.match(line.strip())
+        if m:
+            out.append((m.group(1), m.group(2).strip()))
+    return out
+
+
+def expand_stub(name, pieces):
+    """Rewrite <name>.c's single INCLUDE_ASM with one line per generated piece.
+
+    splat starts a new .s piece at every symbol inside the function's range. A
+    Ghidra `__override__prt_` marker (a call-SITE prototype override, not a
+    function) therefore silently splits a perfectly ordinary function in two,
+    and a stub carrying only the first piece fails to link: a branch whose
+    target lives in piece 2 goes undefined. Emitting every piece restores the
+    green stub. (A jump table also splits, but additionally needs a .rodata
+    carve — that's split-scaffold.py's job, not this.)
+    """
+    path = os.path.join(SRC_DIR, f"{name}.c")
+    src = open(path).read()
+    lines = "".join(f'INCLUDE_ASM("{d}", {s});\n' for d, s in pieces)
+    old = f'INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/{name}", {name});\n'
+    if old not in src:
+        return False
+    open(path, "w").write(src.replace(old, lines, 1))
+    return True
+
 
 def write_src(name, ghidra_c):
     path = os.path.join(SRC_DIR, f"{name}.c")
@@ -287,23 +320,33 @@ def main():
         print(f"reverse: ✓ ./Build check GREEN — {args.name} split, still byte-identical.")
         append_m2c(name)      # .s now exists; add the m2c second-opinion comment
         return
-    # A jump-table function splits into several .s pieces; the single INCLUDE_ASM
-    # seeded above only covers the first, and its table needs a .rodata carve —
-    # tools/split-scaffold.py does both. Detect that case and point at it rather
-    # than reporting a bare failure.
-    genstub = os.path.join(".shake", "gen", "main.exe", "src", args.name + ".c")
-    pieces = 0
-    if os.path.exists(genstub):
-        pieces = sum(1 for l in open(genstub) if l.startswith("INCLUDE_ASM("))
-    if pieces > 1:
-        print(f"reverse: {args.name} is a jump-table function ({pieces} .s pieces).\n"
+    # A function can split into several .s pieces for two very different reasons.
+    # Use the RESOLVED name (`name`), not args.name: a renamed-via-sibling target
+    # is generated under its real name.
+    genstub = os.path.join(".shake", "gen", "main.exe", "src", name + ".c")
+    pieces = piece_symbols(genstub) if os.path.exists(genstub) else []
+    # (a) A Ghidra `__override__prt_` call-site marker sitting inside the body.
+    #     Not a jump table, no .rodata: just seed every piece and we're green.
+    if len(pieces) > 1 and all("__override__prt_" in s for _, s in pieces[1:]):
+        if expand_stub(name, pieces):
+            r = subprocess.run(["./Build", "check"], stdout=subprocess.DEVNULL)
+            if r.returncode == 0:
+                print(f"reverse: ✓ ./Build check GREEN — {name} split into "
+                      f"{len(pieces)} pieces at a Ghidra __override__prt_ marker "
+                      f"(a call-site override, not a jump table); seeded all pieces.")
+                append_m2c(name)
+                return
+    # (b) A real jump table: needs all pieces AND the table's .rodata carve —
+    #     tools/split-scaffold.py does both.
+    if len(pieces) > 1:
+        print(f"reverse: {name} is a jump-table function ({len(pieces)} .s pieces).\n"
               f"         The stub needs all pieces + the table's .rodata carve — run\n"
-              f"         `tools/split-scaffold.py {args.name}` to finish it (then green).")
+              f"         `tools/split-scaffold.py {name}` to finish it (then green).")
         return
     print(f"reverse: ✗ ./Build check FAILED — the split changed the output.\n"
           f"         Likely the [start,size) boundary is off or the region has\n"
           f"         rodata splat needs told about. Revert with `git checkout {YAML} "
-          f"{SRC_DIR}/{args.name}.c` and check the function extent.", file=sys.stderr)
+          f"{SRC_DIR}/{name}.c` and check the function extent.", file=sys.stderr)
     sys.exit(1)
 
 

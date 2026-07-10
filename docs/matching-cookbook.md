@@ -659,6 +659,17 @@ plain C is the matched file.
     leftover 8 bytes as two `lw`/`sw`. `tools/access.py <Name> --order` showing
     every copy insn (tail included) as `sw` disproves the field-typed rendering —
     trust it over Ghidra's struct-field names (DeleteConflict).
+  - **A small table copied to a stack local is ONE struct assignment, not N
+    element assignments** (`load_layout`). N array-element assignments from a
+    nonzero-offset extern (`local[0]=Ext[0]; local[1]=Ext[1]; …`) make cc1 fold
+    the offset-0 read directly off the `%hi` register while materializing a full
+    base address only for the nonzero-offset ones — *two different addressing
+    shapes in one sequence*. A genuine small (≤16-byte) whole-struct assignment
+    (`local_18 = D_80012168;`, both sides typed as one struct with an inline
+    array field) instead forces `emit_block_move` to materialize ONE base
+    register up front and emit the batched-loads-then-batched-stores idiom.
+    Write it that way whenever Ghidra renders a source table copied to a stack
+    local (later indexed by a runtime variable) as separate per-element stores.
 - **A truncated per-TU struct breaks when the element is array-INDEXED, not
   just pointer-dereferenced.** The "declare only the fields you touch" truncation
   (DisposeBG-style) is safe for `ptr->field`, but `arr[i]` compiles the index as
@@ -986,6 +997,13 @@ plain C is the matched file.
   + later arithmetic on $s5 means the original overwrote the parameter
   (`x = x / 10;`) — the param pseudo gets a callee-saved home. A fresh local
   computes straight into the s-register with no entry move.
+  - **This extends to POINTER parameters, and the per-call offsets are the
+    tell** (`LoadOrnament`). `adr = adr + 1; f(adr); g(adr + 2);` — reassigning
+    the pointer parameter in place and then using a *smaller residual* offset for
+    the second call — reproduces both the callee-saved register reuse and the
+    exact offset split. Two fresh computations off the untouched parameter
+    (`f(adr + 1); g(adr + 3);`) put the value in a different register and compute
+    both offsets fresh: a register swap plus an instruction-shape mismatch.
 - **A delay-slot instruction can be pulled BACKWARD across calls by reorg** —
   its position in Ghidra/the disassembly ("the statement right before this
   call") is not proof of its source position. When a manually-placed
@@ -1256,6 +1274,29 @@ absolute → keep the symbol off the list (a plain small extern).
   `.map`; a few bytes low, shared with a neighbor, = a pre-existing drift, not
   yours), bind a FRESH non-colliding name at the correct address there — it
   resolves regardless of the drifted file's byte-accumulation.
+  - **A Ghidra `__override__prt_` symbol splits an ordinary function into two
+    `.s` pieces — it is NOT a jump table.** Those symbols are Ghidra call-SITE
+    prototype overrides (e.g. the `jal sprintf` inside `PathFileRead`), but splat
+    reads `symbols.main.exe.txt` as `symbol_addrs` and starts a new piece at every
+    symbol inside a function's range. A stub carrying only piece 1 fails to link
+    (`undefined reference to .L<addr>` — a branch target living in piece 2), which
+    reads like a bad carve boundary but isn't. `reverse.py` now detects this
+    (every extra piece's symbol contains `__override__prt_`), seeds all pieces,
+    and reports green; a real jump table still routes to `split-scaffold.py`.
+    30 unmatched game functions still carry an interior marker (`valloc`,
+    `Camera` ×3, `StageSequence` ×4, `LoadConstruction` ×3, …). The root fix —
+    dropping these 79 non-symbols from `symbols.main.exe.txt` — is blocked on
+    `FileOption.c`, whose parked 18-piece stub `INCLUDE_ASM`s an override piece
+    by name.
+  - **Matching a function can DELETE the very `D_` symbol its C body needs.**
+    splat only auto-labels a data address that some still-carved *asm* refers to.
+    The moment you replace the last such function with C, the `glabel`/auto-symbol
+    disappears and the link fails with `undefined reference to D_XXXXXXXX` —
+    which looks like your C is wrong, but is really the reference count hitting
+    zero. Fix: add a plain `D_XXXXXXXX = 0xXXXXXXXX;` line to
+    `config/symbols.main.exe.txt` (PathFileRead's `"%s%s"` at `D_800976DC`;
+    contrast `D_800127A4`, which keeps its label only because AddMisc's
+    jump-table asm still references it).
   - **gp-output SVECTOR/aggregate whose fields splat auto-named as separate
     drifted `D_` symbols**: when a function writes a small SVECTOR to gp memory,
     splat names each *referenced field address* its own `D_XXXX` glabel and can
