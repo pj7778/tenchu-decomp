@@ -15,6 +15,7 @@ typedef struct SplashType SplashType;
 typedef struct FrameType FrameType;
 typedef struct ExplosionType ExplosionType;
 typedef struct XF4Type XF4Type;
+typedef struct SmokeType SmokeType;
 
 struct BloodType /* size 36 */
 {
@@ -85,6 +86,20 @@ struct ExplosionType /* size 36 (aka HinokoType — reference/psxsym-types.h
     u8 mode;      /* +0x21 */
 };
 
+struct SmokeType /* size >= 0x23; same vec@0x0/pos@0x8/rotate@0x18/scale@0x1c
+                    * layout as ExplosionType (proven by tools/access.py
+                    * SetSmoke --order), plus mode@0x20/bright@0x21/unk22@0x22
+                    * (confirmed against SetSmokeS.c's identical field usage) */
+{
+    SVECTOR vec;  /* +0x0 */
+    VECTOR pos;   /* +0x8 */
+    long rotate;  /* +0x18 */
+    long scale;   /* +0x1c */
+    u8 mode;      /* +0x20 */
+    u8 bright;    /* +0x21 */
+    u8 unk22;     /* +0x22 */
+};
+
 /* Offsets proven by FUN_80038fdc (tools/access.py): +0/+1/+2 one-byte
  * fields, +0x4/+0x8/+0xc a long triple sharing BloodType's px/py/pz layout,
  * +0x10 one more byte. Distinct from BloodType at +0x0 (BloodType.hint is a
@@ -115,6 +130,7 @@ union EffectParam /* size 72 (union EFFECT__180fake) */
     struct FrameType frame;
     struct ExplosionType explosion;
     struct XF4Type xf4;
+    struct SmokeType smoke;
     u8 pad[72];
 };
 

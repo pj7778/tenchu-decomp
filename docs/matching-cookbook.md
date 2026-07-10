@@ -1953,6 +1953,18 @@ absolute → keep the symbol off the list (a plain small extern).
   h caller-saved and drifts the whole tail (DebugMenuItemSet, permuter
   find; same family as the variable-reuse rule).
 
+### Hoist-invariant vs widen-parameter can be a 2-instruction allocator tie
+
+A hand-rolled `do {} while (1)` loop that has BOTH a repeatedly-used address/constant
+invariant worth hoisting to a dedicated register AND a parameter compared only via the
+no-`sra` double-left-shift trick can tie: the target dedicates a register to the raw
+parameter (re-deriving its widened form cheaply each iteration) so another register is
+free to cache the invariant across the loop, while a draft that fully widens the
+parameter into one persistent register leaves nothing free and recomputes the invariant
+each iteration. Both cost the same 2 instructions; no operand-order or De-Morgan rewrite
+of the compare reliably picks the target's path. RTL-escalation territory, not
+respelling (`SetSmoke`).
+
 ## Dividing by a variable needs `--expand-div`
 
 **A `%` or `/` by a runtime VALUE (not a constant) compiles ~10 instructions shorter

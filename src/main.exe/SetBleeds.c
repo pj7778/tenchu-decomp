@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "effect.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -39,7 +40,218 @@
  *     extern struct tag_EffectSlot EffectSlot[200];
  * END PSX.SYM */
 
+/*
+ * STATUS: NON_MATCHING — draft links 1004 bytes vs the 1108-byte target (26
+ *   instructions SHORT). Default
+ * build keeps the byte-identical INCLUDE_ASM stub.
+ *
+ * Progress made (each verified against the raw .s, all still true in the
+ * current draft): the outer loop MUST be a real `do { if (n<=0) return; ...;
+ * } while (1);` (not `while (n>0){...}`) — only the do-while(1) shape puts
+ * the invariant setup (grange2/srange2's sign-extend, `pos`'s stack spill)
+ * in the function's UNCONDITIONAL prologue, matching the target; a
+ * `while(cond)` puts the same code in a conditional preheader reached only
+ * once the loop is entered, one instruction later in the compiled output
+ * (same root cause as SetSmoke's outer loop, see its header). `grange2 =
+ * grange*2; srange2 = srange*2;` must be computed ONCE before the loop, not
+ * recomputed inside it, for the same reason. The two `memset(&npos/&v, 0,
+ * sizeof(...))` calls (dropped from an early draft; visible in the Ghidra
+ * reference below) are load-bearing — without them the function is ~130
+ * bytes shorter and `.pad`/unused fields aren't zeroed.
+ *
+ * Residual not yet resolved: target computes each of npos/v's THREE fields
+ * into throwaway STACK SCRATCH slots (not registers) before a block-copy
+ * into npos/v's own stack slot, then a SECOND block-copy into
+ * `ef->param.bleed.pos/vec` — i.e. two copies per aggregate, not one.
+ * Splitting the computation into scalar temps (`px,py,pz`/`svx,svy,svz`,
+ * assigned into npos/v only at the end, matching Ghidra's own
+ * local_38/34/30/2c naming showing SEPARATE scalars, not struct-field
+ * writes) reproduced the register-vs-stack PRESSURE shape partially (one of
+ * the three now spills, `long py` lands in a genuine callee-saved reg
+ * instead) but not fully both aggregates — the residual is smaller
+ * (944->1004 of 1108 bytes) but not closed. Root cause appears to be that
+ * `time` (a stack-passed, single-use parameter) gets RELOADED on demand in
+ * this draft (`lw t0,...(sp)` right at its one use) instead of occupying a
+ * DEDICATED callee-saved register for the whole function like target's
+ * `$fp` — one fewer register pinned down for the whole function leaves
+ * `px`/`py`/`pz` a free register to live in instead of forcing all three to
+ * spill to the scratch slots target uses. No source lever found to force
+ * cc1 to keep a single-use stack parameter resident; this is the same
+ * "allocator cost tie" class as SetSmoke's `$fp`-vs-`base` residual.
+ * Parked per the cookbook's attempt cap; the field values, loop shape,
+ * struct layout (BleedType, effect.h) and store order below are all
+ * independently confirmed correct.
+ *
+ * Matching notes (verified against the raw .s):
+ *  - `pos` is spilled straight to a stack slot at entry (`sw $a0,...($sp)`)
+ *    and reloaded from there for each of pos->vx/vy/vz — NOT kept in a
+ *    register across the whole function (unlike SetBleed/SetExplosion's
+ *    pos/vect params).
+ *  - `grange` is fully sign-extended (`sll 16/sra 16`) because it feeds a
+ *    FULL-WORD store (npos is a VECTOR of longs); `srange` is used mostly
+ *    RAW (just copied from its register, no sign-extend) because it only
+ *    ever feeds a HALFWORD store (v is an SVECTOR) — the narrowing store
+ *    discards any garbage upper bits, so cc1 doesn't bother widening it.
+ *    `srange * 2` gets the one-step `sll 16 / sra 15` widen-and-scale fuse
+ *    (combining the sign-extend with the *2 in a single shift amount).
+ *  - Each of the six jitter fields (npos.vx/vy/vz from `grange`, v.vx/vy/vz
+ *    from `srange`) is `base + delta` where `delta` defaults to `-range`
+ *    and is overwritten by `rand() % (range*2) - range` when `range*2 > 0`
+ *    — write the default BEFORE the guard, matching SetImpact's
+ *    default-then-conditionally-overwritten idiom, not a ternary.
+ *  - The `time` split (`half = time/2; rem = time-half; btime = half +
+ *    (rem>0 ? rand()%rem : 0)`) feeds BleedType.time (u8) — matches the
+ *    original Ghidra rendering literally.
+ *  - The inner EffectSlot[200] pool scan is SetBleed.c's own hand-rolled
+ *    `goto loop;` shape verbatim (count++ only on the NOT-found path,
+ *    &dmy assigned after the loop, cursor-store inside the found branch) —
+ *    reuse it exactly, just add `n = n - 1;` on both exits (found and
+ *    give-up) before falling into the shared tail.
+ *  - `EffectSlot`'s address is NOT hoisted out of the outer loop here
+ *    (recomputed every iteration via lui/addiu) — unlike SetSmoke, there's
+ *    no repeated-3x constant-divisor magic-multiply to justify caching a
+ *    constant in a callee-saved register, and register pressure from
+ *    grange/srange/n/time/col/pos leaves no obvious slack for it either.
+ *  - Field store order into BleedType: pos (block copy), vec (block copy),
+ *    r, g, time, b, mode, proc — the SAME order as SetBleed.c (r,g,time,b,
+ *    mode), not the offset order (r,g,b,time,mode).
+ */
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetBleeds", SetBleeds);
+#else
+
+extern void DrawBleed(TEffectSlot *ef);
+extern void *memset(void *s, int c, u32 n);
+
+void SetBleeds(VECTOR *pos, short grange, short srange, short n, int time, long col)
+{
+    VECTOR npos;
+    SVECTOR v;
+    long px, py, pz;
+    short svx, svy, svz;
+    int grange2;
+    int srange2;
+    long d;
+    int half;
+    int rem;
+    int btime;
+    int idx;
+    TEffectSlot *base;
+    TEffectSlot *slot;
+    int count;
+    TEffectSlot *ef;
+    BleedType *fp;
+
+    grange2 = grange * 2;
+    srange2 = srange * 2;
+    do
+    {
+        if (n <= 0)
+        {
+            return;
+        }
+        memset(&npos, 0, sizeof(npos));
+        d = -grange;
+        if (grange2 > 0)
+        {
+            d = rand() % grange2 - grange;
+        }
+        px = pos->vx + d;
+
+        d = -grange;
+        if (grange2 > 0)
+        {
+            d = rand() % grange2 - grange;
+        }
+        py = pos->vy + d;
+
+        d = -grange;
+        if (grange2 > 0)
+        {
+            d = rand() % grange2 - grange;
+        }
+        pz = pos->vz + d;
+        npos.vx = px;
+        npos.vy = py;
+        npos.vz = pz;
+
+        memset(&v, 0, sizeof(v));
+        d = -srange;
+        if (srange2 > 0)
+        {
+            d = rand() % srange2 - srange;
+        }
+        svx = d;
+
+        d = -srange;
+        if (srange2 > 0)
+        {
+            d = rand() % srange2 - srange;
+        }
+        svy = d;
+
+        d = -srange;
+        if (srange2 > 0)
+        {
+            d = rand() % srange2 - srange;
+        }
+        svz = d;
+        v.vx = svx;
+        v.vy = svy;
+        v.vz = svz;
+
+        half = time / 2;
+        rem = time - half;
+        btime = half;
+        if (rem > 0)
+        {
+            btime = rand() % rem + half;
+        }
+
+        base = EffectSlot;
+        idx = CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_;
+        slot = base + idx;
+        count = 0;
+    loop:
+        idx = idx + 1;
+        slot = slot + 1;
+        if (199 < idx)
+        {
+            slot = base;
+            idx = 0;
+        }
+        if (slot->proc == 0)
+        {
+            CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_ = idx + 1;
+            if (199 < idx + 1)
+            {
+                CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_ = 0;
+            }
+            ef = slot;
+            n = n - 1;
+            goto found;
+        }
+        count = count + 1;
+        if (199 < count)
+        {
+            ef = &dmy;
+            n = n - 1;
+            goto found;
+        }
+        goto loop;
+    found:
+        fp = &ef->param.bleed;
+        fp->pos = npos;
+        fp->vec = v;
+        fp->r = col >> 16;
+        fp->g = col >> 8;
+        fp->time = btime;
+        fp->b = col;
+        fp->mode = 0;
+        ef->proc = (void (*)())DrawBleed;
+    } while (1);
+}
+#endif
 
 // triage: MEDIUM — 277 insns, mul/div, 1 loop, 2 callees, ~0.08 to InsertConflict
 // likely-relevant cookbook sections:
