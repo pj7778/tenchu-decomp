@@ -30,65 +30,218 @@
  *     extern struct tag_TItem items[30];
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/EndDrawing", EndDrawing);
+/*
+ * EndDrawing (0x80017030, 0x218 bytes) — per-frame draw finalize: called
+ * with `sync`, the caller's requested VSync wait mode. Retail's actual
+ * locals outnumber the demo's PSX.SYM record (which shows only the
+ * parameter) — the dispatch below needs its own captured copy of
+ * SkipFrame, so treat the demo's "1 local" as an upper-bound artifact of a
+ * differently-compiled demo build, not a spec (see the PSX.SYM caveat
+ * above; `time`/D_800976B8 confirmed the same TU-local %gp_rel treatment as
+ * GameClock/SkipFrame/DrawingPage/OTablePt via the raw `.s`).
+ *
+ * Body, in order:
+ *  1. Every 30th frame (`GameClock == GameClock/30*30`, NOT `%` — the raw
+ *     asm computes the quotient then re-multiplies and compares, matching
+ *     Ghidra's literal rendering, not a modulo idiom), while not already
+ *     mid-skip (`SkipFrame == 0`), snapshot how much of the current GPU
+ *     packet buffer is left: `GsGetWorkBase() - D_80098040` (the buffer's
+ *     base, same absolute symbol as StartDrawing.c's page stride constant)
+ *     minus the current page's byte offset (`DrawingPage << 16`), clamped
+ *     to 0x10000. Two independent `sw`s (one per branch) store the clamped
+ *     and unclamped values — plain if/else, no eager-store-then-override
+ *     idiom needed (each arm's stored VALUE differs, so cc1 has nothing to
+ *     cross-jump-merge).
+ *  2. An explicit `if (cond) goto L;` ladder over `sk` (captured from
+ *     SkipFrame before any case body can clear the global) for exactly
+ *     {0,1,2}, no default: `if (sk==1) goto case1; if (sk<2) { if (sk==0)
+ *     goto case0; goto join; } if (sk==2) goto case2; goto join;` — tests
+ *     fire 1, <2, ==0 (nested), ==2 while the case BODIES sit in memory in
+ *     plain 0,1,2 source order (this is what m2c's own reconstruction
+ *     rendered as a `switch`, and a genuine `switch` statement over the
+ *     same 3 values compiles to byte-IDENTICAL code here — verified by
+ *     swapping the two forms with no diff — so either spelling works; the
+ *     ladder is kept for its self-documenting test/body-order split).
+ *     Two values with NO matching case (sk<0 or sk>2) fall straight to the
+ *     join with no code, exactly the no-default semantics.
+ *     - case 0: if the frame is overrunning its budget
+ *       (`VSync(1) > ((sync - (sync<<4))<<4) - 0xa`), start skipping
+ *       (`SkipFrame=1`) and return immediately — this return, not a
+ *       fallthrough, is what skips the shared tail below. The condition is
+ *       written call-first (`VSync(1) > ...`) so cc1 evaluates the call
+ *       before the multiply (matching the target's instruction order), and
+ *       the multiply-by-(-0xf0) is spelled as the explicit strength
+ *       reduction `(x - (x<<4)) << 4` rather than `x * -0xf0`: the literal
+ *       multiply gets const-multiply-synthesized as "compute +240*x, then
+ *       negate" (an extra `subu $0,...`/negate instruction), while the
+ *       explicit form directly computes `x - 16x = -15x` (sign built into
+ *       the subtraction order, no separate negate) — same value, one
+ *       instruction shorter, matching the target exactly.
+ *     - case 1: `sync` itself gets overwritten — `(u16)sync << 1` widened
+ *       through the classic double-shift (`sll 16`/`srl 15`, net shift +1,
+ *       the unsigned analogue of the sign-extension idiom) — an explicit
+ *       `(unsigned short)` cast is required: a bare `sync << 1` promotes
+ *       signed short via `sra` (arithmetic), but the target uses `srl`
+ *       (logical), so the cast to unsigned is load-bearing, not
+ *       decorative. The intermediate MUST be a `u32` local (`t`), not
+ *       `u16`: with a `u16` intermediate cc1's combine/peephole collapses
+ *       the double-shift into a single `sll $s0,$s0,1` (still numerically
+ *       equal, since only the low 16 bits of the result ever matter, but
+ *       one instruction SHORTER than the target). Then
+ *       `dp = sk - (u16)DrawingPage; DrawingPage = dp;` reuses the SAME
+ *       captured dispatch value `sk` (still holding the pre-dispatch
+ *       value, here 1) instead of the literal constant 1 — confirmed by
+ *       the raw asm reusing `$a0` (sk's register) rather than the
+ *       separately-live `$s1` (which holds a genuine materialized
+ *       constant 1 for the dispatch's own equality test). The extra `s32
+ *       dp` intermediate (rather than assigning `DrawingPage` directly)
+ *       is THE lever that keeps `sk`'s own register alive here: cc1's cse
+ *       (record_jump_equiv in cse.c) recognizes "sk == 1" from the
+ *       dominating `if (sk==1) goto case1;` test and, when `sk` is `s32`
+ *       (matching the SImode the comparison itself is done in), directly
+ *       SUBSTITUTES the constant 1 for `sk` at this later use (`li
+ *       $v0,1`) instead of reusing the live register — one instruction
+ *       longer than the target, which reuses the register with none of
+ *       cse's help. Declaring `sk` as `s16` (a narrower HImode pseudo that
+ *       doesn't match the SImode compare's own recorded equivalence) and
+ *       routing the result through a same-width `s32 dp` before the final
+ *       narrowing store to `DrawingPage` (rather than writing
+ *       `DrawingPage = sk - (u16)DrawingPage;` directly, which reads as a
+ *       *narrowing* use and lets cc1 satisfy it with a fresh, wrongly-
+ *       unsigned `lhu` reload instead) is what reproduces the target's
+ *       zero-cost register reuse — both other spellings are one
+ *       instruction off, in opposite directions. `OTablePt =
+ *       &OTable[DrawingPage]` reuses the just-stored value with no reload
+ *       (same idiom as StartDrawing.c).
+ *     - case 2: just clears SkipFrame.
+ *  3. Shared tail (reached by every case, or directly if SkipFrame was
+ *     none of {0,1,2}): swap the sort table's wrap-around bucket
+ *     (`OTablePt->org[0x7fe] = OTablePt->org[0x4e2]`, both indices scaled
+ *     by `struct GsOT_TAG`'s 4 bytes), then wait for vsync — either a
+ *     plain `DrawSync(0); VSync(-sync);` (`sync <= 0`) or, tracking overrun
+ *     against the global `time`, an extra `VSync(sync)` before
+ *     `time = VSync(-1); ResetGraph(1);` — then flip buffers and submit the
+ *     sort table (`GsSwapDispBuff`/`GsSortClear`/`GsDrawOt`).
+ *
+ * D_800976B8 and `time` are TU-local statics with no PSX.SYM record (not
+ * exported) — declared here as plain `u32`/`s32` rather than inventing an
+ * unverified `PACKET *` (Ghidra's guess): neither is ever dereferenced in
+ * this function, only stored/loaded as scalars, so a pointer type would be
+ * unverified per the cookbook's "existing Ghidra POINTER type may be a
+ * guess" rule. Both are %gp_rel here, same as GameClock/SkipFrame/
+ * DrawingPage/OTablePt (config/symbols.main.exe.txt already pins `time` at
+ * 0x800976bc from a prior session; D_800976B8 gets a splat auto-name at
+ * 0x800976b8, directly between SkipFrame and `time`).
+ */
 
-// triage: MEDIUM — 134 insns, mul/div, 7 callees, ~0.04 to ProcItemDrop
-// likely-relevant cookbook sections:
-//   - Dispatch: if/switch ladder — reload vs CSE, signed vs unsigned
-//   - Expressions: mult/div — magic-multiply constants, fold
-//   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py
+struct GsOT_TAG
+{
+    u32 p : 24;
+    u8 num : 8;
+};
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// void EndDrawing(short sync)
-//
-// {
-//   PACKET *pPVar1;
-//   int iVar2;
-//   uint uVar3;
-//   int iVar4;
-//
-//   if ((GameClock == (GameClock / 0x1e) * 0x1e) && (SkipFrame == 0)) {
-//     pPVar1 = GsGetWorkBase();
-//     DAT_800976b8 = pPVar1 + DrawingPage * -0x10000 + 0x7ff67fc0;
-//     if ((PACKET *)0x10000 < DAT_800976b8) {
-//       DAT_800976b8 = (PACKET *)0x10000;
-//     }
-//   }
-//   if (SkipFrame == 1) {
-//     uVar3 = (uint)(ushort)DrawingPage;
-//     sync = (short)(((uint)(ushort)sync << 0x10) >> 0xf);
-//     SkipFrame = 0;
-//     DrawingPage = (short)(1 - uVar3);
-//     OTablePt = OTable + ((int)((1 - uVar3) * 0x10000) >> 0x10);
-//   }
-//   else if (SkipFrame < 2) {
-//     if ((SkipFrame == 0) && (iVar4 = VSync(1), sync * -0xf0 + -10 < iVar4)) {
-//       SkipFrame = 1;
-//       return;
-//     }
-//   }
-//   else if (SkipFrame == 2) {
-//     SkipFrame = 0;
-//   }
-//   OTablePt->org[0x7fe] = OTablePt->org[0x4e2];
-//   iVar4 = (int)sync;
-//   if (iVar4 < 1) {
-//     DrawSync(0);
-//     VSync(-iVar4);
-//   }
-//   else {
-//     iVar2 = VSync(-1);
-//     if (iVar2 - time < iVar4) {
-//       VSync(iVar4);
-//     }
-//     time = VSync(-1);
-//     ResetGraph(1);
-//   }
-//   GsSwapDispBuff();
-//   GsSortClear(Fog.rfc,Fog.gfc,Fog.bfc,OTablePt);
-//   GsDrawOt(OTablePt);
-//   return;
-// }
+struct GsOT
+{
+    u32 length;
+    struct GsOT_TAG *org;
+    u32 offset;
+    u32 point;
+    struct GsOT_TAG *tag;
+};
+
+typedef struct
+{
+    short dqa;  /* 0x0 */
+    long dqb;   /* 0x4 */
+    u8 rfc;     /* 0x8 */
+    u8 gfc;     /* 0x9 */
+    u8 bfc;     /* 0xA */
+} GsFOGPARAM;
+
+extern s32 GameClock;
+extern s16 SkipFrame;
+extern struct GsOT OTable[];
+extern s16 DrawingPage;
+extern struct GsOT *OTablePt;
+extern GsFOGPARAM Fog;
+extern u8 D_80098040[];
+extern u32 D_800976B8;
+extern s32 time;
+
+extern void *GsGetWorkBase(void);
+extern int DrawSync(int mode);
+extern s32 VSync(s32 mode);
+extern void ResetGraph(int mode);
+extern void GsSwapDispBuff(void);
+extern void GsSortClear(u8 r, u8 g, u8 b, struct GsOT *ot);
+extern void GsDrawOt(struct GsOT *ot);
+
+void EndDrawing(s16 sync)
+{
+    s16 sk;
+    u32 t;
+    u32 val;
+    s32 dp;
+
+    if ((GameClock == (GameClock / 30) * 30) && (SkipFrame == 0))
+    {
+        val = (u32)GsGetWorkBase() - (u32)D_80098040 - (DrawingPage << 16);
+        if (val > 0x10000)
+            D_800976B8 = 0x10000;
+        else
+            D_800976B8 = val;
+    }
+
+    sk = SkipFrame;
+    if (sk == 1)
+        goto case1;
+    if (sk < 2)
+    {
+        if (sk == 0)
+            goto case0;
+        goto join;
+    }
+    if (sk == 2)
+        goto case2;
+    goto join;
+
+case0:
+    if (VSync(1) > ((sync - (sync << 4)) << 4) - 0xA)
+    {
+        SkipFrame = 1;
+        return;
+    }
+    goto join;
+
+case1:
+    t = sync;
+    sync = t << 1;
+    SkipFrame = 0;
+    dp = sk - (u16)DrawingPage;
+    DrawingPage = dp;
+    OTablePt = &OTable[DrawingPage];
+    goto join;
+
+case2:
+    SkipFrame = 0;
+
+join:
+    OTablePt->org[0x7FE] = OTablePt->org[0x4E2];
+
+    if (sync <= 0)
+    {
+        DrawSync(0);
+        VSync(-sync);
+    }
+    else
+    {
+        if (VSync(-1) - time < sync)
+            VSync(sync);
+        time = VSync(-1);
+        ResetGraph(1);
+    }
+
+    GsSwapDispBuff();
+    GsSortClear(Fog.rfc, Fog.gfc, Fog.bfc, OTablePt);
+    GsDrawOt(OTablePt);
+}

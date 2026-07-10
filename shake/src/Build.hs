@@ -179,6 +179,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "SoundEx" = ["STAGE_SOUNDS_POINTER"]
     syms "SetSmoke" = ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"]
     syms "SetBleeds" = ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"]
+    syms "EndDrawing" = ["GameClock", "SkipFrame", "DrawingPage", "D_800976B8", "OTablePt", "time"]
     syms "AVCameraSetup" = ["CHOSEN_EVENT_LIST_THING_LOCATION", "D_80097CC4"]
     syms "AVCameraControl" = ["D_80097CCA", "D_80097CC8", "D_80097CC4"]
     syms "CVAsequence" = ["PERSISTENT_EVENT_LIST_THING", "CHOSEN_EVENT_LIST_THING_LOCATION", "D_80097CC4", "D_80097CCC", "D_80097CC0"]

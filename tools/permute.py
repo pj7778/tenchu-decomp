@@ -41,6 +41,7 @@ AS_FLAGS = ("-EL -Iinclude -march=r3000 -mtune=r3000 -no-pad-sections -O1 -G0").
 # shake/src/Build.hs (ASPSX gp-addresses only TU-local definitions; these are the
 # small globals the function's ORIGINAL translation unit defined).
 GP_EXTERNS = {
+    "EndDrawing": ["GameClock", "SkipFrame", "DrawingPage", "D_800976B8", "OTablePt", "time"],
     "SetSmoke": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
     "SetBleeds": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
     "JumpControl": ["dtL", "dtM", "motID", "Me_MOTION_C", "D_80097F0E", "dtV", "dtPAD"],
