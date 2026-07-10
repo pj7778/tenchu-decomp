@@ -3,7 +3,7 @@
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/AVCameraSetup", AVCameraSetup);
 
-// triage: EASY — 109 insns, 3 callees, ~0.05 to FUN_80039684
+// triage: EASY — 109 insns, 3 callees, ~0.05 to PrepareGetScreenPositionS
 // likely-relevant cookbook sections:
 //   - Dispatch: if/switch ladder — reload vs CSE, signed vs unsigned
 //   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py

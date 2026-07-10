@@ -1,0 +1,39 @@
+# Function names recovered from the demo's PSX.SYM and adopted into the decomp.
+# Every row was applied with tools/import_symbols.py --renames and rebuilt
+# byte-identical (./Build check).  Re-check any time with:
+#   tools/callmatch.py --verify reference/psxsym-applied.tsv
+#addr	previous_name	adopted_name	matcher	evidence
+80018278	FUN_80018278	UpdateCoordinate2	symmatch	HIGH/3DCTRL.C
+8001851c	FUN_8001851c	CreateCloneModel	symmatch	HIGH/3DCTRL.C
+8001f6b8	handle_char_state_attacking_SEVEN_	AttackFire	symmatch+callmatch	LOW positional, callees CONFIRM
+8001fb98	handle_char_state_posing_	ActACTION	symmatch	MED/MOTION.C
+80026074	handle_char_state_using_item_	ActITEM	symmatch	HIGH/MOTION.C
+80027688	FUN_80027688	AttackPQD	xbuild	LOOSE
+80027818	FUN_80027818	ItemControl	xbuild	LOOSE
+8002d638	think_setting_weapon_logic1_	Think3area	symmatch	HIGH/THINK_3.C
+8003250c	FUN_8003250c	DrawTargetS	symmatch	HIGH/EFFECT.C
+80032610	FUN_80032610	UpdateTexScroll	callmatch	4 shared callees
+800339d0	FUN_800339d0	SetSmokeS	symmatch	MED/EFFECT.C
+80039684	FUN_80039684	PrepareGetScreenPositionS	xbuild	LOOSE
+80049f94	FUN_80049f94	TurnAroundAllItems	symmatch	HIGH/ITEM.C
+8004eaf0	load_sprite_info_perhaps	SetupImageToPolyFT4	symmatch	HIGH/IMAGES.C
+8005d0d4	FUN_8005d0d4	drawF3	xbuild	STRICT
+8005d1fc	FUN_8005d1fc	drawFT3	xbuild	STRICT
+8005d354	FUN_8005d354	drawF4	xbuild	STRICT
+8005d49c	FUN_8005d49c	drawFT4	xbuild	STRICT
+8005d624	FUN_8005d624	drawG3	xbuild	STRICT
+8005d764	FUN_8005d764	drawGT3	xbuild	STRICT
+8005d8d4	FUN_8005d8d4	drawG4	xbuild	STRICT
+8005da40	FUN_8005da40	drawGT4	xbuild	STRICT
+8005dbec	FUN_8005dbec	drawzF3	xbuild	STRICT
+8005dd30	FUN_8005dd30	drawzFT3	xbuild	STRICT
+8005dea4	FUN_8005dea4	drawzF4	xbuild	STRICT
+8005e01c	FUN_8005e01c	drawzFT4	xbuild	STRICT
+8005e1d4	FUN_8005e1d4	drawzG3	xbuild	STRICT
+8005e330	FUN_8005e330	drawzGT3	xbuild	STRICT
+8005e4bc	FUN_8005e4bc	drawzG4	xbuild	STRICT
+8005e658	FUN_8005e658	drawzGT4	xbuild	STRICT
+80061680	FUN_80061680	CD_ready	xbuild	STRICT
+80070ff0	FUN_80070ff0	SetAutoPan	xbuild	STRICT
+800832c4	change_clear_pad_init_card_	InitCARD	xbuild	STRICT
+80083a04	FUN_80083a04	_ExitCard	xbuild	STRICT

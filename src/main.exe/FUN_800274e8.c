@@ -4,7 +4,7 @@
 
 /*
  * FUN_800274e8 (0x800274e8, 0x6c bytes) - an animation-frame callback (this
- * TU's dtM/Me_MOTION_C family, see handle_char_state_attacking_SEVEN_.c /
+ * TU's dtM/Me_MOTION_C family, see AttackFire.c /
  * FUN_80027730.c, the real near-twins - not leRestoreEnemyLayout, which was
  * just an assembly-shape false positive): fires only when the currently-armed
  * motion trigger (dtM->count) matches the caller's frame id, then spawns a

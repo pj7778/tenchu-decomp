@@ -32,6 +32,11 @@ decisions behind the toolchain. It's the reference companion to the terse
   byte-match register-allocation-hard functions.
 - [ghidra-bridge.md](ghidra-bridge.md) — pull decompiled C from your Ghidra
   project into `src/` one function at a time (`tools/reverse.py`).
+- [psx-sym.md](psx-sym.md) — the demo disc's `PSX.SYM`: the original source file
+  names, prototypes with parameter names, struct/enum layouts and TU map. How we
+  extract it (`tools/extract-demo.py`), parse it (`tools/psxsym.py`), dump it
+  (`tools/symdump.py`) and recover retail names from it (`tools/symmatch.py`,
+  `tools/xbuildnames.py`, `tools/callmatch.py` — always `--verify`).
 
 ## Current state (verified 2026-07-02)
 

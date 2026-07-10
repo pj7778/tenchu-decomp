@@ -4,11 +4,11 @@
 /*
  * FUN_80039544 (0x80039544, 0xcc bytes) — same camera-relative-transform +
  * perspective-project shape as the twin FUN_800396c0.c (same TU: see
- * FUN_80039610.c/FUN_80039684.c for the scratchpad MATRIX/SVECTOR idiom),
+ * FUN_80039610.c/PrepareGetScreenPositionS.c for the scratchpad MATRIX/SVECTOR idiom),
  * but instead of writing OTZ into a caller-supplied output pointer, it reads
  * RotTransPers's packed screen (x,y) back off its own stack scratch and
- * tail-calls FUN_8003250c(x, y, otz - 5, arg3) — a line-draw/sort helper
- * (FUN_8003250c's only other caller, FUN_8003d768, is also unmatched).
+ * tail-calls DrawTargetS(x, y, otz - 5, arg3) — a line-draw/sort helper
+ * (DrawTargetS's only other caller, FUN_8003d768, is also unmatched).
  *
  * Matching notes (see docs/matching-cookbook.md):
  *  - `arg0 - (short)ViewInfo.vpx` etc. — same NARROWING lhu-of-a-s32-global
@@ -20,7 +20,7 @@
  *  - Scratchpad zero/coordinate stores are FLAT `*(s32/s16 *)0x1F8000xx`
  *    casts, one macro expansion each (repeated fresh `lui $at,0x1F80` per
  *    store) — NOT a shared cached `MATRIX *`/`SVECTOR *` local like
- *    FUN_800396c0.c/FUN_80039684.c use for the same scratchpad region: this
+ *    FUN_800396c0.c/PrepareGetScreenPositionS.c use for the same scratchpad region: this
  *    function's asm never reuses one register across the individual
  *    zero/coordinate stores, unlike the twins.
  *
@@ -30,7 +30,7 @@
  * caches `&x` (the RotTransPers `sxy` out-arg's address) into a
  * callee-saved register ($s0) and reuses it to store the truncated OTZ
  * result (`sh v0,4(s0)`) after the call, then reloads x/y/otz via plain
- * `lh`s off $sp for the FUN_8003250c call — while this compile computes
+ * `lh`s off $sp for the DrawTargetS call — while this compile computes
  * `&x` straight into the argument register (no persisting alias) and keeps
  * OTZ live in a register across the truncate/-5 instead of round-tripping
  * it through memory. Tried: taking `&x` into an explicit local pointer and
@@ -60,7 +60,7 @@ extern MATRIX GsWSMATRIX;
 extern void SetTransMatrix(MATRIX *m);
 extern void SetRotMatrix(MATRIX *m);
 extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
-extern void FUN_8003250c(s32 x, s32 y, s32 z, s32 arg3);
+extern void DrawTargetS(s32 x, s32 y, s32 z, s32 arg3);
 
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80039544", FUN_80039544);
@@ -80,6 +80,6 @@ void FUN_80039544(s32 arg0, s32 arg1, s32 arg2, s32 arg3)
     SetTransMatrix((MATRIX *)0x1F800000);
     SetRotMatrix(&GsWSMATRIX);
     otz = RotTransPers((SVECTOR *)0x1F800020, (s32 *)&x, (void *)0x1F800028, (void *)0x1F80002C);
-    FUN_8003250c(x, y, otz - 5, arg3);
+    DrawTargetS(x, y, otz - 5, arg3);
 }
 #endif

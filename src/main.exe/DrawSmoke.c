@@ -3,7 +3,7 @@
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawSmoke", DrawSmoke);
 
-// triage: MEDIUM — 126 insns, mul/div, 3 callees, ~0.07 to handle_char_state_attacking_SEVEN_
+// triage: MEDIUM — 126 insns, mul/div, 3 callees, ~0.07 to AttackFire
 // likely-relevant cookbook sections:
 //   - Dispatch: if/switch ladder — reload vs CSE, signed vs unsigned
 //   - Expressions: mult/div — magic-multiply constants, fold

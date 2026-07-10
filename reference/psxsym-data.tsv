@@ -1,0 +1,568 @@
+#demo_addr	storage	type	name
+8008b02c	?	?	__data_org
+8008b02c	EXT	struct VECTOR	UnitVector2
+8008b02c	?	?	__text_objend
+8008b02c	?	?	__text_orgend
+8008b02c	?	?	__data_obj
+8008b03c	EXT	short [16]	RefrectVector
+8008b05c	EXT	short [16][2]	RefrectMove
+8008b0ac	EXT	unsigned short [4]	cmdUU
+8008b0b4	EXT	unsigned short [4]	cmdDD
+8008b0bc	EXT	unsigned short [4]	cmdLL
+8008b0c4	EXT	unsigned short [4]	cmdRR
+8008b0cc	EXT	unsigned short [5]	cmdSUU
+8008b0d8	EXT	unsigned short [5]	cmdSDD
+8008b0e4	EXT	unsigned short [5]	cmdSLL
+8008b0f0	EXT	unsigned short [5]	cmdSRR
+8008b0fc	EXT	unsigned short [4]	cmdAUU
+8008b104	EXT	unsigned short [5]	cmdAUD
+8008b110	EXT	unsigned short [5]	cmdJDU
+8008b11c	STAT	unsigned short *[12]	Command
+8008b14c	STAT	short [33][4]	HermiteTable
+8008b254	STAT	void (*[18])()	ActionFunc
+8008b2c4	EXT	struct MotionRegistType [41]	MOTcommon
+8008b40c	STAT	struct MotionRegistType [2]	MOTnone
+8008b41c	STAT	struct MotionRegistType [60]	MOTrikimaru
+8008b5fc	STAT	struct MotionRegistType [64]	MOTayame
+8008b7fc	STAT	struct MotionRegistType [8]	MOTkikuhime
+8008b83c	STAT	struct MotionRegistType [7]	MOTtono
+8008b874	STAT	struct MotionRegistType [10]	MOTrikimaru2
+8008b8c4	STAT	struct MotionRegistType [9]	MOTayame2
+8008b90c	STAT	struct MotionRegistType [29]	MOTrouninK
+8008b9f4	STAT	struct MotionRegistType [25]	MOTrouninS
+8008babc	STAT	struct MotionRegistType [22]	MOTrouninB
+8008bb6c	STAT	struct MotionRegistType [26]	MOTninjaH
+8008bc3c	STAT	struct MotionRegistType [26]	MOTninjaK
+8008bd0c	STAT	struct MotionRegistType [31]	MOTkunoiti
+8008be04	STAT	struct MotionRegistType [22]	MOTmouryou
+8008beb4	STAT	struct MotionRegistType [26]	MOTmanjiK
+8008bf84	STAT	struct MotionRegistType [27]	MOTmanjiS
+8008c05c	STAT	struct MotionRegistType [22]	MOTmanjiB
+8008c10c	STAT	struct MotionRegistType [25]	MOTkaizokuS
+8008c1d4	STAT	struct MotionRegistType [21]	MOTkaizokuG
+8008c27c	STAT	struct MotionRegistType [28]	MOTkaizokuC
+8008c35c	STAT	struct MotionRegistType [28]	MOTtenguN
+8008c43c	STAT	struct MotionRegistType [16]	MOTechigoya
+8008c4bc	STAT	struct MotionRegistType [20]	MOThanbei
+8008c55c	STAT	struct MotionRegistType [23]	MOTgoo
+8008c614	STAT	struct MotionRegistType [25]	MOTcaptain
+8008c6dc	STAT	struct MotionRegistType [23]	MOTbear
+8008c794	STAT	struct MotionRegistType [32]	MOTonikage
+8008c894	STAT	struct MotionRegistType [28]	MOTonikage2
+8008c974	STAT	struct MotionRegistType [27]	MOTmeiou
+8008ca4c	STAT	struct MotionRegistType [13]	MOTchonin
+8008cab4	STAT	struct MotionRegistType [14]	MOTjochu
+8008cb24	STAT	struct MotionRegistType [13]	MOTzainin
+8008cb8c	STAT	struct MotionRegistType [13]	MOTcat
+8008cbf4	STAT	struct MotionRegistType [15]	MOTdog
+8008cc6c	STAT	struct MotionRegistType [4]	MOTobject
+8008cc8c	EXT	struct HumanDataType [63]	HumanData
+8008d274	EXT	struct BattleType [78]	BattleDB
+8008d754	EXT	struct WeaponModelType [41]	WeaponModel
+8008d940	EXT	struct WeaponType [28]	WeaponDB
+8008dbe0	STAT	short (*[10])()	Think1Func
+8008dc08	STAT	short (*[5])()	Think2Func
+8008dc1c	STAT	short (*[10])()	Think3Func
+8008dc44	STAT	short (*[6])()	Think4Func
+8008dc5c	EXT	struct ThinkDBtype [20]	ThinkDB
+8008dcfc	STAT	short (*[4])()	AttackFunc
+8008dd0c	EXT	struct TCameraStatus	CamState
+8008dd30	STAT	struct TCameraPos [3]	CamPosCriticalHit
+8008dd88	STAT	struct ObjectSlotManager	ModelSlot
+8008dd94	STAT	struct ITEM__210fake [9]	HensinT
+8008de60	STAT	short [3]	stage0appearance
+8008de68	STAT	short [15]	stage1appearance
+8008de88	STAT	short [11]	stage2appearance
+8008dea0	STAT	short [11]	stage3appearance
+8008deb8	STAT	short [7]	stage4appearance
+8008dec8	STAT	short [8]	stage5appearance
+8008ded8	STAT	short [7]	stage6appearance
+8008dee8	STAT	short [6]	stage7appearance
+8008def4	STAT	short [11]	stage8appearance
+8008df0c	STAT	short [7]	stage9appearance
+8008df1c	EXT	short *[10]	StageAppearance
+8008df44	STAT	struct INFOVIEW__196fake [2]	LifeBarStyle
+8008dfe4	EXT	struct MISC__183fake [11]	DoorData
+8008e068	EXT	struct MISC__184fake [2]	PitfallData
+8008e080	EXT	struct MISC__185fake [2]	SpriteData
+8008e090	STAT	struct StageCharType [18]	StageChar
+8008e18c	EXT	int [24]	zSyuriken
+8008e1ec	EXT	int [18]	zSyurikenBuf
+8008e234	EXT	int [12]	gSelectChk
+8008e264	EXT	unsigned char *[7]	Name
+8008e280	EXT	unsigned char *[19]	MemCardErr
+8008e2cc	EXT	unsigned char *[19]	MemCardErrSt
+8008e318	EXT	struct TCdaStatus	CdaStatus
+8008e32c	EXT	unsigned char [68]	tblMojiAdd
+8008e370	EXT	unsigned short [80]	MojiColData
+8008e414	?	?	__heapbase
+8008e418	?	?	__heapsize
+8008e41c	?	?	__text
+8008e420	?	?	__textlen
+8008e424	?	?	__data
+8008e428	?	?	__datalen
+8008e42c	?	?	__bss
+8008e430	?	?	__bsslen
+8008e434	?	?	_stacksize
+8008e438	?	?	_ramsize
+8008e4d4	?	?	CD_cbsync
+8008e4d8	?	?	CD_cbready
+8008e4dc	?	?	CD_cbread
+8008e4e0	?	?	CD_debug
+8008e4e4	?	?	CD_status
+8008e4e8	?	?	CD_status1
+8008e4ec	?	?	CD_nopen
+8008e4f0	?	?	CD_pos
+8008e4f4	?	?	CD_mode
+8008e4f5	?	?	CD_com
+8008e4f8	?	?	DS_active
+8008e4fc	?	?	CD_comstr
+8008e57c	?	?	CD_intstr
+8008e904	?	?	debug_cause
+8008e91c	?	?	GsADIVZ
+8008e920	?	?	GsADIVW
+8008e922	?	?	GsADIVH
+8008e92c	?	?	_snd_vmask
+8008e96c	?	?	_snd_seq_tick_env
+8008eb44	?	?	_spu_EVdma
+8008eb48	?	?	_spu_keystat
+8008eb4c	?	?	_spu_trans_mode
+8008eb50	?	?	_spu_rev_flag
+8008eb54	?	?	_spu_rev_reserve_wa
+8008eb58	?	?	_spu_rev_offsetaddr
+8008eb5c	?	?	_spu_rev_attr
+8008eb70	?	?	_spu_RQvoice
+8008eb74	?	?	_spu_RQmask
+8008eb78	?	?	_spu_voice_centerNote
+8008eba8	?	?	_spu_zerobuf
+8008efa8	?	?	_spu_env
+8008efac	?	?	_spu_isCalled
+8008efbc	?	?	_spu_RXX
+8008efd4	?	?	_spu_tsa
+8008efd8	?	?	_spu_transMode
+8008efdc	?	?	_spu_addrMode
+8008efe0	?	?	_spu_mem_mode
+8008efe4	?	?	_spu_mem_mode_plus
+8008efe8	?	?	_spu_mem_mode_unit
+8008efec	?	?	_spu_mem_mode_unitM
+8008eff0	?	?	_spu_inTransfer
+8008eff4	?	?	_spu_transferCallback
+8008eff8	?	?	_spu_IRQCallback
+8008f01c	?	?	_spu_AllocBlockNum
+8008f020	?	?	_spu_AllocLastNum
+8008f024	?	?	_spu_memList
+8008f02c	?	?	_spu_rev_startaddr
+8008f054	?	?	_spu_rev_workareasize
+8008f07c	?	?	_spu_rev_param
+8008f33c	?	?	rsin_tbl
+8008fb5c	?	?	SQRT
+8009018c	?	?	rcossin_tbl
+8009418c	?	?	ratan_tbl
+800949ac	?	?	Hcount
+80095adc	?	?	Vcount
+80095b2c	?	?	Font
+800966c8	?	?	kanjiclut
+80096748	?	?	GPU_printf
+8009674c	?	?	GEnv
+80096844	?	?	_qin
+80096848	?	?	_qout
+800979c4	?	?	_padInfoDir
+800979c8	?	?	_padIntExec
+800979cc	?	?	_padGunExec
+800979d0	?	?	_padSioChan
+800979d4	?	?	_padSioState
+800979d8	?	?	_padTotalCurr
+800979dc	?	?	_padModeMtap
+800979e0	?	?	_padChanStart
+800979e4	?	?	_padChanStop
+80097a04	?	?	padIntFunc
+80097a4e	?	?	__data_objend
+80097a4e	?	?	__data_orgend
+80097a50	EXT	unsigned long *	virtual_memory_pool
+80097a50	?	?	__sdata_obj
+80097a50	?	?	__sdata_org
+80097a54	EXT	short	DrawingPage
+80097a58	EXT	struct SVECTOR	UnitVector
+80097a60	EXT	long	GameClock
+80097a64	EXT	short	SkipFrame
+80097a70	STAT	int	ReadMode
+80097a74	STAT	int	TotalIO
+80097a78	EXT	unsigned long *	MemoryLoadAddress
+80097a80	EXT	unsigned char *	ImagePath
+80097a84	STAT	int	AccessPower
+80097a98	EXT	unsigned long *	GlobalAreaMap
+80097a9c	EXT	short	ConflictObjects
+80097aa8	EXT	struct MotionPackType *	MotionPack
+80097aac	EXT	struct MotionPackType *	CommonMotion
+80097ab0	EXT	struct MotionPackType *	PlayerMotion
+80097ab4	EXT	struct MotionPackType *	StageMotion
+80097abc	EXT	short	MotionUpdateMode
+80097ac0	EXT	short	Humans
+80097d0c	STAT	short	NowStage
+80097d14	EXT	short	ActionHalt
+80097d18	EXT	long	AttackActionCount
+80097d1c	EXT	long	EmergencyNotice
+80097d20	EXT	short	WeakHumanID
+80097d22	EXT	short	AidHumanID
+80097d24	EXT	short	AidHumanType
+80097d28	EXT	long	StrainRatio
+80097d2c	EXT	short	EngageLevel
+80097d30	STAT	struct Humanoid *	Me
+80097d34	STAT	long	Distance
+80097d38	STAT	short	Degree
+80097d3a	STAT	short	SR
+80097d3c	STAT	struct PADtype *	Pad
+80097d40	STAT	short	Attrib
+80097d54	STAT	int	CamShock
+80097d58	STAT	int	Projection
+80097d5c	STAT	int	CamZ
+80097d60	STAT	int	CamY
+80097d64	STAT	int	CamRZ
+80097d68	STAT	int	CamRY
+80097e64	STAT	unsigned char	fInitial
+80097ebc	STAT	unsigned char	fInitialize
+80097ebe	EXT	short	SelectedItem
+80097ec0	STAT	short	ItemCursor
+80097ec8	STAT	unsigned char *	CID
+80097ef0	STAT	int	CurrentEnemyID
+8009800d	STAT	unsigned char	PutMapMode
+80098020	STAT	unsigned char	fInitial
+8009802c	EXT	struct Humanoid *	StagePlayer
+80098030	STAT	long	StageTime
+80098034	STAT	struct EventSeqType *	StageEvent
+80098038	EXT	short	Criticals
+8009803a	EXT	short	Findenemies
+8009803c	EXT	short	Murders
+8009803e	EXT	short	FriendHits
+80098040	EXT	short	StageEnemies
+80098042	EXT	short	StageCitizens
+80098050	STAT	unsigned char	fInitialize
+80098058	EXT	unsigned char *	VoiceXaName
+80098064	EXT	struct SoundEffect *	StageSE
+80098068	EXT	short	VoiceMode
+8009806c	STAT	struct CVAType *	CVAdata
+80098070	STAT	struct CVAType *	CVAnow
+80098074	STAT	short	CVAtime
+80098078	STAT	struct Humanoid *	CameraTarget
+8009807c	STAT	short	CameraSpeed
+8009807e	STAT	short	CameraPanMode
+80098088	EXT	unsigned char	fPolyChara
+8009808c	EXT	int	gSync
+80098090	EXT	unsigned char	gNannido
+80098091	EXT	unsigned char	gZangyaku
+80098092	EXT	unsigned char	gSound
+80098093	EXT	unsigned char	gSoundLevel
+80098094	EXT	unsigned char	gSELevel
+80098095	EXT	unsigned char	gfMemory
+80098096	EXT	unsigned char	gStage
+80098098	EXT	struct CdlLOC	start
+8009809c	EXT	struct CdlLOC	end
+800980bc	EXT	unsigned char [6]	ChkMoji
+800980c4	STAT	unsigned char *	CID
+800980c8	STAT	unsigned char *	TENCHU_ID
+800980d4	EXT	short	gpad
+800980d6	EXT	short	gpade
+800980e0	?	?	AdtPadRead
+800980ec	?	?	__sdata_objend
+800980ec	?	?	__sdata_orgend
+80098118	STAT	struct MemoryDiskType *	MDfat
+80098118	?	?	__sbss_obj
+80098118	?	?	__sbss_org
+80098118	?	?	_text_objend
+80098118	?	?	_text_orgend
+80098118	?	?	_bss_obj
+80098118	?	?	_bss_org
+80098120	STAT	long	LastPadComTime
+80098128	?	?	h1.28
+8009812a	?	?	h2.29
+8009812c	?	?	h3.30
+8009812e	?	?	h4.31
+80098130	STAT	struct Humanoid *	Me
+80098134	STAT	short	dtCMD
+80098136	STAT	short	dtPAD
+80098138	STAT	struct VECTOR *	dtL
+8009813c	STAT	struct SVECTOR *	dtR
+80098140	STAT	struct SVECTOR *	dtV
+80098144	STAT	struct MotionManager *	dtM
+80098148	STAT	short	motID
+8009814a	STAT	short	motMODE
+80098150	STAT	int	CamScale
+80098158	STAT	struct ModelType *	ModelHook
+8009815c	STAT	struct ModelType *	ShadowMdl
+80098160	STAT	struct GsIMAGE *	AfterIMG
+80098164	STAT	struct TexScroll *	TexWater
+80098168	STAT	struct TexScroll *	TexSea
+8009816c	STAT	struct TexScroll *	TexMagma
+80098170	STAT	struct TexScroll *	TexWarp
+80098178	STAT	long	lg_triop
+80098180	STAT	struct ModelType *	SyurikenModel
+80098184	STAT	struct ModelType *	ArrowModel
+80098188	STAT	struct ModelType *	NingyoModel
+8009818c	STAT	struct ModelType *	HappouModel
+80098190	STAT	struct Sprite3D *	sprNapalm
+80098194	STAT	struct Sprite3D *	sprNapalm2
+80098198	?	?	x.66
+8009819c	?	?	y.67
+800981a0	STAT	struct EventSeqType *[2]	Event
+800981a8	STAT	struct Humanoid *[2]	eTarget
+800981b0	STAT	int	FrameCnt
+800981b4	STAT	int	cd_mode
+800981b8	STAT	int	isFirstSlice
+800981c8	EXT	enum TSystemFlag	SystemFlag
+800981cc	EXT	unsigned char	fload
+800981d0	EXT	struct Humanoid *[2]	human
+800981d8	EXT	struct Sprite3D *	SpriteSnow
+800981dc	EXT	struct ModelArchiveType *	sword
+800981e0	EXT	unsigned int	gmode1
+800981e4	EXT	unsigned int	gmode2
+800981e8	EXT	short	FieldAttrib
+800981ea	EXT	short	cMovie
+800981f0	EXT	struct SVECTOR	ConflictDistance
+800981f8	EXT	short	camera
+800981fa	EXT	unsigned char	gMojiu
+800981fb	EXT	unsigned char	gMojiv
+800981fc	EXT	int	gMojix
+80098200	EXT	int	gMojiy
+80098204	EXT	int	gColNo1
+80098208	EXT	int	gColNo2
+8009820c	EXT	short	KanjiID
+80098210	EXT	int	StageID
+80098214	EXT	int	debugCD
+80098218	EXT	unsigned short *	imgbuf0
+8009821c	EXT	unsigned short *	imgbuf1
+80098220	EXT	short	fidewk1
+80098224	EXT	unsigned long *	vlcbuf0
+80098228	EXT	unsigned long *	vlcbuf1
+8009822c	EXT	struct BackGround *	bg
+80098230	EXT	short	fFormat
+80098234	EXT	int	gYuragi
+80098238	EXT	int	gMcount
+8009823c	EXT	short	gColorx
+80098240	EXT	unsigned long *	gArcData
+80098244	EXT	struct GsOT *	OTablePt
+80098248	EXT	int	gMojiwk1
+8009824c	EXT	int	gYuragi2
+80098250	EXT	unsigned int	gColorNo
+80098254	EXT	short	gMusicNo
+80098258	EXT	unsigned int	gKeyDown
+8009825c	EXT	struct ModelType *	ConflictModel
+80098260	EXT	unsigned char	gTenchiu
+80098264	EXT	int	gTenchup
+80098268	EXT	int	gScreenx
+8009826c	EXT	int	gScreeny
+80098270	EXT	unsigned int	gNextjob
+80098274	EXT	struct Sprite3D *	sprSmoke
+80098278	EXT	struct AreaNodeType *	FieldArea
+8009827c	EXT	unsigned char	gCharaSel
+80098280	EXT	unsigned long *	Ring_Buff
+80098284	EXT	int	gwk1
+80098288	EXT	int	gwk2
+8009828c	EXT	int	gwk3
+80098290	EXT	int	gwk4
+80098294	EXT	int	gwk5
+80098298	EXT	int	gwk6
+8009829c	EXT	int	gwk7
+800982a0	EXT	unsigned char	gSelStage
+800982a4	EXT	unsigned int	gKeyDownConfig
+800982a6	?	?	__sbss_objend
+800982a6	?	?	__sbss_orgend
+800982a8	EXT	int	gSelectNo
+800982ac	EXT	int	gMojiEffe1
+800982b0	EXT	int	gMojiEffe2
+800982b4	EXT	int	gMojiEffe4
+800982b8	EXT	unsigned int	attri_han
+800982bc	EXT	unsigned char	gStageMaxA
+800982bd	EXT	unsigned char	gStageMaxR
+800982c0	EXT	struct NodeIndexType *	FieldIndex
+800982c4	EXT	short	ErrNo
+800982c8	?	?	vector.17
+800982c8	?	?	__bss_obj
+800982c8	?	?	__bss_org
+800982d8	STAT	struct TAFS	systemAFS
+800982f8	STAT	struct POLY_GT4	AccessImage
+80098330	?	?	cv.13
+80098340	STAT	unsigned char [2][34]	ComBuf
+80098388	?	?	map.18
+80098398	?	?	target.28
+800983b8	?	?	dmy.8
+80098408	STAT	struct GsSPRITE	sprBlood
+80098438	STAT	struct GsSPRITE	sprBloodStay
+80098468	STAT	struct GsSPRITE	sprSplash
+80098498	STAT	struct Sprite3D *[3]	sprImpact
+800984a8	STAT	struct GsSPRITE [4]	sprFrame
+80098538	STAT	struct Sprite3D *[3]	sprBomb
+80098548	STAT	struct POLY_F4	plyBleed
+80098568	STAT	struct Sprite3D *[12]	PadMark
+80098598	STAT	struct TPoint [3]	lg_tri
+800985b8	STAT	struct TEnemyLayout [30]	enemy
+800995a8	STAT	struct GsSPRITE	SpriteGoshikimai
+800995d8	STAT	struct tag_TItem [30]	items
+8009a028	STAT	struct GsSPRITE [1]	TargetSprite
+8009a050	STAT	struct GsSPRITE	CursorImage
+8009a080	STAT	struct GsSPRITE	NumberImage
+8009a0b0	STAT	struct GsSPRITE	KehaiGreenImage
+8009a0e0	STAT	struct GsSPRITE	KehaiYellowImage
+8009a110	STAT	struct GsSPRITE	KehaiRedImage
+8009a140	STAT	struct GsSPRITE	MapImage
+8009a170	STAT	struct INFOVIEW__198fake [4]	LifeBar
+8009a1c0	STAT	unsigned char [64]	DemoBackupArea
+8009a200	STAT	struct tag_TMisc [200]	misc
+8009be20	STAT	struct GsIMAGE [52]	Images
+8009c3d0	STAT	struct POLY_FT4	TelopP
+8009c400	STAT	struct POLY_F4	TelopbgP
+8009c418	STAT	struct DECENV	dec
+8009c450	?	?	MemoryPool.6
+801a9b50	?	?	exfname.10
+801a9b60	?	?	pre_buffer.21
+801b3b60	?	?	FileHandlePool
+801b3ca0	?	?	_svm_okon1
+801b3ca2	?	?	_svm_okon2
+801b3ca4	?	?	_svm_orev1
+801b3ca6	?	?	_svm_orev2
+801b3ca8	EXT	struct ModelType	World
+801b3d1c	?	?	_svm_onos1
+801b3d1e	?	?	_svm_onos2
+801b3d20	EXT	struct Humanoid *[32]	HumanGroup
+801b3da0	?	?	GsBACKC
+801b3da4	?	?	Stframe_no
+801b3da8	?	?	PSDOFSX
+801b3db0	?	?	SsFCALL
+801b3e44	?	?	PSDOFSY
+801b3e48	?	?	GsLIOFF
+801b3e4c	?	?	GsLMODE
+801b3e50	?	?	_svm_voice
+801b4360	EXT	struct GsOT [2]	OTable
+801b4388	?	?	_padFuncPtr2Port
+801b438c	?	?	GsLIGNR
+801b4390	EXT	struct GsSPRITE	gspOp1
+801b43b8	EXT	struct GsSPRITE	gspOp2
+801b43dc	?	?	GsTRATE
+801b43e0	EXT	struct GsSPRITE	gspOp3
+801b4408	EXT	struct GsSPRITE	gspOp4
+801b4430	EXT	struct GsSPRITE	gspOp5
+801b4458	EXT	struct GsSPRITE	gspOp6
+801b4480	EXT	struct GsSPRITE	gspOp7
+801b44a8	EXT	struct GsSPRITE	gspOp8
+801b44d0	EXT	struct GsSPRITE	gspOp9
+801b44f8	?	?	_svm_rattr
+801b450c	?	?	Stsector_offset
+801b4510	?	?	StRgb24
+801b4514	?	?	StMode
+801b4518	?	?	_padFuncSendAuto
+801b4520	?	?	txyuv
+801b5520	?	?	GsZOVER
+801b5528	?	?	GsFCALL4
+801b5658	EXT	unsigned char [2][65536]	Packet
+801d5658	?	?	_svm_sreg_dirty
+801d5670	?	?	PSDBASEX
+801d5674	?	?	PSDBASEY
+801d5678	EXT	struct GsSPRITE	gspOp10
+801d56a0	EXT	struct GsF_LIGHT [3]	Lights
+801d56d0	EXT	struct GsSPRITE	gspOp11
+801d56f4	?	?	_padFuncNextPort
+801d56f8	?	?	POSITION
+801d56fc	?	?	GsOUT_PACKET_P
+801d5700	?	?	GsMATE_C
+801d5704	?	?	StFunc1
+801d5708	?	?	StFunc2
+801d5710	?	?	_svm_vab_pg
+801d5750	?	?	GsWSMATRIX_ORG
+801d5770	?	?	GsDISPON
+801d5774	?	?	StCdIntrFlag
+801d5778	?	?	_padFuncPort2Info
+801d5780	?	?	_svm_vab_vh
+801d57c0	?	?	_svm_damper
+801d57c8	?	?	_svm_vab_tn
+801d5808	?	?	_padFuncGetGunPos
+801d5810	?	?	_spu_RQ
+801d5828	?	?	GsLIGHTWSMATRIX
+801d5848	EXT	struct TPadPort [2][4]	PadPort
+801d58a8	?	?	StCHANNEL
+801d58ac	?	?	_padFuncCurrLimit
+801d58b0	?	?	StStartFrame
+801d58b8	EXT	int [16]	gSelect
+801d58f8	?	?	_svm_stereo_mono
+801d5900	?	?	GsDRAWENV
+801d5960	?	?	GsDISPENV
+801d5974	?	?	_snd_ev_flag
+801d5978	?	?	kMaxPrograms
+801d597a	?	?	GsORGOFSX
+801d597c	?	?	GsORGOFSY
+801d5980	?	?	_LC
+801d59a0	?	?	_svm_pg
+801d59a4	?	?	_svm_vg
+801d59a8	?	?	_svm_vh
+801d59b0	EXT	struct HumanAnimType [5]	CVAhuman
+801d59d8	?	?	_svm_tn
+801d59dc	?	?	CChannel
+801d59e0	?	?	_SsVmMaxVoice
+801d59e4	?	?	HWD0
+801d59e8	EXT	struct GsFOGPARAM	Fog
+801d59f4	?	?	VWD0
+801d59f8	?	?	GsIDMATRIX
+801d5a18	?	?	_padFuncSetGunPort
+801d5a20	EXT	struct WorldType [8][8][8]	WorldMap
+801d6220	?	?	StFinalSector
+801d6228	EXT	struct GsRVIEW2	ViewInfo
+801d6248	EXT	struct GsIMAGE	img
+801d6268	?	?	GsWSMATRIX
+801d6288	?	?	GsCLIP3far
+801d6290	?	?	GsIDMATRIX2
+801d62b0	?	?	_snd_openflag
+801d62b4	?	?	_padFuncChkEng
+801d62b8	?	?	_autopan
+801d62c0	?	?	CLIP2
+801d62c8	?	?	_svm_cur
+801d62e8	?	?	_svm_vab_used
+801d62f8	?	?	GlobalCallback
+801d6308	?	?	_svm_sreg_buf
+801d6488	?	?	_autovol
+801d6490	EXT	struct Sprite3D *[25]	ItemImage
+801d64f4	?	?	StEmu_Idx
+801d64f8	?	?	_padFuncGetTxd
+801d64fc	?	?	_svm_auto_kof_mode
+801d6500	?	?	_padFuncIntGun
+801d6508	?	?	KanjiFont
+801d65d8	EXT	struct ConflictObjectType [64]	ConflictObject
+801d7fd8	?	?	_svm_envx_ptr
+801d7fe0	?	?	_que
+801d97e0	?	?	GsTON
+801d97e8	EXT	struct GsSPRITE	moji
+801d9810	EXT	struct GsBOXF	boxf
+801d9820	EXT	unsigned short [34816]	vlc_table
+801ea820	?	?	VBLANK_MINUS
+801ea824	?	?	StRingIdx1
+801ea828	?	?	StRingIdx2
+801ea82c	?	?	SpuCommonError
+801ea830	?	?	StRingIdx3
+801ea838	?	?	DSTACK
+801ea8b8	?	?	GsLIGHT_MODE
+801ea8bc	?	?	GsCLIP3near
+801ea8c0	?	?	_ss_score
+801ea940	?	?	_SsMarkCallback
+801eb140	?	?	_snd_seq_s_max
+801eb142	?	?	_snd_seq_t_max
+801eb144	?	?	PSDCNT
+801eb148	?	?	PSDIDX
+801eb14c	?	?	StEmu_Addr
+801eb150	?	?	StEndFrame
+801eb154	?	?	PSDGPU
+801eb158	?	?	StSTART_FLAG
+801eb15c	?	?	_padFuncClrInfo
+801eb160	?	?	StRingBase
+801eb164	?	?	StRingAddr
+801eb168	?	?	_svm_vab_total
+801eb1a8	EXT	struct PADCMD__141fake	PadArrange
+801eb1b8	?	?	_svm_vab_count
+801eb1c0	?	?	_svm_vab_start
+801eb200	?	?	GsNDIV
+801eb208	EXT	struct GsOT_TAG [2][2048]	ZSortTable
+801ef208	EXT	struct tag_EffectSlot [200]	EffectSlot
+801f2d68	?	?	_svm_envx_hist
+801f2da0	?	?	__bss_objend
+801f2da0	?	?	__bss_orgend
+801f2da8	?	?	StRingSize
+801f2dac	?	?	_svm_okof1
+801f2dae	?	?	_svm_okof2
+801f2db0	?	?	_bss_objend
+801f2db0	?	?	_bss_orgend

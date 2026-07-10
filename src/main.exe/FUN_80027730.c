@@ -9,7 +9,7 @@
  * FIRST matching frame (count == param_1), then spawns a napalm item flying
  * from the wielded weapon's tip (Me_MOTION_C->model->object[2]) towards a
  * fixed-speed target point — near-twin of
- * handle_char_state_attacking_SEVEN_.c (same item-TU Humanoid/
+ * AttackFire.c (same item-TU Humanoid/
  * ModelArchiveType, same dtM/dtR pair), but a frame RANGE instead of a
  * single frame, a plain literal move speed instead of a randomized one, and
  * the end point keeps `start`'s own Y (no target-height read).

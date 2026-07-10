@@ -3,7 +3,7 @@
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/CreateCloneModelArchive", CreateCloneModelArchive);
 
-// triage: MEDIUM — 105 insns, 1 loop, 4 callees, ~0.25 to FUN_8001851c
+// triage: MEDIUM — 105 insns, 1 loop, 4 callees, ~0.25 to CreateCloneModel
 // likely-relevant cookbook sections:
 //   - Loops: 1 back-edge(s) — for/while/do vs goto shape
 

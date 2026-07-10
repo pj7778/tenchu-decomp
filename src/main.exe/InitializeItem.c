@@ -3,7 +3,7 @@
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/InitializeItem", InitializeItem);
 
-// triage: EASY — 81 insns, 1 loop, 5 callees, ~0.04 to FUN_80039684
+// triage: EASY — 81 insns, 1 loop, 5 callees, ~0.04 to PrepareGetScreenPositionS
 // likely-relevant cookbook sections:
 //   - Loops: 1 back-edge(s) — for/while/do vs goto shape
 //   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py

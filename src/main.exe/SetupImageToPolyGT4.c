@@ -3,7 +3,7 @@
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupImageToPolyGT4", SetupImageToPolyGT4);
 
-// triage: TRIVIAL — 81 insns, 3 callees, NEAR-CLONE of load_sprite_info_perhaps — clone it
+// triage: TRIVIAL — 81 insns, 3 callees, NEAR-CLONE of SetupImageToPolyFT4 — clone it
 
 // Ghidra decompilation (reference — turn this into matching C,
 // then drop the INCLUDE_ASM above):

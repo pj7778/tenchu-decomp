@@ -97,7 +97,7 @@ static const u32 handle_char_state_dead__jtbl[5] = {
 //       pSVar4->vx = 0;
 //       if ((pHVar3 != pHVar10) &&
 //          (DeleteConflict(*pMVar11->object), (Me_MOTION_C->type & 0xf0U) != 0x80)) {
-//         FUN_80049f94();
+//         TurnAroundAllItems();
 //       }
 //       if (dtM->mid < 0x1109) {
 //         return;

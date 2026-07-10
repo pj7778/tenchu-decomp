@@ -50,7 +50,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8003d768", FUN_8
 //   if (iVar4 < 0) {
 //     iVar4 = iVar4 + 0xfff;
 //   }
-//   FUN_8003250c((iVar3 >> 0xc) + param_3[2],(iVar4 >> 0xc) + param_3[3],0,0xc81414);
+//   DrawTargetS((iVar3 >> 0xc) + param_3[2],(iVar4 >> 0xc) + param_3[3],0,0xc81414);
 //   ptVar5 = items;
 //   for (iVar3 = 0; iVar3 < 0x1e; iVar3 = iVar3 + 1) {
 //     if (((ptVar5->proc != (undefined **)0x0) && (ptVar5->type == ITEM_GOSHIKIMAI)) &&
@@ -79,7 +79,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8003d768", FUN_8
 //       if (iVar7 < 0) {
 //         iVar7 = iVar7 + 0xfff;
 //       }
-//       FUN_8003250c((iVar4 >> 0xc) + param_3[2],(iVar7 >> 0xc) + param_3[3],0,0x1414c8);
+//       DrawTargetS((iVar4 >> 0xc) + param_3[2],(iVar7 >> 0xc) + param_3[3],0,0x1414c8);
 //     }
 //     ptVar5 = ptVar5 + 1;
 //   }

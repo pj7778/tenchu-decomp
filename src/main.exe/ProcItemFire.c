@@ -179,7 +179,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemFire", ProcI
 //               local_48.start.vz = local_74;
 //               local_48.start.vy = GetAreaMapLevel(GlobalAreaMap,local_80._4_4_,local_80._8_4_);
 //               ReqItemDrop(&local_48);
-//               FUN_800339d0(local_80 + 4,0,0xffffff9c,0,10);
+//               SetSmokeS(local_80 + 4,0,0xffffff9c,0,10);
 //               return;
 //             }
 //           }

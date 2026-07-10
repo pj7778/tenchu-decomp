@@ -163,7 +163,7 @@ static const u32 ActDAMAGE_jtbl[8] = {
 //         return;
 //       }
 //       DeleteConflict(*pHVar7->model->object);
-//       FUN_80049f94(Me_MOTION_C);
+//       TurnAroundAllItems(Me_MOTION_C);
 //       return;
 //     }
 //     sVar9 = dtM->loop + -1;

@@ -5,7 +5,7 @@
  * FUN_80039610 (0x80039610, 0x74 bytes) — camera-relative coordinate
  * transform helper: writes (x,y,z) - ViewInfo.(vpx,vpy,vpz) as a scratchpad
  * SVECTOR (fixed PS1 scratchpad RAM at 0x1F800000 — same region
- * FUN_80039684.c's MATRIX uses, Ghidra names it "Scratchpad"), then calls
+ * PrepareGetScreenPositionS.c's MATRIX uses, Ghidra names it "Scratchpad"), then calls
  * RotTransPers (a GTE perspective-transform library wrapper, 0x80078704 >
  * 0x80060000, precompiled — only this call site's argument setup is
  * source-shaped) with that SVECTOR, the caller's own output pointer arg3
@@ -28,7 +28,7 @@
  *    it, not the cast alone).
  *  - Raw scratchpad addresses are plain integer-literal pointer casts
  *    (`(SVECTOR *)0x1F800080`), never a shared "Scratchpad + offset"
- *    symbol — matches FUN_80039684.c's `(MATRIX *)0x1F800000` precedent.
+ *    symbol — matches PrepareGetScreenPositionS.c's `(MATRIX *)0x1F800000` precedent.
  *    A raw-constant cast materializes via `lui`+`ori` (not `addiu`): the
  *    `li` macro treats it as an unsigned bit pattern, unlike a relocatable
  *    symbol's `%lo()` (always `addiu`).

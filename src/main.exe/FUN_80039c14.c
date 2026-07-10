@@ -4,7 +4,7 @@
 /*
  * FUN_80039c14 (0x80039c14, 0x40 bytes) — resets every slot of the
  * EffectSlot[] pool (200 entries, tag_EffectSlot from the Ghidra type
- * export) whose `proc` isn't the sentinel handler FUN_80032610, clearing it
+ * export) whose `proc` isn't the sentinel handler UpdateTexScroll, clearing it
  * to NULL. `proc` is the only field this function ever touches; the rest of
  * tag_EffectSlot (a `_180fake_1` union in the Ghidra export) is kept as
  * padding — EffectSlot's neighbor symbol (ModelSlot @ 0x8008dbe0) sits
@@ -18,7 +18,7 @@
  * is_character_state_present_on_stage_'s HumanGroup[i]).
  */
 
-extern void FUN_80032610(void);
+extern void UpdateTexScroll(void);
 
 typedef struct
 {
@@ -34,7 +34,7 @@ void FUN_80039c14(void)
 
     for (i = 0; i < 0xC8; i++)
     {
-        if (EffectSlot[i].proc != FUN_80032610)
+        if (EffectSlot[i].proc != UpdateTexScroll)
         {
             EffectSlot[i].proc = 0;
         }

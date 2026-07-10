@@ -63,6 +63,21 @@ def load_ghidra(export):
     return by_addr
 
 
+def load_renames_tsv(path):
+    """{addr: name} from `addr<TAB>oldname<TAB>newname<TAB>...` (tools/symmatch.py,
+    tools/xbuildnames.py). Only the first and third columns are read."""
+    by_addr = {}
+    for line in open(path):
+        p = line.rstrip("\n").split("\t")
+        if len(p) < 3 or line.startswith("#"):
+            continue
+        addr, name = int(p[0], 16), sanitize(p[2])
+        if addr < GAME_LO or not IDENT.match(name) or PLACEHOLDER.match(name):
+            continue
+        by_addr[addr] = name
+    return by_addr
+
+
 def load_current():
     """[(name, addr)] and the set of all current names, from config/symbols."""
     cur, names = [], set()
@@ -104,10 +119,17 @@ def apply_renames(renames):
     s = open(SYMBOLS).read()
     open(SYMBOLS, "w").write(sym.sub(lambda m: m.group(1) + rep(m, 2) + m.group(3), s))
 
-    # splat yaml: only the name field of `[off, c|asm|hasm, NAME]`.
-    yml = re.compile(rf"(\[[^,\]]+,[ \t]*(?:c|asm|hasm)[ \t]*,[ \t]*)({alt})([ \t]*\])")
+    # splat yaml, two subsegment spellings:
+    #   list form `[off, c|asm|hasm, NAME]`, and
+    #   dict form `{ start: off, type: .rodata, name: NAME, ... }` -- used by the
+    #   per-function .rodata carves.  A function's .rodata subsegment must keep
+    #   the function's name or splat emits an object the linker never sees.
     y = open(YAML).read()
-    open(YAML, "w").write(yml.sub(lambda m: m.group(1) + rep(m, 2) + m.group(3), y))
+    yml = re.compile(rf"(\[[^,\]]+,[ \t]*(?:c|asm|hasm)[ \t]*,[ \t]*)({alt})([ \t]*\])")
+    y = yml.sub(lambda m: m.group(1) + rep(m, 2) + m.group(3), y)
+    ydict = re.compile(rf"(\{{[^}}]*?\bname:[ \t]*)({alt})\b")
+    y = ydict.sub(lambda m: m.group(1) + rep(m, 2), y)
+    open(YAML, "w").write(y)
 
     # C sources/headers: whole-word (identifier) references.
     ident = re.compile(rf"\b({alt})\b")
@@ -141,10 +163,12 @@ def apply_renames(renames):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ghidra-export", default=".shake/ghidra-export")
+    ap.add_argument("--renames", metavar="TSV",
+                    help="adopt names from a symmatch/xbuildnames TSV instead of Ghidra")
     ap.add_argument("--no-check", action="store_true")
     args = ap.parse_args()
 
-    gh = load_ghidra(args.ghidra_export)
+    gh = load_renames_tsv(args.renames) if args.renames else load_ghidra(args.ghidra_export)
     cur, names = load_current()
     renames = build_renames(gh, cur, names)
     print(f"import_symbols: {len(renames)} symbols to adopt Ghidra names for "

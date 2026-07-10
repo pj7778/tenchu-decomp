@@ -255,7 +255,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemNinken", Pro
 //         SetSmoke((VECTOR *)(((item->param).ninken.slave)->model->locate).coord.t,
 //                  (SVECTOR *)&local_70,10,6);
 //         SoundEx((VECTOR *)(((item->param).ninken.slave)->model->locate).coord.t,0x23);
-//         FUN_80049f94((item->param).gun.vec.pad);
+//         TurnAroundAllItems((item->param).gun.vec.pad);
 //         ppuVar6 = item->proc;
 //         if (ppuVar6 == (undefined **)0x0) {
 //           return;

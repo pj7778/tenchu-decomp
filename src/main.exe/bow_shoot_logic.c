@@ -9,7 +9,7 @@
  * not the item_kind2 enum's YUMI=0x15 which is a different enumeration for
  * inventory slots) travelling from `*start` towards the target, landing at
  * the target's actual world-Y (Me_MOTION_C->target->locate.coord.t[1], same
- * field proven by handle_char_state_attacking_SEVEN_.c) with a small chance
+ * field proven by AttackFire.c) with a small chance
  * (1 in EngageLevel+1) of landing 1000 units short specifically for arrows.
  *
  * `move.pad` is a real write, not a stray local: Ghidra's own struct-typed
@@ -45,7 +45,7 @@ typedef struct
 {
     u8 pad0[2];
     s16 unk2; /* Ghidra's guessed "vy" (SVECTOR), unverified — see
-                 handle_char_state_attacking_SEVEN_.c's dtR_type */
+                 AttackFire.c's dtR_type */
 } dtR_type;
 
 extern dtR_type *dtR;

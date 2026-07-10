@@ -26,7 +26,7 @@ struct ModelType
     s16 id;                      /* 0x58 */
     s16 attribute;               /* 0x5A */
     SVECTOR clip;                /* 0x5C */
-    GsDOBJ2 object;               /* 0x64 (FUN_8001851c.c: valloc(sizeof(ModelType))
+    GsDOBJ2 object;               /* 0x64 (CreateCloneModel.c: valloc(sizeof(ModelType))
                                     == 0x74 only with this field; attribute/coord2/tmd
                                     written directly at +0x64/+0x68/+0x6C, matching
                                     Ghidra's own independently-built struct exactly —
@@ -137,7 +137,7 @@ typedef struct
     ModelArchiveType *model;     /* 0x58 */
     MotionManager *motion;       /* 0x5C */
     u8 pad2a[0x14];              /* 0x60 */
-    ModelType *target;           /* 0x74 (handle_char_state_attacking_SEVEN_
+    ModelType *target;           /* 0x74 (AttackFire
                                     reads target->locate.coord.t[1], the Y
                                     translation of the target's world matrix,
                                     for a lightning-bolt end point) */
@@ -163,7 +163,7 @@ typedef struct
     OrnamentType *weapon[4];     /* 0x94 (equipped weapon ornaments — right/
                                     left active + right/left inactive per
                                     game_types.h's character_state sibling
-                                    view of this same offset; FUN_80027688
+                                    view of this same offset; AttackPQD
                                     swaps weapon[0] with weapon[2]/[3] to
                                     draw/holster) */
     void *illusion[2];           /* 0xA4 (Ghidra: `pointer illusion[2]` —

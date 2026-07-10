@@ -72,7 +72,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80032720", FUN_8
 //       DAT_80097f32 = sVar3;
 //       (ptVar7->param).smoke.vec.vz = param_2;
 //       (ptVar7->param).smoke.vec.pad = param_3;
-//       ptVar7->proc = (undefined **)FUN_80032610;
+//       ptVar7->proc = (undefined **)UpdateTexScroll;
 //       if (0x200 < sVar3) {
 //         DAT_80097f32 = 0x100;
 //         DAT_80097f30 = DAT_80097f30 + 0x40;

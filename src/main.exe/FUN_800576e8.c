@@ -16,7 +16,7 @@
  * `D_800C2D08` (splat's auto name; Ghidra calls it TelopP, not yet a bound
  * build symbol so left as the auto name here) only has these two u8 fields
  * proven — declared as a minimal stand-in reaching just offset 0x14, same
- * as handle_char_state_attacking_SEVEN_'s dtM_type/dtR_type.
+ * as AttackFire's dtM_type/dtR_type.
  *
  * Matching notes (see docs/matching-cookbook.md):
  *  - `bVar1`/`idx` must be `s32`, not `u8` (Ghidra/m2c's own typing): a `u8`

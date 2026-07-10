@@ -3,7 +3,7 @@
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PlaySE", PlaySE);
 
-// triage: EASY — 71 insns, mul/div, 2 callees, ~0.04 to handle_char_state_attacking_SEVEN_
+// triage: EASY — 71 insns, mul/div, 2 callees, ~0.04 to AttackFire
 // likely-relevant cookbook sections:
 //   - Expressions: mult/div — magic-multiply constants, fold
 //   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py

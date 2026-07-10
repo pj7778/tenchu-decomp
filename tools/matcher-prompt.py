@@ -140,6 +140,44 @@ def family(name):
     return (None, None, None)
 
 
+def psxsym_facts(name):
+    """Original prototype / TU / storage class for `name`, from the demo's PSX.SYM
+    (see docs/psx-sym.md).  These are the real names the authors used; a matching
+    signature usually falls straight out of them."""
+    out = []
+    proto = f"reference/psxsym-protos.h"
+    if os.path.exists(proto):
+        pat = re.compile(rf"^(.*\b{re.escape(name)}\s*\(.*)$", re.M)
+        m = pat.search(open(proto).read())
+        if m:
+            out.append(f"- **Original prototype** (PSX.SYM, parameter names are the "
+                       f"authors' own): `{m.group(1).strip()}`")
+    tumap = "reference/psxsym-tu-map.tsv"
+    if os.path.exists(tumap):
+        for line in open(tumap):
+            p = line.rstrip("\n").split("\t")
+            if len(p) == 8 and p[7] == name:
+                out.append(f"- PSX.SYM says it lived in **{p[2]}:{p[3]}**, `{p[6]}`, "
+                           f"frame {p[4]} bytes, saved-reg mask {p[5]}. Functions from "
+                           f"one source file are contiguous — its neighbours in "
+                           f"reference/psxsym-tu-map.tsv are its TU-mates, which pins "
+                           f"rodata pooling and %gp choices.")
+                break
+    cand = "reference/psxsym-candidates.tsv"
+    if name.startswith("FUN_") and os.path.exists(cand):
+        for line in open(cand):
+            if line.startswith("#"):
+                continue
+            p = line.rstrip("\n").split("\t")
+            if len(p) >= 6 and p[1] == name:
+                out.append(f"- PSX.SYM suggests this may be **{p[2]}** ({p[4]} confidence, "
+                           f"{p[5]}). NOT adopted — corroborate with "
+                           f"`tools/callmatch.py --verify` before renaming anything.")
+    if out:
+        out.insert(0, "Original-source facts recovered from the demo's PSX.SYM:")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("name")
@@ -183,6 +221,8 @@ def main():
     if fam:
         P.append(f"It's a {fam} function — {famnote}. Reuse {header} types; "
                  f"don't redefine them.")
+    for line in psxsym_facts(name):
+        P.append(line)
     P.append("")
     P.append("FIRST read, in order: .claude/agents/matcher.md (your contract), "
              "docs/matching-cookbook.md (workflow + Iteration protocol + rules)"
@@ -192,7 +232,7 @@ def main():
     P.append("")
     P.append("Worktree setup (link untracked inputs from the main checkout):\n"
              "```\nROOT=/home/shana/programming/tenchu-decomp\n"
-             "for e in slps_019.01 system.cnf tenchu; do ln -sfn \"$ROOT/disks/$e\" "
+             "for e in slps_019.01 system.cnf tenchu demo; do ln -sfn \"$ROOT/disks/$e\" "
              "\"disks/$e\"; done\nmkdir -p .shake && ln -sfn "
              "\"$ROOT/.shake/ghidra-export\" .shake/ghidra-export\n```\n"
              "Run build/tool commands via `nix develop --command bash -c \"...\"`.")
