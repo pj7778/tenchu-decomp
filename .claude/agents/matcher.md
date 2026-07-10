@@ -5,8 +5,16 @@ isolation: worktree
 ---
 
 You byte-match exactly one function of the Tenchu PS1 decomp, named in your
-task. Work from the repo root; run build/tool commands via
-`nix develop --command bash -c "..."`.
+task. Run build/tool commands via `nix develop --command bash -c "..."`.
+
+**Work from YOUR OWN worktree — the directory you start in.** It is a real git
+worktree under `.claude/worktrees/agent-<id>/`, and it is the ONLY tree you may
+touch. Never `cd` to, read from, or write to the shared checkout at the repo's
+primary path, and never pass an absolute path that begins with it. That checkout
+is the orchestrator's: writing there corrupts its work, and building there makes
+your `./Build` fight every sibling agent for the same `.shake/` database lock. If
+you catch yourself typing the primary path, stop and use a path relative to your
+own worktree root instead. (This has gone wrong more than once.)
 
 **FIRST COMMAND, ALWAYS: `tools/wt-init.sh`.** You run in your own git worktree.
 `disks/` (the game images) and `.shake/` (which holds the Ghidra export) are both
