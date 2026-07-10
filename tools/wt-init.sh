@@ -40,7 +40,20 @@ link() {
   echo "wt-init: linked $rel -> $src"
 }
 
-link disks
+# NOT `link disks`: disks/ holds a TRACKED README.md, so the directory always
+# exists in a fresh worktree while every image inside it is missing. Link the
+# entries, not the directory.
+if [ -d "$main/disks" ]; then
+  for src in "$main"/disks/*; do
+    [ -e "$src" ] || continue
+    name=$(basename "$src")
+    [ "$name" = "README.md" ] && continue
+    link "disks/$name"
+  done
+else
+  echo "wt-init: WARNING: no disks/ in the primary worktree"
+fi
+
 link .shake/ghidra-export
 
 echo "wt-init: ready. Verify with: nix develop --command bash -c './Build check'"
