@@ -85,6 +85,62 @@
  *    never uses `sched` as a variable.
  *  - Needs maspsx's --expand-div (rand() % (max-min) divides by a runtime
  *    value); no explicit trap() calls belong in the C.
+ *
+ * Session addendum (re-verified the "permuter-immune" verdict against the
+ * cookbook's named classes first, then escalated to `tools/rtldump.py
+ * --draft --pass all` for the two clusters with the most bytes, per the
+ * escalation protocol, before re-confirming this park):
+ *  - Reschedule guard order (cluster 2, `sched->max`/`sched->min`):
+ *    RE-TESTED the declared-order swap (`hi = sched->max; lo = sched->min;`
+ *    instead of `lo = ...; hi = ...;`) in isolation — byte-for-byte
+ *    IDENTICAL output, confirming the header's claim precisely. Also
+ *    noticed the header's "both the initial compare and the post-rand()
+ *    reload" is now stale: only the FIRST occurrence (0x8004c6a4) still
+ *    differs from target; the second (0x8004c6c4, inside `rand() %
+ *    (sched->max - sched->min)`) already matches (max read before min,
+ *    matching the subexpression's own textual order) — a prior session's
+ *    partial fix that the header text wasn't updated for.
+ *  - Final store address (cluster 3, `sched->next = GameClock + lo;`,
+ *    0x8004c720): DUMP-CONFIRMED root cause, not just "coloring". `.greg`'s
+ *    register-disposition list shows pseudo 82 (`sched`) correctly
+ *    allocated to `$s1` (`82 in 17`) — allocation is NOT the problem. The
+ *    RAW `.rtl` dump (pre-optimization) shows both `sched->next` stores as
+ *    `(set (mem (reg 82)) ...)` — a bare zero-offset dereference, exactly
+ *    as written. By the `.cse`/`.cse2`/`.loop`/`.lreg` dumps (all AFTER
+ *    cse1), both stores have ALREADY been rewritten to `(set (mem (plus
+ *    (reg 80) 24)) ...)` — `reg 80` is `this` (`arg0`), and `sched`'s own
+ *    defining insn is literally `reg82 = reg80 + 24` (`sched = (Schedule
+ *    *)(arg0 + 0x18)`). cse1 canonicalizes the OFFSET-ZERO dereference
+ *    `MEM(reg82)` back to its defining expression `MEM(reg80+24)` — but
+ *    does NOT do this for the NONZERO-offset dereferences of the same
+ *    pointer (`sched->min`/`max`/`sndIdx` at +4/+6/+8 all correctly keep
+ *    `reg82` unmodified, confirmed in the same dumps). This is the
+ *    "offset-0 alias vs enclosing-struct-member" cookbook lever's sibling
+ *    mechanism for a LOCAL pointer instead of a global `%hi` symbol: a
+ *    bare-register MEM address (offset 0) is available for cse's
+ *    value-substitution in a way a `(plus reg N)` MEM address is not — the
+ *    substitution costs the SAME instruction count either way (a MIPS `sw`
+ *    embeds a 16-bit offset for free), so nothing downstream can tell cse
+ *    to prefer the register. Tried and REJECTED: `sched = sched;`
+ *    (self-assignment; cc1 elides it as dead, no RTL effect, confirmed via
+ *    rebuild). NOT yet tried: restructuring `sched`'s own definition so its
+ *    defining insn is NOT a simple `reg+const` cse can fold back to (e.g. a
+ *    genuine function PARAMETER `Schedule *sched` instead of a locally
+ *    derived pointer) — would require re-deriving the ORIGINAL function's
+ *    true signature/call sites first (no direct `jal` callers found per
+ *    the header), so not attempted this session.
+ *  - Reset body (cluster 1, the bulk of the residual): `.sched`'s "basic
+ *    block number 3" dump for the `emit_block_move`-generated struct copy
+ *    shows an 11-insn dependency DAG (insns 33-61) with TWO explicit
+ *    scheduler STALLS reported (`launching 48 before 50 with 1 stalls`,
+ *    `launching 33 before 35 with 1 stalls`) — genuine list-scheduling
+ *    complexity, not a simple 2-candidate tie. Consistent with the header's
+ *    existing verdict; not pursued further (out of proportion to the ~20
+ *    of 29 residual bytes it accounts for, given the confirmed-unfixable
+ *    precedent from cluster 2's identical-order-swap-no-effect test).
+ *  - `tools/autorules.py` re-run: no improving edit found (5 candidates,
+ *    all worse or exactly tied) — confirms no false wins remain.
+ * Left at the documented 29-byte baseline; no source changes this session.
  */
 
 typedef struct

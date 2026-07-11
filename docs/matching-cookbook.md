@@ -1582,6 +1582,18 @@ cc1 folds `-at` back to `negu <dst>,<t_reg>`, negating the original `t`, not the
 copy. Which register `negu` sources from is a coloring artifact — do not chase it
 by respelling the conditional (`UpdateMotion`).
 
+### An offset-0 LOCAL-pointer dereference is cse1-canonicalised back to base+const
+
+The sibling of the offset-0-alias `%hi` lever, but for a LOCAL pointer variable and cse
+rather than -msplit-addresses. cse1 substitutes a bare offset-0 dereference (`*p` /
+`p->field0`) with its defining `base+const` expression (so `sched->next` at offset 0
+compiles as `this+24` through the base register, not through `sched`'s own register),
+but does NOT do this for the SAME pointer's nonzero-offset fields. So if the target
+reaches a struct through a local pointer at offset 0 where your draft goes through the
+enclosing base, or vice versa, that is the lever -- confirmed on FUN_8004c59c via the
+`.cse`/`.cse2`/`.lreg` dumps (`.greg` shows the pointer correctly in $s1, but cse1 had
+already rewritten the offset-0 store to base-relative).
+
 ### A huge-offset-spilled pointer dereference can NEVER self-tie (un-matchable)
 
 If the target self-ties the `%hi` address and the value-load registers of a `ptr->field`

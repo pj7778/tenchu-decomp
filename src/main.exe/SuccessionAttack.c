@@ -30,8 +30,10 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 25 of 268 bytes differ (right length: matchdiff's
- * whole-image count equals the function-local count).
+ * STATUS: NON_MATCHING — 8 of 268 bytes differ (right length: matchdiff's
+ * whole-image count equals the function-local count). Was 25 bytes; closed
+ * to 8 this session by fixing two real structural mismatches (see below) —
+ * the remaining 8 are a dump-confirmed sched1/sched2 tie (see RESIDUAL).
  *
  * SuccessionAttack (0x8002fabc, 0x10c bytes) — same "think" TU as
  * Think3chase.c/Think3escape.c/Think3firstattack.c/Think1trace.c (s16
@@ -74,19 +76,56 @@
  * ABS-compute to serve as that filler when it is the textually-first
  * reference.
  *
- * RESIDUAL (25 bytes, same length): the ABS(Degree)-vs-`d` compare (`slt`)
- * lands in $v1 in the target (reusing Degree's own register) vs $v0 here, a
- * pure register-color tie, plus one 4-byte nop-position difference right
- * before it. The tail's `if (-0x12d < Degree) return 0x80;` is Ghidra's
- * literal (and byte-correct) rendering of what's really a `goto` to the
- * shared `return uVar3 | 0x80;` (uVar3 still 0) — tried spelling it that way
- * explicitly (`goto ret;` + a `ret:` label at the following `return`), which
- * made the diff WORSE (28 bytes) by disturbing the delay-slot duplication
- * reorg already produces from the literal `return 0x80;` form — reverted.
- * `tools/autorules.py` found no further (real) win; one bounded permuter
- * run (~1300 iterations, --stop-on-zero -j4) only reached 465 (baseline
- * 475, no visible correlation to the true 25-byte gap) — not re-run per the
- * attempt-cap guidance.
+ * TWO REAL STRUCTURAL FIXES applied this session (25 -> 8 bytes), found by
+ * decoding the target's raw instructions address-by-address (not guessing):
+ *
+ * 1. The tail's `if/else` at LAB_8002fb84 has its arms SWAPPED relative to
+ *    Ghidra's rendering: the target's `bnez`/fallthrough shape decodes as
+ *    `if (Degree >= 0x12d) { uVar3 = 0x2000; } else { uVar3 |= 0x80; if
+ *    (Degree < -300) { uVar3 = -0x8000; } else { goto ret; } } uVar3 |= 0x80;
+ *    ret: return uVar3;` — i.e. Ghidra's literal `if (Degree<0x12d){ if
+ *    (-0x12d<Degree) return 0x80; ... }` is the INVERSE condition with the
+ *    bodies swapped, PLUS the `return 0x80;` is really a `goto` that skips
+ *    a SECOND, later `uVar3 |= 0x80;` (the delay slot of the skip-edge's
+ *    `beqz` executes an unconditional `ori s0,s0,0x80` every time that arm
+ *    is even considered, per MIPS delay-slot semantics — decode the
+ *    disassembly with delay slots in mind, not the pseudo-linear reading).
+ *    Getting the if/else polarity right fixed the branch layout AND, via a
+ *    named `ret:` label + `goto` (not a second literal `return uVar3;` —
+ *    two textually-identical `return` tails do NOT cross-jump-merge in this
+ *    cc1; route the second through a `goto` to a single shared one, per the
+ *    cookbook's Shared-tails section) the shared-return register colouring.
+ * 2. `uVar3` must be `s16` (not `u16`): assigning the literal `-0x8000`
+ *    (0x8000's bit pattern) to a `u16` still folds to the UNSIGNED
+ *    representation internally, so cc1 emits `li s0,0x8000` (`ori`) instead
+ *    of the target's `li s0,-32768` (`addiu`) — same 4 bytes, wrong opcode.
+ *    `s16` reproduces the target's `addiu` encoding exactly.
+ *
+ * RESIDUAL (8 bytes, same length, dump-confirmed permuter-immune): the
+ * ABS(Degree)-vs-`d` compare block (0x8002fb1c-0x8002fb30). Target order is
+ * `sll d(hi); lh Degree; sra d(lo); bgez Degree,L; nop; negu Degree; slt
+ * v1,Degree,d; bnez v1,L2` — i.e. `d`'s `sra` completes BEFORE the `bgez`
+ * test, using the Degree-load's own load-delay slot as its filler, and the
+ * `slt`'s result lands in $v1 (Degree's own dying register). Ours instead
+ * fills the Degree-load's delay slot with a `nop` and steals `d`'s `sra`
+ * into `bgez`'s delay slot instead, and the `slt` lands in a fresh $v0.
+ * `tools/rtldump.py --pass all`'s `.sched`/`.sched2` dumps show this is a
+ * genuine backward-list-scheduling TIE at the RTL level: in basic block
+ * "3 from 61 to 70", insns 61 (`d`'s sll), 62 (`d`'s sra) and 67 (Degree's
+ * combined `lh`-sign-extend) all report `priority = 1, ref_count = 1` —
+ * exactly equal — so which of {61,62} vs 67 the scheduler treats as the
+ * Degree-load's mandatory 1-cycle-latency filler vs the bgez's delay-slot
+ * filler is decided by an internal tie-break this session did not fully
+ * reverse-engineer, not by any C-level distinction. Tried and rejected:
+ * `d: int -> s16/u32` (autorules, worse: 14/6 differing lines), inlining
+ * `d` at its use (autorules, worse: 14), reading `deg` directly instead of
+ * `d` at the comparison (LENGTH MISMATCH, +4 bytes) — none touch the
+ * scheduler's tie-break. A bounded permuter run (300s, `--stop-on-zero
+ * -j4`) found no zero. Matches the cookbook's "min/clamp reload-vs-reuse is
+ * a coloring tie" class, one level up (a scheduling tie, not a coloring
+ * one) — do not keep guessing respellings; the next lever, if any, is
+ * reading GCC 2.8.1's `sched.c` `rank_for_schedule`/`schedule_block` tie-
+ * break for equal-priority ready-list entries.
  */
 extern character_state *Me_THINK_C;
 extern s32 Distance;
@@ -116,7 +155,7 @@ short SuccessionAttack(long dist, short deg)
 {
     int iVar1;
     int iVar2;
-    u16 uVar3;
+    s16 uVar3;
 
     uVar3 = 0;
     if (Me_THINK_C->something_about_current_animation->frames_since_animation_start !=
@@ -141,19 +180,25 @@ short SuccessionAttack(long dist, short deg)
         return uVar3;
     }
 LAB_8002fb84:
-    if (Degree < 0x12d)
-    {
-        if (-0x12d < Degree)
-        {
-            return 0x80;
-        }
-        uVar3 = 0x8000;
-    }
-    else
+    if (Degree >= 0x12d)
     {
         uVar3 = 0x2000;
     }
-    return uVar3 | 0x80;
+    else
+    {
+        uVar3 |= 0x80;
+        if (Degree < -300)
+        {
+            uVar3 = -0x8000;
+        }
+        else
+        {
+            goto ret;
+        }
+    }
+    uVar3 |= 0x80;
+ret:
+    return uVar3;
 }
 
 #endif /* NON_MATCHING */

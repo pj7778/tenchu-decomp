@@ -117,6 +117,34 @@
  * `long long masked`, not a genuine fix) — did not pursue further per the
  * attempt-cap guidance. decomp.me (psyq4.3 preset) would be the next
  * arbiter if revisited.
+ *
+ * Session addendum (re-verified the "permuter-immune" verdict against the
+ * cookbook's named classes first, per the escalation protocol, before
+ * re-confirming this park): re-read the delay slots carefully — MIPS delay
+ * slots ALWAYS execute, taken or not, which makes `dbac: move a1,v1` look
+ * unconditional; it briefly looked like `result = masked;` needed to move
+ * ABOVE the `if (degree > 100)` guard (matching that always-executes
+ * appearance), but that reorders one instruction too far: it costs +4 bytes
+ * (264 vs 260 — `and a0,a1,v0` then TWO explicit widen/truncate pairs,
+ * because `result` now needs its own narrowing at the hoisted assignment
+ * point AND the `return masked;` path still needs its own). The complementary
+ * try — `result &= ~0x5FFF;` (compound, still AFTER the guard, so `masked`
+ * serves the early return alone) — undershoots by exactly -4 bytes (256):
+ * cc1 finds a genuinely MORE efficient shared truncation (folds the
+ * early-return's value and result's mask into one `sra`, filling both
+ * scheduler nops) than the target actually uses. So the target's code is
+ * bracketed within one instruction's worth of "obviously worse" in both
+ * directions by trivial respellings — a real sign this is a genuine
+ * scheduling/truncation-timing tie (which of two independent consumers of
+ * `masked` triggers cc1's early-truncate optimization), not an unexplored
+ * source shape. Also re-ran `tools/autorules.py`: it greedily adopted
+ * `result`/`wclass`: s16->u16 by its own structural asmdiff-line metric
+ * (13->9 differing lines), but that is a FALSE WIN — matchdiff's authoritative
+ * whole-image byte count got WORSE (28->29) and the instruction shape
+ * diverged completely (`andi ...,0xffff` masking, a different `bne`
+ * sequence entirely). Rejected per the cookbook's "never trust an autorules
+ * win that doesn't also shrink the real byte diff" caution; reverted. Left
+ * at the documented 28-byte baseline (`result` s16, `wclass` s16).
  */
 extern character_state *Me_THINK_C;
 extern s32 Distance;
