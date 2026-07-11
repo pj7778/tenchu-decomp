@@ -128,7 +128,7 @@ extern void FUN_8004c59c(tag_TMisc *m, s32 msg);
 extern void FUN_80032720(GsIMAGE *im, short y, short z);
 extern void AdtMessageBox(char *fmt, ...);
 
-void AddMisc(s32 type, s32 x, s32 y, s32 z, s32 ry, s32 n, s32 mode)
+void AddMisc(s32 type, s32 x, s32 y, s32 z, s32 a, s32 b, s32 c)
 {
     tag_TMisc *base = misc;
     tag_TMisc *p;
@@ -136,9 +136,9 @@ void AddMisc(s32 type, s32 x, s32 y, s32 z, s32 ry, s32 n, s32 mode)
     GsIMAGE tm;
     TimNameBlock *tp = (TimNameBlock *)tbl;
     GsIMAGE *ptm = &tm;
-    s32 va = ry;
-    s32 vb = n;
-    s32 vc = mode;
+    s32 va = a;
+    s32 vb = b;
+    s32 vc = c;
     u_long *adr;
 
     p = base;
