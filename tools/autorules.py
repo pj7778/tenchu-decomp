@@ -705,8 +705,82 @@ def rule_split_chain(text, name, span):
                splice(data, stmt.start_byte, stmt.end_byte, two).decode())
 
 
+# extern object decl `extern T NAME;` (single line, not already an array/function).
+# Optional leading qualifiers + a single type token + optional one `*` + NAME + `;`.
+EXTERN_OBJ = re.compile(
+    r"^[ \t]*extern[ \t]+"
+    r"(?:(?:const|volatile|struct|union|unsigned|signed)[ \t]+)*"
+    r"[A-Za-z_]\w*[ \t]+"
+    r"\*?[ \t]*"
+    r"([A-Za-z_]\w*)[ \t]*;[ \t]*$",
+    re.M)
+
+
+def _comment_mask(text):
+    """Byte-per-char mask: True where `text[i]` is inside a /*..*/ or // comment.
+    Keeps the extern-array rewrite from mangling identifiers named in comments."""
+    mask = bytearray(len(text))
+    i, n, state = 0, len(text), 0  # 0 code, 1 block, 2 line
+    while i < n:
+        two = text[i:i + 2]
+        if state == 0:
+            if two == "/*":
+                mask[i] = mask[i + 1] = 1; state = 1; i += 2; continue
+            if two == "//":
+                mask[i] = mask[i + 1] = 1; state = 2; i += 2; continue
+            i += 1
+        elif state == 1:
+            mask[i] = 1
+            if two == "*/":
+                mask[i + 1] = 1; state = 0; i += 2; continue
+            i += 1
+        else:
+            if text[i] == "\n":
+                state = 0; i += 1; continue
+            mask[i] = 1; i += 1
+    return mask
+
+
+def rule_extern_array(text, name, span):
+    """Respell a file-local `extern T NAME;` as an unknown-size array
+    `extern T NAME[];` + rewrite every use `NAME` -> `NAME[0]`.
+
+    THE recurring -G8 address lever (cookbook "gp vs absolute globals"): a
+    <=8-byte extern is small-data-eligible, so cc1 forms its address as one
+    `la`/macro; the unknown-size array is non-small, forcing the two-register
+    HIGH/LO_SUM split whose `%hi` can then reorg-hoist. Closed DebugMenuItemSet,
+    DoBriefingAndInventorySelection, ProcItemGun, ProcItemSmoke, ReqItemUse.
+
+    Identity-preserving: same linker symbol at the same address, `NAME[0]` reads
+    the same object — only the address codegen changes. Confined to decls that
+    live IN THIS .c (never a shared header, whose flip would hit other TUs); if
+    the decl isn't here the rule yields nothing for that symbol."""
+    mask = _comment_mask(text)
+    for m in EXTERN_OBJ.finditer(text):
+        if mask[m.start()]:                      # decl commented out
+            continue
+        sym = m.group(1)
+        decl_name = (m.start(1), m.end(1))
+        occ = [mm.span() for mm in re.finditer(rf"\b{re.escape(sym)}\b", text)
+               if not mask[mm.start()]]
+        if len(occ) < 2:                         # need the decl + >=1 real use
+            continue
+        new = text
+        for (s, e) in sorted(occ, reverse=True):  # right-to-left keeps offsets valid
+            if (s, e) == decl_name:
+                repl = f"{sym}[]"
+            elif text[e:e + 1] == "[":            # already indexed; leave it
+                continue
+            else:
+                repl = f"{sym}[0]"
+            new = new[:s] + repl + new[e:]
+        if new != text:
+            yield (f"{sym}: extern scalar->unknown-array []", new)
+
+
 RULES = [
     ("type-width", "flip a local's integer type across width/signedness", rule_type_width),
+    ("extern-array", "extern T NAME; -> extern T NAME[]; + NAME->NAME[0] (-G8 split)", rule_extern_array),
     ("and-nest", "split/merge if(a && b) <-> nested ifs (no else)", rule_and_nest),
     ("temp-inline", "inline a single-use local temp into its use", rule_temp_inline),
     ("abs-ge", "rewrite (x<0)?-x:x -> (x>=0)?x:-x (the abssi2 fold)", rule_abs_ge),

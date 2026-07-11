@@ -2474,6 +2474,13 @@ absolute → keep the symbol off the list (a plain small extern).
     `SYM[0]`) reproduces. Read it straight off the diff: hi and lo of the same
     symbol not adjacent ⇒ respell as the array (ReqItemUse's guard-pointer and
     the `..._[0] = 3` store).
+  - **Now mechanized:** `tools/autorules.py` (rule `extern-array`) sweeps this
+    automatically — it flips every file-local `extern T NAME;` to
+    `extern T NAME[];` + `NAME`→`NAME[0]` and keeps the flip if it moves bytes.
+    So on a fresh draft you rarely apply it by hand; run autorules first and it
+    finds the split for you (it only touches decls in the `.c`, never a shared
+    header). Reach for the manual respelling only when the decl lives in a
+    header autorules won't edit.
 - **A callee-saved value dying at a call whose result lands in the SAME
   s-register is the call-result variable HOSTING the earlier load**:
   `h = pm->locate.coord.t[1]; gy = h; … h = GetAreaMapLevel(…, gy, …);` —
