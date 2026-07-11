@@ -1,6 +1,37 @@
 #include "common.h"
 #include "main.exe.h"
 
+/*
+ * ProcItemKawarimi (0x80040c0c) — the kawarimi (substitution/decoy) item
+ * processor. mode 0: reset the frame counter; mode 1: each frame spray 20
+ * random SetBleed particles (color 0x64C8DC) around the owner, and after 0x1F
+ * frames advance to mode 2; mode 2: dispose of the item (call its proc with
+ * mode=0xFF, remove its collision, complain if the proc didn't clear mode).
+ *
+ * Matching notes (all verified against the original bytes; this is
+ * ProcItemKusuri's mode-2 bleed loop verbatim — see that file for the loop
+ * conventions: while(1)+break keeps the top test while loop.c hoists &buf,
+ * &buf[0x10] and the %1000 magic divisor; the %10 magic stays inline; the
+ * jitter is written `t[n] + (rand() % 1000 - K)` for fold's reassociation):
+ *  - `param = (param_korogari *)item->param;` is declared before the entry
+ *    0xFF test — reorg hoists the addiu into that branch's delay slot.
+ *  - `ff` (u8, 0xFF) is caller-saved ($a1) here, unlike Kusuri's $s4: its
+ *    only uses are the entry compare and case 2's `item->mode = ff`, and no
+ *    call intervenes on that path.
+ *  - The dispatch is a real `switch` (fresh lbu + signed slti tree), bodies
+ *    in source order 0,1,2. Cases 0 and 1 both end in a literal duplicated
+ *    `item->mode = item->mode + 1; return;` — jump2 cross-jumps them into
+ *    the LAST copy (case 1's), leaving case 0 as `j` + the sb in its delay
+ *    slot. Writing one shared after-switch `mode++` instead puts the tail
+ *    after case 2 (wrong layout).
+ *  - Case 1's counter is `u8 cnt = param->count + 1; param->count = cnt;
+ *    if (cnt < 0x1f) return;` — the u8 local re-narrowed after arithmetic
+ *    gives the defensive andi 0xff + sltiu.
+ *  - Case 2's dispose checks `if (item->proc == 0)` INLINE (allocates $v0
+ *    for both the test and the jalr; Kusuri's named `ppu` temp allocates
+ *    $v1 there).
+ */
+
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
  * docs/psx-sym.md. Do not hand-edit.
@@ -26,93 +57,69 @@
  *     reg   $s0       struct tag_TItem * item
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemKawarimi", ProcItemKawarimi);
+#include "item.h"
 
-// triage: MEDIUM — 196 insns, mul/div, indirect-call, 5 callees, ~0.35 to ProcItemKusuri
-// likely-relevant cookbook sections:
-//   - Dispatch: if/switch ladder — reload vs CSE, signed vs unsigned
-//   - Expressions: mult/div — magic-multiply constants, fold
-//   - Register allocation steering: indirect call — null-check-var/call-field
+void ProcItemKawarimi(tag_TItem *item)
+{
+    param_korogari *param;
+    u8 ff;
+    s32 i;
+    u8 buf[0x20];
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// void ProcItemKawarimi(tag_TItem *item)
-//
-// {
-//   byte bVar1;
-//   int iVar2;
-//   int iVar3;
-//   int iVar4;
-//   VECTOR local_40;
-//   SVECTOR local_30;
-//   SVECTOR local_28;
-//
-//   if (item->mode == 0xff) {
-//     item->mode = '\0';
-//     return;
-//   }
-//   bVar1 = item->mode;
-//   if (bVar1 == 1) {
-//     for (iVar4 = 0; iVar4 < 0x14; iVar4 = iVar4 + 1) {
-//       memset((uchar *)&local_30,'\0',0x10);
-//       iVar2 = rand();
-//       local_30._0_4_ = (item->owner->model->locate).coord.t[0] + -500 + iVar2 % 1000;
-//       iVar2 = rand();
-//       local_30._4_4_ = (item->owner->model->locate).coord.t[1] + -0x4b0 + iVar2 % 1000;
-//       iVar2 = rand();
-//       local_40.vz = (item->owner->model->locate).coord.t[2] + -500 + iVar2 % 1000;
-//       local_40.vx._0_2_ = local_30.vx;
-//       local_40.vx._2_2_ = local_30.vy;
-//       local_40.vy._0_2_ = local_30.vz;
-//       local_40.vy._2_2_ = local_30.pad;
-//       local_40.pad._0_2_ = local_28.vz;
-//       local_40.pad._2_2_ = local_28.pad;
-//       local_28._0_4_ = local_40.vz;
-//       memset((uchar *)&local_28,'\0',8);
-//       iVar2 = rand();
-//       local_30.vy = (short)iVar2 + (short)(iVar2 / 10) * -10 + -0x1e;
-//       local_28.vy = local_30.vy;
-//       local_30.vx = local_28.vx;
-//       local_30.vz = local_28.vz;
-//       local_30.pad = local_28.pad;
-//       iVar3 = rand();
-//       iVar2 = iVar3;
-//       if (iVar3 < 0) {
-//         iVar2 = iVar3 + 0xf;
-//       }
-//       SetBleed(&local_40,&local_30,iVar3 + (iVar2 >> 4) * -0x10 + 0xf,0x64c8dc);
-//     }
-//     bVar1 = (item->param).smoke.count + 1;
-//     (item->param).smoke.count = bVar1;
-//     if (bVar1 < 0x1f) {
-//       return;
-//     }
-//   }
-//   else {
-//     if (1 < bVar1) {
-//       if (bVar1 != 2) {
-//         return;
-//       }
-//       if (item->proc == (undefined **)0x0) {
-//         return;
-//       }
-//       item->mode = 0xff;
-//       (*(code *)item->proc)(item);
-//       DeleteConflict(item->locate);
-//       if (item->mode != 0) {
-//         AdtMessageBox("item dispose fail   id %d  mode %d",item->type,(uint)item->mode);
-//       }
-//       item->owner = (Humanoid *)0x0;
-//       item->proc = (undefined **)0x0;
-//       return;
-//     }
-//     if (bVar1 != 0) {
-//       return;
-//     }
-//     (item->param).smoke.count = '\0';
-//   }
-//   item->mode = item->mode + '\x01';
-//   return;
-// }
+    param = (param_korogari *)item->param;
+    ff = 0xff;
+    if (item->mode == ff)
+    {
+        item->mode = 0;
+        return;
+    }
+    switch (item->mode)
+    {
+    case 0:
+        param->count = 0;
+        item->mode = item->mode + 1;
+        return;
+
+    case 1:
+        i = 0;
+        while (1)
+        {
+            if (!(i < 0x14))
+                break;
+            memset(buf + 0x10, 0, sizeof(VECTOR));
+            ((s32 *)(buf + 0x10))[0] = item->owner->model->locate.coord.t[0] + (rand() % 1000 - 500);
+            ((s32 *)(buf + 0x10))[1] = item->owner->model->locate.coord.t[1] + (rand() % 1000 - 0x4b0);
+            ((s32 *)(buf + 0x10))[2] = item->owner->model->locate.coord.t[2] + (rand() % 1000 - 500);
+            *(VECTOR *)buf = *(VECTOR *)(buf + 0x10);
+            memset(buf + 0x18, 0, sizeof(SVECTOR));
+            ((SVECTOR *)(buf + 0x18))->vy = rand() % 10 - 30;
+            *(SVECTOR *)(buf + 0x10) = *(SVECTOR *)(buf + 0x18);
+            SetBleed((VECTOR *)buf, (SVECTOR *)(buf + 0x10), rand() % 0x10 + 0xf, 0x64C8DC);
+            i++;
+        }
+        {
+            u8 cnt;
+
+            cnt = param->count + 1;
+            param->count = cnt;
+            if (cnt < 0x1f)
+                return;
+        }
+        item->mode = item->mode + 1;
+        return;
+
+    case 2:
+        if (item->proc == 0)
+            return;
+        item->mode = ff;
+        item->proc(item);
+        DeleteConflict(item->locate);
+        if (item->mode != 0)
+        {
+            AdtMessageBox(D_800121CC, item->type, (u32)item->mode);
+        }
+        item->owner = 0;
+        item->proc = 0;
+        return;
+    }
+}

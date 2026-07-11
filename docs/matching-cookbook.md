@@ -391,6 +391,22 @@ plain C is the matched file.
   pushed later in memory (reached by a forward jump). Makibishi's nested
   switch needed `case 4:` before `case 1:` in source though the tests check 1
   first — check body ADDRESSES in the `.s`, not just the test order.
+- **A switch's shared continuation sitting physically BETWEEN two case bodies
+  is NOT after-switch code — it is a duplicated tail.** When the target shows
+  e.g. `item->mode++; return;` in the middle of the case bodies (case 0 ends in
+  a `j` with its lone store in the delay slot, then the increment+return appears,
+  then case 1), each of case 0 and case 1 ended in a *literal duplicated*
+  `item->mode = item->mode + 1; return;` and jump2 cross-jumped them into the
+  LAST copy (case 1's). Writing one shared statement after the `switch` instead
+  lays the join after ALL bodies — wrong placement. Duplicate the tail into each
+  case (ProcItemKawarimi, ProcItemGun).
+- **The switch index register doubling as the constant it matched.** A
+  `sw`/`sh` store of the literal case value *inside* a case body (ProcItemGun's
+  `common = (void *)1;` under `case 1:`) is cse's `record_jump_equiv` on the
+  `beq index,CONST` taken edge: the pseudo==constant equivalence survives calls,
+  so a plain literal constant in source reproduces the store while ALSO forcing
+  the dispatch index into a callee-saved register. Don't hand-substitute a
+  variable for the literal, and don't be alarmed the switch index is callee-saved.
 - A mode-dispatcher that **reloads its variable** (two `lbu` of the same
   field) and compares **signed** (`slti`) is a real **`switch`**: cc1's
   `expand_case` emits a balanced compare tree over a *fresh* index load. An
@@ -409,6 +425,11 @@ plain C is the matched file.
   (`u8 ff = 0xff;`) also used by a later store. A path where the same value is
   materialized fresh (`li $v1, 0xFF`) uses a literal there — the register got
   reused for something else in between.
+  - **Corollary (caller-saved `ff`):** the `u8 ff = 0xff;` entry-compare
+    variable is instead *caller-saved* (`$a1`/`$v1`) when the path from the
+    entry test to the dispose store `item->mode = ff` crosses NO call. Checking
+    `item->proc` INLINE (`if (item->proc)` with no `ppu` temp) is what allocates
+    `$v0` for both the null test and the `jalr` (ProcItemGun/ProcItemKawarimi).
 - **De-Morgan layout lever — `||` vs `&&` place the bodies differently.** cc1
   always emits the THEN body physically first, so `if (a != 0 || b != 0) {BIG}
   else {SMALL}` and `if (a == 0 && b == 0) {SMALL} else {BIG}` (logically
@@ -2371,7 +2392,10 @@ absolute → keep the symbol off the list (a plain small extern).
     plain scalar extern yields one shared register but the target uses two
     different ones, respell as an unknown-size array *even at exactly 8 bytes*
     (DoBriefingAndInventorySelection's `extern RECT D_80097698[];`, indexed
-    `[0]` — 14 bytes off as a plain `extern RECT`).
+    `[0]` — 14 bytes off as a plain `extern RECT`; ProcItemGun's two 8-byte
+    `extern SVECTOR D_80097B0C[];`/`D_80097B14[];` on that same `D_80097Bxx`
+    table, +1 insn as plain `extern SVECTOR` — the `lui` reorg only hoists into
+    the dispatch delay slot once the split forces a two-register HIGH/LO_SUM).
 - **A callee-saved value dying at a call whose result lands in the SAME
   s-register is the call-result variable HOSTING the earlier load**:
   `h = pm->locate.coord.t[1]; gy = h; … h = GetAreaMapLevel(…, gy, …);` —
