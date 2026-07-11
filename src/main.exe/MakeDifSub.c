@@ -36,7 +36,148 @@
  *     reg   $s1       long ip
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/MakeDifSub", MakeDifSub);
+/*
+ * MakeDifSub (0x800300b4, 0x2dc bytes) — CAMERA.C's smoothed-delta helper:
+ * given a src/target pair of VECTORs, writes the eased step toward target
+ * into *dest and updates the TMakeDifInfo scratch block (*info) it was
+ * handed (info->bef holds last frame's speed in .vx and last frame's raw
+ * delta in .vy/.vz/.pad — a one-field-shifted reuse of the SVECTOR shape).
+ * Divides by runtime values throughout (the eased speed's fixed-point
+ * division and the final per-axis dest = delta*speed/len), so this TU needs
+ * `--expand-div` (Build.hs maspsxGpExterns' extra list + permute.py's
+ * MASPSX_EXTRA) for ASPSX's guarded bnez/break-7/break-6 expansion.
+ *
+ * Matching notes:
+ *  - PSX.SYM's own locals list two SVECTOR* pointers, `a`/`b` — but those
+ *    are cse1's OWN base-address materialization for two nearby field reads
+ *    (`&nv` reused for the .vy/.vz reads that sit right next to each other,
+ *    `&info->bef.vy` reused for .vz/.pad likewise), not a named source
+ *    pointer: a plain `nv.vy`/`nv.vz` / `info->bef.vz`/`info->bef.pad` field
+ *    access reproduces it. Writing an explicit `SVECTOR *a = &nv;` pins `a`
+ *    live for the WHOLE function (an extra callee-saved register + frame
+ *    slot the target doesn't have) since every later use goes through it;
+ *    the real source only takes nv's address implicitly, for that one
+ *    adjacent pair, and every later access (dest->vx/vy/vz, the final
+ *    info->bef.vy/vz/pad copy) is its own fresh direct $sp-relative load.
+ *  - `dx` is referenced by name twice more after being computed (the dot
+ *    product's first term, lenA's first arg) and stays in its own register
+ *    for both; `dy`/`dz` are never referenced again by name after being
+ *    stored into `nv` — every later use goes through `nv.vy`/`nv.vz`
+ *    instead, which is why only dx's reads skip a stack round-trip.
+ *  - The two `[0,0xfff]`-then-`>>0xc` clamps need the GetVectorLength.c
+ *    "default-then-override temp" shape (`t = v; if (v<0) t = v+0xfff; v =
+ *    t>>0xc;`), not an in-place `if (v<0) v+=0xfff; v>>=0xc;` — same idiom,
+ *    same reason (the branch's delay slot gets the unconditional default).
+ *  - The eased-speed reduction is THREE statements, not one expression:
+ *    `mspd = bef.vx*(sla+0x1000); if (mspd<0) mspd+=0x1fff; spd = mspd>>0xd;
+ *    spd = spd + info->spd;`. Two levers here, both length/register-critical:
+ *      (a) the product needs its OWN temp `mspd` distinct from `spd` — the
+ *          in-place `spd = bef.vx*…; if (spd<0) spd+=0x1fff; spd = (spd>>0xd)
+ *          + spd_field;` fused the pre-shift accumulator and the final speed
+ *          into one pseudo (a0), which coloured the whole chain a0 and drifted
+ *          6 bytes; a fresh `mspd` lets the accumulator take v1.
+ *      (b) the final `spd = mspd>>0xd` and `spd = spd + info->spd` must be
+ *          SEPARATE statements — the fused `spd = (mspd>>0xd) + info->spd;`
+ *          keeps the shift result in mspd's register (v1) and only the add
+ *          lands in spd (a0); splitting makes the shift itself target spd (a0)
+ *          and the add happen in place (the last 2-byte tie).
+ */
+typedef struct
+{
+    s16 div;     /* +0x0 */
+    s16 spd;     /* +0x2 */
+    SVECTOR bef; /* +0x4 */
+} TMakeDifInfo;
+
+extern long GetVectorLength(long dx, long dy, long dz);
+
+void MakeDifSub(VECTOR *src, VECTOR *target, VECTOR *dest, TMakeDifInfo *info)
+{
+    s32 dx, dy, dz;
+    s32 len;
+    SVECTOR nv;
+    s32 dot;
+    s32 ip;
+    s32 lenA, lenB;
+    s32 slab;
+    s32 sla;
+    s32 spd;
+    s32 t;
+    s32 mspd;
+
+    dx = target->vx - src->vx;
+    dy = target->vy - src->vy;
+    dz = target->vz - src->vz;
+    len = GetVectorLength(dx, dy, dz);
+    if (len == 0)
+    {
+        dest->vx = 0;
+        dest->vy = 0;
+        dest->vz = 0;
+        return;
+    }
+
+    ip = len >> info->div;
+
+    nv.vx = dx;
+    nv.vy = dy;
+    nv.vz = dz;
+
+    {
+        SVECTOR *a = &nv;
+        SVECTOR *b = (SVECTOR *)&info->bef.vy;
+
+        dot = (s16)dx * info->bef.vy + a->vy * b->vy + a->vz * b->vz;
+        lenA = GetVectorLength((s16)dx, a->vy, a->vz);
+        lenB = GetVectorLength(info->bef.vy, b->vy, b->vz);
+    }
+    slab = lenA * lenB;
+
+    if (0x7FFFE < dot)
+    {
+        t = dot;
+        if (dot < 0)
+        {
+            t = dot + 0xFFF;
+        }
+        dot = t >> 0xC;
+        t = slab;
+        if (slab < 0)
+        {
+            t = slab + 0xFFF;
+        }
+        slab = t >> 0xC;
+    }
+
+    if (slab == 0)
+    {
+        sla = 0;
+    }
+    else
+    {
+        sla = (dot << 0xC) / slab;
+    }
+
+    mspd = info->bef.vx * (sla + 0x1000);
+    if (mspd < 0)
+    {
+        mspd += 0x1FFF;
+    }
+    spd = mspd >> 0xD;
+    spd = spd + info->spd;
+    if (ip < spd)
+    {
+        spd = ip;
+    }
+
+    info->bef.vx = (s16)spd;
+    dest->vx = (nv.vx * spd) / len;
+    dest->vy = (nv.vy * spd) / len;
+    dest->vz = (nv.vz * spd) / len;
+    info->bef.vy = nv.vx;
+    info->bef.vz = nv.vy;
+    info->bef.pad = nv.vz;
+}
 
 // triage: MEDIUM — 183 insns, mul/div, 1 callees, ~0.08 to GetVectorRotation
 // likely-relevant cookbook sections:
@@ -137,4 +278,86 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/MakeDifSub", MakeDif
 //     (info->bef).pad = sVar5;
 //   }
 //   return;
+// }
+
+// m2c (mipsel-gcc-c reference — cleaner control flow + register
+// temps straight from the asm; Ghidra above has the real types):
+//
+// s32 GetVectorLength(s16, s16, s16, s16);            /* extern */
+//
+// void MakeDifSub(void *arg0, void *arg1, void *arg2, void *arg3) {
+//     s16 sp10;
+//     s16 sp12;
+//     s16 sp14;
+//     s16 temp_a3;
+//     s16 temp_s0;
+//     s16 temp_s1;
+//     s16 temp_s3;
+//     s32 temp_s0_3;
+//     s32 temp_s3_2;
+//     s32 temp_v0;
+//     s32 var_a0;
+//     s32 var_s0;
+//     s32 var_s0_2;
+//     s32 var_s1;
+//     s32 var_v0;
+//     s32 var_v0_2;
+//     s32 var_v1;
+//     u16 temp_a1;
+//     u16 temp_a2;
+//     void *temp_s0_2;
+//
+//     temp_s0 = arg1->unk0 - arg0->unk0;
+//     temp_s3 = arg1->unk4 - arg0->unk4;
+//     temp_s1 = arg1->unk8 - arg0->unk8;
+//     temp_v0 = GetVectorLength(temp_s0, temp_s3, temp_s1);
+//     if (temp_v0 == 0) {
+//         arg2->unk0 = 0;
+//         arg2->unk4 = 0;
+//         arg2->unk8 = 0;
+//         return;
+//     }
+//     temp_a3 = arg3->unk0;
+//     sp10 = temp_s0;
+//     sp12 = temp_s3;
+//     sp14 = temp_s1;
+//     temp_a1 = sp10.unk2;
+//     temp_s0_2 = arg3 + 6;
+//     temp_a2 = sp10.unk4;
+//     temp_s3_2 = temp_v0 >> temp_a3;
+//     var_s1 = (temp_s0 * arg3->unk6) + ((s16) temp_a1 * temp_s0_2->unk2) + ((s16) temp_a2 * temp_s0_2->unk4);
+//     temp_s0_3 = GetVectorLength(temp_s0, (s16) temp_a1, (s16) temp_a2, temp_a3);
+//     var_s0 = temp_s0_3 * GetVectorLength(arg3->unk6, temp_s0_2->unk2, temp_s0_2->unk4);
+//     if (var_s1 > 0x7FFFE) {
+//         var_v0 = var_s1;
+//         if (var_s1 < 0) {
+//             var_v0 = var_s1 + 0xFFF;
+//         }
+//         var_s1 = var_v0 >> 0xC;
+//         var_v0_2 = var_s0;
+//         if (var_s0 < 0) {
+//             var_v0_2 = var_s0 + 0xFFF;
+//         }
+//         var_s0 = var_v0_2 >> 0xC;
+//     }
+//     if (var_s0 == 0) {
+//         var_s0_2 = 0;
+//     } else {
+//         var_s0_2 = (s32) (var_s1 << 0xC) / var_s0;
+//     }
+//     var_v1 = arg3->unk4 * (var_s0_2 + 0x1000);
+//     if (var_v1 < 0) {
+//         var_v1 += 0x1FFF;
+//     }
+//     var_a0 = (var_v1 >> 0xD) + arg3->unk2;
+//     if (temp_s3_2 < var_a0) {
+//         var_a0 = temp_s3_2;
+//     }
+//     arg3->unk4 = (s16) var_a0;
+//     arg2->unk0 = (s32) ((s32) (sp10 * var_a0) / temp_v0);
+//     arg2->unk4 = (s32) ((s32) (sp12 * var_a0) / temp_v0);
+//     arg2->unk8 = (s32) ((s32) (sp14 * var_a0) / temp_v0);
+//     arg3->unk6 = (s16) (u16) sp10;
+//     arg3->unk8 = (u16) sp12;
+//     arg3->unkA = (u16) sp14;
 // }

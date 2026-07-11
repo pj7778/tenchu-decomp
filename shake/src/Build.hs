@@ -174,6 +174,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     extra "DrawAfterimage" = ["--expand-div"]
     extra "UpdateSplineControl" = ["--expand-div"]
     extra "DrawFlyWire" = ["--expand-div"]
+    extra "MakeDifSub" = ["--expand-div"]
     extra "FUN_80039ddc" = ["--expand-div"]
     extra "FUN_8004c59c" = ["--expand-div"]
     extra "FUN_8004d6d4" = ["--expand-div"]
