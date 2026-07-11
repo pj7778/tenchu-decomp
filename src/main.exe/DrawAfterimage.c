@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -31,117 +32,221 @@
  *     extern struct GsOT *OTablePt;
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawAfterimage", DrawAfterimage);
+/*
+ * MATCH.
+ *
+ * DrawAfterimage (0x800387f4, EFFECT.C:1717) — the weapon-trail afterimage
+ * effect's per-frame update+draw: when `disp!=0` (actively swinging),
+ * grows `n` (clamped to `maxn-1`), shifts the `p1`/`p2` screen-point ring
+ * buffers up by one slot, and re-projects the model's two trail SVECTORs
+ * (`vector1`/`vector2`) plus a throwaway UnitVector call whose OTZ becomes
+ * `afi->sz`, bailing (`return 0`) if that OTZ is exactly 0; when `disp==0`
+ * (trail fading out) it instead just shrinks `n` (bailing at 0). Either
+ * way it then builds a POLY_GT4 strip: each of the `n-1` inner segments is
+ * a Gouraud quad between the trail's point `i` and `i-1`'s screen
+ * position, red/green/blue ramping from a `(n-i)*127/n` alpha at the far
+ * (older) edge to a constant 0x7f at the near (newer) edge, sorted by the
+ * (shared, single) `afi->sz`-derived OTZ clamp. Returns the new `n`.
+ *
+ * Matching notes (docs/matching-cookbook.md):
+ *  - `AfterimageType` is SetupAfterimage.c's own full, DEFINING-TU layout
+ *    (model/vector1/vector2/maxn/n/p1/p2/sz/poly) — reused verbatim except
+ *    `poly` is given its real `POLY_GT4` type here (SetupAfterimage never
+ *    touches individual poly fields, so it left it `u8[0x34]`).
+ *  - `POLY_GT4` isn't vendored anywhere in this repo; declared locally in
+ *    full (Ghidra's own independently-built struct, reference/
+ *    ghidra_types.h:4511 — cross-checked against psxsym-types.h's `size
+ *    52`). `p1`/`p2` entries are `long`s that PACK a screen (x,y) pair (x
+ *    in the low 16 bits, y in the high 16 — RotTransPers's own `sxy`
+ *    out-param convention); every `poly->xN/yN` pair is therefore written
+ *    as ONE 32-bit store through `*(s32 *)&poly->xN`, matching the
+ *    target's single `sw` per pair (never two separate `sh`s).
+ *  - The ring-buffer shift is a plain `for (i = afi->n - 1; i > 0; i--) {
+ *    p1[i]=p1[i-1]; p2[i]=p2[i-1]; }` — `i` must be `short` for the
+ *    fused `(i<<16)>>14` sign-extend+scale addressing of the 4-byte `long`
+ *    elements (the short-counter idiom that suppresses loop.c's strength
+ *    reduction, same family as DrawModelArchive's `mad->object[i]` loop);
+ *    cc1's own loop rotation supplies the entry-duplicated `<=0` guard for
+ *    free, no hand-written outer `if` needed.
+ *  - `GsGetLs(&afi->model->locate, &mat);` — `model->locate` is
+ *    `ModelType`'s own offset-0 field, so this is byte-identical to
+ *    `GsGetLs((GsCOORDINATE2 *)afi->model, &mat)`; spelled Ghidra's way
+ *    for clarity.
+ *  - The `disp!=0`/`disp==0` arms both fall into ONE shared tail (the
+ *    `poly->x0`/`x2` seed + the draw loop) — the `disp!=0` arm's own
+ *    `otz==0` early-`return 0` and the `disp==0` arm's own `n<=0` early-
+ *    `return 0` are two INDEPENDENT guard-clause returns, not a shared
+ *    variable; the shared tail is reached by plain fallthrough from
+ *    either arm's last statement (no explicit `goto` needed if written in
+ *    that order).
+ *  - Inside the loop, statement order is Ghidra's own dependency order,
+ *    NOT simple field-offset order: `poly->x1 = poly->x0;` (old value)
+ *    THEN capture `p1[i]` THEN `poly->x3 = poly->x2;` (old value) THEN
+ *    `poly->x0 = <captured p1[i]>;` THEN capture `p2[i]` THEN the six
+ *    `0x7f` r1/g1/b1/r3/g3/b3 stores THEN `poly->x2 = <captured p2[i]>;`
+ *    — `p1[i]`/`p2[i]` must be captured into temps BEFORE the x1/x3 "old
+ *    value" copies overwrite their sources, matching the target's own
+ *    load-then-store-elsewhere scheduling.
+ *  - `tplv` (PSX.SYM's own name) is ONE variable playing TWO roles, not a
+ *    literal `0x7f` plus a separate `alfa` — set to `0x7f` ONCE, before
+ *    the `disp` dispatch even runs (matching the target's `li s1,127` in
+ *    the shared prologue, alongside `poly`'s own setup), used for the
+ *    r1/g1/b1/r3/g3/b3 stores, THEN REASSIGNED inside the loop to
+ *    `((afi->n-i)*127)/afi->n` for the r0/g0/b0/r2/g2/b2 stores — the
+ *    "one C variable = one pseudo for its whole life" rule; a hardcoded
+ *    `0x7f` literal plus an independent `alfa` local costs an extra `move`
+ *    the target doesn't have (it reuses the SAME register for both
+ *    roles).
+ *  - The draw loop must be `i=1; while(1) { if(!(i<n)) break; ...; i++; }`
+ *    — a plain `for (i=1; i<n; i++)` gets its jump.c-duplicated entry test
+ *    CONSTANT-FOLDED against the literal initial value `1` (a cheap
+ *    `slti`), while the target's entry test is the SAME general widen-
+ *    and-compare the bottom test uses — the `while(1)+break` form still
+ *    gets loop.c's hoisting but the entry test is a literal source
+ *    statement, not something jump.c can special-case against a known
+ *    constant.
+ *  - `((afi->n - i) * 127) / afi->n` divides by a runtime value: needs
+ *    `--expand-div` (Build.hs maspsxGpExterns' `extra` list + permute.py's
+ *    MASPSX_EXTRA).
+ *  - The `[0, 0x4e1]` clamp on `afi->sz >> 2` is FUN_8003a2a8's exact
+ *    `goto zero;` shape (the trivial `pri=0` body must be the branch
+ *    TARGET, not the fall-through) — and the shift needs `otz = afi->sz;
+ *    otz = otz >> 2;` as TWO statements (matching DrawFrame's identical
+ *    lever): fused into one expression, cc1 reuses the load's own
+ *    register for the shift's destination; split, the load's destination
+ *    register matches the target's directly (a 2-byte pure register tie).
+ */
+typedef struct
+{
+    ModelType *model;    /* 0x00 */
+    SVECTOR vector1;     /* 0x04 */
+    SVECTOR vector2;     /* 0x0C */
+    s16 maxn;            /* 0x14 */
+    s16 n;               /* 0x16 */
+    long *p1;            /* 0x18 */
+    long *p2;            /* 0x1C */
+    s32 sz;              /* 0x20 */
+    struct POLY_GT4
+    {
+        u_long tag;   /* 0x00 */
+        u8 r0, g0, b0, code;
+        s16 x0, y0;   /* 0x08 */
+        u8 u0, pad0h;
+        u16 clut;
+        u8 r1, g1, b1, p1c;
+        s16 x1, y1;   /* 0x14 */
+        u8 u1, pad1h;
+        u16 tpage;
+        u8 r2, g2, b2, p2c;
+        s16 x2, y2;   /* 0x20 */
+        u8 u2, v2;
+        u16 pad2;
+        u8 r3, g3, b3, p3c;
+        s16 x3, y3;   /* 0x2C */
+        u8 u3, v3;
+        u16 pad3;
+    } poly;              /* 0x24 */
+} AfterimageType;
 
-// triage: MEDIUM — 158 insns, mul/div, 2 loop, 4 callees, ~0.05 to bow_shoot_logic
-// likely-relevant cookbook sections:
-//   - Loops: 2 back-edge(s) — for/while/do vs goto shape
-//   - Expressions: mult/div — magic-multiply constants, fold
+extern void GsGetLs(GsCOORDINATE2 *coord, MATRIX *m);
+extern void GsSetLsMatrix(MATRIX *m);
+extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
+extern void GsSortPoly(struct POLY_GT4 *p, GsOT *ot, s32 pri);
+extern SVECTOR UnitVector;
+extern GsOT *OTablePt;
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// short DrawAfterimage(AfterimageType *afi,short disp)
-//
-// {
-//   uint uVar1;
-//   long lVar2;
-//   undefined4 *puVar3;
-//   int iVar4;
-//   int iVar5;
-//   u_char uVar6;
-//   int iVar7;
-//   int iVar8;
-//   MATRIX MStack_38;
-//
-//   iVar7 = 0x7f;
-//   if (disp == 0) {
-//     if (0 < afi->n) {
-//       afi->n = afi->n + -1;
-//       goto LAB_80038914;
-//     }
-//   }
-//   else {
-//     if ((int)afi->n < afi->maxn + -1) {
-//       afi->n = afi->n + 1;
-//     }
-//     uVar1 = (uint)(ushort)afi->n;
-//     while (uVar1 = uVar1 - 1, 0 < (int)(uVar1 * 0x10000)) {
-//       iVar5 = (int)(uVar1 * 0x10000) >> 0xe;
-//       puVar3 = (undefined4 *)(iVar5 + (int)afi->p1);
-//       *puVar3 = puVar3[-1];
-//       puVar3 = (undefined4 *)(iVar5 + (int)afi->p2);
-//       *puVar3 = puVar3[-1];
-//     }
-//     GsGetLs(&afi->model->locate,&MStack_38);
-//     GsSetLsMatrix(&MStack_38);
-//     RotTransPers(&afi->vector1,afi->p1,(long *)0x0,(long *)0x0);
-//     RotTransPers(&afi->vector2,afi->p2,(long *)0x0,(long *)0x0);
-//     lVar2 = RotTransPers(&UnitVector,(long *)0x0,(long *)0x0,(long *)0x0);
-//     afi->sz = lVar2;
-//     if (lVar2 != 0) {
-// LAB_80038914:
-//       lVar2 = *afi->p1;
-//       (afi->poly).x0 = (short)lVar2;
-//       (afi->poly).y0 = (short)((uint)lVar2 >> 0x10);
-//       lVar2 = *afi->p2;
-//       iVar8 = 1;
-//       (afi->poly).x2 = (short)lVar2;
-//       (afi->poly).y2 = (short)((uint)lVar2 >> 0x10);
-//       iVar5 = 0x10000;
-//       while( true ) {
-//         iVar5 = iVar5 >> 0x10;
-//         if (afi->n <= iVar5) break;
-//         (afi->poly).x1 = (afi->poly).x0;
-//         (afi->poly).y1 = (afi->poly).y0;
-//         lVar2 = afi->p1[iVar5];
-//         (afi->poly).x3 = (afi->poly).x2;
-//         (afi->poly).y3 = (afi->poly).y2;
-//         (afi->poly).x0 = (short)lVar2;
-//         (afi->poly).y0 = (short)((uint)lVar2 >> 0x10);
-//         lVar2 = afi->p2[iVar5];
-//         uVar6 = (u_char)iVar7;
-//         (afi->poly).b1 = uVar6;
-//         (afi->poly).g1 = uVar6;
-//         (afi->poly).r1 = uVar6;
-//         (afi->poly).b3 = uVar6;
-//         (afi->poly).g3 = uVar6;
-//         (afi->poly).r3 = uVar6;
-//         (afi->poly).x2 = (short)lVar2;
-//         (afi->poly).y2 = (short)((uint)lVar2 >> 0x10);
-//         iVar4 = (int)afi->n;
-//         iVar5 = (iVar4 - iVar5) * 0x7f;
-//         iVar7 = iVar5 / iVar4;
-//         if (iVar4 == 0) {
-//           trap(0x1c00);
-//         }
-//         if ((iVar4 == -1) && (iVar5 == -0x80000000)) {
-//           trap(0x1800);
-//         }
-//         uVar6 = (u_char)iVar7;
-//         (afi->poly).b0 = uVar6;
-//         (afi->poly).g0 = uVar6;
-//         (afi->poly).r0 = uVar6;
-//         (afi->poly).b2 = uVar6;
-//         (afi->poly).g2 = uVar6;
-//         (afi->poly).r2 = uVar6;
-//         iVar5 = afi->sz >> 2;
-//         if (iVar5 < 0) {
-//           iVar4 = 0;
-//         }
-//         else {
-//           iVar4 = 0x4e1;
-//           if (iVar5 < 0x4e2) {
-//             iVar4 = iVar5;
-//           }
-//         }
-//         iVar8 = iVar8 + 1;
-//         GsSortPoly(&afi->poly,OTablePt,(ushort)iVar4);
-//         iVar5 = iVar8 * 0x10000;
-//       }
-//       return afi->n;
-//     }
-//   }
-//   return 0;
-// }
+short DrawAfterimage(AfterimageType *afi, short disp)
+{
+    struct POLY_GT4 *poly;
+    MATRIX mat;
+    short i;
+    s32 otz;
+    s16 tplv;
+    s32 pri;
+    long tmp1, tmp2;
+
+    tplv = 0x7f;
+    poly = &afi->poly;
+
+    if (disp != 0)
+    {
+        if (afi->n < afi->maxn - 1)
+        {
+            afi->n = afi->n + 1;
+        }
+        for (i = afi->n - 1; i > 0; i--)
+        {
+            afi->p1[i] = afi->p1[i - 1];
+            afi->p2[i] = afi->p2[i - 1];
+        }
+        GsGetLs(&afi->model->locate, &mat);
+        GsSetLsMatrix(&mat);
+        RotTransPers(&afi->vector1, afi->p1, 0, 0);
+        RotTransPers(&afi->vector2, afi->p2, 0, 0);
+        afi->sz = RotTransPers(&UnitVector, 0, 0, 0);
+        if (afi->sz == 0)
+        {
+            return 0;
+        }
+    }
+    else
+    {
+        if (afi->n <= 0)
+        {
+            return 0;
+        }
+        afi->n = afi->n - 1;
+    }
+
+    *(s32 *)&poly->x0 = *afi->p1;
+    *(s32 *)&poly->x2 = *afi->p2;
+
+    i = 1;
+    while (1)
+    {
+        if (!(i < afi->n))
+        {
+            break;
+        }
+        *(s32 *)&poly->x1 = *(s32 *)&poly->x0;
+        tmp1 = afi->p1[i];
+        *(s32 *)&poly->x3 = *(s32 *)&poly->x2;
+        *(s32 *)&poly->x0 = tmp1;
+        tmp2 = afi->p2[i];
+        poly->b1 = tplv;
+        poly->g1 = tplv;
+        poly->r1 = tplv;
+        poly->b3 = tplv;
+        poly->g3 = tplv;
+        poly->r3 = tplv;
+        *(s32 *)&poly->x2 = tmp2;
+
+        tplv = ((afi->n - i) * 127) / afi->n;
+        poly->b0 = tplv;
+        poly->g0 = tplv;
+        poly->r0 = tplv;
+        poly->b2 = tplv;
+        poly->g2 = tplv;
+        poly->r2 = tplv;
+
+        otz = afi->sz;
+        otz = otz >> 2;
+        if (otz < 0)
+        {
+            goto zero;
+        }
+        pri = 0x4e1;
+        if (otz < 0x4e2)
+        {
+            pri = otz;
+        }
+        goto done;
+    zero:
+        pri = 0;
+    done:
+        GsSortPoly(poly, OTablePt, (u16)pri);
+        i++;
+    }
+
+    return afi->n;
+}

@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "effect.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -37,107 +38,182 @@
  *     extern struct GsOT *OTablePt;
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawFrame", DrawFrame);
+/*
+ * MATCH.
+ *
+ * DrawFrame (0x80035094, EFFECT.C:1044) — the frame/flash effect's per-frame
+ * draw: picks the animation slot `sprFrame[param->count % 4]`, runs a
+ * mode-driven countdown state machine (mode 0: white flash fading via
+ * `count`, resetting to mode 1 at 0; mode 1: fade using the LOW BYTE of
+ * `count` as the RGB level, self-disposing at 0), then projects `param`'s
+ * position through the FUN_8003a148-style hint-or-camera-relative dispatch
+ * and, if visible, scales/positions the picked `sprFrame` slot and
+ * GsSortSprite's it with the same `[0, 0x4e1]` OTZ-derived clamp.
+ *
+ * Matching notes (docs/matching-cookbook.md):
+ *  - `param = &ef->param.frame;` (FrameType* at ef+4) — `count` (s16 @
+ *    0x12) doubles as BOTH the countdown AND (its raw low BYTE, mode 1) the
+ *    fade level — `effect.h`'s proven FrameType layout, no new struct.
+ *  - `idx = param->count % 4;` is plain C `%` by the constant 4 — cc1's
+ *    own round-toward-zero remainder expansion (bgez-guarded `+3`, `sra 2`,
+ *    `sll 2`, `subu`) is automatic, no manual shift/mask needed.
+ *  - The mode dispatch is a plain `if (mode==0) {...} else if (mode==1)
+ *    {...}` — both bodies converge on the draw code below (no `else`
+ *    tail), matching the target's goto-ladder-to-a-shared-continuation
+ *    shape (`beqz mode,body0; beq mode,1,body1; j draw;`).
+ *  - Mode 1's RGB fill reads the LOW BYTE of `count` directly —
+ *    `*(u8 *)&param->count` (a `lbu` at count's own address, the low byte
+ *    of the little-endian s16) — not a distinct union member; m2c's raw
+ *    `(u8)temp_a1->unk12` confirms it is literally `count`'s own byte, no
+ *    new field.
+ *  - Both mode bodies test `if (param->count <= 0) {...}` AFTER storing
+ *    the decremented `count` back (`count -= 1`/`count -= 29` reproduces
+ *    the target's own `addiu -1`/`addiu -0x1D`; Ghidra's `-0x1D` text is
+ *    the real encoded immediate here, unlike DrawBleed's `+0xff` — verify
+ *    the encoded byte before trusting Ghidra's rendering either way).
+ *  - The camera-relative projection is FUN_8003a148's exact `if (hint !=
+ *    0) { Scratchpad GsGetLs/GsSetLsMatrix/RotTransPers } else {
+ *    FUN_800396c0 }` shape and polarity (hint!=0 is the fall-through).
+ *  - `otz = scr.vz;` re-reads FRESH for the clamp (`t = scr.vz - 0x32; t =
+ *    t >> 2;`), matching FUN_8003a148's own re-read (opposite of
+ *    DrawBleed's reuse) — the target's asm shows a second, independent
+ *    `lh` there.
+ *  - `size * 300` is a plain constant multiply; cc1's own strength
+ *    reduction produces the target's shift/subtract/shift sequence
+ *    automatically (same as FUN_8003a148's `size * 300`) — but ONLY once
+ *    `size` is captured into a plain `s32` local (not `s16`): a `s16 size`
+ *    local fed by a same-width struct-field copy triggers the "pure
+ *    narrowing copy loads lhu" rule even though `size` is later used in
+ *    signed arithmetic (the `*300` multiply and this same address
+ *    computation both need the sign), costing a spurious `sll/sra`
+ *    re-widen the target doesn't have — widen the CAPTURING LOCAL, not
+ *    just the read.
+ *  - `px`/`py`/`pz`/`hint`/`size` must be captured into plain locals
+ *    UPFRONT (right after the mode dispatch converges), matching the
+ *    target's own grouped `lw`×4 + `lh` — the "N adjacent loads, no use
+ *    between them, are source temps" rule (also lets `hint`/`size` survive
+ *    the RotTransPers/FUN_800396c0 call in a callee-saved register without
+ *    a fresh reload after).
+ *  - The scratchpad `px/py/pz` store is the FLAT `*(s16*)0x1F8000xx = ...`
+ *    per-store macro cast (FUN_80039544's idiom), NOT a named `SVECTOR *sv`
+ *    pointer local (FUN_8003a148's idiom) — even though the shape looks
+ *    identical to FUN_8003a148 otherwise (same hint-vs-camera-relative
+ *    dispatch, same RotTransPers call reusing the pointer): a named `sv`
+ *    here combines the three stores through one materialized base register
+ *    instead of three independent one-line macros, 4 bytes off. Read the
+ *    actual asm before assuming a sibling's exact idiom carries over.
+ *  - The final `t = (scr.vz - 0x32) >> 2;` clamp base needs the subtraction
+ *    and the shift as TWO separate statements (`t = scr.vz - 0x32; t = t >>
+ *    2;`) — fused into one expression, cc1 reuses the subtraction's own
+ *    register for the shift's destination too; split, the shift gets a
+ *    fresh register, matching the target's `addiu v1,v0,-50` (dest != src)
+ *    + `sra v1,v1,2` exactly (a 2-byte pure register tie, the cookbook's
+ *    "sub-C-level early-stop" class — but this one had a real source
+ *    lever: statement splitting, not a permuter/RTL escalation).
+ *  - This TU divides by a runtime value (`size*300/otz`): needs
+ *    `--expand-div` (Build.hs maspsxGpExterns' `extra` list + permute.py's
+ *    MASPSX_EXTRA), same as FUN_8003a148/FUN_8003a2a8.
+ */
+extern GsSPRITE sprFrame[4];
+extern GsOT *OTablePt;
+extern void GsGetLs(GsCOORDINATE2 *coord, MATRIX *m);
+extern void GsSetLsMatrix(MATRIX *m);
+extern void FUN_800396c0(s32 x, s32 y, s32 z, s32 *out);
+extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
+extern void GsSortSprite(GsSPRITE *sp, GsOT *ot, s32 pri);
 
-// triage: MEDIUM — 139 insns, mul/div, 5 callees, ~0.05 to ReqItemShinsoku
-// likely-relevant cookbook sections:
-//   - Dispatch: if/switch ladder — reload vs CSE, signed vs unsigned
-//   - Expressions: mult/div — magic-multiply constants, fold
+void DrawFrame(TEffectSlot *ef)
+{
+    FrameType *param = &ef->param.frame;
+    GsSPRITE *spr;
+    SVECTOR scr;
+    s16 idx;
+    s32 otz;
+    s16 sc;
+    s32 t;
+    s32 pri;
+    u8 rgb;
+    s32 px, py, pz;
+    GsCOORDINATE2 *hint;
+    s32 size;
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// void DrawFrame(tag_EffectSlot *ef)
-//
-// {
-//   uchar uVar1;
-//   ushort uVar2;
-//   short sVar3;
-//   int iVar4;
-//   long lVar5;
-//   int iVar6;
-//   int iVar7;
-//   long lVar8;
-//   GsCOORDINATE2 *m;
-//   long lVar9;
-//   short local_18;
-//   short local_16;
-//   short local_14;
-//
-//   iVar7 = (int)(ef->param).bleed.vec.vy;
-//   iVar4 = iVar7;
-//   if (iVar7 < 0) {
-//     iVar4 = iVar7 + 3;
-//   }
-//   iVar4 = (iVar7 + (iVar4 >> 2) * -4) * 0x10000 >> 0x10;
-//   uVar1 = (ef->param).frame.mode;
-//   if (uVar1 == '\0') {
-//     sprFrame[iVar4].b = 0x80;
-//     sprFrame[iVar4].g = 0x80;
-//     sprFrame[iVar4].r = 0x80;
-//     uVar2 = (ef->param).bleed.vec.vy - 1;
-//     (ef->param).bleed.vec.vy = uVar2;
-//     if ((int)((uint)uVar2 << 0x10) < 1) {
-//       uVar1 = (ef->param).frame.mode;
-//       (ef->param).bleed.vec.vy = 0x80;
-//       (ef->param).frame.mode = uVar1 + '\x01';
-//     }
-//   }
-//   else if (uVar1 == '\x01') {
-//     uVar1 = (ef->param).splash.mode;
-//     sprFrame[iVar4].b = uVar1;
-//     sprFrame[iVar4].g = uVar1;
-//     sprFrame[iVar4].r = uVar1;
-//     uVar2 = (ef->param).bleed.vec.vy - 0x1d;
-//     (ef->param).bleed.vec.vy = uVar2;
-//     if ((int)((uint)uVar2 << 0x10) < 1) {
-//       ef->proc = (undefined **)0x0;
-//     }
-//   }
-//   lVar5 = (ef->param).blood.px;
-//   lVar8 = (ef->param).blood.py;
-//   lVar9 = (ef->param).blood.pz;
-//   m = (GsCOORDINATE2 *)(ef->param).blood.hint;
-//   sVar3 = (ef->param).bleed.vec.vx;
-//   if (m == (GsCOORDINATE2 *)0x0) {
-//     FUN_800396c0(lVar5,lVar8,lVar9,&local_18);
-//   }
-//   else {
-//     Scratchpad._32_2_ = (undefined2)lVar5;
-//     Scratchpad._34_2_ = (undefined2)lVar8;
-//     Scratchpad._36_2_ = (undefined2)lVar9;
-//     GsGetLs(m,(MATRIX *)Scratchpad);
-//     GsSetLsMatrix((MATRIX *)Scratchpad);
-//     lVar5 = RotTransPers((SVECTOR *)(Scratchpad + 0x20),(long *)&local_18,
-//                          (long *)(Scratchpad + 0x28),(long *)(Scratchpad + 0x2c));
-//     local_14 = (short)lVar5;
-//   }
-//   iVar7 = (int)local_14;
-//   if (0x24 < iVar7) {
-//     iVar6 = sVar3 * 300;
-//     if (iVar7 == 0) {
-//       trap(0x1c00);
-//     }
-//     if ((iVar7 == -1) && (iVar6 == -0x80000000)) {
-//       trap(0x1800);
-//     }
-//     sVar3 = (short)(iVar6 / iVar7) + 1;
-//     sprFrame[iVar4].scaley = sVar3;
-//     sprFrame[iVar4].scalex = sVar3;
-//     sprFrame[iVar4].x = local_18;
-//     sprFrame[iVar4].y = local_16;
-//     iVar7 = local_14 + -0x32 >> 2;
-//     if (iVar7 < 0) {
-//       iVar6 = 0;
-//     }
-//     else {
-//       iVar6 = 0x4e1;
-//       if (iVar7 < 0x4e2) {
-//         iVar6 = iVar7;
-//       }
-//     }
-//     GsSortSprite(sprFrame + iVar4,OTablePt,(ushort)iVar6);
-//   }
-//   return;
-// }
+    idx = param->count % 4;
+    spr = &sprFrame[idx];
+
+    if (param->mode == 0)
+    {
+        goto mode0;
+    }
+    if (param->mode == 1)
+    {
+        goto mode1;
+    }
+    goto draw;
+mode0:
+    spr->b = 0x80;
+    spr->g = 0x80;
+    spr->r = 0x80;
+    param->count = param->count - 1;
+    if (param->count <= 0)
+    {
+        param->count = 0x80;
+        param->mode = param->mode + 1;
+    }
+    goto draw;
+mode1:
+    rgb = *(u8 *)&param->count;
+    spr->b = rgb;
+    spr->g = rgb;
+    spr->r = rgb;
+    param->count = param->count - 29;
+    if (param->count <= 0)
+    {
+        ef->proc = 0;
+    }
+draw:
+    px = param->px;
+    py = param->py;
+    pz = param->pz;
+    hint = param->super;
+    size = param->size;
+
+    if (hint != 0)
+    {
+        *(s16 *)0x1F800020 = px;
+        *(s16 *)0x1F800022 = py;
+        *(s16 *)0x1F800024 = pz;
+        GsGetLs(hint, (MATRIX *)0x1F800000);
+        GsSetLsMatrix((MATRIX *)0x1F800000);
+        scr.vz = (s16)RotTransPers((SVECTOR *)0x1F800020, (s32 *)&scr, (void *)0x1F800028, (void *)0x1F80002C);
+    }
+    else
+    {
+        FUN_800396c0(px, py, pz, (s32 *)&scr);
+    }
+
+    otz = scr.vz;
+    if (otz > 0x24)
+    {
+        sc = (s16)((size * 300) / otz) + 1;
+        spr->scaley = sc;
+        spr->scalex = sc;
+        spr->x = scr.vx;
+        spr->y = scr.vy;
+        t = scr.vz - 0x32;
+        t = t >> 2;
+        if (t < 0)
+        {
+            goto zero;
+        }
+        pri = 0x4e1;
+        if (t < 0x4e2)
+        {
+            pri = t;
+        }
+        goto done;
+    zero:
+        pri = 0;
+    done:
+        GsSortSprite(spr, OTablePt, (u16)pri);
+    }
+}
