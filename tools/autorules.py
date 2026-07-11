@@ -536,6 +536,106 @@ def rule_ptr_index_sum(text, name, span):
                    splice(data, val.start_byte, val.end_byte, repl).decode())
 
 
+def _stmt_expr(data, stmt):
+    """(lhs_text, rhs_text) if `stmt` is `X = E;` (assignment or single-init decl)."""
+    if stmt.type == "expression_statement":
+        e = [c for c in stmt.named_children if c.type != "comment"]
+        if len(e) == 1 and e[0].type == "assignment_expression":
+            a = e[0]
+            op = a.child_by_field_name("operator")
+            if op is not None and _txt(data, op) == b"=":
+                return (_txt(data, a.child_by_field_name("left")).strip(),
+                        _txt(data, a.child_by_field_name("right")).strip())
+    if stmt.type == "declaration":
+        idecs = [c for c in stmt.named_children if c.type == "init_declarator"]
+        if len(idecs) == 1:
+            idn = _descend_ident(idecs[0].child_by_field_name("declarator"))
+            val = idecs[0].child_by_field_name("value")
+            if idn is not None and val is not None:
+                return (_txt(data, idn).strip(), _txt(data, val).strip())
+    return None
+
+
+def rule_min_ternary(text, name, span):
+    """Merge a two-statement min/max into a ternary:
+    `x = a; if (b < x) x = b;` -> `x = (b < a) ? b : a;` (min), and the `>` max form.
+
+    A conditional min/max against a MEMORY operand must be the ternary or the two-stmt
+    form re-expands the arm's memory read in the destination's narrow mode and cannot CSE
+    (cookbook; fixed 22/26 bytes of UpdateMotion). Same value; scoring decides. Only the
+    exact adjacent `X = A;` then `if (B REL X) X = B;` shape, no else."""
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    for block in _find(body, ("compound_statement",)):
+        kids = [c for c in block.named_children if c.type != "comment"]
+        for i in range(len(kids) - 1):
+            s1, s2 = kids[i], kids[i + 1]
+            asg = _stmt_expr(data, s1)
+            if asg is None or s2.type != "if_statement":
+                continue
+            x, a = asg
+            if s2.child_by_field_name("alternative") is not None:
+                continue  # no else
+            cond = s2.child_by_field_name("condition")
+            cons = s2.child_by_field_name("consequence")
+            inner = _paren_inner(cond) if cond is not None and cond.type == "parenthesized_expression" else cond
+            body2 = _stmt_expr(data, cons) if cons is not None and cons.type != "compound_statement" else \
+                (_stmt_expr(data, [c for c in cons.named_children if c.type != "comment"][0])
+                 if cons is not None and cons.type == "compound_statement"
+                 and len([c for c in cons.named_children if c.type != "comment"]) == 1 else None)
+            if inner is None or inner.type != "binary_expression" or body2 is None:
+                continue
+            op = inner.child_by_field_name("operator")
+            bl = inner.child_by_field_name("left")
+            br = inner.child_by_field_name("right")
+            if op is None or _txt(data, op) not in (b"<", b">"):
+                continue
+            # want `B REL X` with body `X = B` -> min/max of (X's old value a, B)
+            bx, by = _txt(data, bl).strip(), _txt(data, br).strip()
+            if by != x:
+                continue  # right operand must be X (the running value)
+            bx2, b_rhs = body2
+            if bx2 != x or b_rhs != bx:
+                continue  # body must be `X = B` (all bytes)
+            rel = _txt(data, op).decode()
+            repl = (f"{x.decode()} = ({bx.decode()} {rel} {a.decode()}) ? "
+                    f"{bx.decode()} : {a.decode()};").encode()
+            yield (f"min-ternary {x.decode()} L{_line(data, s1.start_byte)}",
+                   splice(data, s1.start_byte, s2.end_byte, repl).decode())
+
+
+def rule_cmp_swap(text, name, span):
+    """Swap a comparison's operands to flip evaluation order: `a > b` -> `b < a`.
+
+    expand evaluates op0 first, so `a > mem` emits the (short) sign-extension slls before
+    the load while `mem < a` loads first (cookbook). Same slt; scoring decides. Only fires
+    where exactly one side is a MEMORY access (field/subscript/deref) — narrows the site
+    count to the cases where it matters."""
+    SWAP = {b"<": b">", b">": b"<", b"<=": b">=", b">=": b"<="}
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    def is_mem(n):
+        return n.type in ("field_expression", "subscript_expression", "pointer_expression")
+    for c in _find(body, ("binary_expression",)):
+        op = c.child_by_field_name("operator")
+        L = c.child_by_field_name("left")
+        R = c.child_by_field_name("right")
+        if op is None or L is None or R is None:
+            continue
+        sw = SWAP.get(_txt(data, op))
+        if sw is None:
+            continue
+        if is_mem(L) == is_mem(R):
+            continue  # exactly one side must be memory
+        repl = _txt(data, R).strip() + b" " + sw + b" " + _txt(data, L).strip()
+        yield (f"cmp-swap L{_line(data, c.start_byte)}",
+               splice(data, c.start_byte, c.end_byte, repl).decode())
+
+
 RULES = [
     ("type-width", "flip a local's integer type across width/signedness", rule_type_width),
     ("and-nest", "split/merge if(a && b) <-> nested ifs (no else)", rule_and_nest),
@@ -543,6 +643,8 @@ RULES = [
     ("abs-ge", "rewrite (x<0)?-x:x -> (x>=0)?x:-x (the abssi2 fold)", rule_abs_ge),
     ("or-inplace", "rewrite X = X|C -> X |= C (local-alloc lever)", rule_or_inplace),
     ("ptr-index-sum", "T *p = base+idx -> (T*)(idx*sizeof(T)+(int)base)", rule_ptr_index_sum),
+    ("min-ternary", "x=a; if(b<x) x=b; -> x = (b<a)?b:a (min-vs-memory)", rule_min_ternary),
+    ("cmp-swap", "a>mem -> mem<a (comparison operand-order lever)", rule_cmp_swap),
 ]
 
 
