@@ -14,7 +14,7 @@
  * MATCH.
  *
  * FUN_8003a2a8 (0x8003a2a8, 0xf8 bytes) — shared "project a 3D point and
- * sort-draw a sprite there" epilogue: calls FUN_800396c0 (camera-relative
+ * sort-draw a sprite there" epilogue: calls GetScreenPosition (camera-relative
  * transform + RotTransPers) to get a screen (x,y) and OTZ depth, bails if
  * the point is behind/too close (`otz <= 0x24`), else derives a uniform
  * scale from `size*300/otz`, writes the sprite's x/y/scalex/scaley, and
@@ -54,7 +54,7 @@
  *    plain `int pri` parameter alone does not imply truncation.
  */
 extern GsOT *OTablePt;
-extern void FUN_800396c0(s32 x, s32 y, s32 z, s32 *out);
+extern void GetScreenPosition(s32 x, s32 y, s32 z, s32 *out);
 extern void GsSortSprite(GsSPRITE *sp, GsOT *ot, int pri);
 
 void FUN_8003a2a8(GsSPRITE *sp, s32 x, s32 y, s32 z, s32 size)
@@ -65,7 +65,7 @@ void FUN_8003a2a8(GsSPRITE *sp, s32 x, s32 y, s32 z, s32 size)
     s32 t;
     s32 pri;
 
-    FUN_800396c0(x, y, z, (s32 *)&scr);
+    GetScreenPosition(x, y, z, (s32 *)&scr);
     otz = scr.vz;
     if (otz > 0x24)
     {

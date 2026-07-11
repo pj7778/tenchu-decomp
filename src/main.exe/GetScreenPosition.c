@@ -12,7 +12,7 @@
  * END PSX.SYM */
 
 /*
- * FUN_800396c0 (0x800396c0, 0x9c bytes) — camera-relative coordinate
+ * GetScreenPosition (0x800396c0, 0x9c bytes) — camera-relative coordinate
  * transform + perspective project: zeroes the GTE scratchpad MATRIX's
  * translation vector (fixed PS1 scratchpad RAM at 0x1F800000, same
  * `MATRIX *m` idiom as PrepareGetScreenPositionS.c's t[0..2] @ 0x14/0x18/0x1c), writes
@@ -59,7 +59,7 @@ extern void SetTransMatrix(MATRIX *m);
 extern void SetRotMatrix(MATRIX *m);
 extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 
-void FUN_800396c0(s32 arg0, s32 arg1, s32 arg2, s32 *arg3)
+void GetScreenPosition(s32 arg0, s32 arg1, s32 arg2, s32 *arg3)
 {
     MATRIX *m = (MATRIX *)0x1F800000;
     SVECTOR *sv = (SVECTOR *)0x1F800020;

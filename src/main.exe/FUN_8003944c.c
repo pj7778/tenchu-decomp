@@ -23,7 +23,7 @@
  * Unlike FUN_80038fdc, this one fills EVERY BloodType field straight from
  * its own 10 parameters (a raw "spawn a blood-family effect exactly as
  * told" setter, not a computed one like SetBlood.c) and hands the slot to
- * FUN_80033f10 (calls RotTransPers/GsSortSprite/FUN_800396c0 — the same
+ * FUN_80033f10 (calls RotTransPers/GsSortSprite/GetScreenPosition — the same
  * callee DrawBlood.c uses — so FUN_80033f10 is almost certainly another
  * Draw* in this family). Called by DamageControl, ProcItemGosin and
  * ProcItemShinsoku (all still asm) — likely something like SetBloodDirect/

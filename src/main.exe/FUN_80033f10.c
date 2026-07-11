@@ -83,7 +83,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80033f10", FUN_8
 //   (&DAT_800beabe)[iVar6] =
 //        (char)(iVar9 >> 0xc) + (char)((int)(*(byte *)(param_1 + 6) * uVar10) >> 0xc);
 //   if ((GsCOORDINATE2 *)param_1[4] == (GsCOORDINATE2 *)0x0) {
-//     FUN_800396c0(param_1[1],param_1[2],param_1[3],&local_20);
+//     GetScreenPosition(param_1[1],param_1[2],param_1[3],&local_20);
 //   }
 //   else {
 //     Scratchpad._32_2_ = (undefined2)param_1[1];

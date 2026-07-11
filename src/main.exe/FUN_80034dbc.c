@@ -75,7 +75,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80034dbc", FUN_8
 //     param_1[3] = iVar9;
 //     iVar8 = (&DAT_80097f2c)[*(byte *)((int)param_1 + 0x22)];
 //     iVar3 = param_1[6];
-//     FUN_800396c0();
+//     GetScreenPosition();
 //     iVar9 = (int)(short)local_2c;
 //     if (0x24 < iVar9) {
 //       if (iVar9 == 0) {

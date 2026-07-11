@@ -20,10 +20,10 @@
  * scratchpad idiom as DrawOrnament/DrawModel — install `coord`'s local
  * system as the GTE's matrix, then rotate-translate-perspective the
  * (x,y,z) point written into the scratchpad SVECTOR @ 0x1F800020);
- * otherwise it falls back to FUN_800396c0 (the already-matched
+ * otherwise it falls back to GetScreenPosition (the already-matched
  * camera-relative-transform + RotTransPers helper). Either path leaves the
  * projected (x,y) and OTZ in one local SVECTOR `scr` (x,y from the
- * RotTransPers/FUN_800396c0 out-param, z/otz narrowed from the return
+ * RotTransPers/GetScreenPosition out-param, z/otz narrowed from the return
  * value) exactly like FUN_8003a2a8's `scr`. The `pri` clamp additionally
  * folds in `param_7` (added to otz before the `>>2`), unlike FUN_8003a2a8's
  * plain otz.
@@ -35,8 +35,8 @@
  *    `trap(0x1800)` are ASPSX's automatic divide-by-zero/overflow guards,
  *    not literal source calls — plain `/` reproduces them once the
  *    function is on the expand-div list.
- *  - `if (coord != 0) {GsGetLs path} else {FUN_800396c0}` — the opposite
- *    polarity of Ghidra's literal `if (coord == 0) {FUN_800396c0} else
+ *  - `if (coord != 0) {GsGetLs path} else {GetScreenPosition}` — the opposite
+ *    polarity of Ghidra's literal `if (coord == 0) {GetScreenPosition} else
  *    {GsGetLs}` rendering: the target's branch is `beqz coord, ...` with
  *    the GsGetLs block as the FALL-THROUGH, so the C needs the condition
  *    that puts GsGetLs first (the `if (cond) A; else B;`-makes-A-the-
@@ -52,7 +52,7 @@
  *    (cc1 doesn't refetch a value it can already see live).
  */
 extern GsOT *OTablePt;
-extern void FUN_800396c0(s32 x, s32 y, s32 z, s32 *out);
+extern void GetScreenPosition(s32 x, s32 y, s32 z, s32 *out);
 extern void GsGetLs(GsCOORDINATE2 *coord, MATRIX *m);
 extern void GsSetLsMatrix(MATRIX *m);
 extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
@@ -78,7 +78,7 @@ void FUN_8003a148(GsSPRITE *sp, s32 x, s32 y, s32 z, s32 size, GsCOORDINATE2 *co
     }
     else
     {
-        FUN_800396c0(x, y, z, (s32 *)&scr);
+        GetScreenPosition(x, y, z, (s32 *)&scr);
     }
     otz = scr.vz;
     if (otz > 0x24)

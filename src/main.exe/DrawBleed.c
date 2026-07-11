@@ -46,7 +46,7 @@
  * velocity (`pos += vec`) and drifts `vec.vy` by +1 (gravity-ish), or kills
  * the slot (`ef->proc = 0`) once `time` runs out; every frame regardless
  * decrements `time`, then projects `pos` (camera-relative, via the
- * FUN_80039544-style Scratchpad SetTransMatrix/SetRotMatrix/RotTransPers
+ * DrawTarget-style Scratchpad SetTransMatrix/SetRotMatrix/RotTransPers
  * idiom) and, if visible (`otz > 0x24`), fills the shared `plyBleed` POLY_F4
  * quad (a diagonal streak from `(x,y)` to `(x+sz,y+sz)`, `sz` a distance-
  * scaled length) and GsSortPoly's it into the OT with the same
@@ -69,7 +69,7 @@
  *    un-CSE'd loads of one field, same family as DeleteConflict's
  *    ConflictObjects (a narrowing use of a signed field always loads
  *    `lhu`, a widening use loads `lh`; don't collapse to one shared read).
- *  - The camera-relative Scratchpad projection is FUN_80039544's own
+ *  - The camera-relative Scratchpad projection is DrawTarget's own
  *    idiom verbatim (zero the 3-word rotation, store `pos - (short)View`
  *    per axis, `SetTransMatrix`/`SetRotMatrix`/`RotTransPers`).
  *  - `scr.vz` gets RotTransPers's return value truncated in by the caller

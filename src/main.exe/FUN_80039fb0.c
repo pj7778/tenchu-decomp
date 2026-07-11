@@ -16,7 +16,7 @@
  * FUN_80039fb0 (0x80039fb0, 0x198 bytes) — same "project a 3D point and
  * sort-draw a sprite there" tail as FUN_8003a2a8/FUN_8003a148, but drawing
  * TWO sprites (`sp2`, then `sp1`) at the SAME projected point: one call to
- * FUN_800396c0 computes the shared (x,y,otz), then each sprite gets its own
+ * GetScreenPosition computes the shared (x,y,otz), then each sprite gets its own
  * scale/rotate/position/colour and its own GsSortSprite (`sp2`'s colour is
  * `color` raw, `sp1`'s is `color / 2` — a dimmed "shadow"/second copy of the
  * same sprite, guessing from the pattern). Statement order is Ghidra's
@@ -45,13 +45,13 @@
  *    for both sprites' `x`/`y` stores. Writing the two stores as two
  *    inline `sp2->x = out.vx; sp1->x = out.vx;` (no intervening statement
  *    at all) still produced a SECOND `lhu` in the draft — `out`'s address
- *    was taken earlier (passed to `FUN_800396c0`), and once a stack local's
+ *    was taken earlier (passed to `GetScreenPosition`), and once a stack local's
  *    address escapes, cc1 stops CSEing its repeated reads across separate
  *    statements even with nothing between them. A named temp assigned once
  *    and read twice fixes it (16 bytes: 2 spurious `lhu`+`nop` pairs).
  */
 extern GsOT *OTablePt;
-extern void FUN_800396c0(s32 x, s32 y, s32 z, s32 *out);
+extern void GetScreenPosition(s32 x, s32 y, s32 z, s32 *out);
 extern void GsSortSprite(GsSPRITE *sp, GsOT *ot, int pri);
 
 void FUN_80039fb0(GsSPRITE *sp1, GsSPRITE *sp2, s32 x, s32 y, s32 z, s32 size, long rotate, s32 color)
@@ -64,7 +64,7 @@ void FUN_80039fb0(GsSPRITE *sp1, GsSPRITE *sp2, s32 x, s32 y, s32 z, s32 size, l
     s32 t;
     s32 pri;
 
-    FUN_800396c0(x, y, z, (s32 *)&out);
+    GetScreenPosition(x, y, z, (s32 *)&out);
     otz = out.vz;
     if (otz > 0x24)
     {

@@ -102,7 +102,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8003562c", FUN_8
 //       param_1[3] = iVar9 + *(short *)(param_1 + 8);
 //       lVar13 = param_1[6];
 //       iVar10 = (uint)uVar8 << 0x10;
-//       FUN_800396c0(param_1[2],iVar9 + *(short *)(param_1 + 8),param_1[4],&local_48);
+//       GetScreenPosition(param_1[2],iVar9 + *(short *)(param_1 + 8),param_1[4],&local_48);
 //       iVar9 = (int)(short)local_44;
 //       if (iVar9 < 0x25) {
 //         return;
@@ -274,7 +274,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8003562c", FUN_8
 //   (&sprBlood)[uVar4].g = *(uchar *)(param_1 + 9);
 //   (&sprBlood)[uVar4].b = *(uchar *)(param_1 + 9);
 //   iVar9 = param_1[5];
-//   FUN_800396c0(param_1[2],param_1[3],param_1[4],&local_48);
+//   GetScreenPosition(param_1[2],param_1[3],param_1[4],&local_48);
 //   iVar5 = (int)(short)local_44;
 //   if (iVar5 < 0x25) {
 //     return;

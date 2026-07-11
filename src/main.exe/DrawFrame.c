@@ -73,7 +73,7 @@
  *    the encoded byte before trusting Ghidra's rendering either way).
  *  - The camera-relative projection is FUN_8003a148's exact `if (hint !=
  *    0) { Scratchpad GsGetLs/GsSetLsMatrix/RotTransPers } else {
- *    FUN_800396c0 }` shape and polarity (hint!=0 is the fall-through).
+ *    GetScreenPosition }` shape and polarity (hint!=0 is the fall-through).
  *  - `otz = scr.vz;` re-reads FRESH for the clamp (`t = scr.vz - 0x32; t =
  *    t >> 2;`), matching FUN_8003a148's own re-read (opposite of
  *    DrawBleed's reuse) — the target's asm shows a second, independent
@@ -92,10 +92,10 @@
  *    UPFRONT (right after the mode dispatch converges), matching the
  *    target's own grouped `lw`×4 + `lh` — the "N adjacent loads, no use
  *    between them, are source temps" rule (also lets `hint`/`size` survive
- *    the RotTransPers/FUN_800396c0 call in a callee-saved register without
+ *    the RotTransPers/GetScreenPosition call in a callee-saved register without
  *    a fresh reload after).
  *  - The scratchpad `px/py/pz` store is the FLAT `*(s16*)0x1F8000xx = ...`
- *    per-store macro cast (FUN_80039544's idiom), NOT a named `SVECTOR *sv`
+ *    per-store macro cast (DrawTarget's idiom), NOT a named `SVECTOR *sv`
  *    pointer local (FUN_8003a148's idiom) — even though the shape looks
  *    identical to FUN_8003a148 otherwise (same hint-vs-camera-relative
  *    dispatch, same RotTransPers call reusing the pointer): a named `sv`
@@ -118,7 +118,7 @@ extern GsSPRITE sprFrame[4];
 extern GsOT *OTablePt;
 extern void GsGetLs(GsCOORDINATE2 *coord, MATRIX *m);
 extern void GsSetLsMatrix(MATRIX *m);
-extern void FUN_800396c0(s32 x, s32 y, s32 z, s32 *out);
+extern void GetScreenPosition(s32 x, s32 y, s32 z, s32 *out);
 extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 extern void GsSortSprite(GsSPRITE *sp, GsOT *ot, s32 pri);
 
@@ -188,7 +188,7 @@ draw:
     }
     else
     {
-        FUN_800396c0(px, py, pz, (s32 *)&scr);
+        GetScreenPosition(px, py, pz, (s32 *)&scr);
     }
 
     otz = scr.vz;

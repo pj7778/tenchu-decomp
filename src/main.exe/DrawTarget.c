@@ -12,8 +12,8 @@
  * END PSX.SYM */
 
 /*
- * FUN_80039544 (0x80039544, 0xcc bytes) — same camera-relative-transform +
- * perspective-project shape as the twin FUN_800396c0.c (same TU: see
+ * DrawTarget (0x80039544, 0xcc bytes) — same camera-relative-transform +
+ * perspective-project shape as the twin GetScreenPosition.c (same TU: see
  * FUN_80039610.c/PrepareGetScreenPositionS.c for the scratchpad MATRIX/SVECTOR idiom),
  * but instead of writing OTZ into a caller-supplied output pointer, it reads
  * RotTransPers's packed screen (x,y) back off its own stack scratch and
@@ -30,7 +30,7 @@
  *  - Scratchpad zero/coordinate stores are FLAT `*(s32/s16 *)0x1F8000xx`
  *    casts, one macro expansion each (repeated fresh `lui $at,0x1F80` per
  *    store) — NOT a shared cached `MATRIX *`/`SVECTOR *` local like
- *    FUN_800396c0.c/PrepareGetScreenPositionS.c use for the same scratchpad region: this
+ *    GetScreenPosition.c/PrepareGetScreenPositionS.c use for the same scratchpad region: this
  *    function's asm never reuses one register across the individual
  *    zero/coordinate stores, unlike the twins.
  *
@@ -73,9 +73,9 @@ extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 extern void DrawTargetS(s32 x, s32 y, s32 z, s32 arg3);
 
 #ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80039544", FUN_80039544);
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawTarget", DrawTarget);
 #else
-void FUN_80039544(s32 arg0, s32 arg1, s32 arg2, s32 arg3)
+void DrawTarget(s32 arg0, s32 arg1, s32 arg2, s32 arg3)
 {
     s16 x;
     s16 y;

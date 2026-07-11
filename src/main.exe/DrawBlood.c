@@ -125,7 +125,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawBlood", DrawBloo
 //       (ef->param).blood.py = iVar11;
 //       lVar9 = (ef->param).blood.rotate;
 //       iVar8 = (uint)uVar3 << 0x10;
-//       FUN_800396c0((ef->param).blood.px,iVar11,(ef->param).blood.pz,&local_48);
+//       GetScreenPosition((ef->param).blood.px,iVar11,(ef->param).blood.pz,&local_48);
 //       iVar11 = (int)local_48.vz;
 //       if (iVar11 < 0x25) {
 //         return;
@@ -270,7 +270,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawBlood", DrawBloo
 //   (&sprBlood)[uVar5].g = (ef->param).blood.mode;
 //   (&sprBlood)[uVar5].b = (ef->param).blood.mode;
 //   iVar7 = (ef->param).blood.scale;
-//   FUN_800396c0((ef->param).blood.px,(ef->param).blood.py,(ef->param).blood.pz,&local_48);
+//   GetScreenPosition((ef->param).blood.px,(ef->param).blood.py,(ef->param).blood.pz,&local_48);
 //   iVar6 = (int)local_48.vz;
 //   if (iVar6 < 0x25) {
 //     return;
