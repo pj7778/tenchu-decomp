@@ -1,5 +1,6 @@
 #include "common.h"
-#include "main.exe.h"
+#include <psxsdk/libgs.h>
+#include "game_types.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -27,7 +28,128 @@
  *     extern short Attrib;
  * END PSX.SYM */
 
+extern character_state *Me_THINK_C;
+extern s32 Distance;
+extern s16 Degree;
+extern s16 SR;
+extern u16 Attrib;
+extern s32 (*AttackFunc[])(void);
+
+extern s32 rand(void);
+extern short ChasetoTarget(long length);
+extern short SuccessionAttack(long dist, short deg);
+extern s16 turn_towards_player_(s32 x_diff, s32 z_diff);
+
+/*
+ * Think3hitaway (0x8002d984) — think-handler, same "think" TU as
+ * Think3chase.c/Think3escape.c (s16 return convention; gp-relative
+ * Distance/SR/Degree/Attrib — see gpsyms).
+ *
+ * If close (Distance < 10000) and not already in the "-2" SR state, clear
+ * SR. If the character just got hit (character_status == 7): clear actflg,
+ * zero out `some_other_x_position`/`some_other_z_position` (Ghidra's
+ * `chase[0]`/`chase[1]`), and SuccessionAttack(3000, 1500) for the result.
+ * Else if not already acting (actflg == 0): face the player if aim is
+ * close (abs(Degree) < 1000, via turn_towards_player_ OR'd with a walk/run
+ * hint) or ChasetoTarget(5000) otherwise; roll a 1-in-30 chance (Distance <
+ * 2000) to add a "hit" flag (0x40); arm actflg once far enough away
+ * (Distance > 4000) or once Attrib bit 0x400 is set. Else (already
+ * acting): dispatch through AttackFunc[weapon_kind>>4]() — same
+ * zero-argument indirect-call idiom as Think3chase.c.
+ *
+ * Matching notes:
+ *  - `character_status` is read SIGNED (`lh`) at this one call site even
+ *    though game_types.h proves the field itself `u16` (needed elsewhere
+ *    to avoid a bad sign-extend) — reached via an offset-cast read,
+ *    `*(s16 *)&Me_THINK_C->character_status`, matching the cookbook's
+ *    "reach a divergent-width access via an offset cast off the same
+ *    proven pointer" rule, rather than retyping the shared struct field.
+ *  - The AttackFunc dispatch (SHORT body, one call + return) must be the
+ *    SECOND arm (`else if (actflg != 0)`) and the long "not yet acting"
+ *    body LAST/else — Ghidra's own textual order (`else if (actflg==0)
+ *    {long body} else {dispatch}`) is the OPPOSITE polarity and cost 220+
+ *    bytes of misalignment; this is the general "put the short body
+ *    earlier, the long body last so it can fall into the shared epilogue"
+ *    lever, not specific to this function.
+ *
+ * STATUS: NON_MATCHING — 14 of 388 bytes differ, but the draft is the
+ * CORRECT LENGTH (97/97 instructions) and the ENTIRE control-flow shape is
+ * proven right (every other instruction matches). The sole residual: the
+ * final `return result;`'s s16-truncating `sra $v0,$v0,0x10` sits BEFORE
+ * the epilogue's `lw $ra`/`lw $s0` restores in the target but AFTER them
+ * here — same 3 instructions, same registers, only their ORDER relative to
+ * the epilogue restores differs. Confirmed via `tools/rtldump.py
+ * Think3hitaway --draft`: the `.jump`-pass RTL already shows the
+ * sll/sra pair emitted together, correctly, immediately before the
+ * function's `(set v0 ...)`/`(use v0)` return — i.e. this is NOT a
+ * mis-shaped source construct; whatever reorders it relative to the
+ * epilogue happens in a LATER pass (sched2/dbr, post-reload) not covered
+ * by this build's `.combine`/`.greg`/`.jump`/`.lreg` dumps. Tried: an early
+ * `return AttackFunc[...]();` in place of the dispatch arm's `result =
+ * ...;` (hoping to give that path its own untangled epilogue) — regressed
+ * to 20 bytes, reverted. `tools/autorules.py` found no width win. A bounded
+ * permuter run (`timeout 300 tools/permute.py Think3hitaway --
+ * --stop-on-zero -j4`, ~34000 iterations) plateaued at best score 165
+ * (from a base of 260), never reaching 0 — consistent with a genuine
+ * post-reload scheduling tie below the C level.
+ */
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/Think3hitaway", Think3hitaway);
+#else
+s16 Think3hitaway(void)
+{
+    u16 result;
+    s32 degree;
+
+    if (Distance < 10000 && SR != -2)
+    {
+        SR = 0;
+    }
+    if (*(s16 *)&Me_THINK_C->character_status == 7)
+    {
+        Me_THINK_C->actflg = 0;
+        Me_THINK_C->some_other_z_position = 0;
+        Me_THINK_C->some_other_x_position = 0;
+        result = SuccessionAttack(3000, 0x5dc);
+    }
+    else if (Me_THINK_C->actflg != 0)
+    {
+        result = AttackFunc[(s16)Me_THINK_C->weapon_kind >> 4]();
+    }
+    else
+    {
+        degree = Degree;
+        if (degree < 0)
+        {
+            degree = -degree;
+        }
+        if (degree < 1000)
+        {
+            result = turn_towards_player_(0, 0);
+            result = (result & 0xe000) | 0x4000;
+        }
+        else
+        {
+            result = ChasetoTarget(5000);
+        }
+        if (Distance < 2000)
+        {
+            s32 r;
+
+            r = rand();
+            if (r == (r / 30) * 30)
+            {
+                result |= 0x40;
+            }
+        }
+        if (4000 < Distance || (Attrib & 0x400))
+        {
+            Me_THINK_C->actflg = 1;
+        }
+    }
+    return result;
+}
+#endif /* NON_MATCHING */
 
 // triage: MEDIUM — 97 insns, mul/div, indirect-call, 4 callees, ~0.07 to AttackAnimal
 // likely-relevant cookbook sections:
@@ -80,4 +202,61 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/Think3hitaway", Thin
 //     uVar2 = (*(code *)AttackFunc[(int)((uint)(ushort)Me_THINK_C->wpatk << 0x10) >> 0x14])();
 //   }
 //   return uVar2;
+// }
+
+// m2c (mipsel-gcc-c reference — cleaner control flow + register
+// temps straight from the asm; Ghidra above has the real types):
+//
+// s32 ChasetoTarget(?, void *);                       /* extern */
+// s32 SuccessionAttack(?, ?);                         /* extern */
+// s32 rand();                                         /* extern */
+// s32 turn_towards_player_(?, ?);                     /* extern */
+// extern ? AttackFunc;
+// extern u16 Attrib;
+// extern s16 Degree;
+// extern s32 Distance;
+// extern void *Me_THINK_C;
+// extern s16 SR;
+//
+// s32 Think3hitaway(void) {
+//     s16 var_v0_2;
+//     s32 temp_ret;
+//     s32 var_s0;
+//     s32 var_v0;
+//
+//     if ((Distance < 0x2710) && (SR != -2)) {
+//         SR = 0;
+//     }
+//     if (Me_THINK_C->unk2 == 7) {
+//         Me_THINK_C->unk89 = 0U;
+//         Me_THINK_C->unk84 = 0;
+//         Me_THINK_C->unk80 = 0;
+//         var_v0 = SuccessionAttack(0xBB8, 0x5DC) << 0x10;
+//     } else {
+//         if (Me_THINK_C->unk89 != 0) {
+//             var_s0 = *((((s32) (Me_THINK_C->unk8E << 0x10) >> 0x14) * 4) + &AttackFunc)(0xBB8, Me_THINK_C);
+//             goto block_18;
+//         }
+//         var_v0_2 = Degree;
+//         if (var_v0_2 < 0) {
+//             var_v0_2 = -var_v0_2;
+//         }
+//         if (var_v0_2 < 0x3E8) {
+//             var_s0 = (turn_towards_player_(0, 0) & 0xE000) | 0x4000;
+//         } else {
+//             var_s0 = ChasetoTarget(0x1388, Me_THINK_C);
+//         }
+//         if (Distance < 0x7D0) {
+//             temp_ret = rand();
+//             if (temp_ret == ((temp_ret / 30) * 0x1E)) {
+//                 var_s0 |= 0x40;
+//             }
+//         }
+//         if ((Distance >= 0xFA1) || (var_v0 = var_s0 << 0x10, ((Attrib & 0x400) != 0))) {
+//             Me_THINK_C->unk89 = 1U;
+// block_18:
+//             var_v0 = var_s0 << 0x10;
+//         }
+//     }
+//     return var_v0 >> 0x10;
 // }

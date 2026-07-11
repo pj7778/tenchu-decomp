@@ -41,6 +41,11 @@ AS_FLAGS = ("-EL -Iinclude -march=r3000 -mtune=r3000 -no-pad-sections -O1 -G0").
 # shake/src/Build.hs (ASPSX gp-addresses only TU-local definitions; these are the
 # small globals the function's ORIGINAL translation unit defined).
 GP_EXTERNS = {
+    "vmemoryGC": ["virtual_memory_pool"],
+    "ComputeAllConflict": ["ConflictObjects"],
+    "PlayVoice": ["D_80097CA0", "D_80097CA4", "D_80097CA8", "D_80097CAC", "D_80097C9C", "D_80097C98"],
+    "PutStrain": ["D_80097F68"],
+    "Think3hitaway": ["Distance", "SR", "Me_THINK_C", "Degree", "Attrib"],
     "Camera": ["Projection"],
     "AttackContinuousCheck": ["dtM", "Me_MOTION_C"],
     "Think4abandon": ["Me_THINK_C", "Attrib", "SR", "FRAMES_UNTIL_END_OF_ALERT"],

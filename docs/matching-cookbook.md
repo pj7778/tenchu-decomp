@@ -1052,6 +1052,12 @@ STATEMENTS, do not chase the scheduler (`HangCheck`'s vx/vz-then-vy commit order
 escaped, so its `lh` reads carry deps on every earlier `*dtL` store, and storing vy last
 lets the vz read fill the load-delay hole with no hazard nop).
 
+**A variable that reads a struct field ONLY within one conditional arm and writes it back
+at the arm's end should be scoped LOCAL to that arm, not hoisted to function scope.**
+Ghidra's early top-of-function `uVar1 = field;` is frequently an SSA-placement artifact,
+not true source position -- rescoping it into the arm fixed PutStrain's length exactly
+(`NumberImage.u` was read only in the digit-loop branch, not globally).
+
 **`x++` (postfix) is the general spelling for "test the OLD value; the incremented value
 is stored unconditionally because the other path overwrites it anyway."**
 `if (field++ < K) return; field = 0;` reproduces a single-load + delay-slot-store shape;
