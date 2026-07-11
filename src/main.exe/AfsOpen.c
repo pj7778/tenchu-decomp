@@ -29,25 +29,35 @@
  *    than the literal `if (entry != 0) {long}`) was needed to match the
  *    error-message address materialization order and the branch polarity —
  *    the long success arm belongs unnested/fallthrough here.
+ *  - Each arm calls `AdtMessageBox` directly with its own literal format
+ *    string (`AdtMessageBox(D_80014960, path);` / `AdtMessageBox(D_80014978,
+ *    path);`), NOT funnelled through a shared `char *fmt;` set in each arm
+ *    and called once after the merge. The funnelled form makes `fmt` a
+ *    pseudo that crosses the if/else join, so its per-arm `%hi` half is a
+ *    BLOCK-LOCAL temp that local-alloc resolves before global-alloc gives
+ *    `fmt` its call-argument ($a0) preference — `combine_regs` then refuses
+ *    to tie the two, and the `%hi` half defaults to $v0 instead of $a0
+ *    (cookbook: "the %hi reload tie is combine_regs refusing to tie a
+ *    block-crossing pseudo"). Two direct per-arm calls make each `%hi`/`%lo`
+ *    pair block-local from the start, inheriting the call's $a0 preference
+ *    immediately; cross-jump then re-merges the identical `jal
+ *    AdtMessageBox`+`return 0` tail into the ONE shared copy the target has
+ *    (byte-identical, no length change). This same fix also flips `handle`/
+ *    `path`'s coloring to the target's $s1/$s0 (removing the `fmt` pseudo
+ *    changes the two parameters' relative global-alloc priority ordering).
+ *  - IMPORTANT: do NOT convert the `if (entry==0) {...} else {...}`
+ *    wrapper into an early-return + fallthrough shape (`if (entry==0) {
+ *    msg; return 0; } cur = ...; do {...} while(...); msg2; return 0;`).
+ *    That reshapes the CFG so the loop's early-exit block (`cur->flagUse==
+ *    0`) gets placed AFTER the loop-exhausted tail instead of before it,
+ *    which puts the second message's whole address computation inside
+ *    loop.c's scanned NOTE_INSN_LOOP_BEG..LOOP_END range (its
+ *    `-da`/`.loop` dump shows `Insn N: regno R (life 1), savings 1 moved`)
+ *    and hoists the `%hi` half into the preheader — one instruction
+ *    SHORTER than the target, a length mismatch. Keep the if/else nesting;
+ *    only duplicate the call inside each arm.
  *
- * STATUS: NON_MATCHING — 12 of 156 bytes differ, SAME LENGTH as the
- * target (39 instructions both sides). Every instruction matches 1:1 in
- * shape and position; the only difference is a register-allocation tie:
- * target colours `handle` into $s1 and `path` into $s0 (the reverse of the
- * natural pseudo-number tie-break), and separately materializes the two
- * error-message addresses straight into $a0 (`lui $a0,%hi/addiu
- * $a0,$a0,%lo`) where our compile routes the %hi half through a scratch
- * $v0 first (`lui $v0,%hi/addiu $a0,$v0,%lo`). `tools/regalloc.py` shows
- * both parameters have symmetric usage (one call argument + one later use
- * each) with no copy-chain to break — a pure global-alloc coloring tie.
- * Ruled out: reordering the local variable declarations (`fmt` first,
- * `count`/`cur`/`entry` first) — no effect; a `count=0;` moved before vs
- * after the `AfsFindFile` call — regressed (gave `count` its own extra
- * callee-saved register, 8 bytes worse). A bounded decomp-permuter run
- * (`--stop-on-zero -j4`, ~5 min) plateaued at score 20-45 (worse than this
- * baseline), never reaching 0 — matches the cookbook's named "sub-C-level
- * residual" class (a same-length pure register-color tie); no further
- * permuter session was run per the iteration protocol's early-stop.
+ * STATUS: MATCH.
  */
 typedef struct FILE FILE;
 typedef struct TAFS TAFS;
@@ -86,20 +96,16 @@ extern void AdtMessageBox(char *fmt, ...);
 extern char D_80014960[]; /* "AfsOpen: %s not found\n" */
 extern char D_80014978[]; /* "AfsOpen: no more handle\n[%s]" */
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/AfsOpen", AfsOpen);
-#else
 TAFSFileHandle *AfsOpen(TAFS *handle, char *path)
 {
     TAFSElement *entry;
     TAFSFileHandle *cur;
     u32 count;
-    char *fmt;
 
     entry = AfsFindFile(handle, path, 1);
     count = 0;
     if (entry == 0) {
-        fmt = D_80014960;
+        AdtMessageBox(D_80014960, path);
     } else {
         cur = handle->pHandle;
         do {
@@ -112,9 +118,7 @@ TAFSFileHandle *AfsOpen(TAFS *handle, char *path)
             }
             cur = (TAFSFileHandle *)((u8 *)cur + 0x18);
         } while (count < 5);
-        fmt = D_80014978;
+        AdtMessageBox(D_80014978, path);
     }
-    AdtMessageBox(fmt, path);
     return 0;
 }
-#endif

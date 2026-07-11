@@ -57,9 +57,31 @@
  * residual, so it is USELESS here; `tools/matchdiff.py` (11 bytes) is the
  * only trustworthy signal. `tools/autorules.py` finds no improving edit.
  * Root cause is the same open "repeated frame address recomputed vs.
- * CSE-merged across one intervening call" class as cbAccess — still wants a
- * `-dg`/`-di` RTL dump session; recognize it by this exact 3-uses/1-call
- * shape rather than re-deriving from scratch.
+ * CSE-merged across one intervening call" class as cbAccess.
+ *
+ * RTL escalation (this session, `tools/rtldump.py --draft` + `.greg`):
+ * with `o_disp` declared first (correct slot order), `.greg` shows only 3
+ * pseudos left to global-alloc — 107/106/108, the block-move's
+ * source/dest/limit cursors — with `107 preferences: 16` ($s0): 107 is a
+ * copy of the loop-preheader's re-materialization of `&o_draw`, which
+ * local-alloc has ALREADY committed to hard reg 16 because its live range
+ * (first use at `GetDrawEnv`'s call arg, next use after the intervening
+ * `GetDispEnv` call) crosses two calls — global-alloc just inherits that
+ * preference. This is a LOCAL-ALLOC decision made before global-alloc runs,
+ * keyed on the pseudo's live range shape, not its stack address value.
+ * Also tried and ALSO merges (ruling out block-scope depth as an
+ * independent lever): keeping `o_disp` in the outer function scope (for
+ * correct slot order) while nesting `o_draw`/`n_draw` alone inside the `if`
+ * body — identical `.s` to the flat `o_disp,o_draw,n_draw` order, byte for
+ * byte. So the tie is governed by `o_draw`'s DECL being function-first
+ * among the three (regardless of nesting depth or the resulting stack
+ * offset): declared first, its address pseudo's live range apparently
+ * starts/ends such that local-alloc doesn't fix it early, and each of the
+ * three uses gets a fresh caller-saved recompute instead. No source
+ * respelling found that gets `o_draw` both declared-first (avoids the
+ * cross-call fixation) AND slotted second (the target's frame layout) —
+ * recognize this as a genuine local-alloc-before-global-alloc tie, not an
+ * unexplored declaration-order gap.
  */
 typedef struct
 {

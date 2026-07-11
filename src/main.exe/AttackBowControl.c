@@ -77,6 +77,38 @@
  *    sub-C-level class (same instructions/order/length, pure register
  *    choice for the very first live locals `count`/the table address).
  *    Parked per the cookbook's sub-C-level early-stop; do not re-permute.
+ *
+ * RTL escalation (this session, `.greg`/`.lreg`): the swap is a genuine
+ * global-alloc PRIORITY tie, not a reachable respelling. `.greg` lists
+ * `5 regs to allocate: 85 84 87 81 80` — that IS the descending-priority
+ * processing order (`floor_log2(refs)*refs/live_length`, computed from
+ * `.lreg`'s `used N times across M insns`): `p`(85, refs=5/life=8)=1.25,
+ * `idx`(84, refs=4/life=9)=0.89, `count`(87, refs=4/life=13)=0.615,
+ * raw-`n`(81)=0.5, cached-`n`(80)=0.07. `p`/`idx` are processed FIRST and
+ * both hard-conflict with `v0` AND `v1` (`85/84 conflicts: ... 2 3 ...`),
+ * so they fall through to the next class candidate, `$a0` (search order is
+ * v0,v1,a0,a1,a2,a3,... for this port); `count` is processed after and
+ * conflicts only with `v0` + the already-placed pseudos (no `3`/`v1` in
+ * its conflict list), so it takes the next free candidate in that order —
+ * `v1`. The target's own asm proves `count`(a1) and the table pointer
+ * (v1) ARE simultaneously live across the same range-check span (both
+ * used twice, non-overlapping recompute) exactly like our draft — so the
+ * target isn't using a delay-slot/scratch-reuse trick here (unlike
+ * FUN_8001b2f4's `rp`); it is coloured with `count` in `a1` and the
+ * pointer in `v1`, meaning in the TARGET's compile `count` must be
+ * processed at HIGHER priority than the table pointer/idx (opposite
+ * order from ours) so it claims a register before `v0`/`v1` are excluded
+ * for it. Since `count`'s own refs/life are fixed by real control flow
+ * (read once, used in the `==1` test and both range-check compares — no
+ * legitimate extra reference or shortened life available), and `p`/`idx`
+ * likewise (reused across the two textually-separate `(n<<16)>>14`
+ * computations per the note above), no ballast or reordering changes the
+ * priority order without changing what the function computes. The SAME
+ * pattern repeats a third time at the final `dtM->count` re-read
+ * (`a0`<->`v1` for `dtM` itself) — consistent with one whole-function
+ * priority ordering, not three independent local ties. Root cause is a
+ * genuine global-alloc priority tie; not reachable from this source
+ * shape.
  */
 
 #ifndef NON_MATCHING

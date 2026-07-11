@@ -1616,8 +1616,12 @@ Fix: make the argument pseudo BLOCK-LOCAL — call the function DIRECTLY IN EACH
 combine_regs ties the `%hi` temp to it, the tied qty inherits the call-argument's `$a0`
 copy-suggestion (both `lui`/`addiu` halves land in `$a0`), and jump.c's cross-jump merges
 the two identical call tails back into the single `jal` the target has — length unchanged.
-This is one of the two classes previously (wrongly) called permuter-immune; it is
-reachable. Found by a *Sonnet* agent from `rtldump FileRead --draft` + reading
+Do this WITHIN the existing `if/else` — do NOT also convert to an early-return +
+fallthrough shape, which can relocate a nearby loop's early-exit block relative to the
+call and pull the call's address computation inside `loop.c`'s scanned range (an unwanted
+hoist, one instruction short; AfsOpen). This is one of the two classes previously
+(wrongly) called permuter-immune; it is
+reachable. Now matched by FOUR functions (FileRead, PrepareAccess, AfsOpen + …). Found by a *Sonnet* agent from `rtldump FileRead --draft` + reading
 local-alloc.c. Worth retrying `PrepareAccess`'s park with it.
 
 ### A pure callee-saved SWAP residual is an `allocno_compare` inequality — add ballast

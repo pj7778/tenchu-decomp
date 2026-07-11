@@ -61,6 +61,50 @@
  *    better score — permuter/autorules scores are a proxy, not proof;
  *    only `tools/matchdiff.py`'s raw byte diff and a manual read of what
  *    changed are.
+ *
+ * RTL escalation (this session): `tools/rtldump.py --draft --pass loop`
+ * PROVES `rp` must stay a NAMED, SINGLE-textual-reference pointer (assigned
+ * once per iteration, read via `*rp` in both arms) rather than writing
+ * `D_80011210[row]` inline in EACH arm. With two inline occurrences,
+ * `.loop`'s combine_givs sums their benefits (`giv at 58 combined with giv
+ * at 59`, `giv at 45 combined with 59`, `giv at 44 combined with 59` — 4
+ * records from the 2 arms) and crosses the strength-reduction threshold,
+ * turning `row` itself into an incrementing BYTE POINTER (biv 83
+ * eliminated) — a different, 1-instruction-LONGER shape (116 vs 112 bytes)
+ * that the target does not have. With exactly one textual `D_80011210[i]`
+ * reference (`i`'s own address calc), the same dump shows `giv of insn 34
+ * not worth while, 0 vs 22` — below threshold, `i` stays a plain SI
+ * counter, matching target. So the single-reference `rp` form is not
+ * cosmetic — it is the only spelling that keeps `row` a counter instead of
+ * a giv.
+ *
+ * The remaining 15-byte residual (`.greg`, same draft) is a pure
+ * global-alloc priority tie, NOT a structural difference — our compile
+ * ALREADY schedules `rp`'s address calc into the `beqz`'s delay slot
+ * exactly like the target (`addu $5,$3,$8` sits in the branch's delay
+ * slot), it just lands in a different hard reg. `rp`'s pseudo has by far
+ * the highest priority of the 6 global allocnos (refs=6 over a 4-insn
+ * life: `floor_log2(6)*6/4 = 3.0`, vs `acc` 1.25, `i` 1.23, `row` 0.88,
+ * `D_80011210`'s base-pointer 0.29) so global-alloc places it FIRST; it
+ * hard-conflicts with `v0` (the `test`/AND-result pseudo is still live at
+ * that program point in the pre-scheduling RTL global-alloc sees) and
+ * `a0` (the sign-extended `pad`, live the whole function), and `row`
+ * already carries an explicit `preferences: 3` ($v1) — per the cookbook's
+ * "find_reg makes an earlier higher-priority allocno AVOID a reg a later
+ * allocno prefers" rule, `rp` (processed first) avoids $v1 too, so it
+ * falls through to the next free candidate, $a1 — one slot ahead of
+ * where `acc`/`i`/the base pointer land relative to target ($a1/$a2/$a3
+ * vs target's $a2/$a3/t0 — the header's "uniform +1 shift"). Tried and
+ * reverted: swapping the `test`/`rp` assignment order inside the loop
+ * (28 bytes, worse); a ternary `acc = test ? acc|D_80011210[row] :
+ * acc&~D_80011210[row]` (triggers the same unwanted strength-reduction as
+ * the two-inline-reference form, wrong length). A 4th bounded permuter
+ * round (`--stop-on-zero -j4`, ~150s, ~1400+ iterations) plateaued at
+ * score 45 via a semantically-broken candidate (shadows the `pad`
+ * parameter with an uninitialized same-named local) — not a real fix,
+ * matches the already-documented "score is a proxy" warning above; no
+ * valid zero-score candidate found. Root cause is a genuine global-alloc
+ * priority tie on `rp`'s allocno, not a reachable C-level lever.
  */
 
 extern u8 D_80011210[32];
