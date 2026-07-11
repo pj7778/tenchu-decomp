@@ -1624,6 +1624,19 @@ hoist, one instruction short; AfsOpen). This is one of the two classes previousl
 reachable. Now matched by FOUR functions (FileRead, PrepareAccess, AfsOpen + …). Found by a *Sonnet* agent from `rtldump FileRead --draft` + reading
 local-alloc.c. Worth retrying `PrepareAccess`'s park with it.
 
+### When GE-ternary abs costs bytes elsewhere, absorb the cascade with a scratch reuse
+
+The GE-ternary abs fold (abssi2) is C-correct but can cost bytes elsewhere via a
+`global.c` priority cascade (it evicts another local from its target register). Check
+whether reusing an EXISTING nearby local as a THROWAWAY scratch for an unrelated value —
+BEFORE that local's "real" assignment — absorbs the pressure: extending its pseudo's live
+range raises its allocation priority and can fix the cascade AND unrelated ties at once
+(`Think1random`: reusing `adx` as scratch for `vx` before its abs role fixed both the
+abssi2 cascade and a tied `mfhi $a3` vs `$a2`). The scratch choice matters: pick a
+variable whose real role is UNCONDITIONALLY (re)assigned before it is ever read in its
+scratch capacity — else it is semantically unsafe (using `result`, whose reset path never
+reassigns) or cross-contaminates its own later use (using `adz`).
+
 ### A pure callee-saved SWAP residual is an `allocno_compare` inequality — add ballast
 
 When two locals are swapped between `$s0`/`$s1` (or any callee-saved pair) with no other

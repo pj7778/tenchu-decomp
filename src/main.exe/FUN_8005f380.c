@@ -2,32 +2,48 @@
 #include "main.exe.h"
 
 /*
- * STATUS: NON_MATCHING — 23 of 472 bytes differ; RIGHT LENGTH (118
- * instructions both sides, confirmed by asmdiff: no inserts/deletes, only
- * 3 small same-length reorder clusters). All three are the sub-C-level
- * "which independent, harmless instruction fills this delay slot" class
- * this cookbook already names (verified: `tools/autorules.py` found no
- * improving local-type edit; one bounded `tools/permute.py` run,
- * ~260s/`--stop-on-zero -j4`, found only a semantically WRONG candidate —
- * it moved the `CdReady`-failure `goto full_retry;` into the
- * `CdGetSector`-failure branch instead, leaving the real branch empty —
- * rejected per the cookbook's "a permuter winner can carry red herrings"
- * warning; never adopt a control-flow edit that changes which failure
- * retries from which point without re-deriving it from the asm):
- *  - `param[0] = 0xA0;` (the seek-mode scratch byte) schedules into
- *    `CdIntToPos`'s own delay slot in the target (`move a0,s6 / addiu
- *    a1,sp,... / jal CdIntToPos / sb v0,...`); this build emits the store
- *    before the call's own arg setup instead (same 3 instructions, target
- *    order swapped) — tried reordering the two source statements
- *    (`CdIntToPos` first, store second); it moved a DIFFERENT residual
- *    instead of fixing this one (net same size), so reverted.
- *  - The mode-0xE retry loop's own back-edge delay slot: target
- *    rematerialises `li v0,0xA0` there (the same seek-mode constant,
- *    ready for the next retry's store); this build leaves it a bare
- *    `nop`.
- *  - The copy loop's own entry test (`chunk > 0`) and its counter's `i=0`
- *    init are swapped one instruction relative to each other.
- * Parked per the sub-C-level early-stop.
+ * STATUS: MATCH.
+ *
+ * Two fixes closed this from a 23-byte, 3-cluster residual:
+ *
+ * 1. The header used to claim "two distinct retry destinations": `CdReady`
+ *    failure restarts from the very top (re-seek), `CdGetSector` failure
+ *    restarts only from the cursor-reinit + mode-6 re-prime point,
+ *    skipping the seek. That reading was WRONG. Reading the target .s
+ *    directly: the `CdGetSector`-fail branch (`beqz v0,.L8005F3CC`) has
+ *    `li v0,0xA0` in its OWN delay slot — the exact same constant the
+ *    `CdReady`-fail path (`bne v0,v1,.L8005F3C8`) materialises via a real
+ *    instruction one label earlier (`.L8005F3C8`, which just falls
+ *    through into `.L8005F3CC`). Both paths land at `.L8005F3CC`, which
+ *    calls `CdIntToPos` with `$s6` — the ORIGINAL `sector` parameter, not
+ *    the running `curSector` — and re-stores `param[0]=0xA0`. So a
+ *    `CdGetSector` failure re-seeks and discards ALL progress exactly like
+ *    a `CdReady` failure; `.L8005F3C8` vs `.L8005F3CC` is purely the
+ *    compiler choosing to fill the `beqz`'s own delay slot with the
+ *    shared prefix instruction for ONE of the two incoming edges, not two
+ *    different source labels. Fix: both `goto full_retry;` (no separate
+ *    `reseek_retry:` label) — this alone took the residual from 23 to 8
+ *    bytes (fixed BOTH the `CdIntToPos`-delay-slot-order cluster and the
+ *    mode-0xE back-edge's `li v0,0xA0` rematerialisation cluster, since
+ *    both were downstream of the wrong control-flow graph, not separate
+ *    sub-C-level ties as originally guessed).
+ * 2. The last cluster (copy loop's `chunk>0` entry test vs its `i=0` init,
+ *    swapped one instruction relative to each other — a delay-slot-filler
+ *    tie between two independent, harmless candidates) was NOT
+ *    permuter-immune: `tools/permute.py` found a zero-score candidate in
+ *    638 iterations once run against the corrected 8-byte baseline (the
+ *    EARLIER 260s run had been searching around the wrong 23-byte
+ *    baseline, which is presumably why it never found this). The fix:
+ *    move `src = data + off;` to be the FIRST statement INSIDE the `for`
+ *    loop body instead of immediately before it. This makes `src` a
+ *    genuine per-iteration recomputation of a LOOP-INVARIANT value, which
+ *    `loop.c` hoists back out to the preheader — but the resulting
+ *    preheader placement schedules differently than a source-level
+ *    pre-loop statement does, and picks the same delay-slot filler
+ *    (`i=0`, not `src=data+off`) the target does. (Cross-reference: this
+ *    is the same "loop.c hoisting is a threshold economy" family as
+ *    `leResetEnemyLayout`'s pre-assigned invariant, just via placement
+ *    inside the loop body rather than a named local before it.)
  *
  * FUN_8005f380 (0x8005f380, 0x1D8 bytes) — raw CD sector reader: reads
  * `length` bytes starting at byte `byteOffset` of sector `sector` into
@@ -72,20 +88,30 @@
  *
  * Matching notes:
  *  - `dst`/`curSector`/`remaining`/`off` (Ghidra's puVar8/iVar2/iVar7/
- *    iVar6) are (re)initialised ONCE, right after `CdIntToPos`, BEFORE
- *    either retry loop (mode 0xE then mode 6) — Ghidra's own rendering
- *    nests them inside the mode-6 retry `do {} while`, which is a
- *    decompiler placement artifact (cookbook: "trust the assembly over
- *    Ghidra's statement order"): the raw .s runs that init exactly once
- *    per outer/reseek entry, straight-line, before either loop.
- *  - Two distinct retry destinations, not one: `CdReady` reporting
- *    not-ready restarts from the very top (re-`CdIntToPos`, mode 0xE
- *    seek again); `CdGetSector` failing restarts only from the
- *    reinitialise-cursors + mode-6 re-prime point, skipping the seek.
- *    Written as two labels (`full_retry`/`reseek_retry`) with an
- *    unconditional fallthrough between them, matching the asm's own
- *    `.L8005F3C8`-falls-into-`.L8005F3CC` shape — not two nested loops
- *    (a `break` can't reach two different outer points).
+ *    iVar6) are (re)initialised ONCE, right after `CdIntToPos`, straight
+ *    line, before either retry loop (mode 0xE then mode 6) — Ghidra's own
+ *    rendering nests them inside the mode-6 retry `do {} while`, which is
+ *    a decompiler placement artifact (cookbook: "trust the assembly over
+ *    Ghidra's statement order").
+ *  - ONE retry destination, not two: BOTH `CdReady` reporting not-ready
+ *    AND `CdGetSector` failing restart from the exact same point
+ *    (`full_retry:` — re-`CdIntToPos` with the ORIGINAL `sector`
+ *    parameter, mode 0xE seek again, full cursor reinit), discarding any
+ *    progress made on a partially-successful multi-sector read. Ghidra's
+ *    two differently-shaped `goto`s (and an earlier draft of this header)
+ *    read as two distinct destinations because the compiler fills the
+ *    `CdGetSector`-fail branch's OWN delay slot with the shared prefix
+ *    instruction (`li v0,0xA0`) instead of jumping to where the
+ *    `CdReady`-fail path materialises it as a real instruction — same
+ *    target label either way (see STATUS above).
+ *  - `src = data + off;` sits as the FIRST statement inside the copy
+ *    loop's body, not immediately before it — even though it is loop
+ *    invariant (recomputes the same value every iteration) and `loop.c`
+ *    hoists it straight back out. Writing it before the loop as a normal
+ *    pre-loop statement compiles to the identical hoisted instruction but
+ *    picks the WRONG delay-slot filler for the loop's entry test (found
+ *    by permuter, see STATUS above; cookbook: "loop.c hoisting is a
+ *    threshold economy").
  */
 
 typedef struct CdlLOC CdlLOC;
@@ -103,10 +129,6 @@ extern int CdReady(int mode, u8 *result);
 extern int CdGetSector(void *madr, int size);
 extern int CdPosToInt(CdlLOC *pos);
 extern void CdIntToPos(s32 n, CdlLOC *pos);
-
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8005f380", FUN_8005f380);
-#else
 
 void FUN_8005f380(u8 *buffer, s32 sector, s32 byteOffset, s32 length)
 {
@@ -134,7 +156,6 @@ full_retry:
     param[0] = 0xA0;
     CdIntToPos(sector, loc);
 
-reseek_retry:
     dst = buffer;
     remaining = length;
     curSector = sector;
@@ -155,7 +176,7 @@ reseek_retry:
         n = CdReady(0, 0);
         if (n != 1) goto full_retry;
         n = CdGetSector(sectorBuf, 0x203);
-        if (n == 0) goto reseek_retry;
+        if (n == 0) goto full_retry;
 
         n = CdPosToInt((CdlLOC *)raw);
         if (n != curSector) {
@@ -167,8 +188,8 @@ reseek_retry:
             chunk = off + remaining;
             if (chunk > 0x800) chunk = 0x800;
             chunk = chunk - off;
-            src = data + off;
             for (i = 0; i < chunk; i++) {
+                src = data + off;
                 dst[i] = src[i];
             }
             dst = dst + chunk;
@@ -182,4 +203,3 @@ reseek_retry:
         VSync(0);
     }
 }
-#endif

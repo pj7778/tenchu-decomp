@@ -31,15 +31,22 @@
  * address of the unnamed SVECTOR constant `D_80097C48` builds as
  * `lui v0,%hi / addiu t3,v0,%lo` (two registers) in the target, with an
  * unrelated independent instruction (`addiu s1,sp,24`, materializing
- * `&vec`) scheduled between the two halves; our build instead puts both
- * halves in ONE register (`lui t3,%hi / addiu t3,t3,%lo`) with the
- * independent instruction moved after. Tried and reverted: swapping the
- * `vec`/`pos` local declaration order (worse, 40 bytes) and swapping the
- * `vec = D_80097C48;` / `pos.v{x,y,z} = m->{x,y,z};` statement order
- * (worse, 22 bytes — reorders the visible store sequence too). Per the
- * cookbook, this exact tie class (PrepareAccess, cd_open) has never been
- * cracked by the permuter or by source-shaping; parked rather than
- * spending a bounded run on a known-flat class.
+ * `&pos`, sp+0x18 per PSX.SYM) scheduled between the two halves; our build
+ * instead puts both halves in ONE register (`lui t3,%hi / addiu t3,t3,%lo`)
+ * with the independent instruction moved before instead of between.
+ * Tried and reverted: swapping the `vec`/`pos` local declaration order
+ * (worse, 40 bytes) and swapping the `vec = D_80097C48;` /
+ * `pos.v{x,y,z} = m->{x,y,z};` statement order (worse, 22 bytes — reorders
+ * the visible store sequence too). RE-CONFIRMED this session: `rtldump
+ * --pass all` shows the constant's address is a single-block SImode pseudo
+ * (defined and consumed with no intervening branch — NOT the documented
+ * "block-crossing pseudo" pattern that `local-alloc.c`'s `combine_regs`
+ * fix cracked for FileRead/PrepareAccess/AfsOpen, so that fix doesn't
+ * apply here), and a bounded permuter run (240s, `-j4 --stop-on-zero`,
+ * 27390 iterations) never beat the base score of 205 — confirms genuinely
+ * flat, not under-searched. Per the cookbook, this exact tie class
+ * (PrepareAccess, cd_open) has never been cracked by the permuter or by
+ * source-shaping; parked as a confirmed member of it.
  *
  * ProcMiscFire (0x8004d570, 0x164 bytes) — MISC_FIRE's ProcMisc* handler:
  * MM_CREATE arms a 10-tick fuse; every later message decrements it (once

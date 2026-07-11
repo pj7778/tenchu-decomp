@@ -80,24 +80,32 @@
  * directly) and schedules an extra/relocated `slti` — same final values,
  * one fewer instruction on this path, made up for by a different rescheduled
  * instruction elsewhere in the SAME 3-line span (net length unchanged).
- * Tried and rejected (all reproduce the identical 3-line residual): the
- * exact `abs_d2 = d2; if (d2 < 0) abs_d2 = -abs_d2;` shape (this draft);
- * testing `abs_d2 < 0` instead of `d2 < 0`; De Morgan `if (0 > d2)`; a
- * ternary initializer (`abs_d2 = d2 < 0 ? -d2 : d2;`); an explicit
- * if/else (`if (d2<0) abs_d2=-d2; else abs_d2=d2;`). Leaving `abs_d2`
- * conditionally uninitialized (mirroring the literal move+negu-only-on-the-
- * negative-path shape, relying on register reuse for the other path) does
- * NOT reproduce it either — it cascades into a much larger, unrelated
- * diff, so the target's shape is not a simple "asymmetric assignment"
- * artifact. `tools/autorules.py` tried every local's width (actscnt/result/
- * d1/d2/abs_d2) with no improvement. This is the redundant-move-elimination
- * tie family (same mechanism as the documented reload/schedule ties, just a
- * dead-store/copy form of it) — not chased further with the permuter per
- * the attempt-cap guidance (this batch's other two permuter runs, on
- * Think3firstattack/Think3escape, both showed scores uncorrelated with the
- * real byte-diff scale, suggesting a harness issue rather than a
- * real search surface here). decomp.me (psyq4.3 preset) would be the next
- * arbiter if revisited.
+ *
+ * CONFIRMED (this session) this IS the cookbook's "abs reaches abssi2 only
+ * as the GE ternary" case, and the GE spelling DOES produce exactly the
+ * target's 3 instructions in isolation — `abs_d2 = (d2 >= 0) ? d2 : -d2;`
+ * (any placement: named local at block scope, named local hoisted to
+ * function-top scope, or inlined directly into the `if`; `0 <= d2` reads
+ * the same) compiles the `bgez/move/negu` triplet the target has, verified
+ * with `tools/rtldump.py --pass all` (the abssi2 machine expansion). BUT it
+ * is not a net win here: it deterministically evicts the OUTER `result`
+ * pseudo from `$s1` to `$a2` (global-alloc priority cascade — the abssi2
+ * expansion's extra internal pseudo shifts a completely unrelated
+ * Think1random-return-copy pseudo's local-alloc coalescing, which shifts
+ * `result`'s priority below a rival), flipping the prologue's `sw $s1`/`sw
+ * $ra` order and every `result`-register byte downstream: 33 bytes differ
+ * (worse than this draft's 6). Confirmed with 4 independent GE-ternary
+ * spellings, all byte-identical in the resulting (worse) diff. The LT
+ * spelling (`d2 < 0 ? -d2 : d2`) reproduces this draft's exact 6-byte
+ * residual (does NOT fold to abssi2, per the cookbook rule), confirming the
+ * GE-vs-LT fold asymmetry but not helping — this function's residual is a
+ * genuine "fixing the near tie exposes a bigger one" case, not an
+ * un-diagnosed one. `tools/autorules.py` tried every local's width
+ * (actscnt/result/d1/d2/abs_d2) with no improvement; a bounded permuter run
+ * (280s, `-j4 --stop-on-zero`) found no zero. Parked on the 6-byte baseline
+ * (if/else form) as the strictly smaller residual. decomp.me (psyq4.3
+ * preset) would be the next arbiter if revisited — it's the only way to
+ * search past this specific global-alloc tie without a source-level lever.
  */
 extern s32 Think1random(void);
 extern void GetMoveSpeed(SVECTOR *out, s32 roty, s32 b, s32 width);
