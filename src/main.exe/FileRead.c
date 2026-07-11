@@ -51,19 +51,25 @@
  *    choice.
  *  - The `AccessPower`/`cbAccess` guard is the SAME idiom as PrepareAccess.c,
  *    including its opposite-polarity lever: the asm's `bltz` branches to the
- *    `f = 0` body with `AccessPower = 0; f = cbAccess;` as the FALLTHROUGH,
- *    so the source condition is `AccessPower >= 0`, the negation of Ghidra's
- *    `AccessPower < 0` rendering.
- *
- * STATUS: NON_MATCHING — 2 of 228 bytes differ. Same named tie as
- * PrepareAccess.c: the `cbAccess` address split (`lui %hi` / `addiu %lo`)
- * lands in $a0 both halves in the target, but cc1 here puts the `%hi` temp
- * in $v0 and combines into $a0 (`addiu a0,v0,...`). regalloc.py shows the
- * HI temp is a single-use pseudo with no copy-chain preference toward $a0 —
- * the cookbook's named "la/address-materialization reload tie" class
- * (permuter-immune; PrepareAccess already burned ~87k iterations on the
- * identical shape with no improvement, so no permuter run was repeated
- * here).
+ *    `f = 0` body with `AccessPower = 0; VSyncCallback(cbAccess);` as the
+ *    FALLTHROUGH, so the source condition is `AccessPower >= 0`, the negation
+ *    of Ghidra's `AccessPower < 0` rendering.
+ *  - Unlike PrepareAccess.c (which never matched this guard — see its own
+ *    header), this one DOES: `VSyncCallback` is called directly in each arm
+ *    instead of through a shared `void (*f)(void)` local. With a shared `f`,
+ *    `f` is a pseudo LIVE ACROSS the if/else join (block-crossing), so
+ *    cc1's `local-alloc.c` `combine_regs` refuses to tie the `%hi(cbAccess)`
+ *    temp to it (`reg_qty[sreg] == -1` for any pseudo not confined to one
+ *    block — see cookbook's RTL-dump section) and the temp free-falls to the
+ *    first free class register, $v0. Call `VSyncCallback` directly in each
+ *    arm instead: its argument pseudo is now LOCAL to that one block, so
+ *    `combine_regs` DOES tie the `%hi` temp to it (both die/are-reused at
+ *    the same point), and that tied qty inherits the copy-suggestion of $a0
+ *    from the `a0 = <arg>` call setup — landing the whole `lui`/`addiu` pair
+ *    in $a0, matching the target exactly. `jump.c` cross-jump-merges the two
+ *    calls' identical tail back into the single `jal VSyncCallback` the
+ *    target has (same idiom as the cookbook's `Sound` two-literal-`return
+ *    SoundEx(...)`-calls entry). MATCH (228/228 bytes).
  */
 
 extern void CdaStop(void);
@@ -78,22 +84,17 @@ extern s32 AccessPower;
 extern s32 ReadMode;
 extern s32 TotalIO;
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FileRead", FileRead);
-#else
 u_long *FileRead(char *filename)
 {
-    void (*f)(void);
     u_long *ret;
 
     CdaStop();
     if (AccessPower >= 0) {
         AccessPower = 0;
-        f = cbAccess;
+        VSyncCallback(cbAccess);
     } else {
-        f = 0;
+        VSyncCallback(0);
     }
-    VSyncCallback(f);
     if (ReadMode == -1) {
         TotalIO = 0;
         ReadMode = 0;
@@ -116,4 +117,3 @@ u_long *FileRead(char *filename)
     FUN_80018f00();
     return ret;
 }
-#endif

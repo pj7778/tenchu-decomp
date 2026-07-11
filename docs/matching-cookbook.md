@@ -1547,6 +1547,26 @@ cc1 folds `-at` back to `negu <dst>,<t_reg>`, negating the original `t`, not the
 copy. Which register `negu` sources from is a coloring artifact — do not chase it
 by respelling the conditional (`UpdateMotion`).
 
+### A `%hi` reload tie is `combine_regs` refusing to tie a block-crossing pseudo
+
+The "la/address-materialization reload tie" — target keeps a `lui`/`addiu` in the same
+register as a call argument, your draft puts the `%hi` temp somewhere else — is
+`local-alloc.c`'s `combine_regs` guard: `if (sreg >= FIRST_PSEUDO_REGISTER &&
+reg_qty[sreg] == -1) return 0;`. A pseudo that CROSSES A BLOCK BOUNDARY (e.g. a
+`void (*f)(void)` local assigned differently in each if/else arm and used once after the
+join) has `reg_qty == -1`, so combine_regs refuses even to attempt tying the `%hi` temp
+to it; with no tie and no suggestion, find_free_reg's default ascending search grabs the
+first free reg (`$v0`), not the call's `$a0`.
+
+Fix: make the argument pseudo BLOCK-LOCAL — call the function DIRECTLY IN EACH ARM
+(duplicated call) instead of funneling a shared local. Then `reg_qty[sreg] != -1`,
+combine_regs ties the `%hi` temp to it, the tied qty inherits the call-argument's `$a0`
+copy-suggestion (both `lui`/`addiu` halves land in `$a0`), and jump.c's cross-jump merges
+the two identical call tails back into the single `jal` the target has — length unchanged.
+This is one of the two classes previously (wrongly) called permuter-immune; it is
+reachable. Found by a *Sonnet* agent from `rtldump FileRead --draft` + reading
+local-alloc.c. Worth retrying `PrepareAccess`'s park with it.
+
 ### A pure callee-saved SWAP residual is an `allocno_compare` inequality — add ballast
 
 When two locals are swapped between `$s0`/`$s1` (or any callee-saved pair) with no other
