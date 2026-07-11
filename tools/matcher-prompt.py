@@ -30,14 +30,17 @@ GUIDANCE = [
     "Removing the INCLUDE_ASM is not evidence of a match; never report MATCH "
     "without a green `./Build clean && ./Build check`.",
 
-    "The permuter is worth ONE bounded run whenever autorules finds nothing and "
-    "the residual is the SAME LENGTH as the target — it has cracked 5-byte "
-    "register ties, a 61-byte schedule/colour miss, and a pure statement-order "
-    "fix (one field store one line earlier than its offset-order position). Only "
-    "two residual classes are known permuter-immune, and you must NOT permute "
-    "them: the `la`/address-materialization reload tie (`%hi` in a temp vs the "
-    "target register), and the guard delay-slot fill tie (branch's own `move "
-    "$v0,zero` vs the fallthrough's data-independent `lui`). Park those at once.",
+    "The permuter is worth ONE bounded FOREGROUND run (`timeout 300 "
+    "tools/permute.py <Name> -- --stop-on-zero -j4`; never background it, never "
+    "Monitor-wait it) whenever autorules finds nothing and the residual is the "
+    "SAME LENGTH. But do NOT park a same-length residual just because the permuter "
+    "fails — that is the signal to READ THE RTL. Run `tools/rtldump.py <Name>` and "
+    "follow the cookbook's \"Reading cc1's RTL dumps (the escalation method)\": "
+    "nine \"permuter-immune\" ties fell this way (register-coalescing, guard "
+    "delay-slot, %hi-reload, loop.c hoist — all previously listed as un-permutable) "
+    "and every one was reachable source structure named in the dumps. Only a GTE "
+    "COMMAND opcode (mvmva/rtps in the .s) is truly un-matchable in this cc1 — park "
+    "that on sight.",
 
     "A bare `lui $rN,0xHHHH` with NO `addiu`, reused as a base across several "
     "accesses, means the source held the address in a LOCAL via a literal "

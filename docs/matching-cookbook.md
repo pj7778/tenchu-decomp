@@ -1301,6 +1301,86 @@ near entry; `AdtMessageBox` wants the inline form.)
   reading `scale` in the compare lets combine collapse the pair back into
   one `addiu scale,scale,±16` (the target keeps the temp shape).
 
+## Reading cc1's RTL dumps (the escalation method)
+
+**When a draft is the CORRECT LENGTH but a handful of bytes differ, and both C
+respelling and a bounded permuter run have failed, STOP guessing and read the RTL.**
+Every such "permuter-immune, below-the-C-level" residual this project has escalated —
+nine in a row — turned out to be *reachable source structure* that the dumps name
+outright: a guard's operand order, a statement's position, a block boundary, a `fold`
+reassociation, a loop.c hoist threshold. The permuter can't find these (it transforms
+the C AST; the divergence is chosen in a later RTL pass), and blind respelling is a
+lottery. The dump tells you which pass diverged and why, so you solve for the fix.
+
+This is not a Fable-only skill — it is a mechanical procedure. Any agent can do it.
+
+### The tool
+
+`tools/rtldump.py <Name>` compiles `src/main.exe/<Name>.c` exactly as `./Build` does
+(same cpp defines, same cc1-281 flags) but STANDALONE in the scratchpad — no Shake, no
+`.shake/` database, so it never races a concurrent build and each run is ~1 s. It writes
+the requested RTL dump passes next to the `.s`:
+
+```
+tools/rtldump.py <Name>                 # greg, lreg, jump, combine (the usual four)
+tools/rtldump.py <Name> --pass loop     # loop.c invariant hoisting
+tools/rtldump.py <Name> --pass all      # every pass (-da): cse, flow, sched, dbr, …
+tools/rtldump.py <Name> --draft         # the #else NON_MATCHING draft
+```
+
+Pair it with a scoring loop to make each hypothesis a ~5-second test: edit the `.c`,
+`NON_MATCHING=<Name> ./Build` (or a standalone `cc1-281 | maspsx | as | objdump`),
+`tools/asmdiff.py <Name> -n`. Read the dump ONCE to form the hypothesis; iterate with
+the fast loop, not by re-dumping.
+
+### What each pass tells you
+
+| dump | pass | read it for |
+|---|---|---|
+| `.greg` | global-alloc (`-dg`) | `N in H` = pseudo N landed in hard reg H; `N preferences: H`; `N conflicts: …`. THE register-tie dump. |
+| `.lreg` | local-alloc (`-dl`) | per-block allocation before global; where a copy chain starts. |
+| `.loop` | loop opt (`-dL`) | biv/giv analysis with `benefit`/`used`/`lifetime` — the invariant-hoist threshold economy (see its own cookbook section). |
+| `.combine` | combine (`-dc`) | where an `addu`/`subu` operand order or a `fold` reassociation is fixed. |
+| `.cse`/`.cse2` | CSE (`-ds`) | which repeat load/address got folded to a copy; `record_jump_equiv` guard folds. cse1 stops at `NOTE_INSN_LOOP_END`, cse2 does not. |
+| `.jump2` | jump opt (`-dj`) | cross-jump merges, `make_return_insns`, which `return K` island survives. |
+| `.sched`/`.sched2` | scheduling (`-dS`) | load-delay/latency fills; why a `nop` or an independent insn lands in a slot. |
+| `.dbr` | reorg (`-dd`/`-dR`) | delay-slot branch fills; `mostly_true_jump` prediction (needs `NOTE_INSN_LOOP_VTOP` from a real `for`). |
+
+Hard reg numbers: `0` zero, `1` at, `2` v0, `3` v1, `4`–`7` a0–a3, `8`–`15` t0–t7,
+`16`–`23` s0–s7, `24`–`25` t8–t9, `28` gp, `29` sp, `30` fp/s8, `31` ra.
+
+### The procedure
+
+1. **Locate the diverging instruction** with `tools/matchdiff.py`/`asmdiff.py`, and which
+   register or offset differs (e.g. our `$v1` vs target `$v0`, or a store at gp+28 vs
+   gp+32, or a missing/extra instruction).
+2. **Dump the pass that owns that decision.** A wrong register home → `.greg`
+   (`N in H`, `N conflicts`, `N preferences`). An extra/missing loop instruction →
+   `.loop`. An operand-order or fold difference → `.combine`. A delay-slot `nop` →
+   `.sched2`/`.dbr`. A `return`/branch-target difference → `.jump2`/`.cse`.
+3. **Read what the pass DECIDED and work backward to the source construct** that forced
+   it. The load-bearing invariants of THIS cc1 (2.8.1), all confirmed against its
+   sources this session:
+   - **A pseudo's live range is NEVER split.** One C variable is exactly one hard reg
+     for its whole life. So two roles sharing one hard reg = ONE variable doing double
+     duty; one value appearing in two hard regs across disjoint regions = TWO variables.
+   - **`global.c`'s `find_reg`** makes an earlier (higher-priority) allocno AVOID a reg a
+     later allocno prefers — donate a call-arg preference to steer the high-priority one.
+   - Allocno **priority sums refs and live-length across the whole range** and moves in
+     `floor_log2` jumps, so merging two disjoint same-role temps into one variable can
+     vault it over a rival (vfree).
+   - **`loop.c` hoisting is a threshold economy** — its own section.
+   - **`fold`/`combine`** fixes operand order and reassociation: `a - (C - b)` survives
+     as `(a-C)+b`, `a - C + b` reassociates; a comparison evaluates op0 first.
+   - **`cse` + `jump2`** decide `return`-island merges and guard-test folds; block
+     boundaries (a nested `if` vs a wrapper, a label between two blocks) are the lever.
+   - **`sched`/`reorg`** are alias-conservative: an address-taken local's load never
+     schedules above ANY pointer store — reorder STATEMENTS, don't chase the scheduler.
+4. **Form ONE hypothesis, test it with the fast scoring loop, repeat.** The worked
+   examples: vrealloc, vfree, valloc, Sound, turn_towards_player_, UpdateMotion,
+   HangCheck, GetConflictResult, SetSmoke — read their file headers for the exact
+   dump-to-source reasoning on each.
+
 ## Register allocation steering
 
 ### A default-then-override temp keeps the object's address alive

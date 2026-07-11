@@ -41,6 +41,18 @@ Never run `tools/permute.py` and `tools/matchdiff.py` at the same time: both dri
 diff that appears to be a length mismatch in some *other* function. (This is why the
 permuter run above must FINISH — via zero or timeout — before you run matchdiff.)
 
+**When a draft is the CORRECT LENGTH but a few bytes differ and neither respelling
+nor a bounded permuter run closes it, do NOT park it as "below-the-C-level" — READ THE
+RTL.** Run `tools/rtldump.py <Name>` (standalone cc1-281 dumps, race-free) and follow
+docs/matching-cookbook.md, "Reading cc1's RTL dumps (the escalation method)". Nine such
+"permuter-immune register ties" fell this way; every one was reachable source structure
+(a guard's operand order, a statement position, a block boundary, a fold reassociation,
+a loop.c hoist threshold). Locate the diverging instruction, dump the pass that owns the
+decision (`.greg` for a wrong register home, `.loop` for a loop instruction, `.combine`
+for operand order, `.sched2`/`.dbr` for a delay slot, `.jump2` for a return/branch),
+read what it decided, work backward to the source. This is a mechanical procedure, not a
+special skill — do it before parking.
+
 If you convert an `INCLUDE_ASM` stub to real C, run `tools/symcheck.py` afterwards.
 A missing `--gp-extern` entry silently relocates a whole data region -- the link
 succeeds and the image is just wrong.
