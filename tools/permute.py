@@ -41,6 +41,7 @@ AS_FLAGS = ("-EL -Iinclude -march=r3000 -mtune=r3000 -no-pad-sections -O1 -G0").
 # shake/src/Build.hs (ASPSX gp-addresses only TU-local definitions; these are the
 # small globals the function's ORIGINAL translation unit defined).
 GP_EXTERNS = {
+    "FUN_80032720": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_", "D_80097F30", "D_80097F32"],
     "PlaySE": ["voice"],
     "SetBleedsDir": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
     "ChasetoTarget": ["Me_THINK_C", "Attrib", "Distance"],
@@ -193,6 +194,9 @@ GP_EXTERNS = {
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
 # maspsxGpExterns (e.g. --expand-div for TUs that divide by a variable).
 MASPSX_EXTRA = {
+    "FUN_80039ddc": ["--expand-div"],
+    "FUN_8004c59c": ["--expand-div"],
+    "FUN_8004d6d4": ["--expand-div"],
     "FUN_8003a148": ["--expand-div"],
     "FUN_80039fb0": ["--expand-div"],
     "SetBleedsDir": ["--expand-div"],

@@ -485,6 +485,22 @@ form better and still be a regression: on `FUN_800570b8` it scored 790 against t
 baseline's ~1140 yet produced the wrong length (205 vs 138 bytes). Always re-verify
 a permuter win with `matchdiff`.
 
+### A "short do-nothing case falls through, both real bodies are jump targets" 3-way
+
+When a 3-way dispatch has one trivial (do-nothing / early-return) case and two
+substantial bodies both reached by forward jumps, spell it with explicit gotos to BOTH
+non-trivial bodies testing the ORIGINAL conditions: `if (cond_a) goto A; if (cond_b) goto
+B; return; A: …; B: …;`. Not `if/else`, and not an inline-return for the second guard --
+those change which body falls through (`FUN_8004c59c`/`FUN_8004d6d4` periodic-emitter
+think functions).
+
+### A per-axis raw computation needs a temp distinct from its final assigned value
+
+Even when Ghidra renders both roles through one reassigned SSA variable, a raw
+product/subtraction (`dx*dx`, `a - b`) fed into a later result must be a SEPARATE
+short-lived temp from the value ultimately assigned; reusing one variable forces the whole
+computation into a callee-saved register instead of a caller-saved one (`FUN_80039ddc`).
+
 ### A dual-role dispatch test can be the opposite shape of its goto-ladder
 
 Ghidra's `if (A == 0 && (side-effect, B == 0)) { short } else { long }` can really be
