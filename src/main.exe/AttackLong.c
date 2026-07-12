@@ -1,5 +1,7 @@
 #include "common.h"
-#include "main.exe.h"
+#include <psxsdk/libgs.h>
+#include "game_types.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -32,194 +34,268 @@
  *     extern long AttackActionCount;
  * END PSX.SYM */
 
+/*
+ * STATUS: NON_MATCHING -- 3 of 1248 bytes differ, with the exact target
+ * length (312 instructions).  The residual is one commutative addition's
+ * destination register in the AttackActionCount update:
+ *
+ *     target: addu a0,a0,v1; sw a0,AttackActionCount
+ *     draft:  addu v1,v1,a0; sw v1,AttackActionCount
+ *
+ * Here a0 is GameClock and v1 is EngageLevel*10.  `rtldump.py` confirms the
+ * difference is fixed at combine/local allocation after the expression has
+ * become a plain commutative PLUS.  Both operand spellings, explicit temps,
+ * compound-assignment shapes, and a bounded 2,500-candidate permuter run
+ * were checked; all either preserve these three bytes or regress scheduling
+ * and register allocation.  Keep the semantically correct draft rather than
+ * introducing register-forcing assembly.
+ *
+ * Two reusable structural facts closed the rest of the function:
+ *  - `(raw >= 0) ? raw : -raw` reaches GCC's abssi2 expansion and emits the
+ *    target's copy-then-self-negu form.  The LT ternary does not.
+ *  - Spelling the two random choices as a nested positive arm makes ItemUse
+ *    the cold final arm and lets jump2 merge the four SetCommand calls into
+ *    the target's single call tail.
+ */
+
+extern Humanoid *Me_THINK_C;
+extern BattleType BattleDB[78];
+extern s32 Distance;
+extern s16 Degree;
+extern s16 EngageLevel;
+extern u16 Attrib;
+extern s32 GameClock[];
+extern s32 AttackActionCount;
+
+extern s16 ChasetoTarget(s32 distance);
+extern s16 SetCommand(PADtype *pad, s16 command);
+extern s16 ItemUse(void);
+
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/AttackLong", AttackLong);
+#else /* NON_MATCHING */
 
-// triage: MEDIUM — 312 insns, mul/div, 4 callees, ~0.06 to AttackAnimal
-// likely-relevant cookbook sections:
-//   - Dispatch: if/switch ladder — reload vs CSE, signed vs unsigned
-//   - Expressions: mult/div — magic-multiply constants, fold
-//   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py
+short AttackLong(void)
+{
+    s16 ad;
+    s16 pad;
+    s16 status7_result;
+    s32 degree;
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// short AttackLong(void)
-//
-// {
-//   Humanoid *pHVar1;
-//   short sVar2;
-//   int iVar3;
-//   uint uVar4;
-//   int iVar5;
-//   PADtype *pad;
-//   ushort uVar6;
-//
-//   uVar6 = 0;
-//   if (Me_THINK_C->status != 7) {
-//     if (Me_THINK_C->status == 9) {
-//       return 0;
-//     }
-//     if (Me_THINK_C->motion->mid == 0x500) {
-//       iVar3 = rand();
-//       iVar5 = EngageLevel + 1;
-//       if (iVar5 == 0) {
-//         trap(0x1c00);
-//       }
-//       if ((iVar5 == -1) && (iVar3 == -0x80000000)) {
-//         trap(0x1800);
-//       }
-//       return (ushort)(iVar3 % iVar5 != 0) << 0xe;
-//     }
-//     if (Me_THINK_C->actmode == '\0') {
-//       sVar2 = ChasetoTarget(3000);
-//       if ((sVar2 == 0) || ((Attrib & 0x4000U) != 0)) {
-//         Me_THINK_C->actmode = '\x01';
-//       }
-//       if (Me_THINK_C->motion->count != 0) {
-//         return sVar2;
-//       }
-//       iVar3 = rand();
-//       if (iVar3 != (iVar3 / 5) * 5) {
-//         return sVar2;
-//       }
-//       return 0x1040;
-//     }
-//     if ((Me_THINK_C->motion->count & 0xfU) != 0) {
-//       uVar6 = (Me_THINK_C->pad).data;
-//       if (2999 < Distance) {
-//         return uVar6;
-//       }
-//       iVar3 = (int)Degree;
-//       if (iVar3 < 0) {
-//         iVar3 = -iVar3;
-//       }
-//       if (iVar3 < 500) {
-//         return 0x4000;
-//       }
-//       if (iVar3 < 0x5dd) {
-//         return uVar6;
-//       }
-//       return 0x1000;
-//     }
-//     if (5000 < Distance) {
-//       Me_THINK_C->actmode = '\0';
-//       pHVar1 = Me_THINK_C;
-//       Me_THINK_C->chase[1] = 0;
-//       pHVar1->chase[0] = 0;
-//       ItemUse();
-//       return 0;
-//     }
-//     if ((Attrib & 0x400U) != 0) {
-//       Me_THINK_C->actmode = '\0';
-//     }
-//     if (Degree < 0x12d) {
-//       if (Degree < -300) {
-//         uVar6 = 0x8000;
-//       }
-//     }
-//     else {
-//       uVar6 = 0x2000;
-//     }
-//     if (Distance - 0xbb9U < 999) {
-//       iVar3 = rand();
-//       iVar5 = EngageLevel + 1;
-//       if (iVar5 == 0) {
-//         trap(0x1c00);
-//       }
-//       if ((iVar5 == -1) && (iVar3 == -0x80000000)) {
-//         trap(0x1800);
-//       }
-//       if (iVar3 % iVar5 == 0) {
-//         AttackActionCount = GameClock + EngageLevel * 10;
-//         return uVar6 | 0x80;
-//       }
-//     }
-//     iVar5 = (int)Degree;
-//     iVar3 = iVar5;
-//     if (iVar5 < 0) {
-//       iVar3 = -iVar5;
-//     }
-//     if ((1000 < iVar3) || (Distance < 3000)) {
-//       if (999 < Distance) {
-//         uVar4 = rand();
-//         if ((uVar4 & 1) == 0) {
-//           return 0x2080;
-//         }
-//         return -0x7f80;
-//       }
-//       uVar4 = rand();
-//       if ((uVar4 & 1) == 0) {
-//         return 0xa0;
-//       }
-//       return 0x4040;
-//     }
-//     if (Distance < 0xfa1) {
-//       return uVar6;
-//     }
-//     if (iVar3 < 0x32) {
-//       sVar2 = 0x21;
-//     }
-//     else {
-//       if (Me_THINK_C->motion->count != 0) {
-//         return uVar6 | 0x1000;
-//       }
-//       if (0x32 < iVar5) {
-//         pad = &Me_THINK_C->pad;
-//         sVar2 = 4;
-//         goto LAB_8002ede8;
-//       }
-//       pad = &Me_THINK_C->pad;
-//       if (iVar5 < -0x32) {
-//         sVar2 = 3;
-//         goto LAB_8002ede8;
-//       }
-//       uVar4 = rand();
-//       if ((uVar4 & 1) == 0) {
-//         ItemUse();
-//         return uVar6;
-//       }
-//       uVar4 = rand();
-//       sVar2 = 1;
-//       if ((uVar4 & 1) == 0) {
-//         return 0xc0;
-//       }
-//     }
-//     pad = &Me_THINK_C->pad;
-// LAB_8002ede8:
-//     sVar2 = SetCommand(pad,sVar2);
-//     return sVar2;
-//   }
-//   if (Me_THINK_C->motion->count != BattleDB[Me_THINK_C->warid].contfrm) {
-//     return 0;
-//   }
-//   if (Distance < 3000) {
-//     iVar3 = (int)Degree;
-//     if (iVar3 < 0) {
-//       iVar3 = -iVar3;
-//     }
-//     if (iVar3 < 0x5dc) goto LAB_8002ea0c;
-//   }
-//   iVar3 = rand();
-//   iVar5 = EngageLevel + 1;
-//   if (iVar5 == 0) {
-//     trap(0x1c00);
-//   }
-//   if ((iVar5 == -1) && (iVar3 == -0x80000000)) {
-//     trap(0x1800);
-//   }
-//   if (iVar3 % iVar5 != 0) {
-//     return 0;
-//   }
-// LAB_8002ea0c:
-//   if (Degree < 0x12d) {
-//     if (-0x12d < Degree) {
-//       return 0x80;
-//     }
-//     uVar6 = 0x8000;
-//   }
-//   else {
-//     uVar6 = 0x2000;
-//   }
-//   return uVar6 | 0x80;
-// }
+    pad = 0;
+    if (Me_THINK_C->status == 7)
+    {
+        s32 status_degree;
+
+        do
+        {
+            if (Me_THINK_C->motion->count !=
+                BattleDB[Me_THINK_C->warid].contfrm)
+            {
+                status7_result = 0;
+                goto status7_return;
+            }
+            if (Distance < 3000)
+            {
+                status_degree = Degree;
+                if (status_degree < 0)
+                {
+                    status_degree = -status_degree;
+                }
+                if (status_degree < 1500)
+                {
+                    goto choose_status7;
+                }
+            }
+            if (rand() % (EngageLevel + 1) != 0)
+            {
+                status7_result = pad;
+                goto status7_return;
+            }
+        } while (0);
+
+choose_status7:
+        if (Degree >= 301)
+        {
+            pad = 0x2000;
+        }
+        else
+        {
+            pad |= 0x80;
+            if (Degree < -300)
+            {
+                pad = -0x8000;
+            }
+            else
+            {
+                goto status7_value;
+            }
+        }
+        pad |= 0x80;
+
+status7_value:
+        status7_result = pad;
+status7_return:
+        return status7_result;
+    }
+
+    if (Me_THINK_C->status == 9)
+    {
+        return 0;
+    }
+
+    if (Me_THINK_C->motion->mid == 0x500)
+    {
+        return (u16)(rand() % (EngageLevel + 1) != 0) << 14;
+    }
+
+    if (Me_THINK_C->actmode == 0)
+    {
+        pad = ChasetoTarget(3000);
+        if (pad == 0 || (Attrib & 0x4000) != 0)
+        {
+            Me_THINK_C->actmode = 1;
+        }
+        if (Me_THINK_C->motion->count != 0)
+        {
+            goto return_pad;
+        }
+        if (rand() % 5 != 0)
+        {
+            goto return_pad;
+        }
+        pad = 0x1040;
+        goto return_pad;
+    }
+
+    if ((Me_THINK_C->motion->count & 0xf) != 0)
+    {
+        s32 motion_degree;
+
+        pad = Me_THINK_C->pad.data;
+        if (Distance >= 3000)
+        {
+            goto return_pad;
+        }
+        ad = Degree;
+        motion_degree = (ad >= 0) ? ad : -ad;
+        if (motion_degree < 500)
+        {
+            pad = 0x4000;
+            goto return_pad;
+        }
+        if (motion_degree < 1501)
+        {
+            goto return_pad;
+        }
+        pad = 0x1000;
+        goto return_pad;
+    }
+
+    if (Distance >= 5001)
+    {
+        Humanoid *me;
+
+        Me_THINK_C->actmode = 0;
+        me = Me_THINK_C;
+        Me_THINK_C->chase[1] = 0;
+        me->chase[0] = 0;
+        ItemUse();
+        return 0;
+    }
+
+    if ((Attrib & 0x400) != 0)
+    {
+        Me_THINK_C->actmode = 0;
+    }
+
+    if (Degree >= 301)
+    {
+        pad = 0x2000;
+    }
+    else if (Degree < -300)
+    {
+        pad = -0x8000;
+    }
+
+    if ((u32)(Distance - 3001) < 999)
+    {
+        if (rand() % (EngageLevel + 1) == 0)
+        {
+            AttackActionCount = EngageLevel * 10 + GameClock[0];
+            return pad | 0x80;
+        }
+    }
+
+    ad = Degree;
+    degree = (ad >= 0) ? ad : -ad;
+
+    if (degree > 1000 || Distance < 3000)
+    {
+        if (Distance < 1000)
+        {
+            pad = 0xa0;
+            if ((rand() & 1) != 0)
+            {
+                pad = 0x4040;
+            }
+        }
+        else
+        {
+            pad = 0x2080;
+            if ((rand() & 1) != 0)
+            {
+                pad = -0x7f80;
+            }
+        }
+        goto return_pad;
+    }
+
+    if (Distance < 4001)
+    {
+        goto return_pad;
+    }
+
+    if (degree < 50)
+    {
+        pad = SetCommand(&Me_THINK_C->pad, 0x21);
+        goto return_pad;
+    }
+    else
+    {
+        if (Me_THINK_C->motion->count != 0)
+        {
+            pad |= 0x1000;
+            goto return_pad;
+        }
+        if (ad > 50)
+        {
+            pad = SetCommand(&Me_THINK_C->pad, 4);
+            goto return_pad;
+        }
+        if (ad < -50)
+        {
+            pad = SetCommand(&Me_THINK_C->pad, 3);
+            goto return_pad;
+        }
+        if ((rand() & 1) != 0)
+        {
+            if ((rand() & 1) != 0)
+            {
+                pad = SetCommand(&Me_THINK_C->pad, 1);
+                goto return_pad;
+            }
+            pad = 0xc0;
+        }
+        else
+        {
+            ItemUse();
+        }
+        goto return_pad;
+    }
+
+return_pad:
+    return pad;
+}
+
+#endif /* NON_MATCHING */

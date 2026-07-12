@@ -207,6 +207,10 @@ GP_EXTERNS = {
     "SetupAppearance": ["NowStage", "PLAYER_REDUCE_DAMAGE_DUE_TO_ARMOUR", "D_800979A6", "AMD_LOADED_FOR_CHARACTER_KIND"],
     "StateTransition": ["StrainRatio", "Me_THINK_C", "Pad", "Attrib", "D_80097F1C", "ActionHalt", "FRAMES_UNTIL_END_OF_ALERT", "SR", "Distance", "D_80097F10", "D_80097F18", "D_80097F14", "EngageLevel", "Degree"],
     "ActATTACK": ["dtM", "Me_MOTION_C", "motID", "D_80097F0E", "dtR", "dtL", "dtPAD", "MotionUpdateMode", "dtV"],
+    "AttackIndirect": ["Me_THINK_C", "Distance", "Degree", "EngageLevel", "SR"],
+    "AttackLong": ["Me_THINK_C", "Distance", "Degree", "EngageLevel", "Attrib", "AttackActionCount"],
+    "AttackGeneral": ["Me_THINK_C", "Distance", "Degree", "EngageLevel", "Attrib", "AttackActionCount"],
+    "AttackShort": ["Me_THINK_C", "Distance", "Degree", "EngageLevel", "Attrib", "AttackActionCount"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
@@ -243,6 +247,10 @@ MASPSX_EXTRA = {
     "SuccessionAttack": ["--expand-div"],
     "GetSpline": ["--expand-div"],
     "StateTransition": ["--expand-div"],
+    "AttackIndirect": ["--expand-div"],
+    "AttackLong": ["--expand-div"],
+    "AttackGeneral": ["--expand-div"],
+    "AttackShort": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash

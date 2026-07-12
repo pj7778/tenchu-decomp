@@ -181,6 +181,10 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     extra "SuccessionAttack" = ["--expand-div"]
     extra "GetSpline" = ["--expand-div"]
     extra "StateTransition" = ["--expand-div"]
+    extra "AttackIndirect" = ["--expand-div"]
+    extra "AttackLong" = ["--expand-div"]
+    extra "AttackGeneral" = ["--expand-div"]
+    extra "AttackShort" = ["--expand-div"]
     extra _ = []
     -- Think1sleep.c is a fragment of the original think TU, which defines these.
     syms "Think1sleep" = ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"]
@@ -367,6 +371,10 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "SetupAppearance" = ["NowStage", "PLAYER_REDUCE_DAMAGE_DUE_TO_ARMOUR", "D_800979A6", "AMD_LOADED_FOR_CHARACTER_KIND"]
     syms "StateTransition" = ["StrainRatio", "Me_THINK_C", "Pad", "Attrib", "D_80097F1C", "ActionHalt", "FRAMES_UNTIL_END_OF_ALERT", "SR", "Distance", "D_80097F10", "D_80097F18", "D_80097F14", "EngageLevel", "Degree"]
     syms "ActATTACK" = ["dtM", "Me_MOTION_C", "motID", "D_80097F0E", "dtR", "dtL", "dtPAD", "MotionUpdateMode", "dtV"]
+    syms "AttackIndirect" = ["Me_THINK_C", "Distance", "Degree", "EngageLevel", "SR"]
+    syms "AttackLong" = ["Me_THINK_C", "Distance", "Degree", "EngageLevel", "Attrib", "AttackActionCount"]
+    syms "AttackGeneral" = ["Me_THINK_C", "Distance", "Degree", "EngageLevel", "Attrib", "AttackActionCount"]
+    syms "AttackShort" = ["Me_THINK_C", "Distance", "Degree", "EngageLevel", "Attrib", "AttackActionCount"]
     syms _ = []
 
 as :: FilePath
