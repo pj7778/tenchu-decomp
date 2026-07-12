@@ -67,15 +67,16 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ActivateHumans", Act
 #else
 /*
  * STATUS: NON_MATCHING — complete pure-C behavior with the target's exact
- * 0x68-byte frame and 0x30-byte working stack window.  The current draft is
- * 1604/1608 bytes (401/402 instructions), with 90 differing structural lines
- * in 26 blocks.  Build it with `NON_MATCHING=ActivateHumans ./Build`.
+ * 0x68-byte frame, 0x30-byte working stack window, and 1,608-byte length.
+ * The current draft has 740 differing bytes and 65 structural lines in 16
+ * blocks.  Build it with `NON_MATCHING=ActivateHumans ./Build`.
  *
  * Remaining concentrated residuals:
- * - Retail's visibility decision coalesces several path-local values into
- *   $v1.  A single named `active` local remains live across those paths and
- *   is forced to $a1 instead; rtlguide/regalloc identify this as the largest
- *   causal register/CFG island.
+ * - The path-local active/computed split recovers retail's $v1 flag and
+ *   $v0->$v1 computed-result join.  Retail retains one further $v1->$v0 copy
+ *   before the final flag test that cc1 coalesces away in this draft.
+ * - The visible-character scan still rotates its counter, limit, and table
+ *   base registers even though its loop shape and comparisons now agree.
  * - Retail shares StageChar's `%hi` value in $s5 with the full base in $s3.
  *   The two explicit pure-C locals recover the exact six saved-register roles
  *   and frame, but cc1 still emits one separate base materialization.
@@ -91,6 +92,8 @@ void ActivateHumans(void)
     VECTOR query;
     VECTOR work;
     s32 active;
+    s32 initial_active;
+    s32 computed_active;
     s32 distance;
     s32 activate_distance;
     s32 n;
@@ -160,9 +163,10 @@ human_loop:
     {
         goto set_active;
     }
-    active = 1;
+    initial_active = 1;
     if (human->type == 0xa9 || human->life < 0)
     {
+        active = initial_active;
         goto active_done;
     }
     if (GameClock == 30 || StageID == 8)
@@ -176,8 +180,8 @@ human_loop:
         {
             goto active_done;
         }
-        active = distance < activate_distance;
-        goto active_done;
+        computed_active = distance < activate_distance;
+        goto computed_active_done;
     }
     if (distance < activate_distance)
     {
@@ -204,19 +208,24 @@ search_visible:
     search_i = 0;
     search_index = 0;
     visible_human = VISIBLE_CHARACTERS_ON_STAGE_[0];
-    while (visible_human != human)
+    do
     {
-        search_index = (s16)search_i;
-        search_i++;
-        if (VISIBLE_ENEMIES_ <= search_index)
+        while (visible_human != human)
         {
-            break;
+            search_index = (s16)search_i;
+            search_i++;
+            if (VISIBLE_ENEMIES_ <= search_index)
+            {
+                break;
+            }
+            search_index = (s16)search_i;
+            visible_human = VISIBLE_CHARACTERS_ON_STAGE_[search_index];
         }
-        search_index = (s16)search_i;
-        visible_human = VISIBLE_CHARACTERS_ON_STAGE_[search_index];
-    }
-    active = search_index != VISIBLE_ENEMIES_;
+    } while (0);
+    computed_active = search_index != VISIBLE_ENEMIES_;
 
+computed_active_done:
+    active = computed_active;
 active_done:
     if (active)
     {
