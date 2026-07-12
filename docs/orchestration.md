@@ -85,12 +85,12 @@ Everything the pipeline needs, in the order you touch it:
 | `tools/gpsyms.py <Name> --write` | derive the gp-extern set from `%gp_rel` and sync Build.hs + permute.py. Shake-oracle-tracked, so it just takes effect. |
 | `tools/clonematch.py <Matched>` | write the `.c` for exact byte-identical unmatched siblings (verified). |
 | `tools/matchdiff.py <Name>` / `tools/asmdiff.py <Name>` | iterate. matchdiff = whole-image gate; asmdiff = aligned view for big/split functions. |
-| `tools/autorules.py <Name>` | once the draft compiles: mechanically sweep the *local* cookbook rules and greedily keep what shrinks the authoritative byte diff. `--guided` consumes `rtlguide`, enables the advanced zero-code barriers/CFG fence only near implicated C lines, and uses a bounded beam so a neutral first edit can enable a later win. `--rules`, `--clobber`, `--beam`, and `--budget` keep searches reproducible and bounded. |
+| `tools/autorules.py <Name>` | once the draft compiles: mechanically sweep the *local* cookbook rules and greedily keep what shrinks the authoritative byte diff. `--guided` consumes `rtlguide`, enables pure-C comparison-polarity, one-shot-loop, and real-case-label transforms only near implicated C lines, and uses a bounded beam so a neutral first edit can enable a later win. `--rules`, `--beam`, and `--budget` keep searches reproducible and bounded. It never emits inline asm. |
 | `tools/permute.py <Name>` | decomp-permuter for pure register-allocation ties (the stochastic search; autorules is its deterministic, explainable complement). |
 | `tools/dedupe-symbols.py [--check]` | one name per address in `config/symbols.main.exe.txt`. splat >= 0.4x refuses duplicates, and our file cannot disambiguate them (it doubles as an ld script, no comment syntax). Re-run after any Ghidra symbol import. |
 | `tools/coverage.py [--all]` | code claimed by NO function — finds under-sized `functions.tsv` entries (a truncated carve still builds green; the tail becomes a `.data` blob that defines the `.L` labels, so nothing complains). `LoadCard` and `FUN_800593a0` are the two in game code. |
 | `tools/rtldump.py <Name> [--pass …] [--draft]` | **the escalation tool** — standalone cc1-281 RTL dumps (`.greg`/`.lreg`/`.loop`/`.combine`/`.jump2`/`.sched2`/`.dbr`), race-free in the scratchpad, ~1 s. When a same-length residual beats respelling + the permuter, dump the pass that owns the diverging decision and read it (cookbook: "Reading cc1's RTL dumps"). Cracked 9 "permuter-immune" ties this session. |
-| `tools/rtlguide.py <Name>` | **mechanical RTL escalation** — aligns target asm with our candidate, classifies each hunk by owning pass, recompiles with debug RTL notes, maps residual instructions back to C lines, names locals in the divergent hard registers, and emits the exact guided autorules command. The target has no RTL; target asm is the specification and our RTL is the causal trace. `--json` is the stable automation interface. |
+| `tools/rtlguide.py <Name>` | **mechanical RTL escalation** — aligns target asm with our candidate, classifies each hunk by owning pass, recompiles with debug RTL notes, maps residual instructions back to C lines, names locals in the divergent hard registers, and emits the exact guided autorules command. It also detects target-only physical calls and summarizes the candidate's CALL_INSN result/argument fingerprints through jump2. The target has no RTL; target asm is the specification and our RTL is the causal trace. `--json` is the stable automation interface. |
 | `tools/regalloc.py <Name>` | **diagnose a register tie** — runs `cc1 -dg` and surfaces which values are live across calls (forced callee-saved), the pseudo→hard-reg map, and the copy-chains that bias the coloring. Run this BEFORE blindly permuting a sub-C tie; it tells you which copy-chain to break. |
 | `tools/extract-demo.py`, `tools/psxsym.py`, `tools/symdump.py` | carve/parse/dump the demo disc's `PSX.SYM` — original prototypes, locals, structs, TU map. See [psx-sym.md](psx-sym.md). `matcher-prompt.py` injects the per-function facts automatically. |
 | `tools/symmatch.py`, `tools/xbuildnames.py`, `tools/callmatch.py`, `tools/datamatch.py` | recover original **names** (functions, then globals) from `PSX.SYM` + the demo `PSX.EXE`. |
@@ -274,8 +274,9 @@ rules**:
   enumerable site — a type width, a sign toggle, a condition normalization),
   ALSO add it as a rule in `tools/autorules.py` so it's machine-applied and
   never hand-guessed again. Recognition/structural idioms (loop shape,
-  switch-vs-ladder, union-offset casts, case ordering) can't be sited blindly —
-  they stay cookbook-only until an AST-based transform can place them.
+  switch-vs-ladder, union-offset casts, case ordering) stay cookbook-only until
+  an AST transform can place them safely; guided source-line filtering and
+  exact-byte scoring now make some structural transforms mechanical too.
 - A recurring *friction* → **build a tool**. That's the whole game. This session:
   agents hand-traced struct widths → `access.py`; hand-traced the store order →
   `access.py --order`; re-derived gp lists → `gpsyms.py`; the gp edit didn't

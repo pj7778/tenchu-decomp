@@ -10,7 +10,10 @@ back to concrete C lines and final hard-register locals.
 This replaces the usual manual loop of `asmdiff -> guess a pass -> rtldump ->
 grep source lines -> regalloc` with one reproducible report.  The report is also
 consumed by `autorules.py --guided`, which restricts its search to the relevant
-cookbook transformations and can try byte-neutral enabling edits with a beam.
+cookbook transformations and can try byte-neutral pure-C enabling edits with a
+beam.  It also calls out target-only physical calls and summarizes the
+candidate's CALL_INSN result/argument fingerprints: jump2 can distinguish calls
+whose final machine instructions look identical.
 
     tools/rtlguide.py <Name>              build draft + full guided report
     tools/rtlguide.py <Name> --no-build   reuse the current .shake build
@@ -71,19 +74,38 @@ CATEGORY_PASSES = {
     "structure/length": ["rtl", "jump", "jump2"],
 }
 CATEGORY_RULES = {
-    "regalloc": ["copy-barrier", "split-chain", "or-inplace"],
-    "cse/coalescing": ["abs-copy-barrier", "copy-barrier"],
-    "jump/cross-jump": ["case-fence", "and-nest"],
-    "schedule/delay": ["abs-copy-barrier", "cmp-swap", "split-chain", "or-inplace"],
-    "combine/expression": [
-        "abs-ge", "cmp-swap", "min-ternary", "ptr-index-sum", "split-chain",
+    "regalloc": [
+        "type-width", "cmp-polarity", "loop-fence", "split-chain", "or-inplace",
     ],
-    "structure/length": ["and-nest", "temp-inline", "case-fence"],
+    "cse/coalescing": ["type-width", "loop-fence", "temp-inline"],
+    "jump/cross-jump": ["case-fence", "and-nest"],
+    "schedule/delay": [
+        "type-width", "loop-fence", "cmp-swap", "cmp-polarity", "split-chain",
+        "or-inplace",
+    ],
+    "combine/expression": [
+        "abs-ge", "cmp-swap", "cmp-polarity", "min-ternary", "ptr-index-sum",
+        "split-chain",
+    ],
+    "structure/length": ["type-width", "and-nest", "temp-inline", "case-fence"],
 }
+
+CALL_OPS = {"jal", "jalr"}
 
 
 def mnemonic(insn: str) -> str:
     return insn.strip().split(None, 1)[0] if insn.strip() else ""
+
+
+def call_count(insns) -> int:
+    """Count physical calls in an `(address, asm)` instruction stream."""
+    return sum(mnemonic(insn) in CALL_OPS for _addr, insn in insns)
+
+
+def call_symbol(insn: str) -> str | None:
+    """Best-effort callee name from objdump's `jal ... <symbol>` spelling."""
+    m = re.search(r"<([^>+]+)(?:\+0x[0-9a-f]+)?>", insn, re.I)
+    return m.group(1) if m else None
 
 
 def registers(insn: str) -> list[str]:
@@ -228,7 +250,8 @@ def assembly_guide(name):
     addr, size, ours_size, target, ours = _candidate_asm(name)
     hunks, pairs = diff_hunks(target, ours)
     counts = Counter()
-    clobbers = Counter()
+    missing_moves = Counter()
+    target_only_calls = Counter()
     substitutions = Counter()
     for h in hunks:
         category = classify_hunk(h)
@@ -240,7 +263,16 @@ def assembly_guide(name):
             for insn in t_moves:
                 regs = registers(insn)
                 if regs:
-                    clobbers[regs[0]] += 1
+                    missing_moves[regs[0]] += 1
+        t_calls = Counter(
+            call_symbol(x[1]) or "?" for x in h["target"]
+            if mnemonic(x[1]) in CALL_OPS
+        )
+        o_calls = Counter(
+            call_symbol(x[1]) or "?" for x in h["ours"]
+            if mnemonic(x[1]) in CALL_OPS
+        )
+        target_only_calls.update(t_calls - o_calls)
     for ti, oi in pairs:
         if ti is None or oi is None:
             continue
@@ -251,14 +283,13 @@ def assembly_guide(name):
         for want, have in zip(tr, or_):
             if want != have:
                 substitutions[(have, want)] += 1
-    # A target-only move is the strongest clobber signal.  A compact
-    # register-only residual is weaker but still worth an opt-in, line-local
-    # clobber candidate: it can invalidate the stale hard-register equality
-    # that otherwise forces the destination into the candidate register.
+    # A target-only move or compact register-only residual is useful evidence
+    # about the equality/copy chain to inspect in .lreg/.greg.  It is strictly
+    # diagnostic: the matching tool never manufactures inline-asm clobbers.
     if counts.get("regalloc"):
         for (_have, want), _n in substitutions.most_common(2):
             if want not in {"zero", "sp", "gp", "fp", "s8", "ra"}:
-                clobbers[want] += 1
+                missing_moves[want] += 1
     if ours_size != size:
         counts["structure/length"] += 1
     primary = counts.most_common(1)[0][0] if counts else "matched"
@@ -267,14 +298,18 @@ def assembly_guide(name):
         for rule in CATEGORY_RULES.get(category, []):
             if rule not in rules:
                 rules.append(rule)
-    if clobbers and "hard-clobber" not in rules:
-        rules.append("hard-clobber")
     return dict(
         name=name, address=addr, target_bytes=size, ours_bytes=ours_size,
         target_instructions=len(target), ours_instructions=len(ours),
         primary=primary, categories=dict(counts), rules=rules,
         passes=CATEGORY_PASSES.get(primary, []),
-        hard_clobbers=[r for r, _ in clobbers.most_common(2)],
+        missing_move_registers=[r for r, _ in missing_moves.most_common(2)],
+        target_only_calls=[
+            dict(callee=callee, count=count)
+            for callee, count in target_only_calls.most_common()
+        ],
+        call_tail_hint=call_count(target) > call_count(ours),
+        call_counts=dict(target=call_count(target), candidate=call_count(ours)),
         register_substitutions=[
             dict(ours=a, target=b, count=n)
             for (a, b), n in substitutions.most_common()
@@ -364,18 +399,127 @@ def _dump_suffix(path):
     return path.rsplit(".", 1)[-1]
 
 
-def pass_stats(paths):
+def _rtl_function(text, name=None):
+    """Restrict a dump to one `;; Function NAME` section when available."""
+    if not name:
+        return text
+    start = re.search(rf"^;; Function\s+{re.escape(name)}(?:\s|$)", text, re.M)
+    if not start:
+        return text
+    end = re.search(r"^;; Function\s+", text[start.end():], re.M)
+    stop = start.end() + end.start() if end else len(text)
+    return text[start.start():stop]
+
+
+def pass_stats(paths, name=None):
     stats = {}
     for path in paths:
         suffix = _dump_suffix(path)
-        text = open(path, errors="replace").read()
+        with open(path, errors="replace") as stream:
+            text = _rtl_function(stream.read(), name)
         stats[suffix] = dict(
             insns=len(re.findall(r"^\((?:insn|jump_insn|call_insn)\b", text, re.M)),
+            calls=len(re.findall(r"^\(call_insn\b", text, re.M)),
             labels=len(re.findall(r"^\(code_label\b", text, re.M)),
             moves=len(re.findall(r"\{mov\w*", text)),
             source_notes=len(re.findall(r'^\(note .*\(".*\.c"\) \d+\)', text, re.M)),
         )
     return stats
+
+
+def _rtl_forms(text, kind):
+    """Yield balanced top-level RTL forms beginning with `(<kind>`."""
+    for match in re.finditer(rf"^\({re.escape(kind)}\b", text, re.M):
+        depth = 0
+        quoted = False
+        escaped = False
+        for end in range(match.start(), len(text)):
+            ch = text[end]
+            if quoted:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    quoted = False
+                continue
+            if ch == '"':
+                quoted = True
+            elif ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    yield text[match.start():end + 1]
+                    break
+
+
+def parse_call_rtl(path, name=None):
+    """Summarize CALL_INSN result mode and hard-register usage expressions.
+
+    jump.c compares more than the eventual `jal`: a typed result and the
+    trailing CALL_INSN_FUNCTION_USAGE expr_list are part of the RTL identity.
+    These compact fingerprints expose precisely that otherwise invisible
+    distinction without pretending that we possess RTL for the target.
+    """
+    with open(path, errors="replace") as stream:
+        text = _rtl_function(stream.read(), name)
+    calls = []
+    for block in _rtl_forms(text, "call_insn"):
+        callee = re.search(r'\(symbol_ref(?::\w+)?\s+\("([^"]+)"\)\)', block)
+        result = re.search(
+            r"\(set\s+\(reg(?::([A-Z0-9]+))?\s+\d+(?:\s+[^)]*)?\)\s+\(call\b",
+            block, re.S,
+        )
+        # The final expr_list is CALL_INSN_FUNCTION_USAGE.  Restrict uses to
+        # that tail so clobbers/uses embedded in the call pattern are not mixed
+        # into the caller-visible argument signature.
+        usage_at = block.rfind("\n    (expr_list")
+        usage = block[usage_at:] if usage_at >= 0 else ""
+        uses = []
+        for mode, num, name in re.findall(
+                r"\(use\s+\(reg(?::([A-Z0-9]+))?\s+(\d+)(?:\s+([^)\s]+))?\)\)",
+                usage):
+            if name:
+                reg = name
+            elif int(num) < len(REG_ORDER):
+                reg = REG_ORDER[int(num)]
+            else:
+                reg = "r" + num
+            uses.append(f"{mode or '?'}:${reg}")
+        calls.append(dict(
+            callee=callee.group(1) if callee else "<indirect>",
+            result=result.group(1) if result else "void",
+            uses=uses,
+        ))
+    return calls
+
+
+def call_rtl_evidence(paths, target_only, name=None):
+    """Fingerprint candidate calls implicated by target-only physical calls."""
+    by_suffix = {_dump_suffix(path): path for path in paths}
+    initial_path = by_suffix.get("rtl")
+    final_path = by_suffix.get("jump2") or by_suffix.get("jump")
+    if not initial_path:
+        return []
+    initial = parse_call_rtl(initial_path, name)
+    final = parse_call_rtl(final_path, name) if final_path else initial
+    wanted = {x["callee"] for x in target_only if x["callee"] != "?"}
+    evidence = []
+    for callee in sorted(wanted):
+        before = [x for x in initial if x["callee"] == callee]
+        after = [x for x in final if x["callee"] == callee]
+        variants = Counter((x["result"], tuple(x["uses"])) for x in before)
+        evidence.append(dict(
+            callee=callee,
+            expanded_sites=len(before),
+            after_jump_sites=len(after),
+            fingerprints=[
+                dict(result=result, uses=list(uses), count=count)
+                for (result, uses), count in variants.most_common()
+            ],
+        ))
+    return evidence
 
 
 def _attach_lines(guide, mapped):
@@ -423,6 +567,7 @@ def diagnose(name, build=True, rtl=True):
         guide["source_lines"] = []
         guide["variables_by_register"] = {}
         guide["pass_stats"] = {}
+        guide["call_rtl_evidence"] = []
         return guide
 
     src = os.path.join("src", "main.exe", name + ".c")
@@ -433,7 +578,10 @@ def diagnose(name, build=True, rtl=True):
     mapped = map_source_lines(line_insns, guide["ours"])
     _attach_lines(guide, mapped)
     guide["variables_by_register"] = parse_debug_variables(result["asm"], name)
-    guide["pass_stats"] = pass_stats(result["dumps"])
+    guide["pass_stats"] = pass_stats(result["dumps"], name)
+    guide["call_rtl_evidence"] = call_rtl_evidence(
+        result["dumps"], guide["target_only_calls"], name
+    )
 
     greg_path = next((p for p in result["dumps"] if p.endswith(".greg")), None)
     alloc = None
@@ -515,16 +663,38 @@ def print_report(g, max_hunks=12):
     interesting = ["rtl", "cse", "combine", "lreg", "greg", "sched2", "jump2", "dbr"]
     present = [x for x in interesting if x in g.get("pass_stats", {})]
     if present:
-        print("\n  RTL pass trace (top-level insns / labels / moves):")
+        print("\n  RTL pass trace (top-level insns / labels / moves / calls):")
         print("    " + "  ".join(
             f"{p}={g['pass_stats'][p]['insns']}/{g['pass_stats'][p]['labels']}/"
-            f"{g['pass_stats'][p]['moves']}" for p in present))
+            f"{g['pass_stats'][p]['moves']}/{g['pass_stats'][p]['calls']}"
+            for p in present))
+
+    if g.get("call_tail_hint"):
+        counts = g["call_counts"]
+        print("\n  call-tail diagnosis:")
+        print(f"    target retains {counts['target']} physical calls; candidate has "
+              f"{counts['candidate']}.")
+        if g.get("target_only_calls"):
+            desc = ", ".join(
+                f"{x['callee']} x{x['count']}" for x in g["target_only_calls"]
+            )
+            print(f"    target-only aligned calls: {desc}")
+        for item in g.get("call_rtl_evidence", []):
+            print(f"    candidate {item['callee']}: {item['expanded_sites']} at expand, "
+                  f"{item['after_jump_sites']} after jump")
+            for fp in item["fingerprints"]:
+                uses = ",".join(fp["uses"]) or "no hard-reg uses"
+                print(f"      x{fp['count']} result={fp['result']} uses={uses}")
+        print("    Inspect .rtl versus .jump/.jump2: machine-identical calls only stay "
+              "separate when result mode or CALL_INSN_FUNCTION_USAGE differs. "
+              "Check the caller's original declaration and already-live argument "
+              "registers; this is diagnostic, not an automatic prototype rewrite.")
 
     print("\n  mechanical search:")
     print(f"    rules: {', '.join(g['rules']) or '(no local rule; source structure first)'}")
-    if g["hard_clobbers"]:
-        print("    inferred missing-move clobbers: " +
-              ", ".join("$" + x for x in g["hard_clobbers"]))
+    if g["missing_move_registers"]:
+        print("    missing-move register targets (inspect .lreg/.greg; no asm emitted): " +
+              ", ".join("$" + x for x in g["missing_move_registers"]))
     print(f"    tools/autorules.py {g['name']} --guided")
     print("  Exact bytes remain authoritative; review any partial-score improvement.")
 

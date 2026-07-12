@@ -12,8 +12,8 @@ This tool enumerates every applicable site of each mechanical rule, tries it,
 rebuilds, and rescores with the authoritative whole-image byte diff — then
 GREEDILY keeps the single best improving edit and repeats until nothing helps
 (or it MATCHES). Greedy re-sweeping handles independent wins. Guided mode adds
-a bounded beam, because an empty compiler barrier can be byte-neutral by itself
-but enable the next edit.
+a bounded beam, because a pure-C CFG or loop-note edit can be byte-neutral by
+itself but enable the next edit.
 
 It is the deterministic, explainable first pass that complements decomp-permuter
 (the stochastic search over register-allocation ties): autorules reports exactly
@@ -29,7 +29,7 @@ semantically-wrong rewrite simply fails to improve the score and is discarded.
   tools/autorules.py <Name> --once   a single pass (no greedy re-sweep)
   tools/autorules.py <Name> --list   list the registered mechanical rules
   tools/autorules.py <Name> --guided RTL/source-line-guided advanced search
-  tools/autorules.py <Name> --rules copy-barrier --beam 4 --depth 2
+  tools/autorules.py <Name> --rules loop-fence,cmp-polarity --beam 4 --depth 2
 
 Run inside the nix devShell. Each candidate costs one ./Build (incremental), so
 a run is a few dozen builds — a minute or two, unattended.
@@ -223,7 +223,9 @@ def rule_type_width(text, name, span):
 
     THE most-cited mechanical lever (cookbook Expressions): a short-returning
     call result that indexes an array wants s32 not s16; a u16 field read
-    signed; a terminator's signedness; short-vs-int call results (PauseProc).
+    signed; a terminator's signedness; short-vs-int call results (PauseProc);
+    an HImode switch guard that must not reuse an SImode case constant
+    (ActATTACK).
     For each local declaration we try each *distinct* (width, signedness)
     canonical type. Line-based (robust without the AST); confined to the body.
     """
@@ -620,6 +622,9 @@ def rule_min_ternary(text, name, span):
                    splice(data, s1.start_byte, s2.end_byte, repl).decode())
 
 
+CMP_SWAP = {b"<": b">", b">": b"<", b"<=": b">=", b">=": b"<="}
+
+
 def rule_cmp_swap(text, name, span):
     """Swap a comparison's operands to flip evaluation order: `a > b` -> `b < a`.
 
@@ -627,7 +632,6 @@ def rule_cmp_swap(text, name, span):
     the load while `mem < a` loads first (cookbook). Same slt; scoring decides. Only fires
     where exactly one side is a MEMORY access (field/subscript/deref) — narrows the site
     count to the cases where it matters."""
-    SWAP = {b"<": b">", b">": b"<", b"<=": b">=", b">=": b"<="}
     data = text.encode()
     body = _func_body(data, name, _byte_span(text, span))
     if body is None:
@@ -640,7 +644,7 @@ def rule_cmp_swap(text, name, span):
         R = c.child_by_field_name("right")
         if op is None or L is None or R is None:
             continue
-        sw = SWAP.get(_txt(data, op))
+        sw = CMP_SWAP.get(_txt(data, op))
         if sw is None:
             continue
         if is_mem(L) == is_mem(R):
@@ -648,6 +652,45 @@ def rule_cmp_swap(text, name, span):
         repl = _txt(data, R).strip() + b" " + sw + b" " + _txt(data, L).strip()
         yield (f"cmp-swap L{_line(data, c.start_byte)}",
                splice(data, c.start_byte, c.end_byte, repl).decode())
+
+
+def rule_cmp_polarity(text, name, span):
+    """Swap two non-memory comparison operands: `a < b` -> `b > a`.
+
+    The slt is logically identical, but fold creates and references the two
+    operand pseudos in the opposite order.  That can swap their hard-register
+    homes without changing an instruction (ActATTACK).  This broader form is
+    guided/opt-in; ordinary cmp-swap stays on cheaper memory/local sites.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    memory = {"field_expression", "subscript_expression", "pointer_expression"}
+    side_effects = {"call_expression", "update_expression", "assignment_expression"}
+    literals = {"number_literal", "char_literal", "string_literal",
+                "true", "false", "null"}
+    for comp in _find(body, ("binary_expression",)):
+        op = comp.child_by_field_name("operator")
+        left = comp.child_by_field_name("left")
+        right = comp.child_by_field_name("right")
+        if op is None or left is None or right is None:
+            continue
+        swapped = CMP_SWAP.get(_txt(data, op))
+        if swapped is None:
+            continue
+        if (_find(left, tuple(memory | side_effects)) or
+                _find(right, tuple(memory | side_effects))):
+            continue
+        if left.type in literals or right.type in literals:
+            continue
+        line = _line(data, comp.start_byte)
+        if not _guided_site(line):
+            continue
+        repl = (_txt(data, right).strip() + b" " + swapped + b" " +
+                _txt(data, left).strip())
+        yield (f"cmp-polarity L{line}",
+               splice(data, comp.start_byte, comp.end_byte, repl).decode())
 
 
 def rule_split_chain(text, name, span):
@@ -792,13 +835,11 @@ def rule_extern_array(text, name, span):
 
 
 # ---------------------------------------------------------------------------
-# Guided/advanced rules.  These are runtime-value preserving, but deliberately
-# opt-in: they steer old GCC with zero-code asm barriers or reshape the CFG and
-# can perturb allocation far beyond their source line.  rtlguide narrows them
-# to the lines owned by the residual; `--aggressive` is the explicit blind mode.
+# Guided/advanced rules.  These are runtime-value preserving pure-C rewrites,
+# but deliberately opt-in because loop notes and CFG labels can perturb
+# allocation far beyond their source line.  rtlguide narrows them to the lines
+# owned by the residual; `--aggressive` is the explicit blind mode.
 # ---------------------------------------------------------------------------
-
-IDENT = re.compile(rb"^[A-Za-z_]\w*$")
 
 
 def _indent_at(data, off):
@@ -807,113 +848,36 @@ def _indent_at(data, off):
     return prefix if not prefix.strip() else b""
 
 
-def _unary_minus(text):
-    return re.sub(rb"\s+", b"", text).startswith(b"-")
 
+def rule_loop_fence(text, name, span):
+    """Wrap a statement in a one-shot do loop to create zero-code loop notes.
 
-def rule_abs_copy_barrier(text, name, span):
-    """Insert a zero-code `+r` barrier in the copy-then-negate abs idiom.
-
-    `dst = value; if (dst < 0) dst = -dst;` (or a separately named source in
-    the test) is value-identical with the barrier, but combine may no longer
-    substitute the source back into the negation.  This is the exact
-    StateTransition residual described in the cookbook.
+    cc1's loop notes are barriers to CSE/local-copy propagation and add weighted
+    references for allocation.  Wrapping an existing loop is semantics-neutral;
+    an if is eligible only when it contains no break/continue whose target the
+    new wrapper could change.  ActATTACK's MotionUpdateMode scans are the worked
+    example.
     """
     data = text.encode()
     body = _func_body(data, name, _byte_span(text, span))
     if body is None:
         return
-    for block in _find(body, ("compound_statement",)):
-        kids = [c for c in block.named_children if c.type != "comment"]
-        for first, second in zip(kids, kids[1:]):
-            initial = _stmt_expr(data, first)
-            if initial is None or second.type != "if_statement":
-                continue
-            dst, src = initial
-            if not IDENT.match(dst):
-                continue
-            if second.child_by_field_name("alternative") is not None:
-                continue
-            cond = second.child_by_field_name("condition")
-            cond = _paren_inner(cond) if cond is not None and cond.type == "parenthesized_expression" else cond
-            if cond is None or cond.type != "binary_expression":
-                continue
-            op = cond.child_by_field_name("operator")
-            left = cond.child_by_field_name("left")
-            right = cond.child_by_field_name("right")
-            if op is None or left is None or right is None:
-                continue
-            ct = (_txt(data, left).strip(), _txt(data, op), _txt(data, right).strip())
-            tested = {dst}
-            if IDENT.match(src):
-                tested.add(src)
-            if not any(ct in ((value, b"<", b"0"), (b"0", b">", value))
-                       for value in tested):
-                continue
-            cons = second.child_by_field_name("consequence")
-            if cons is None:
-                continue
-            if cons.type == "compound_statement":
-                stmts = [c for c in cons.named_children if c.type != "comment"]
-                if len(stmts) != 1:
-                    continue
-                neg_stmt = stmts[0]
-            else:
-                neg_stmt = cons
-            neg = _stmt_expr(data, neg_stmt)
-            if neg is None or neg[0] != dst or not _unary_minus(neg[1]):
-                continue
-            operand = re.sub(rb"\s+", b"", neg[1])[1:]
-            if operand != dst:
-                continue
-            line = _line(data, neg_stmt.start_byte)
-            if not _guided_site(line):
-                continue
-            asm = b'__asm__("" : "+r"(' + dst + b'));'
-            if cons.type == "compound_statement":
-                indent = _indent_at(data, neg_stmt.start_byte)
-                repl = asm + b"\n" + indent
-                new = splice(data, neg_stmt.start_byte, neg_stmt.start_byte, repl)
-            else:
-                repl = b"{ " + asm + b" " + _txt(data, neg_stmt) + b" }"
-                new = splice(data, neg_stmt.start_byte, neg_stmt.end_byte, repl)
-            yield (f"abs-copy-barrier {dst.decode()} L{line}", new.decode())
-
-
-def rule_copy_barrier(text, name, span):
-    """Break an enumerable plain-copy equivalence with an empty `+r` asm.
-
-    Both sides must be used later.  We try fencing each side; rtlguide's source
-    lines keep this from becoming a whole-function combinatorial sweep.
-    """
-    data = text.encode()
-    body = _func_body(data, name, _byte_span(text, span))
-    if body is None:
-        return
-    idents = _find(body, ("identifier",))
-    for block in _find(body, ("compound_statement",)):
-        for stmt in [c for c in block.named_children if c.type != "comment"]:
-            copy = _stmt_expr(data, stmt)
-            if copy is None:
-                continue
-            dst, src = copy
-            if not IDENT.match(dst) or not IDENT.match(src) or dst == src:
-                continue
-            later = {_txt(data, n) for n in idents if n.start_byte >= stmt.end_byte}
-            if dst not in later or src not in later:
-                continue
-            line = _line(data, stmt.start_byte)
-            if not _guided_site(line):
-                continue
-            indent = _indent_at(data, stmt.start_byte)
-            tail = data[stmt.end_byte:stmt.end_byte + 120]
-            for var in (src, dst):
-                if b'"+r"(' + var + b")" in tail:
-                    continue
-                asm = b'__asm__("" : "+r"(' + var + b'));'
-                repl = b"\n" + indent + asm
-                new = splice(data, stmt.end_byte, stmt.end_byte, repl)
-                yield (f"copy-barrier {var.decode()} L{line}", new.decode())
+    for stmt in _find(body, ("if_statement", "for_statement", "while_statement")):
+        if stmt.parent is not None and stmt.parent.type == "do_statement":
+            continue
+        if stmt.type == "if_statement" and _find(
+                stmt, ("break_statement", "continue_statement")):
+            continue
+        line = _line(data, stmt.start_byte)
+        if not _guided_site(line):
+            continue
+        indent = _indent_at(data, stmt.start_byte)
+        original = _txt(data, stmt)
+        indented = original.replace(b"\n", b"\n  ")
+        repl = (b"do {\n" + indent + b"  " + indented + b"\n" + indent +
+                b"} while (0);")
+        yield (f"loop-fence {stmt.type.removesuffix('_statement')} L{line}",
+               splice(data, stmt.start_byte, stmt.end_byte, repl).decode())
 
 
 def rule_case_fence(text, name, span):
@@ -959,44 +923,6 @@ def rule_case_fence(text, name, span):
                    splice(data, iff.start_byte, iff.end_byte, repl).decode())
 
 
-def hard_clobber_rule(regs):
-    """Build a targeted rule that inserts inferred hard-register clobbers."""
-    nums = []
-    names = {"v0": 2, "v1": 3, **{f"a{i}": 4 + i for i in range(4)},
-             **{f"t{i}": 8 + i for i in range(8)},
-             **{f"s{i}": 16 + i for i in range(8)}, "t8": 24, "t9": 25}
-    for value in regs:
-        raw = str(value).lstrip("$")
-        num = int(raw) if raw.isdigit() else names.get(raw)
-        if num is not None and num not in nums:
-            nums.append(num)
-
-    def generate(text, name, span):
-        data = text.encode()
-        body = _func_body(data, name, _byte_span(text, span))
-        if body is None:
-            return
-        for stmt in _find(body, ("expression_statement", "declaration")):
-            if stmt.parent is None or stmt.parent.type != "compound_statement":
-                continue
-            assignment = _stmt_expr(data, stmt)
-            if assignment is None or not IDENT.match(assignment[0]):
-                continue
-            line = _line(data, stmt.start_byte)
-            if not _guided_site(line):
-                continue
-            indent = _indent_at(data, stmt.start_byte)
-            for num in nums:
-                before = data[max(0, stmt.start_byte - 100):stmt.start_byte]
-                token = f'::: "${num}"'.encode()
-                if token in before:
-                    continue
-                asm = f'__asm__("" ::: "${num}");\n'.encode() + indent
-                yield (f"hard-clobber ${num} L{line}",
-                       splice(data, stmt.start_byte, stmt.start_byte, asm).decode())
-    return generate
-
-
 RULES = [
     ("type-width", "flip a local's integer type across width/signedness", rule_type_width),
     ("extern-array", "extern T NAME; -> extern T NAME[]; + NAME->NAME[0] (-G8 split)", rule_extern_array),
@@ -1011,10 +937,14 @@ RULES = [
 ]
 
 AGGRESSIVE_RULES = [
-    ("abs-copy-barrier", "empty +r barrier in copy-then-negate abs", rule_abs_copy_barrier),
-    ("copy-barrier", "empty +r barrier after a live plain copy", rule_copy_barrier),
+    ("cmp-polarity", "swap two local comparison operands (regalloc ref-order lever)", rule_cmp_polarity),
+    ("loop-fence", "wrap an if/loop in a zero-code one-shot do loop", rule_loop_fence),
     ("case-fence", "if/else -> two-way switch (hard cross-jump CODE_LABEL)", rule_case_fence),
 ]
+
+LINE_RULES = {rule_type_width, rule_extern_array}
+AST_RULES = {gen for _key, _desc, gen in RULES + AGGRESSIVE_RULES
+             if gen not in LINE_RULES}
 
 
 # ---------------------------------------------------------------------------
@@ -1121,8 +1051,8 @@ def beam_search(path, original, name, partial, rules, base, width, depth,
                 allow_regress, budget):
     """Bounded multi-edit search that retains neutral enabling transformations.
 
-    The old greedy loop cannot discover `barrier A` (same byte score) followed
-    by `split B` (match).  A small beam is enough for the cookbook's known
+    The old greedy loop cannot discover `loop-fence A` (same byte score)
+    followed by `split B` (match). A small beam is enough for the cookbook's known
     enabling sequences and remains explainable: every path is printed.
     """
     start = base
@@ -1172,7 +1102,7 @@ def beam_search(path, original, name, partial, rules, base, width, depth,
                 break
         if best["match"] or exhausted or not children:
             break
-        # Deterministic tie order plus path diversity; a neutral source barrier
+        # Deterministic tie order plus path diversity; a neutral pure-C edit
         # survives alongside immediate byte wins instead of being discarded.
         children.sort(key=lambda s: (
             s["score"], len(s["path"]),
@@ -1197,10 +1127,8 @@ def main():
     ap.add_argument("--guided", action="store_true",
                     help="use target asm + RTL line map to choose advanced rules")
     ap.add_argument("--aggressive", action="store_true",
-                    help="also sweep zero-code barriers and CFG fences blindly")
+                    help="also sweep pure-C loop-note and CFG rules blindly")
     ap.add_argument("--rules", help="comma-separated rule keys (overrides the default set)")
-    ap.add_argument("--clobber", action="append", default=[], metavar="REG",
-                    help="try an empty hard-register clobber (e.g. v0 or 2)")
     ap.add_argument("--beam", type=int, metavar="WIDTH",
                     help="bounded multi-edit beam search (guided default: 4)")
     ap.add_argument("--depth", type=int, default=2, help="beam edit depth (default: 2)")
@@ -1214,21 +1142,21 @@ def main():
         ast = "available" if _TS is not None else "MISSING (AST rules disabled)"
         print(f"registered mechanical rules  [tree-sitter: {ast}]:")
         for key, desc, gen in RULES:
-            uses_ast = gen in (rule_and_nest, rule_temp_inline)
-            tag = " (AST)" if uses_ast else ""
+            tag = " (AST)" if gen in AST_RULES else ""
             print(f"  {key:12} {desc}{tag}")
         print("guided/advanced rules (opt-in):")
         for key, desc, _gen in AGGRESSIVE_RULES:
             print(f"  {key:18} {desc} (AST)")
-        print("  hard-clobber       inferred/explicit empty hard-register clobber (AST)")
         if not args.name:
             print("\ngive a <Name> to sweep it.")
         return 0
 
     name = args.name
     if _TS is None:
-        print("autorules: tree-sitter unavailable — AST rules (&&-nest, "
-              "temp-inline) are DISABLED; running line-based rules only. "
+        disabled = ", ".join(key for key, _desc, gen in RULES + AGGRESSIVE_RULES
+                             if gen in AST_RULES)
+        print(f"autorules: tree-sitter unavailable — AST rules ({disabled}) "
+              "are DISABLED; running line-based rules only. "
               "Run inside `nix develop` for the full set.", file=sys.stderr)
     path, original, partial = load(name)
     match, base, lo, lt = score(name, partial)
@@ -1243,7 +1171,6 @@ def main():
 
     global GUIDED_LINES
     guide = None
-    inferred_clobbers = []
     if args.guided:
         try:
             import rtlguide
@@ -1251,20 +1178,13 @@ def main():
         except (FileNotFoundError, ValueError, RuntimeError) as e:
             sys.exit(f"autorules: rtlguide failed: {e}")
         GUIDED_LINES = set(guide.get("source_lines", []))
-        inferred_clobbers = guide.get("hard_clobbers", [])
         print(f"guided by {guide['primary']}: lines "
               f"{','.join(map(str, sorted(GUIDED_LINES))) or '?'}; "
               f"rules {','.join(guide['rules']) or '(none)'}")
 
     requested = [x.strip() for x in (args.rules or "").split(",") if x.strip()]
-    clobbers = args.clobber + inferred_clobbers
     available = RULES + AGGRESSIVE_RULES
-    if clobbers:
-        available = available + [(
-            "hard-clobber", "empty inferred/explicit hard-register clobber",
-            hard_clobber_rule(clobbers),
-        )]
-    known = {x[0] for x in available} | {"hard-clobber"}
+    known = {x[0] for x in available}
     bad = [x for x in requested if x not in known]
     if bad:
         sys.exit(f"autorules: unknown rule(s) {bad}; use --list")
@@ -1278,8 +1198,7 @@ def main():
         selected_keys = {x[0] for x in RULES}
     rules = [x for x in available if x[0] in selected_keys]
     if not rules:
-        sys.exit("autorules: no runnable rules selected (a hard-clobber needs "
-                 "--clobber REG or an inferred missing move)")
+        sys.exit("autorules: no runnable rules selected")
     print("selected: " + ", ".join(x[0] for x in rules))
 
     beam = args.beam

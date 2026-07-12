@@ -817,6 +817,17 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   a switch/loop-driven success flag is involved, try flipping its width: a
   `s16` flag matched where `s32` was 4 insns short (handle_char_state_using_item_,
   139→143).
+  - **A narrow switch guard can also prevent reuse of an SImode case constant.**
+    In ActATTACK, `short cleanup_guard` gives each `cleanup_guard = 3` an HImode
+    definition. It cannot coalesce with the switch comparison's SImode `3`, so
+    reorg duplicates `li 3` into three case-0 branch delay slots before the
+    shared `andi`. Declaring the guard `int` reuses the comparison constant and
+    loses those target instructions. This is a type-mode decision even though
+    every source value fits in either width.
+  - **Mechanized:** `autorules`' default `type-width` rule enumerates the local
+    integer widths and signednesses. `rtlguide` now recommends it for regalloc,
+    CSE, schedule, and length residuals, so this case does not require guessing
+    which flag declaration to perturb.
   - **Store-before-sign-extend on a capture-and-increment.** `v = Global; Global
     = v + 1; idx = (short)v;` — the store to `Global` MUST come before the
     `(short)v`. While `v` is still memory-equivalent to `Global`, cse renders
@@ -1153,6 +1164,17 @@ address; spelling it `vh.next = nb;` drops the reload the target has, because cc
 will not refetch what it can already see live in a register. Provable equality is not
 a licence to reuse the variable.
 
+**Corroborate an otherwise dead target load in another shipped build before
+encoding it.** A load whose result is never consumed can be a real volatile-style
+source access, but it can also be a bad carve, alignment artefact, or mistaken
+interpretation. ActATTACK has the same dead `Me_MOTION_C` load immediately before
+the root-model coordinate clears in both retail and trial executables. That
+independent occurrence justifies the narrow, site-local spelling
+`(void)*(Humanoid * volatile *)&Me_MOTION_C;`; do not make the shared declaration
+globally volatile. Without cross-build or surrounding-RTL corroboration, do not
+invent a dead read merely to fill four bytes. This remains a review rule rather
+than an automatic mutation.
+
 **A value used ONLY as a conditional call argument must be the inline ternary in the
 call's argument position**, not assigned to a named local first (even via a ternary).
 Assigning it first makes cc1 re-read the tested field a second time, with the wrong
@@ -1163,6 +1185,15 @@ expand evaluates op0 first, so `found > mem` emits the (short) sign-extension `s
 BEFORE the `lh`, while `mem < found` loads first — same `slt` either way. Order the
 comparison to match which side's evaluation the target front-loads (`GetConflictResult`,
 8 bytes).
+
+**Equivalent local-vs-local comparison polarity is a register-allocation lever.**
+Even when `direction < turn` and `turn > direction` lower to the same `slt`, fold
+creates/references the operand pseudos in the opposite order. In ActATTACK that
+alone exchanged the `$v1`/`$a1` homes used by the surrounding turn logic; no
+instruction shape changed. This is distinct from the memory/local rule above:
+`cmp-swap` handles evaluation order when exactly one operand is a dereference,
+while guided `cmp-polarity` enumerates nonliteral local/local comparisons near a
+register or scheduling residual.
 
 **Put a pointer-field publish (`Global = p->field;`) FIRST in a multi-field store
 group.** sched1 then sinks its `lw`/`sw` into the following pairs' load-delay slots one
@@ -1949,58 +1980,35 @@ in `do { … } while (0);` (its back-edge note halts the scan). Reach for this w
 a draft collapses two registers into one that the target keeps distinct
 (ProcItemSmoke).
 
-### An empty extended asm can split an equivalence without emitting code
+The fence can be **local**, around one conditional scan rather than the whole
+function. ActATTACK wraps each `if (MotionUpdateMode) { for (...) ... }` scan in
+a one-shot `do`; the loop notes prevent the unwanted load/copy propagation and
+change weighted reference order, while optimized output gains no branch. Guided
+`autorules` now enumerates eligible `if`, `for`, and `while` statements as
+`loop-fence`. It rejects an `if` containing `break` or `continue`, because the new
+wrapper could capture those statements; byte scoring still decides whether an
+otherwise safe fence helps.
 
-When the target keeps two equal values in different hard registers but cc1
-coalesces them—or substitutes the original operand back into an operation—an
-empty read/write asm is a last, byte-neutral register-allocation barrier:
+### Inline extended asm is an anti-rule, not a matching transformation
 
-```c
-loaded = me->target;
-saved = loaded;
-__asm__("" : "+r"(loaded));
-x = loaded->locate.coord.t[0];
-z = saved->locate.coord.t[2];
-```
+An empty compiler barrier can make old GCC retain a desired copy without
+emitting an instruction, but it encodes no recovered game logic and is too easy
+to use as an opaque register-allocation escape hatch. Do not land it in a
+matching function. If an experiment containing inline asm is the only known
+match, keep the function nonmatching (or park the experiment) and continue
+working backward from `.rtl`, `.lreg`, `.greg`, and `.jump2` to a real C cause.
 
-The asm emits **zero instructions**, but its opaque `+r` definition means
-`loaded` may differ afterward, so `loaded` and `saved` cannot coalesce.  In
-StateTransition this preserves the target's `lw $v0,...; nop; move $a1,$v0`,
-with the two coordinate reads then consuming `$v0` and `$a1` respectively.
-The same lever stops source propagation through an absolute-value temporary:
+StateTransition is the worked correction: its experimental barriers were
+removed and the exact match recovered with repeated field access, relational
+polarity, a real referenced `case` label, and a one-shot `do` that supplies the
+needed loop notes. Those constructs explain source-level intent and survive
+review; a synthetic clobber does not.
 
-```c
-absolute = value;
-if (value < 0) {
-    __asm__("" : "+r"(absolute));
-    absolute = -absolute;
-}
-```
-
-That keeps the target's `move dest,src` in the branch delay slot followed by
-`negu dest,dest`; without the barrier combine rewrites the latter as
-`negu dest,src`.
-
-A related zero-code form invalidates a stale hard-register equivalence:
-
-```c
-__asm__("" ::: "$2");       /* $v0 is no longer known to equal value */
-absolute = value;            /* explicit move $v0,... now survives */
-```
-
-Use the hard-register clobber only after RTL/asmdiff proves the exact missing
-copy, and document it in the matched file: it is compiler-specific and can
-reshape unrelated allocation if placed in a wider live range.  These barriers
-are appropriate only after ordinary temps, statement order, block boundaries,
-and the bounded permuter have failed (StateTransition).
-
-**Now mechanized (advanced/opt-in):** `autorules --guided` enumerates the
-copy-then-negate form as `abs-copy-barrier`, live plain copies as
-`copy-barrier`, and a target-only `move $REG,...` or compact register-only
-residual as a line-local `hard-clobber`. The register and source-line hints
-come from `rtlguide`; these
-rules are not part of the blind default sweep. `--aggressive` or explicit
-`--rules ... --clobber REG` is available for a controlled experiment.
+`autorules` contains no asm-producing rule, and `rtlguide` never recommends one.
+A target-only move is reported only as a register goal for inspecting the
+candidate's copy chain. This is a deliberate stopping rule: exact bytes are the
+verification gate, but they do not make an arbitrary compiler directive a
+credible decompilation.
 
 ### A search-flag's initialiser placement flips it callee- vs caller-saved
 
@@ -2334,6 +2342,25 @@ two-way-switch spellings (`case-fence`) at the implicated `if/else` lines. It
 rejects arms containing a source `break`, whose meaning would change inside a
 switch. Exact-byte scoring decides whether either surviving CODE_LABEL is the
 one the target requires.
+
+**Machine-identical calls can be different to jump2.** Cross-jump compares the
+whole `CALL_INSN`, including its result mode and trailing
+`CALL_INSN_FUNCTION_USAGE`, not only the final `jal` opcode. If the target keeps
+more physical calls than the candidate, inspect `.rtl` against `.jump`/`.jump2`
+before restructuring the CFG. In ActATTACK, the original caller's old-style
+`DeleteConflict` declaration allowed already-live `$a1` values at some sites,
+while one typed call expression supplied an HImode result. The five eventual
+`jal DeleteConflict` instructions look alike, but those RTL fingerprints stop
+jump2 from merging the required sites.
+
+`rtlguide` now detects a target physical-call surplus, names target-only aligned
+callees, counts calls through the RTL passes, and prints each candidate call's
+result/use fingerprint. Treat that output as a declaration and liveness clue,
+not permission to add guessed arguments: m2c frequently mistakes stale argument
+registers for source arguments, and changing a shared callee prototype can alter
+other translation units. Caller-local old-style declarations or typed call
+expressions require case-by-case semantic review, so this diagnosis is not an
+automatic rewrite.
 
 **A named `goto` label pins cross-jump's choice of primary copy.** When several
 unconditional exits share a tail (e.g. every reject does `x = -1; goto ret;`), route them
@@ -2773,12 +2800,13 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
   fold/combine refolds *every* plain-arithmetic respelling back to it (nested
   expression, two statements, K&R params, explicit pointer casts, a static-inline
   helper, even a literal transcription of the asm shifts — all verified against
-  cc1 `-da` RTL dumps + the gcc-2.8.1 sources). Only a genuine optimizer barrier
-  (an empty register-constrained `__asm__("" : "+r"(t))`) reproduces it, which is
-  the same open inline-asm policy question as `PClseek`. Whole game code contains
-  exactly three, all parked: `GetPad`, `FUN_8001b174`, `GetPadXY` (see
-  `GetPad.c` for the byte-exact barrier form). `triage.py` now detects the triple
-  and reports `SIGNEXT-SPLIT (GetPad class)` instead of rating it TRIVIAL.
+  cc1 `-da` RTL dumps + the gcc-2.8.1 sources). A synthetic optimizer barrier
+  can reproduce it experimentally, but under the inline-asm anti-rule above that
+  is evidence that the natural C remains unresolved, not a matching solution.
+  Whole game code contains exactly three, all parked: `GetPad`, `FUN_8001b174`,
+  `GetPadXY`. `triage.py` detects the triple and reports `SIGNEXT-SPLIT (GetPad
+  class)` instead of rating it TRIVIAL; `autorules` deliberately does not try the
+  barrier form.
   - **Do NOT confuse this with the ordinary 2-instruction `sll r,r,16 / sra
     r,r,K` (K≠16)**, which is just a `short`/HImode index sign-extended *and*
     scaled in one go — exactly what `arr[short_i]` compiles to for a 4-byte

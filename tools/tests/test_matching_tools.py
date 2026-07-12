@@ -6,6 +6,7 @@ import unittest
 from unittest import mock
 import contextlib
 import io
+import inspect
 
 TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if TOOLS not in sys.path:
@@ -18,35 +19,43 @@ import rtlguide
 
 
 class AutoRulesAdvancedTests(unittest.TestCase):
+    def setUp(self):
+        autorules.GUIDED_LINES = set()
+
     def candidates(self, rule, source):
         return list(rule(source, "F", (0, len(source))))
 
-    def test_abs_copy_barrier(self):
-        source = """int F(int value) {
-    int absolute;
-    absolute = value;
-    if (value < 0) {
-        absolute = -absolute;
-    }
-    return absolute;
+    def test_cmp_polarity_swaps_local_operands(self):
+        source = """int F(int direction, int turn) {
+    if (direction < turn) return 1;
+    return 0;
 }
 """
-        out = self.candidates(autorules.rule_abs_copy_barrier, source)
+        out = self.candidates(autorules.rule_cmp_polarity, source)
         self.assertEqual(len(out), 1)
-        self.assertIn('__asm__("" : "+r"(absolute));', out[0][1])
+        self.assertIn("turn > direction", out[0][1])
 
-    def test_copy_barrier_tries_both_sides(self):
-        source = """int F(int a) {
-    int b;
-    b = a;
-    a += 1;
-    return a + b;
+    def test_loop_fence_wraps_an_if(self):
+        source = """int F(int value) {
+    if (value) value++;
+    return value;
 }
 """
-        out = self.candidates(autorules.rule_copy_barrier, source)
-        self.assertEqual(len(out), 2)
-        self.assertTrue(any('"+r"(a)' in text for _, text in out))
-        self.assertTrue(any('"+r"(b)' in text for _, text in out))
+        out = self.candidates(autorules.rule_loop_fence, source)
+        self.assertEqual(len(out), 1)
+        self.assertIn("do {", out[0][1])
+        self.assertIn("} while (0);", out[0][1])
+
+    def test_loop_fence_rejects_if_with_switch_break(self):
+        source = """int F(int a) {
+    switch (a) {
+    case 1:
+        if (a) break;
+    }
+    return a;
+}
+"""
+        self.assertEqual(self.candidates(autorules.rule_loop_fence, source), [])
 
     def test_case_fence_unwraps_else_clause(self):
         source = """int F(int a) {
@@ -70,16 +79,11 @@ class AutoRulesAdvancedTests(unittest.TestCase):
 """
         self.assertEqual(self.candidates(autorules.rule_case_fence, source), [])
 
-    def test_hard_clobber_is_numeric(self):
-        source = """int F(int a) {
-    int b;
-    b = a;
-    return b;
-}
-"""
-        out = self.candidates(autorules.hard_clobber_rule(["v0"]), source)
-        self.assertEqual(len(out), 1)
-        self.assertIn('__asm__("" ::: "$2");', out[0][1])
+    def test_registered_rules_never_emit_inline_asm(self):
+        self.assertNotIn("__asm__", inspect.getsource(autorules))
+        for key, _description, rule in autorules.RULES + autorules.AGGRESSIVE_RULES:
+            with self.subTest(rule=key):
+                self.assertNotIn("__asm__", inspect.getsource(rule))
 
     def test_beam_retains_neutral_enabling_edit(self):
         def first(text, _name, _span):
@@ -137,6 +141,76 @@ class RtlGuideTests(unittest.TestCase):
     def test_branch_target_drift_has_same_shape(self):
         self.assertEqual(rtlguide.shape("bnez v0,0x80012340"),
                          rtlguide.shape("bnez v1,0x80012400"))
+
+    def test_target_only_call_sets_call_tail_hint(self):
+        target = [(0x1000, "jal 0x80001000 <DeleteConflict>"),
+                  (0x1004, "nop")]
+        ours = [(0x1000, "j 0x80002000"), (0x1004, "nop")]
+        with mock.patch.object(
+                rtlguide, "_candidate_asm",
+                return_value=(0x1000, 8, 8, target, ours)):
+            guide = rtlguide.assembly_guide("F")
+        self.assertTrue(guide["call_tail_hint"])
+        self.assertEqual(guide["call_counts"], {"target": 1, "candidate": 0})
+        self.assertEqual(guide["target_only_calls"], [
+            {"callee": "DeleteConflict", "count": 1},
+        ])
+
+    def test_call_rtl_fingerprint_includes_result_mode_and_usage(self):
+        body = """;; Function F
+
+(call_insn 10 9 11 (parallel[
+            (set (reg:HI 2 v0)
+                (call (mem:SI (symbol_ref:SI (\"DeleteConflict\")))
+                    (const_int 16)))
+            (clobber (reg:SI 31 ra))
+        ] ) -1 (nil)
+    (nil)
+    (expr_list (use (reg:SI 5 a1))
+        (expr_list (use (reg:SI 4 a0))
+            (nil))))
+
+;; Function Other
+
+(call_insn 20 19 21 (parallel[
+            (call (mem:SI (symbol_ref:SI ("Unrelated"))) (const_int 16))
+            (clobber (reg:SI 31 ra))
+        ] ) -1 (nil) (nil) (nil))
+"""
+        with tempfile.NamedTemporaryFile("w+", delete=False) as f:
+            path = f.name
+            f.write(body)
+        try:
+            self.assertEqual(rtlguide.parse_call_rtl(path, "F"), [{
+                "callee": "DeleteConflict", "result": "HI",
+                "uses": ["SI:$a1", "SI:$a0"],
+            }])
+        finally:
+            os.unlink(path)
+
+    def test_call_rtl_evidence_tracks_jump_merging(self):
+        before = [
+            {"callee": "DeleteConflict", "result": "void", "uses": ["SI:$a0"]},
+            {"callee": "DeleteConflict", "result": "HI", "uses": ["SI:$a0"]},
+        ]
+        after = [before[0]]
+        with mock.patch.object(rtlguide, "parse_call_rtl",
+                               side_effect=[before, after]):
+            evidence = rtlguide.call_rtl_evidence(
+                ["F.rtl", "F.jump2"],
+                [{"callee": "DeleteConflict", "count": 1}], "F",
+            )
+        self.assertEqual(evidence[0]["expanded_sites"], 2)
+        self.assertEqual(evidence[0]["after_jump_sites"], 1)
+        self.assertEqual({x["result"] for x in evidence[0]["fingerprints"]},
+                         {"void", "HI"})
+
+    def test_guided_registry_is_pure_c(self):
+        rules = {rule for values in rtlguide.CATEGORY_RULES.values() for rule in values}
+        self.assertIn("cmp-polarity", rules)
+        self.assertIn("loop-fence", rules)
+        self.assertIn("type-width", rules)
+        self.assertFalse(any("barrier" in rule or "clobber" in rule for rule in rules))
 
     def test_json_keeps_hunk_instructions_not_full_streams(self):
         report = {
