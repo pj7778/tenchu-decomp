@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -39,7 +40,263 @@
  *     extern short dtPAD;
  * END PSX.SYM */
 
+typedef struct
+{
+    u8 pad0[0xc];
+    u8 vector;
+    u8 padd[3];
+} ActJumpMapVector;
+
+typedef struct
+{
+    Humanoid *human;
+    u8 pad4[4];
+} ActJumpHumanAnim;
+
+typedef struct
+{
+    ActJumpMapVector map;
+    u8 pad28[8];
+    SVECTOR speed;
+} ActJumpScratch;
+
+extern Humanoid *Me_MOTION_C;
+extern Humanoid *StagePlayer;
+extern MotionManager *dtM;
+extern VECTOR *dtL;
+extern SVECTOR *dtV;
+extern SVECTOR *dtR;
+extern s16 dtPAD;
+extern s16 motID;
+extern s16 D_80097F0E;
+extern s16 MotionUpdateMode;
+extern void *GlobalAreaMap;
+extern ActJumpHumanAnim CVAhuman[5];
+extern u16 RefrectVector[16];
+
+extern short UpdateMotion(MotionManager *mmp, short mid);
+extern short SetNowMotion(Humanoid *human, short mid, short move);
+extern void GetAreaMapVector(void *map, ActJumpMapVector *result, long locate,
+                             long width, long mode);
+extern long GetAreaMapLevel(void *map, long x, long y, long z, long mode);
+extern void MoveHumanoid(Humanoid *human, short front, short side);
+extern void GetMoveSpeed(SVECTOR *speed, long ry, long front, long side);
+extern void Sound(Humanoid *human, short id);
+extern void PadShockAR(short port, short power, short time, short mode);
+
+/*
+ * Pure-C draft: exact 0x40 frame and exact 1,396-byte length.  The remaining
+ * differences are confined to scheduler/CSE choices in the 0x907 landing
+ * object reload and the post-GetMoveSpeed short-vector update.
+ */
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ActJUMP", ActJUMP);
+#else
+void ActJUMP(void)
+{
+    short old_mid;
+    u16 pad;
+    ActJumpScratch scratch;
+    short reflected;
+    short mid;
+    short i;
+    long level;
+    long value;
+    long vertical;
+    SVECTOR *velocity;
+    SVECTOR *speedp;
+
+    if ((Me_MOTION_C->pad.trig & 0x40) != 0 && motID != 0x901)
+    {
+        GetAreaMapVector(GlobalAreaMap, &scratch.map, (long)dtL,
+                         Me_MOTION_C->width + 300, 0);
+        if (scratch.map.vector == 0)
+        {
+            return;
+        }
+        if (UpdateMotion(dtM, 0x901) == 0)
+        {
+            return;
+        }
+        reflected = RefrectVector[scratch.map.vector];
+        dtL->vy -= 500;
+        if (reflected == -1)
+        {
+            dtV->vx = -dtV->vx;
+            dtV->vz = -dtV->vz;
+        }
+        else
+        {
+            dtR->vy = reflected + 0x800;
+            MoveHumanoid(Me_MOTION_C, -100, 0);
+        }
+        Sound(Me_MOTION_C, 0x48);
+        return;
+    }
+
+    if ((Me_MOTION_C->attribute & 0xa00) != 0 && dtM->count >= 2)
+    {
+        level = GetAreaMapLevel(GlobalAreaMap, dtL->vx, dtL->vy, dtL->vz, 0);
+        if (dtL->vy < level)
+        {
+            motID = 0x803;
+            D_80097F0E = 0;
+            if (MotionUpdateMode != 0)
+            {
+                i = 0;
+                do
+                {
+                    if (CVAhuman[i].human == Me_MOTION_C)
+                    {
+                        goto landed_motion_done;
+                    }
+                    i++;
+                } while (i < 5);
+            }
+            SetNowMotion(Me_MOTION_C, motID, D_80097F0E);
+            D_80097F0E = -1;
+        landed_motion_done:
+            Sound(Me_MOTION_C, 6);
+            dtM->count >>= 2;
+            if (Me_MOTION_C == StagePlayer)
+            {
+                PadShockAR(0, 0xff, 10, 0);
+            }
+            return;
+        }
+        mid = 0x804;
+        if (motID == 0x907)
+        {
+            dtR->vy += (*Me_MOTION_C->model->object)->rotate.vy;
+            motID = 0x806;
+            D_80097F0E = 1;
+            (*Me_MOTION_C->model->object)->rotate.vy = 0;
+            return;
+        }
+    }
+    else
+    {
+        if (dtM->count == 0 && dtM->loop != 0)
+        {
+            old_mid = (u16)motID;
+            motID = 0x803;
+            D_80097F0E = 0;
+            if (MotionUpdateMode != 0)
+            {
+                i = 0;
+                do
+                {
+                    if (CVAhuman[i].human == Me_MOTION_C)
+                    {
+                        goto fall_motion_done;
+                    }
+                    i++;
+                } while (i < 5);
+            }
+            SetNowMotion(Me_MOTION_C, motID, D_80097F0E);
+            D_80097F0E = -1;
+        fall_motion_done:
+            if (old_mid == 0x906)
+            {
+                goto half_count;
+            }
+            if (old_mid != 0x907)
+            {
+                return;
+            }
+            dtR->vy += 0x800;
+            (*Me_MOTION_C->model->object)->rotate.vy = 0;
+        half_count:
+            dtM->count >>= 1;
+            return;
+        }
+
+        vertical = dtM->count - (dtM->motion->time >> 1);
+        if (motID == 0x906)
+        {
+            vertical *= 10;
+        }
+        else
+        {
+            vertical *= 20;
+        }
+        dtV->vy = vertical;
+
+        if (((s16)dtPAD & 0xf000) != 0 && motID != 0x906)
+        {
+            pad = (u16)dtPAD;
+            if ((pad & 0x1000) != 0)
+            {
+                GetMoveSpeed(&scratch.speed, dtR->vy, 10, 0);
+            }
+            else if ((pad & 0x4000) != 0)
+            {
+                GetMoveSpeed(&scratch.speed, dtR->vy, -10, 0);
+            }
+            else if ((pad & 0x2000) != 0)
+            {
+                GetMoveSpeed(&scratch.speed, dtR->vy, 0, -10);
+            }
+            else
+            {
+                GetMoveSpeed(&scratch.speed, dtR->vy, 0, 10);
+            }
+            do
+            {
+                velocity = dtV;
+            } while (0);
+            speedp = &scratch.speed;
+            do
+            {
+                speedp->vx = speedp->vx + velocity->vx;
+            } while (0);
+            do
+            {
+                speedp->vz += velocity->vz;
+            } while (0);
+            value = speedp->vx;
+            if (value < 0)
+            {
+                value = -value;
+            }
+            if (value < 101)
+            {
+                value = speedp->vz;
+                if (value < 0)
+                {
+                    value = -value;
+                }
+                if (value < 101)
+                {
+                    velocity->vx = speedp->vx;
+                    velocity->vz = speedp->vz;
+                }
+            }
+        }
+
+        if ((dtPAD & 0x80) == 0)
+        {
+            return;
+        }
+        if (motID == 0x907)
+        {
+            return;
+        }
+        if (dtV->vy <= 0)
+        {
+            return;
+        }
+        mid = 0x70f;
+        if ((Me_MOTION_C->attribute & 0x40) == 0)
+        {
+            return;
+        }
+    }
+
+    motID = mid;
+    D_80097F0E = 0;
+}
+#endif
 
 // triage: HARD — 349 insns, 2 loop, 8 callees, ~0.05 to MotionAndMove
 // likely-relevant cookbook sections:

@@ -229,6 +229,7 @@ GP_EXTERNS = {
     "ActKAGI": ["dtM", "Me_MOTION_C", "dtL", "D_80097F0E", "motID", "dtR", "MotionUpdateMode", "dtV"],
     "FUN_8003562c": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
     "ProcItemHenshin": ["D_80097AEC", "D_80097AF0"],
+    "ActJUMP": ["Me_MOTION_C", "motID", "dtL", "dtM", "dtV", "dtR", "MotionUpdateMode", "D_80097F0E", "dtPAD"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
