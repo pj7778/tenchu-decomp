@@ -324,6 +324,24 @@ typedef struct
     s32 find_dist;               /* 0x1C (max/best distance) */
 } TFindItemTarget;               /* 0x20 */
 
+/* ProcItemDokudango's union view.  The shared param_korogari declaration in
+ * this repository includes the +0xC counter used by drop/smoke processors,
+ * whereas ITEM.C's original base type stops at +0xB; spell the common prefix
+ * out here so dokudango's eater remains at its PSX.SYM-proven +0xC offset. */
+typedef struct
+{
+    void *hint;                  /* 0x00 (param_korogari prefix) */
+    s16 vx;                      /* 0x04 */
+    s16 vy;                      /* 0x06 */
+    s16 vz;                      /* 0x08 */
+    u8 status;                   /* 0x0A */
+    u8 pad;                      /* 0x0B */
+    Humanoid *eater;             /* 0x0C */
+    think_func_ *org_think;      /* 0x10 */
+    u16 count;                   /* 0x14 (retail accesses it with lhu/sh) */
+    u8 pad2[2];                  /* 0x16 */
+} param_dokudango;               /* 0x18 */
+
 struct tag_TItem
 {
     Humanoid *owner;             /* 0x00 */
