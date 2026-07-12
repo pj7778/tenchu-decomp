@@ -177,6 +177,7 @@ GP_EXTERNS = {
     "AttackAnimal": ["Me_THINK_C", "Distance", "Degree"],
     "StickonCheck": ["Me_MOTION_C", "dtL", "motID", "D_80097F0E"],
     "DeleteCard": ["CardVolumeIdPtr"],
+    "LoadCard": ["CardVolumeIdPtr"],
     "SetupAfterimage": ["D_80097F3C"],
     "MotionAndMove": ["MotionUpdateMode", "Me_MOTION_C", "motID", "D_80097F0E"],
     "FileRead": ["AccessPower", "ReadMode", "TotalIO"],

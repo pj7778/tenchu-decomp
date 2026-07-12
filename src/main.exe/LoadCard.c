@@ -26,7 +26,55 @@
  *     stack sp+224    unsigned char [8192] block
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/LoadCard", LoadCard);
+typedef struct
+{
+    u8 bytes[0xe70];
+} LoadCardPersistentBlob;
+
+extern char *CardVolumeIdPtr;
+extern char CardPathFormat[];
+
+extern void *valloc(u32 size);
+extern void vfree(void *ptr);
+extern s32 MemCardAccept(s32 chan);
+extern s32 MemCardSync(s32 mode, s32 *cmd, s32 *result);
+extern s32 MemCardReadFile(s32 chan, char *name, void *data, s32 offset,
+                           s32 size);
+extern int sprintf(char *buf, char *fmt, ...);
+
+/*
+ * The two apparent Ghidra buffers are one 8 KiB card block: the card header
+ * occupies its first 0x200 bytes and the persistent payload begins at
+ * block+0x200.  Assigning that payload as one 0xe70-byte struct reproduces
+ * the compiler's aligned/unaligned copy-loop pair.
+ */
+s16 LoadCard(s32 target, u8 *name)
+{
+    void *temp;
+    u8 fn[200];
+    u8 block[0x2000];
+    s32 cmd;
+    s32 result;
+
+    temp = valloc(0x2000);
+    result = MemCardAccept(0);
+    MemCardSync(0, &cmd, &result);
+    sprintf(fn, CardPathFormat, CardVolumeIdPtr, name);
+    result = MemCardReadFile(0, fn, block, 0, 0x2000);
+    MemCardSync(0, &cmd, &result);
+    if (result != 0)
+    {
+        vfree(temp);
+        temp = 0;
+    }
+    else
+    {
+        *(LoadCardPersistentBlob *)0x80010000 =
+            *(LoadCardPersistentBlob *)(block + 0x200);
+    }
+    vfree(temp);
+    return result;
+}
 
 // triage: MEDIUM — 69 insns, 1 loop, frame 0x2100, 6 callees, ~0.08 to UpdateOrnament
 // likely-relevant cookbook sections:
