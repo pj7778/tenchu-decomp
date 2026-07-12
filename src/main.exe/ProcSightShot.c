@@ -36,129 +36,214 @@
  *     extern struct tag_TItem items[30];
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcSightShot", ProcSightShot);
+#include "item.h"
+#include <psxsdk/libgs.h>
 
-// triage: MEDIUM — 264 insns, mul/div, indirect-call, 11 callees, ~0.20 to ProcItemKusuri
-// likely-relevant cookbook sections:
-//   - Expressions: mult/div — magic-multiply constants, fold
-//   - Register allocation steering: indirect call — null-check-var/call-field
+/*
+ * MATCH.
+ *
+ * ProcSightShot (0x8003ea84) owns the first-person aiming item.  Releasing
+ * the item restores the inventory or drops it if the user's launch motion
+ * was interrupted.  While the motion is active it counts down the sight,
+ * draws the target sprite, searches either from ViewInfo or the user's model
+ * rotation, disposes the sight item, and launches the projectile.
+ *
+ * Matching notes:
+ *  - `launch = item->param` remains a byte pointer so its address is formed
+ *    in the entry mode-test delay slot and kept in a0 until the aiming body.
+ *    `ff` is s32 and therefore receives the target's long-lived s4.
+ *  - The drop block and common disposal block deliberately precede the
+ *    `sight_mode` label.  Source-ordering the normal sight path first gives
+ *    equivalent behavior but reverses the target's physical basic blocks.
+ *  - `param`, `rot`, and `view_rot` reproduce the exact sp+0x10..0x47 local
+ *    window.  The rotation outputs are an eight-byte aggregate whose useful
+ *    halfwords sit at sp+0x40 and sp+0x44.
+ *  - Keep the user's model as a `ModelArchiveType *` and take
+ *    `&model->rotate` only in SearchItemTarget2.  Precomputing an `SVECTOR *`
+ *    creates a separate RTL pseudo: the owner/model chain moves to v1/v0 and
+ *    gains a nop.  The aggregate pointer lets GCC coalesce the chain into a1
+ *    and interleave the independent sight-count load exactly.
+ *  - The three disposal sequences are intentionally separate.  Sharing them
+ *    changes branch placement and whether SetCameraMode(13) precedes launch.
+ */
+typedef struct
+{
+    s32 vpx;
+    s32 vpy;
+    s32 vpz;
+    s32 vrx;
+    s32 vry;
+    s32 vrz;
+} SightViewInfo;
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// void ProcSightShot(tag_TItem *item)
-//
-// {
-//   uchar uVar1;
-//   VECTOR *pVVar2;
-//   int iVar3;
-//   Humanoid *pHVar4;
-//   TItemType TVar5;
-//   PARAM_ITEM_USE local_50;
-//   SVECTOR local_28;
-//   short local_20 [2];
-//   short local_1c [2];
-//
-//   if (item->mode == 0xff) {
-//     item->owner->field_0xcd = 0;
-//     item->mode = '\0';
-//   }
-//   else {
-//     pHVar4 = item->owner;
-//     if (pHVar4->field_0xcd == '\0') {
-//       if (pHVar4->item[item->type] != 0xff) {
-//         pHVar4->item[item->type] = pHVar4->item[item->type] + '\x01';
-//       }
-//       SetCameraMode(CMODE_DIRECTION);
-//     }
-//     else {
-//       if (pHVar4->motion->mid == 0xe00) {
-//         uVar1 = (item->param).launch.count;
-//         if (uVar1 != '\0') {
-//           (item->param).launch.count = uVar1 + 0xff;
-//         }
-//         if (((item->owner->pad).data & 0x10) != 0) {
-//           if ((item->param).launch.count != '\0') {
-//             return;
-//           }
-//           SetCameraMode(CMODE_SIGHT);
-//           GsSortSprite(TargetSprite,OTablePt,0);
-//           return;
-//         }
-//         if ((item->param).launch.count == '\0') {
-//           local_50.type = item->type;
-//           local_50.user = item->owner;
-//           local_50.start.vx = (item->locate->locate).coord.t[0];
-//           local_50.start.vy = (item->locate->locate).coord.t[1];
-//           local_50.start.vz = (item->locate->locate).coord.t[2];
-//           GetVectorRotation((VECTOR *)&ViewInfo,(VECTOR *)&ViewInfo.vrx,(int *)local_20,
-//                             (int *)local_1c);
-//           local_28.vz = 0;
-//           local_28.vx = local_20[0];
-//           local_28.vy = local_1c[0];
-//           SearchItemTarget2(local_50.user,&local_28,(VECTOR *)&ViewInfo,&local_50.end);
-//           if (item->proc != (undefined **)0x0) {
-//             item->mode = 0xff;
-//             (*(code *)item->proc)(item);
-//             DeleteConflict(item->locate);
-//             if (item->mode != 0) {
-//               AdtMessageBox("item dispose fail   id %d  mode %d",item->type,(uint)item->mode);
-//             }
-//             item->owner = (Humanoid *)0x0;
-//             item->proc = (undefined **)0x0;
-//           }
-//           SetCameraMode(CMODE_LOCK);
-//         }
-//         else {
-//           local_50.type = item->type;
-//           local_50.user = item->owner;
-//           local_50.start.vx = (item->locate->locate).coord.t[0];
-//           local_50.start.vy = (item->locate->locate).coord.t[1];
-//           local_50.start.vz = (item->locate->locate).coord.t[2];
-//           SearchItemTarget2(local_50.user,&item->owner->model->rotate,&local_50.start,&local_50.end)
-//           ;
-//           if (item->proc != (undefined **)0x0) {
-//             item->mode = 0xff;
-//             (*(code *)item->proc)(item);
-//             DeleteConflict(item->locate);
-//             if (item->mode != 0) {
-//               AdtMessageBox("item dispose fail   id %d  mode %d",item->type,(uint)item->mode);
-//             }
-//             item->owner = (Humanoid *)0x0;
-//             item->proc = (undefined **)0x0;
-//           }
-//         }
-//         ReqItemLaunch(&local_50);
-//         return;
-//       }
-//       pVVar2 = GetAbsolutePosition(item->locate,0,0,0);
-//       pHVar4 = item->owner;
-//       TVar5 = item->type;
-//       memset((uchar *)&local_50,'\0',0x28);
-//       local_50.start.vx = pVVar2->vx;
-//       local_50.start.vy = pVVar2->vy;
-//       local_50.start.vz = pVVar2->vz;
-//       local_50.type = TVar5;
-//       local_50.user = pHVar4;
-//       iVar3 = rand();
-//       local_50.end.vx = iVar3 % 200 + -100;
-//       iVar3 = rand();
-//       local_50.end.vy = iVar3 % 100 + -200;
-//       iVar3 = rand();
-//       local_50.end.vz = iVar3 % 200 + -100;
-//       ReqItemDrop(&local_50);
-//     }
-//     if (item->proc != (undefined **)0x0) {
-//       item->mode = 0xff;
-//       (*(code *)item->proc)(item);
-//       DeleteConflict(item->locate);
-//       if (item->mode != 0) {
-//         AdtMessageBox("item dispose fail   id %d  mode %d",item->type,(uint)item->mode);
-//       }
-//       item->owner = (Humanoid *)0x0;
-//       item->proc = (undefined **)0x0;
-//     }
-//   }
-//   return;
-// }
+typedef struct
+{
+    u16 rx;
+    u16 pad0;
+    u16 ry;
+    u16 pad1;
+} SightRotation;
+
+extern SightViewInfo ViewInfo;
+extern GsSPRITE TargetSprite;
+extern GsOT *OTablePt;
+
+extern void SetCameraMode(s32 mode);
+extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, s32 priority);
+extern void GetVectorRotation(VECTOR *from, VECTOR *to, u16 *rx, u16 *ry);
+extern void SearchItemTarget2(Humanoid *user, SVECTOR *dir, VECTOR *from,
+                              VECTOR *target);
+extern void ReqItemLaunch(PARAM_ITEM_USE *param);
+
+void ProcSightShot(tag_TItem *item)
+{
+    u8 *launch;
+    s32 ff;
+    PARAM_ITEM_USE param;
+    SVECTOR rot;
+    SightRotation view_rot;
+    Humanoid *human;
+
+    launch = item->param;
+    ff = 0xff;
+    if (item->mode == ff)
+    {
+        item->owner->item[0x19] = 0;
+        item->mode = 0;
+        return;
+    }
+
+    human = item->owner;
+    if (human->item[0x19] == 0)
+    {
+        u8 item_count;
+
+        item_count = human->item[item->type];
+        if (item_count != ff)
+        {
+            human->item[item->type] = item_count + 1;
+        }
+        SetCameraMode(1);
+        goto dispose;
+    }
+
+    if (human->motion->mid == 0xe00)
+    {
+        goto sight_mode;
+    }
+
+    {
+        VECTOR *pos;
+        Humanoid *drop_owner;
+        s32 itemID;
+
+        pos = GetAbsolutePosition(item->locate, 0, 0, 0);
+        drop_owner = item->owner;
+        itemID = item->type;
+        memset(&param, 0, sizeof(PARAM_ITEM_USE));
+        param.type = itemID;
+        param.user = drop_owner;
+        param.start.vx = pos->vx;
+        param.start.vy = pos->vy;
+        param.start.vz = pos->vz;
+        param.end.vx = rand() % 200 - 100;
+        param.end.vy = rand() % 100 - 200;
+        param.end.vz = rand() % 200 - 100;
+        ReqItemDrop(&param);
+    }
+
+dispose:
+    if (item->proc != 0)
+    {
+        item->mode = ff;
+        item->proc(item);
+        DeleteConflict(item->locate);
+        if (item->mode != 0)
+        {
+            AdtMessageBox(D_800121CC, item->type, (u32)item->mode);
+        }
+        item->owner = 0;
+        item->proc = 0;
+    }
+    return;
+
+sight_mode:
+    {
+        u8 count;
+        ModelArchiveType *model;
+
+        count = launch[0x30];
+        if (count != 0)
+        {
+            launch[0x30] = count - 1;
+        }
+        if ((item->owner->pad.data & 0x10) != 0)
+        {
+            if (launch[0x30] != 0)
+            {
+                return;
+            }
+            SetCameraMode(3);
+            GsSortSprite(&TargetSprite, OTablePt, 0);
+            return;
+        }
+
+        count = launch[0x30];
+        model = item->owner->model;
+        if (count == 0)
+        {
+            SightViewInfo *view;
+
+            param.type = item->type;
+            param.user = item->owner;
+            param.start.vx = item->locate->locate.coord.t[0];
+            param.start.vy = item->locate->locate.coord.t[1];
+            param.start.vz = item->locate->locate.coord.t[2];
+            view = &ViewInfo;
+            GetVectorRotation((VECTOR *)view, (VECTOR *)&view->vrx,
+                              &view_rot.rx, &view_rot.ry);
+            rot.vz = 0;
+            rot.vx = view_rot.rx;
+            rot.vy = view_rot.ry;
+            SearchItemTarget2(param.user, &rot, (VECTOR *)view, &param.end);
+            if (item->proc != 0)
+            {
+                item->mode = ff;
+                item->proc(item);
+                DeleteConflict(item->locate);
+                if (item->mode != 0)
+                {
+                    AdtMessageBox(D_800121CC, item->type,
+                                  (u32)item->mode);
+                }
+                item->owner = 0;
+                item->proc = 0;
+            }
+            SetCameraMode(13);
+        }
+        else
+        {
+            param.type = item->type;
+            param.user = item->owner;
+            param.start.vx = item->locate->locate.coord.t[0];
+            param.start.vy = item->locate->locate.coord.t[1];
+            param.start.vz = item->locate->locate.coord.t[2];
+            SearchItemTarget2(param.user, &model->rotate, &param.start,
+                              &param.end);
+            if (item->proc != 0)
+            {
+                item->mode = ff;
+                item->proc(item);
+                DeleteConflict(item->locate);
+                if (item->mode != 0)
+                {
+                    AdtMessageBox(D_800121CC, item->type,
+                                  (u32)item->mode);
+                }
+                item->owner = 0;
+                item->proc = 0;
+            }
+        }
+        ReqItemLaunch(&param);
+    }
+}
