@@ -68,8 +68,9 @@ GUIDANCE = [
     "item.h's proven view + `tools/access.py` (offset -> sw/sh/sb width) over "
     "Ghidra's struct name; reach a divergent-width union field via an offset "
     "cast off the same proven pointer (`*(s32 *)((u8 *)pp + 0xC) = 0;`).",
-    "Lean on the tools; don't re-derive their output by hand. gpsyms --write "
-    "syncs the gp lists, xref gives the prototype/externs, reverse.py seeds both "
+    "Lean on the tools; don't re-derive their output by hand. maspsxflags --write "
+    "syncs gp externs plus guarded-variable-div flags, xref gives the prototype/"
+    "externs, reverse.py seeds both "
     "a Ghidra AND an m2c reference (m2c = cleaner control flow / register temps, "
     "Ghidra = types/names).",
     "Once your draft COMPILES (set NON_MATCHING for a partial), run "
@@ -237,7 +238,7 @@ def main():
         print(f"#   1. cp src/main.exe/{twin}.c src/main.exe/{name}.c  (substitute "
               f"the function name; item Req/Proc twins also swap Proc<Twin>-><this>)")
         print(f"#   2. tools/reverse.py {name} --ghidra-export .shake/ghidra-export "
-              f"--no-check  (carve); ./Build; tools/gpsyms.py {name} --write")
+              f"--no-check  (carve); ./Build; tools/maspsxflags.py {name} --write")
         print(f"#   3. tools/matchdiff.py {name} — it shows the few differing insns "
               f"(a %lo(symbol) or an li immediate); change the matching source "
               f"constants; a local `j` that only differs in target auto-relocates.")
@@ -296,8 +297,9 @@ def main():
              "signedness/direction (sw vs sh vs sb, lh vs lhu) straight from the "
              "mnemonics; `--order` shows the store SEQUENCE. Use it for struct "
              "layout instead of hand-tracing .s.")
-    P.append(f"- `tools/gpsyms.py {name} --write` — auto-derives + syncs the "
-             "gp-externs into Build.hs + permute.py (run after splitting).")
+    P.append(f"- `tools/maspsxflags.py {name} --write` — auto-derives + syncs "
+             "the gp externs and guarded-variable-div `--expand-div` setting "
+             "into Build.hs + permute.py (run after splitting).")
     P.append(f"- `tools/matchdiff.py {name}` / `tools/asmdiff.py {name}` — iterate. "
              f"Done = matchdiff MATCH (0 whole-image diffs) AND `./Build check` "
              "exit 0.")

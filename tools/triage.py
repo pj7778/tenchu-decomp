@@ -226,7 +226,7 @@ def docs_for(f):
     if f["muldiv"]:
         d.append(("Expressions", "mult/div — magic-multiply constants, fold"))
     if f["gp"]:
-        d.append(("gp vs absolute globals", "gp-relative smalls — tools/gpsyms.py"))
+        d.append(("gp vs absolute globals", "gp-relative smalls — tools/maspsxflags.py"))
     if f["frame"] > 0x200:
         d.append(("Stack objects", f"0x{f['frame']:x} frame — buffer casts / spills"))
     if f["indirect"]:

@@ -274,6 +274,10 @@ Two helpers for the setup phase:
 - `tools/gpsyms.py <Name> [--write]` derives the gp-extern list from the
   function's `%gp_rel(...)` operands and (with --write) syncs it into both
   Build.hs maspsxGpExterns and permute.py GP_EXTERNS.
+- `tools/maspsxflags.py <Name> [--write]` is the combined setup pass: it derives
+  those gp externs, detects target variable divisions carrying ASPSX's
+  `break 7`/`break 6` guards, and synchronizes both the gp and `--expand-div`
+  Build.hs/permuter tables. Prefer it when starting a newly split function.
 - `tools/xref.py <Name>` lists callers (their call sites pin the prototype)
   and callees (matched vs needs-extern), resolved against the original image.
 
@@ -994,6 +998,15 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   respect store order: publishing the offset results before an independent
   countdown initializer can let sched fill the target's load/call gaps without
   changing the arithmetic (ProcItemDokudango).
+- **A narrow stepwise remainder/result temp can end a hard-register conflict
+  that an `int` temp creates.** In `t = rand() % 25; t -= 26; t -= other / 20`,
+  an `int t` is first used as the `/25` quotient while raw rand `$v0` is still
+  live, so global allocation forbids `$v0` and prefers `$a1`. Declaring `t` as
+  `u8` (the Ghidra-proven type; `s16` happens to generate the same bytes here)
+  keeps the quotient in a separate SImode pseudo and defines the narrow result
+  only after `$v0` is free. ProcItemNapalm's final 12-byte rotation disappeared
+  this way. This is already mechanical: `autorules`' `type-width` rule tests the
+  adjacent `s32 -> s16` form and authoritative scoring accepts it.
 - **Halfword store constants reveal the element's signedness**: storing an
   0xFFFF terminator emits `li -1` (`addiu $rN,$zero,-1`) only for a SIGNED
   s16 element; a u16 element materializes `ori $rN,$zero,0xffff`. Same
@@ -2776,8 +2789,9 @@ removing each change independently on a clean tree:
   today: the build is byte-identical without them. Keep them (they cost nothing and
   may matter once the siblings are matched) but do not reach for them first.
 
-Practical rule: `tools/gpsyms.py <Name> --write` derives the set from the
-split asm's `%gp_rel(...)` and syncs both lists for you. Build.hs exposes the
+Practical rule: `tools/maspsxflags.py <Name> --write` derives the set from the
+split asm's `%gp_rel(...)`, syncs both lists, and also handles guarded variable
+division flags. (`gpsyms.py` remains the gp-only primitive.) Build.hs exposes the
 per-file gp flags through a Shake **oracle** (`GpFlags`), so editing the list
 invalidates exactly the affected `.s` on the next build — no manual clean, no
 cache-busting (a gp-list edit used to survive stale because Shake can't see a
@@ -2973,6 +2987,11 @@ Fix: add the function to BOTH `extra "<Name>" = ["--expand-div"]` in
 `rand() % srange` etc.): `SetSmoke` (1 variable div, 2 breaks) and `SetBleeds`
 (3 variable divs) both need it; the already-matched `IsVisible`/`ComputeAreaLevel`/
 `bow_shoot_logic` are on the list for the same reason.
+
+This edit is now mechanical: `tools/maspsxflags.py <Name> --write` reads the
+target split assembly, recognizes the paired guards, and synchronizes this flag
+alongside any `%gp_rel` externs. ProcItemNapalm is the worked combined case (one
+guarded character-model remainder plus six gp-relative `D_80097F60` loads).
 
 ## Matching `main`
 

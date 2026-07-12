@@ -83,6 +83,7 @@ Everything the pipeline needs, in the order you touch it:
 | `tools/xref.py <Name>` | callers (pin the prototype) + callees (matched vs needs-extern). |
 | `tools/access.py <Name> [--order]` | each pointer offset's width/signedness/direction from the mnemonics; `--order` = the store sequence. Struct layout without hand-tracing `.s`. |
 | `tools/gpsyms.py <Name> --write` | derive the gp-extern set from `%gp_rel` and sync Build.hs + permute.py. Shake-oracle-tracked, so it just takes effect. |
+| `tools/maspsxflags.py <Name> --write` | preferred combined setup pass: sync gp externs and detect/sync ASPSX guarded variable division's `--expand-div` flag from the target asm. |
 | `tools/clonematch.py <Matched>` | write the `.c` for exact byte-identical unmatched siblings (verified). |
 | `tools/matchdiff.py <Name>` / `tools/asmdiff.py <Name>` | iterate. matchdiff = whole-image gate; asmdiff = aligned view for big/split functions. |
 | `tools/autorules.py <Name>` | once the draft compiles: mechanically sweep the *local* cookbook rules and greedily keep what shrinks the authoritative byte diff. It recognizes target-gp anti-sites, aggregate VECTOR copies, and high-word short spellings; `--guided` can fence one statement or a safe 2–4-statement range, try real case labels, and enumerate the six three-term addition trees while preserving nonconstant/call order. Output is line-buffered for monitoring, interrupted runs restore the source, and the per-worktree matching lock prevents overlap with other build-driving tools. It never emits inline asm. |
@@ -210,7 +211,7 @@ name and writes the correctly-named `.c` (e.g. `reverse.py FUN_8001ab64` →
 then once all are copied+carved:
 ```
 ./Build                                   # generates the split .s
-tools/gpsyms.py <Name> --write            # per function; oracle picks it up
+tools/maspsxflags.py <Name> --write       # gp + guarded-div flags; oracle picks it up
 ./Build
 tools/matchdiff.py <Name>                 # per function → MATCH
 ./Build check                             # whole image byte-identical
@@ -284,7 +285,7 @@ rules**:
   exact-byte scoring now make some structural transforms mechanical too.
 - A recurring *friction* → **build a tool**. That's the whole game. This session:
   agents hand-traced struct widths → `access.py`; hand-traced the store order →
-  `access.py --order`; re-derived gp lists → `gpsyms.py`; the gp edit didn't
+  `access.py --order`; re-derived gp/div flags → `maspsxflags.py`; the gp edit didn't
   invalidate the build → a Shake `GpFlags` oracle (the *proper* fix, not a
   cache-bust); re-scaffolded jump tables → `split-scaffold.py`; the orchestrator
   hand-wrote prompts → `matcher-prompt.py`. **Fix a tool bug centrally the

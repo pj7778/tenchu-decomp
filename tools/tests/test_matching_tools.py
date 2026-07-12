@@ -15,6 +15,7 @@ if TOOLS not in sys.path:
 
 import autorules
 import matchlock
+import maspsxflags
 import permute
 import regalloc
 import rtlguide
@@ -373,6 +374,7 @@ class RtlGuideTests(unittest.TestCase):
         finally:
             os.unlink(path)
 
+
     def test_call_rtl_evidence_tracks_jump_merging(self):
         before = [
             {"callee": "DeleteConflict", "result": "void", "uses": ["SI:$a0"]},
@@ -411,6 +413,68 @@ class RtlGuideTests(unittest.TestCase):
         out = rtlguide._jsonable(report)
         self.assertNotIn("target", out)
         self.assertEqual(out["hunks"][0]["target"], [[1, "nop"]])
+
+
+class MaspsxFlagsTests(unittest.TestCase):
+    def test_guarded_variable_division_is_detected(self):
+        asm = """
+    div $zero, $v0, $v1
+    bnez $v1, ok
+    nop
+    break 7
+ok:
+    li $at, -1
+    bne $v1, $at, done
+    lui $at, 0x8000
+    bne $v0, $at, done
+    nop
+    break 6
+done:
+    mfhi $v0
+"""
+        self.assertEqual(maspsxflags.guarded_division_count(asm), 1)
+
+    def test_unguarded_division_does_not_request_expand_div(self):
+        asm = """
+    div $zero, $v0, $v1
+    mfhi $v0
+"""
+        self.assertEqual(maspsxflags.guarded_division_count(asm), 0)
+
+    def test_extra_patches_are_scoped_and_idempotent(self):
+        build = """flags name = extra name
+  where
+    extra "Other" = ["--something"]
+    extra _ = []
+"""
+        permute_src = """GP_EXTERNS = {
+    "F": ["keep"],
+}
+MASPSX_EXTRA = {
+    "Other": ["--something"],
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            build_path = os.path.join(directory, "Build.hs")
+            permute_path = os.path.join(directory, "permute.py")
+            with open(build_path, "w") as stream:
+                stream.write(build)
+            with open(permute_path, "w") as stream:
+                stream.write(permute_src)
+            with mock.patch.object(maspsxflags, "BUILD_HS", build_path), \
+                    mock.patch.object(maspsxflags, "PERMUTE", permute_path):
+                maspsxflags.patch_build_extra("F")
+                maspsxflags.patch_build_extra("F")
+                maspsxflags.patch_permute_extra("F")
+                maspsxflags.patch_permute_extra("F")
+            with open(build_path) as stream:
+                build_after = stream.read()
+            with open(permute_path) as stream:
+                permute_after = stream.read()
+        self.assertEqual(build_after.count('extra "F" = ["--expand-div"]'), 1)
+        self.assertIn('"F": ["keep"]', permute_after)
+        self.assertEqual(
+            permute_after.count('"F": ["--expand-div"]'), 1)
 
 
 class RegallocParserTests(unittest.TestCase):

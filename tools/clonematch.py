@@ -100,7 +100,6 @@ def main():
         print("  run with --write to generate + verify the clones")
         return
 
-    gp = has_gp(name)
     done = []
     for fa, fs, fn in todo:
         print(f"\nclonematch: cloning -> {fn}")
@@ -112,8 +111,7 @@ def main():
         if r.returncode != 0:
             sys.exit(f"clonematch: reverse.py {fn} failed:\n{r.stdout}{r.stderr}")
         open(os.path.join(SRC, fn + ".c"), "w").write(clone_c(name, fn, fa))
-        if gp:
-            subprocess.run(["tools/gpsyms.py", fn, "--write"], check=True)
+        subprocess.run(["tools/maspsxflags.py", fn, "--write"], check=True)
         done.append(fn)
 
     print("\nclonematch: verifying ./Build check…")
