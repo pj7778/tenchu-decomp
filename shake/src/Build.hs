@@ -403,6 +403,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "StartStageSequence" = ["StageEvent", "StageTime", "FriendHits", "Murders", "Findenemies", "Criticals", "D_80097F7C", "StagePlayer", "StageCitizens", "StageEnemies", "StageBosses"]
     syms "StageSequence" = ["StagePlayer", "D_80097F78", "D_80097F7C", "StageTime", "Findenemies", "Murders", "Criticals", "StageEnemies", "StageBosses", "FriendHits", "StageCitizens"]
     syms "AddEnemy" = ["D_80097D44"]
+    syms "FUN_8005b17c" = ["D_80097D38", "D_80097D24", "D_80097D3C", "D_80097D40", "D_80097D28", "D_80097D2C"]
     syms _ = []
 
 as :: FilePath

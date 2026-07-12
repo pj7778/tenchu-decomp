@@ -240,6 +240,7 @@ GP_EXTERNS = {
     "StartStageSequence": ["StageEvent", "StageTime", "FriendHits", "Murders", "Findenemies", "Criticals", "D_80097F7C", "StagePlayer", "StageCitizens", "StageEnemies", "StageBosses"],
     "StageSequence": ["StagePlayer", "D_80097F78", "D_80097F7C", "StageTime", "Findenemies", "Murders", "Criticals", "StageEnemies", "StageBosses", "FriendHits", "StageCitizens"],
     "AddEnemy": ["D_80097D44"],
+    "FUN_8005b17c": ["D_80097D38", "D_80097D24", "D_80097D3C", "D_80097D40", "D_80097D28", "D_80097D2C"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs

@@ -11,143 +11,236 @@
  *     extern struct tag_TItem items[30];
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8005b17c", FUN_8005b17c);
+struct GsOT_TAG;
 
-// triage: HARD — 259 insns, 7 loop, 5 callees, ~0.05 to ProcItemGoshikimai
-// likely-relevant cookbook sections:
-//   - Loops: 7 back-edge(s) — for/while/do vs goto shape
-//   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py
+struct GsOT
+{
+    u32 length;
+    struct GsOT_TAG *org;
+    u32 offset;
+    u32 point;
+    struct GsOT_TAG *tag;
+};
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// short FUN_8005b17c(int param_1,int param_2)
-//
-// {
-//   char cVar1;
-//   uchar uVar2;
-//   uint uVar3;
-//   char *pcVar4;
-//   uchar *puVar5;
-//   int iVar6;
-//   uchar *puVar7;
-//   short sVar8;
-//   int iVar9;
-//
-//   if (param_1 == 0) {
-//     DAT_80097d38 = 0;
-//     return 0;
-//   }
-//   if (DAT_80097d38 != param_1) {
-//     iVar6 = 1;
-//     iVar9 = 0;
-//     pcVar4 = DAT_80097d24;
-//     if (param_1 != 1) {
-//       do {
-//         cVar1 = *pcVar4;
-//         while ((cVar1 != '\0' || (pcVar4[1] != '\0'))) {
-//           pcVar4 = pcVar4 + 1;
-//           cVar1 = *pcVar4;
-//           iVar9 = iVar9 + 1;
-//         }
-//         iVar6 = iVar6 + 1;
-//         iVar9 = iVar9 + 2;
-//         pcVar4 = pcVar4 + 2;
-//       } while (param_1 != iVar6);
-//     }
-//     DAT_80097d3c = 0;
-//     DAT_80097d40 = (uchar *)(DAT_80097d24 + iVar9);
-//     DAT_80097d38 = param_1;
-//     SoundEx((VECTOR *)0x0,0x1f);
-//   }
-//   GsSortSprite((GsSPRITE *)(DAT_80097d28 + 0x68),OTablePt,0);
-//   iVar6 = 0;
-//   puVar5 = DAT_80097d40;
-//   if (*DAT_80097d40 != '\0') {
-//     do {
-//       uVar2 = *puVar5;
-//       while (puVar5 = puVar5 + 1, uVar2 == '\0') {
-//         uVar2 = *puVar5;
-//         iVar6 = iVar6 + 1;
-//         if (uVar2 == '\0') goto LAB_8005b290;
-//       }
-//     } while( true );
-//   }
-// LAB_8005b290:
-//   iVar6 = (iVar6 * -0x10) / 2;
-//   uVar2 = *DAT_80097d40;
-//   puVar5 = DAT_80097d40;
-//   while (uVar2 != '\0') {
-//     uVar2 = *puVar5;
-//     puVar7 = puVar5;
-//     while (uVar2 != '\0') {
-//       puVar7 = puVar7 + 1;
-//       uVar2 = *puVar7;
-//     }
-//     SetupTelop(puVar5);
-//     iVar9 = FUN_800576e8(puVar5);
-//     FUN_800570b8(OTablePt->org,-(iVar9 / 2),iVar6,puVar5);
-//     iVar6 = iVar6 + 0x10;
-//     puVar5 = puVar7 + 1;
-//     uVar2 = puVar7[1];
-//   }
-//   sVar8 = 0;
-//   if (DAT_80097d3c != 0) {
-//     param_2 = 0;
-//   }
-//   if (puVar5[-2] == '.') {
-//     GsSortSprite((GsSPRITE *)(DAT_800c2d5c + 0x68),OTablePt,0);
-//     if (param_2 != 0x20) goto LAB_8005b550;
-//   }
-//   else {
-//     if (puVar5[-2] != '?') goto LAB_8005b550;
-//     if (param_1 == 3) {
-//       if (DAT_80097d2c == 0) {
-//         *(uint *)(DAT_800c2d60 + 0x68) = *(uint *)(DAT_800c2d60 + 0x68) | 0x40000000;
-//         uVar3 = *(uint *)(DAT_800c2d64 + 0x68) & 0xbfffffff;
-//       }
-//       else {
-//         *(uint *)(DAT_800c2d60 + 0x68) = *(uint *)(DAT_800c2d60 + 0x68) & 0xbfffffff;
-//         uVar3 = *(uint *)(DAT_800c2d64 + 0x68) | 0x40000000;
-//       }
-//       *(uint *)(DAT_800c2d64 + 0x68) = uVar3;
-//       GsSortSprite((GsSPRITE *)(DAT_800c2d60 + 0x68),OTablePt,0);
-//       GsSortSprite((GsSPRITE *)(DAT_800c2d64 + 0x68),OTablePt,0);
-//       GsSortSprite((GsSPRITE *)(DAT_800c2d68 + 0x68),OTablePt,0);
-//       if (param_2 == 0x2000) {
-//         if (DAT_80097d2c != 0) {
-//           SoundEx((VECTOR *)0x0,0x30);
-//           DAT_80097d2c = 0;
-//         }
-//         goto LAB_8005b550;
-//       }
-//       if (0x2000 < param_2) {
-//         if ((param_2 == 0x8000) && (DAT_80097d2c != 1)) {
-//           SoundEx((VECTOR *)0x0,0x30);
-//           DAT_80097d2c = 1;
-//         }
-//         goto LAB_8005b550;
-//       }
-//       if (param_2 != 0x20) goto LAB_8005b550;
-//       if (DAT_80097d2c == 0) goto LAB_8005b544;
-//     }
-//     else {
-//       GsSortSprite((GsSPRITE *)(DAT_800c2d58 + 0x68),OTablePt,0);
-//       if (param_2 != 0x20) {
-//         if (param_2 != 0x40) goto LAB_8005b550;
-// LAB_8005b544:
-//         SoundEx((VECTOR *)0x0,0x31);
-//         sVar8 = 2;
-//         goto LAB_8005b550;
-//       }
-//     }
-//   }
-//   SoundEx((VECTOR *)0x0,0x30);
-//   sVar8 = 1;
-// LAB_8005b550:
-//   if (sVar8 != 0) {
-//     DAT_80097d3c = 1;
-//   }
-//   return sVar8;
-// }
+typedef struct
+{
+    u8 pad[0x68];
+    GsSPRITE sprite;
+} MenuSprite;
+
+extern u8 *D_80097D24;
+extern MenuSprite *D_80097D28;
+extern s16 D_80097D2C;
+extern s32 D_80097D38;
+extern s32 D_80097D3C;
+extern u8 *D_80097D40;
+extern MenuSprite *D_800C2D58[];
+extern GsOT *OTablePt;
+
+extern short SoundEx(VECTOR *locate, short seid);
+extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, s32 pri);
+extern void SetupTelop(u8 *telop, short line);
+extern s32 FUN_800576e8(u8 *str);
+extern void FUN_800570b8(struct GsOT_TAG *org, s32 x, s32 y, u8 *str);
+
+/* Draw one page of the memory-card help text and process its trailing prompt.
+ * Pages and lines are both separated by double NULs.  A trailing '.' is an
+ * acknowledge prompt; '?' selects between accept/cancel, with page 3 drawing
+ * the two-choice selector.
+ *
+ * The one-shot loops are zero-code cc1 allocation fences.  Their loop-depth
+ * weights put end/text/y/n in the target's s0/s1/s2/s3 order; rtlguide and
+ * regalloc.py identify this as allocation, not control-flow.  Keeping the
+ * sparse pad values as a switch also matters: cc1 emits the target's
+ * 0x2000-centered comparison tree and separately placed case tails.  Finally,
+ * `n` intentionally serves as page offset, line number, and signed result so
+ * all three non-overlapping lifetimes reuse s3.
+ */
+s32 FUN_8005b17c(s32 page, s32 pad)
+{
+    s32 page_num;
+    s32 n;
+    u8 *scan;
+    s32 y;
+    u8 *text;
+    u8 *end;
+    s32 width;
+
+    if (page == 0)
+    {
+        D_80097D38 = 0;
+        return 0;
+    }
+
+    if (D_80097D38 != page)
+    {
+        page_num = 1;
+        n = 0;
+        if (page != 1)
+        {
+            scan = D_80097D24;
+            do
+            {
+                while (*scan != 0 || scan[1] != 0)
+                {
+                    scan++;
+                    n++;
+                }
+                scan += 2;
+                page_num++;
+                n += 2;
+            } while (page != page_num);
+        }
+        D_80097D38 = page;
+        D_80097D3C = 0;
+        D_80097D40 = D_80097D24 + n;
+        SoundEx(0, 0x1f);
+    }
+
+    GsSortSprite(&D_80097D28->sprite, OTablePt, 0);
+
+    y = 0;
+    text = D_80097D40;
+    do
+    {
+        if (*text != 0)
+        {
+            do
+            {
+                do
+                {
+                    scan = text;
+                } while (0);
+            } while (0);
+            do
+            {
+                while (*scan++ != 0)
+                {
+                }
+                y++;
+            } while (*scan != 0);
+        }
+    } while (0);
+    do
+    {
+        y = (y * -0x10) / 2;
+    } while (0);
+
+    n = 0;
+    while (*text != 0)
+    {
+        end = text;
+        while (*end != 0)
+        {
+            end++;
+        }
+        SetupTelop(text, n++);
+        width = FUN_800576e8(text);
+        FUN_800570b8(OTablePt->org, -(width / 2), y, text);
+        text = end + 1;
+        y += 0x10;
+    }
+
+    n = 0;
+    if (D_80097D3C != 0)
+    {
+        pad = n;
+    }
+
+    if (text[-2] == '.')
+    {
+        goto period;
+    }
+    if (text[-2] == '?')
+    {
+        goto question;
+    }
+    goto done;
+
+period:
+    {
+        GsSortSprite(&D_800C2D58[1]->sprite, OTablePt, 0);
+        if (pad != 0x20)
+        {
+            goto done;
+        }
+    }
+    goto accept;
+
+question:
+    {
+        if (page == 3)
+        {
+            if (D_80097D2C != 0)
+            {
+                D_800C2D58[2]->sprite.attribute &= 0xbfffffff;
+                D_800C2D58[3]->sprite.attribute |= 0x40000000;
+            }
+            else
+            {
+                D_800C2D58[2]->sprite.attribute |= 0x40000000;
+                D_800C2D58[3]->sprite.attribute &= 0xbfffffff;
+            }
+            GsSortSprite(&D_800C2D58[2]->sprite, OTablePt, 0);
+            GsSortSprite(&D_800C2D58[3]->sprite, OTablePt, 0);
+            GsSortSprite(&D_800C2D58[4]->sprite, OTablePt, 0);
+
+            switch (pad)
+            {
+            case 0x20:
+                if (D_80097D2C != 0)
+                {
+                    goto accept;
+                }
+                goto cancel;
+
+            case 0x8000:
+                if (D_80097D2C != 1)
+                {
+                    SoundEx(0, 0x30);
+                    D_80097D2C = 1;
+                }
+                break;
+
+            case 0x2000:
+                if (D_80097D2C != 0)
+                {
+                    SoundEx(0, 0x30);
+                    D_80097D2C = 0;
+                }
+                break;
+            }
+            goto done;
+        }
+        else
+        {
+            GsSortSprite(&D_800C2D58[0]->sprite, OTablePt, 0);
+            if (pad != 0x20)
+            {
+                goto check_cancel;
+            }
+        }
+    }
+
+accept:
+    SoundEx(0, 0x30);
+    n = 1;
+    goto done;
+
+check_cancel:
+    if (pad != 0x40)
+    {
+        goto done;
+    }
+
+cancel:
+    SoundEx(0, 0x31);
+    n = 2;
+
+done:
+    if (n != 0)
+    {
+        D_80097D3C = 1;
+    }
+    return (short)n;
+}
