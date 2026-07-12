@@ -9,10 +9,11 @@ open question is "does it move the bytes the right way?". Nobody (agent or human
 should hand-apply those every time.
 
 This tool enumerates every applicable site of each mechanical rule, tries it,
-rebuilds, and rescoring with tools/asmdiff.py — then GREEDILY keeps the single
-best improving edit and repeats until nothing helps (or it MATCHES). Greedy
-re-sweeping handles order-dependence for free: independent wins compose, and an
-edit that only helps *after* another is found on the next pass.
+rebuilds, and rescores with the authoritative whole-image byte diff — then
+GREEDILY keeps the single best improving edit and repeats until nothing helps
+(or it MATCHES). Greedy re-sweeping handles independent wins. Guided mode adds
+a bounded beam, because an empty compiler barrier can be byte-neutral by itself
+but enable the next edit.
 
 It is the deterministic, explainable first pass that complements decomp-permuter
 (the stochastic search over register-allocation ties): autorules reports exactly
@@ -27,11 +28,13 @@ semantically-wrong rewrite simply fails to improve the score and is discarded.
   tools/autorules.py <Name> --dry    report only, leave the file untouched
   tools/autorules.py <Name> --once   a single pass (no greedy re-sweep)
   tools/autorules.py <Name> --list   list the registered mechanical rules
+  tools/autorules.py <Name> --guided RTL/source-line-guided advanced search
+  tools/autorules.py <Name> --rules copy-barrier --beam 4 --depth 2
 
 Run inside the nix devShell. Each candidate costs one ./Build (incremental), so
 a run is a few dozen builds — a minute or two, unattended.
 """
-import argparse, os, re, subprocess, sys
+import argparse, hashlib, os, re, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
@@ -40,6 +43,16 @@ SRC = "src/main.exe"
 ASMDIFF = "tools/asmdiff.py"
 MATCHDIFF = "tools/matchdiff.py"
 INVALID = 10**9  # candidate did not compile
+
+# rtlguide fills this for the expensive/codegen-specific rule family.  A small
+# tolerance accounts for instructions attributed to an adjacent statement by
+# sched/reorg.  Ordinary mechanical rules remain global: they are cheap and
+# were safe before guided mode existed.
+GUIDED_LINES = set()
+
+
+def _guided_site(line):
+    return not GUIDED_LINES or any(abs(line - n) <= 2 for n in GUIDED_LINES)
 
 
 # ---------------------------------------------------------------------------
@@ -778,6 +791,212 @@ def rule_extern_array(text, name, span):
             yield (f"{sym}: extern scalar->unknown-array []", new)
 
 
+# ---------------------------------------------------------------------------
+# Guided/advanced rules.  These are runtime-value preserving, but deliberately
+# opt-in: they steer old GCC with zero-code asm barriers or reshape the CFG and
+# can perturb allocation far beyond their source line.  rtlguide narrows them
+# to the lines owned by the residual; `--aggressive` is the explicit blind mode.
+# ---------------------------------------------------------------------------
+
+IDENT = re.compile(rb"^[A-Za-z_]\w*$")
+
+
+def _indent_at(data, off):
+    start = data.rfind(b"\n", 0, off) + 1
+    prefix = data[start:off]
+    return prefix if not prefix.strip() else b""
+
+
+def _unary_minus(text):
+    return re.sub(rb"\s+", b"", text).startswith(b"-")
+
+
+def rule_abs_copy_barrier(text, name, span):
+    """Insert a zero-code `+r` barrier in the copy-then-negate abs idiom.
+
+    `dst = value; if (dst < 0) dst = -dst;` (or a separately named source in
+    the test) is value-identical with the barrier, but combine may no longer
+    substitute the source back into the negation.  This is the exact
+    StateTransition residual described in the cookbook.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    for block in _find(body, ("compound_statement",)):
+        kids = [c for c in block.named_children if c.type != "comment"]
+        for first, second in zip(kids, kids[1:]):
+            initial = _stmt_expr(data, first)
+            if initial is None or second.type != "if_statement":
+                continue
+            dst, src = initial
+            if not IDENT.match(dst):
+                continue
+            if second.child_by_field_name("alternative") is not None:
+                continue
+            cond = second.child_by_field_name("condition")
+            cond = _paren_inner(cond) if cond is not None and cond.type == "parenthesized_expression" else cond
+            if cond is None or cond.type != "binary_expression":
+                continue
+            op = cond.child_by_field_name("operator")
+            left = cond.child_by_field_name("left")
+            right = cond.child_by_field_name("right")
+            if op is None or left is None or right is None:
+                continue
+            ct = (_txt(data, left).strip(), _txt(data, op), _txt(data, right).strip())
+            tested = {dst}
+            if IDENT.match(src):
+                tested.add(src)
+            if not any(ct in ((value, b"<", b"0"), (b"0", b">", value))
+                       for value in tested):
+                continue
+            cons = second.child_by_field_name("consequence")
+            if cons is None:
+                continue
+            if cons.type == "compound_statement":
+                stmts = [c for c in cons.named_children if c.type != "comment"]
+                if len(stmts) != 1:
+                    continue
+                neg_stmt = stmts[0]
+            else:
+                neg_stmt = cons
+            neg = _stmt_expr(data, neg_stmt)
+            if neg is None or neg[0] != dst or not _unary_minus(neg[1]):
+                continue
+            operand = re.sub(rb"\s+", b"", neg[1])[1:]
+            if operand != dst:
+                continue
+            line = _line(data, neg_stmt.start_byte)
+            if not _guided_site(line):
+                continue
+            asm = b'__asm__("" : "+r"(' + dst + b'));'
+            if cons.type == "compound_statement":
+                indent = _indent_at(data, neg_stmt.start_byte)
+                repl = asm + b"\n" + indent
+                new = splice(data, neg_stmt.start_byte, neg_stmt.start_byte, repl)
+            else:
+                repl = b"{ " + asm + b" " + _txt(data, neg_stmt) + b" }"
+                new = splice(data, neg_stmt.start_byte, neg_stmt.end_byte, repl)
+            yield (f"abs-copy-barrier {dst.decode()} L{line}", new.decode())
+
+
+def rule_copy_barrier(text, name, span):
+    """Break an enumerable plain-copy equivalence with an empty `+r` asm.
+
+    Both sides must be used later.  We try fencing each side; rtlguide's source
+    lines keep this from becoming a whole-function combinatorial sweep.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    idents = _find(body, ("identifier",))
+    for block in _find(body, ("compound_statement",)):
+        for stmt in [c for c in block.named_children if c.type != "comment"]:
+            copy = _stmt_expr(data, stmt)
+            if copy is None:
+                continue
+            dst, src = copy
+            if not IDENT.match(dst) or not IDENT.match(src) or dst == src:
+                continue
+            later = {_txt(data, n) for n in idents if n.start_byte >= stmt.end_byte}
+            if dst not in later or src not in later:
+                continue
+            line = _line(data, stmt.start_byte)
+            if not _guided_site(line):
+                continue
+            indent = _indent_at(data, stmt.start_byte)
+            tail = data[stmt.end_byte:stmt.end_byte + 120]
+            for var in (src, dst):
+                if b'"+r"(' + var + b")" in tail:
+                    continue
+                asm = b'__asm__("" : "+r"(' + var + b'));'
+                repl = b"\n" + indent + asm
+                new = splice(data, stmt.end_byte, stmt.end_byte, repl)
+                yield (f"copy-barrier {var.decode()} L{line}", new.decode())
+
+
+def rule_case_fence(text, name, span):
+    """Respell a two-arm if as a two-way switch with a real case label.
+
+    gcc-2.8.1's find_cross_jump stops at a referenced case CODE_LABEL.  This is
+    the StateTransition cross-jump fence, now enumerable for if/else sites.  A
+    source `break` inside either arm would change meaning under a switch, so
+    those sites are excluded.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    for iff in _find(body, ("if_statement",)):
+        cond = iff.child_by_field_name("condition")
+        yes = iff.child_by_field_name("consequence")
+        no = iff.child_by_field_name("alternative")
+        if cond is None or yes is None or no is None:
+            continue
+        if no.type == "else_clause":
+            arms = [c for c in no.named_children if c.type != "comment"]
+            if len(arms) != 1:
+                continue
+            no = arms[0]
+        if _find(yes, ("break_statement",)) or _find(no, ("break_statement",)):
+            continue
+        line = _line(data, iff.start_byte)
+        if not _guided_site(line):
+            continue
+        c = _paren_inner(cond) if cond.type == "parenthesized_expression" else cond
+        if c is None:
+            continue
+        ct, yt, nt = _txt(data, c), _txt(data, yes), _txt(data, no)
+        variants = (
+            (b"case 0", nt, b"default", yt, "case0"),
+            (b"case 1", yt, b"default", nt, "case1"),
+        )
+        for lab1, arm1, lab2, arm2, tag in variants:
+            repl = (b"switch (!!(" + ct + b")) {\n  " + lab1 + b": { " + arm1 +
+                    b" } break;\n  " + lab2 + b": { " + arm2 + b" } break;\n}")
+            yield (f"case-fence {tag} L{line}",
+                   splice(data, iff.start_byte, iff.end_byte, repl).decode())
+
+
+def hard_clobber_rule(regs):
+    """Build a targeted rule that inserts inferred hard-register clobbers."""
+    nums = []
+    names = {"v0": 2, "v1": 3, **{f"a{i}": 4 + i for i in range(4)},
+             **{f"t{i}": 8 + i for i in range(8)},
+             **{f"s{i}": 16 + i for i in range(8)}, "t8": 24, "t9": 25}
+    for value in regs:
+        raw = str(value).lstrip("$")
+        num = int(raw) if raw.isdigit() else names.get(raw)
+        if num is not None and num not in nums:
+            nums.append(num)
+
+    def generate(text, name, span):
+        data = text.encode()
+        body = _func_body(data, name, _byte_span(text, span))
+        if body is None:
+            return
+        for stmt in _find(body, ("expression_statement", "declaration")):
+            if stmt.parent is None or stmt.parent.type != "compound_statement":
+                continue
+            assignment = _stmt_expr(data, stmt)
+            if assignment is None or not IDENT.match(assignment[0]):
+                continue
+            line = _line(data, stmt.start_byte)
+            if not _guided_site(line):
+                continue
+            indent = _indent_at(data, stmt.start_byte)
+            for num in nums:
+                before = data[max(0, stmt.start_byte - 100):stmt.start_byte]
+                token = f'::: "${num}"'.encode()
+                if token in before:
+                    continue
+                asm = f'__asm__("" ::: "${num}");\n'.encode() + indent
+                yield (f"hard-clobber ${num} L{line}",
+                       splice(data, stmt.start_byte, stmt.start_byte, asm).decode())
+    return generate
+
+
 RULES = [
     ("type-width", "flip a local's integer type across width/signedness", rule_type_width),
     ("extern-array", "extern T NAME; -> extern T NAME[]; + NAME->NAME[0] (-G8 split)", rule_extern_array),
@@ -789,6 +1008,12 @@ RULES = [
     ("split-chain", "t = (x-C)>>S -> t = x-C; t = t>>S (split fused chain)", rule_split_chain),
     ("min-ternary", "x=a; if(b<x) x=b; -> x = (b<a)?b:a (min-vs-memory)", rule_min_ternary),
     ("cmp-swap", "a>mem -> mem<a (comparison operand-order lever)", rule_cmp_swap),
+]
+
+AGGRESSIVE_RULES = [
+    ("abs-copy-barrier", "empty +r barrier in copy-then-negate abs", rule_abs_copy_barrier),
+    ("copy-barrier", "empty +r barrier after a live plain copy", rule_copy_barrier),
+    ("case-fence", "if/else -> two-way switch (hard cross-jump CODE_LABEL)", rule_case_fence),
 ]
 
 
@@ -842,7 +1067,125 @@ def score(name, partial):
 
 
 def write(path, lines):
-    open(path, "w").write("\n".join(lines))
+    with open(path, "w") as f:
+        f.write("\n".join(lines))
+
+
+def _candidates(text, name, partial, rules):
+    span = region_span(text, partial)  # edits can move a partial's closing #endif
+    seen = set()
+    for key, _desc, gen in rules:
+        for label, new_text in gen(text, name, span):
+            if new_text == text:
+                continue
+            digest = hashlib.sha1(new_text.encode()).digest()
+            if digest in seen:
+                continue
+            seen.add(digest)
+            yield key, label, new_text
+
+
+def greedy_search(path, original, name, partial, rules, base, once=False):
+    cur_text = original
+    applied = []
+    match = False
+    while True:
+        best = None  # (score, label, new_text, match)
+        tried = 0
+        for _key, label, new_text in _candidates(cur_text, name, partial, rules):
+            write(path, new_text.split("\n"))
+            m, sc, _l1, _l2 = score(name, partial)
+            write(path, cur_text.split("\n"))
+            tried += 1
+            ds = "  invalid" if sc == INVALID else f"  {base}→{sc}"
+            print(f"  {label:34} {ds}{'  ✓' if (sc < base) else ''}"
+                  f"{'  MATCH' if m else ''}")
+            if sc < base and (best is None or sc < best[0]):
+                best = (sc, label, new_text, m)
+        if best is None:
+            print(f"  (no improving edit among {tried} candidates)")
+            break
+        sc, label, new_text, m = best
+        applied.append((label, base, sc))
+        print(f"  → adopt [{label}]  {base}→{sc}")
+        cur_text = new_text
+        write(path, cur_text.split("\n"))
+        base = sc
+        if m or once:
+            match = m
+            break
+    return cur_text, base, match, applied
+
+
+def beam_search(path, original, name, partial, rules, base, width, depth,
+                allow_regress, budget):
+    """Bounded multi-edit search that retains neutral enabling transformations.
+
+    The old greedy loop cannot discover `barrier A` (same byte score) followed
+    by `split B` (match).  A small beam is enough for the cookbook's known
+    enabling sequences and remains explainable: every path is printed.
+    """
+    start = base
+    initial = dict(text=original, score=base, match=False, path=[])
+    frontier = [initial]
+    best = initial
+    seen = {hashlib.sha1(original.encode()).digest()}
+    cache = {}
+    tried = 0
+    exhausted = False
+    for level in range(1, depth + 1):
+        children = []
+        print(f"  -- beam depth {level}/{depth}, {len(frontier)} state(s) --")
+        for state in frontier:
+            for _key, label, new_text in _candidates(state["text"], name, partial, rules):
+                digest = hashlib.sha1(new_text.encode()).digest()
+                if digest in seen:
+                    continue
+                seen.add(digest)
+                if tried >= budget:
+                    exhausted = True
+                    break
+                write(path, new_text.split("\n"))
+                if digest in cache:
+                    m, sc = cache[digest]
+                else:
+                    m, sc, _l1, _l2 = score(name, partial)
+                    cache[digest] = (m, sc)
+                    tried += 1
+                write(path, state["text"].split("\n"))
+                ds = "invalid" if sc == INVALID else str(sc)
+                print(f"  d{level} {label:31} {state['score']}→{ds}"
+                      f"{'  ✓' if sc < best['score'] else ''}{'  MATCH' if m else ''}")
+                if sc == INVALID or sc > start + allow_regress:
+                    continue
+                child = dict(
+                    text=new_text, score=sc, match=m,
+                    path=state["path"] + [(label, state["score"], sc)],
+                )
+                children.append(child)
+                if m or sc < best["score"]:
+                    best = child
+                if m:
+                    exhausted = True
+                    break
+            if exhausted:
+                break
+        if best["match"] or exhausted or not children:
+            break
+        # Deterministic tie order plus path diversity; a neutral source barrier
+        # survives alongside immediate byte wins instead of being discarded.
+        children.sort(key=lambda s: (
+            s["score"], len(s["path"]),
+            hashlib.sha1(s["text"].encode()).hexdigest(),
+        ))
+        frontier = children[:width]
+    if tried >= budget:
+        print(f"  (candidate budget {budget} reached)")
+    if best["score"] >= start and not best["match"]:
+        print(f"  (no improving path among {tried} compiled candidates)")
+        return original, start, False, []
+    write(path, best["text"].split("\n"))
+    return best["text"], best["score"], best["match"], best["path"]
 
 
 def main():
@@ -851,6 +1194,20 @@ def main():
     ap.add_argument("--dry", action="store_true", help="report only; don't modify the file")
     ap.add_argument("--once", action="store_true", help="one pass, no greedy re-sweep")
     ap.add_argument("--list", action="store_true", help="list the registered rules")
+    ap.add_argument("--guided", action="store_true",
+                    help="use target asm + RTL line map to choose advanced rules")
+    ap.add_argument("--aggressive", action="store_true",
+                    help="also sweep zero-code barriers and CFG fences blindly")
+    ap.add_argument("--rules", help="comma-separated rule keys (overrides the default set)")
+    ap.add_argument("--clobber", action="append", default=[], metavar="REG",
+                    help="try an empty hard-register clobber (e.g. v0 or 2)")
+    ap.add_argument("--beam", type=int, metavar="WIDTH",
+                    help="bounded multi-edit beam search (guided default: 4)")
+    ap.add_argument("--depth", type=int, default=2, help="beam edit depth (default: 2)")
+    ap.add_argument("--allow-regress", type=int,
+                    help="bytes a beam state may regress (guided default: 4)")
+    ap.add_argument("--budget", type=int, default=160,
+                    help="maximum candidate builds in beam mode (default: 160)")
     args = ap.parse_args()
 
     if args.list or not args.name:
@@ -860,6 +1217,10 @@ def main():
             uses_ast = gen in (rule_and_nest, rule_temp_inline)
             tag = " (AST)" if uses_ast else ""
             print(f"  {key:12} {desc}{tag}")
+        print("guided/advanced rules (opt-in):")
+        for key, desc, _gen in AGGRESSIVE_RULES:
+            print(f"  {key:18} {desc} (AST)")
+        print("  hard-clobber       inferred/explicit empty hard-register clobber (AST)")
         if not args.name:
             print("\ngive a <Name> to sweep it.")
         return 0
@@ -870,8 +1231,6 @@ def main():
               "temp-inline) are DISABLED; running line-based rules only. "
               "Run inside `nix develop` for the full set.", file=sys.stderr)
     path, original, partial = load(name)
-    span = region_span(original, partial)
-
     match, base, lo, lt = score(name, partial)
     if base == INVALID:
         sys.exit(f"autorules: {name} does not build as-is — fix it first "
@@ -882,39 +1241,66 @@ def main():
         print("already byte-identical — nothing to do.")
         return 0
 
-    cur_text = original
-    applied = []
-    passes = 0
+    global GUIDED_LINES
+    guide = None
+    inferred_clobbers = []
+    if args.guided:
+        try:
+            import rtlguide
+            guide = rtlguide.diagnose(name, build=False, rtl=True)
+        except (FileNotFoundError, ValueError, RuntimeError) as e:
+            sys.exit(f"autorules: rtlguide failed: {e}")
+        GUIDED_LINES = set(guide.get("source_lines", []))
+        inferred_clobbers = guide.get("hard_clobbers", [])
+        print(f"guided by {guide['primary']}: lines "
+              f"{','.join(map(str, sorted(GUIDED_LINES))) or '?'}; "
+              f"rules {','.join(guide['rules']) or '(none)'}")
+
+    requested = [x.strip() for x in (args.rules or "").split(",") if x.strip()]
+    clobbers = args.clobber + inferred_clobbers
+    available = RULES + AGGRESSIVE_RULES
+    if clobbers:
+        available = available + [(
+            "hard-clobber", "empty inferred/explicit hard-register clobber",
+            hard_clobber_rule(clobbers),
+        )]
+    known = {x[0] for x in available} | {"hard-clobber"}
+    bad = [x for x in requested if x not in known]
+    if bad:
+        sys.exit(f"autorules: unknown rule(s) {bad}; use --list")
+    if requested:
+        selected_keys = set(requested)
+    elif args.guided:
+        selected_keys = set(guide["rules"])
+    elif args.aggressive:
+        selected_keys = {x[0] for x in RULES + AGGRESSIVE_RULES}
+    else:
+        selected_keys = {x[0] for x in RULES}
+    rules = [x for x in available if x[0] in selected_keys]
+    if not rules:
+        sys.exit("autorules: no runnable rules selected (a hard-clobber needs "
+                 "--clobber REG or an inferred missing move)")
+    print("selected: " + ", ".join(x[0] for x in rules))
+
+    beam = args.beam
+    allow_regress = args.allow_regress
+    if args.guided and beam is None:
+        beam = 4
+    if allow_regress is None:
+        allow_regress = 4 if args.guided else 0
+    if args.once and beam:
+        args.depth = 1
+
     try:
-      while True:
-        passes += 1
-        best = None  # (score, label, new_text, match)
-        tried = 0
-        for _key, _desc, gen in RULES:
-            for label, new_text in gen(cur_text, name, span):
-                if new_text == cur_text:
-                    continue
-                write(path, new_text.split("\n"))
-                m, sc, l1, l2 = score(name, partial)
-                write(path, cur_text.split("\n"))  # restore between candidates
-                tried += 1
-                ds = "  invalid" if sc == INVALID else f"  {base}→{sc}"
-                print(f"  {label:28} {ds}{'  ✓' if (sc < base) else ''}"
-                      f"{'  MATCH' if m else ''}")
-                if sc < base and (best is None or sc < best[0]):
-                    best = (sc, label, new_text, m)
-        if best is None:
-            print(f"  (no improving edit among {tried} candidates)")
-            break
-        sc, label, new_text, m = best
-        applied.append((label, base, sc))
-        print(f"  → adopt [{label}]  {base}→{sc}")
-        cur_text = new_text
-        write(path, cur_text.split("\n"))
-        base = sc
-        if m or args.once:
-            match = m
-            break
+        if beam:
+            cur_text, base, match, applied = beam_search(
+                path, original, name, partial, rules, base, beam, args.depth,
+                allow_regress, args.budget,
+            )
+        else:
+            cur_text, base, match, applied = greedy_search(
+                path, original, name, partial, rules, base, args.once,
+            )
     except BaseException:
         write(path, original.split("\n"))  # never leave a half-mutated file
         raise

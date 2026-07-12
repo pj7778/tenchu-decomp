@@ -122,7 +122,14 @@ The ordered triage — fix categories in THIS order, re-running
      expressions rule below) — and greedily keeps what shrinks the asmdiff,
      telling you which edit helped. Don't hand-apply these — and if it reports
      no win, the residual is *not* one of them, so move to structure/regalloc
-     instead of trying more variants. **Reject an autorules "win" that changes a
+     instead of trying more variants. For a correct-length residual that
+     survives that ordinary sweep, run `tools/rtlguide.py <Name>` followed by
+     `tools/autorules.py <Name> --guided`. The guide aligns target asm to our
+     output, uses cc1 debug NOTE objects to map it back to C lines, selects only
+     the owning pass's advanced rules, and keeps a small beam of neutral/slightly
+     worse intermediate candidates. This is how zero-code equivalence barriers
+     and cross-jump fences become a bounded mechanical search instead of another
+     manual RTL conversation. **Reject an autorules "win" that changes a
      PROVEN struct field's ACCESS WIDTH** even when it shrinks the byte count: a
      `u16`→`u8` field retype can narrow a correct `lhu` to `lbu` at another,
      already-matched site — autorules scores *total* diff, not per-site
@@ -1420,7 +1427,29 @@ tools/rtldump.py <Name>                 # greg, lreg, jump, combine (the usual f
 tools/rtldump.py <Name> --pass loop     # loop.c invariant hoisting
 tools/rtldump.py <Name> --pass all      # every pass (-da): cse, flow, sched, dbr, …
 tools/rtldump.py <Name> --draft         # the #else NON_MATCHING draft
+tools/rtldump.py <Name> --lines         # + source-line-mapped object/disassembly
 ```
+
+The mechanical front end is `tools/rtlguide.py <Name>`. It performs the
+assembly alignment and pass selection, invokes the full standalone dump with
+debug line notes, and reports:
+
+- each residual hunk's likely owner (`greg/lreg`, `cse`, `combine`, `jump2`, or
+  `sched2/dbr`);
+- the concrete C line(s) that emitted our side of the hunk;
+- candidate→target hard-register substitutions, including C locals and `.greg`
+  preferences occupying the candidate register;
+- instruction/label/move counts across the passes; and
+- a bounded `tools/autorules.py <Name> --guided` search command.
+
+`tools/rtlguide.py <Name> --json` exposes the same report to other tools.
+`--no-build` is only safe when the current `.shake` image is already the
+NON_MATCHING draft, not the default INCLUDE_ASM stub.
+
+There is necessarily no "target RTL" to diff: the retail executable contains
+only machine code. Target assembly is therefore the specification; our RTL is
+an explanation of how cc1 reached the wrong machine code. We mutate readable C,
+never RTL itself.
 
 Pair it with a scoring loop to make each hypothesis a ~5-second test: edit the `.c`,
 `NON_MATCHING=<Name> ./Build` (or a standalone `cc1-281 | maspsx | as | objdump`),
@@ -1965,6 +1994,14 @@ reshape unrelated allocation if placed in a wider live range.  These barriers
 are appropriate only after ordinary temps, statement order, block boundaries,
 and the bounded permuter have failed (StateTransition).
 
+**Now mechanized (advanced/opt-in):** `autorules --guided` enumerates the
+copy-then-negate form as `abs-copy-barrier`, live plain copies as
+`copy-barrier`, and a target-only `move $REG,...` or compact register-only
+residual as a line-local `hard-clobber`. The register and source-line hints
+come from `rtlguide`; these
+rules are not part of the blind default sweep. `--aggressive` or explicit
+`--rules ... --clobber REG` is available for a controlled experiment.
+
 ### A search-flag's initialiser placement flips it callee- vs caller-saved
 
 `found = 0;` written at the **top of the search loop** is loop-invariant → loop.c
@@ -2290,6 +2327,13 @@ cross-jump into one block and carry their already-loaded Humanoid pointer into
 the join, while the case-0 post-alert type check stays distinct from case 1.
 An ordinary `if`, `do{}while(0)`, or an unreferenced alias label did not stop
 that over-merge; the label must survive as an actual branch target.
+
+**Now mechanized (advanced/opt-in):** when `rtlguide` classifies a residual as
+`jump/cross-jump`, `autorules --guided` can try the two semantics-preserving
+two-way-switch spellings (`case-fence`) at the implicated `if/else` lines. It
+rejects arms containing a source `break`, whose meaning would change inside a
+switch. Exact-byte scoring decides whether either surviving CODE_LABEL is the
+one the target requires.
 
 **A named `goto` label pins cross-jump's choice of primary copy.** When several
 unconditional exits share a tail (e.g. every reject does `x = -1; goto ret;`), route them

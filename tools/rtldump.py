@@ -17,6 +17,7 @@ leaves them next to the `.s` for you to read.
     tools/rtldump.py <Name> --pass loop     # just loop.c (invariant hoisting: the .loop dump)
     tools/rtldump.py <Name> --pass greg,lreg,reorg,sched
     tools/rtldump.py <Name> --draft         # compile the #else NON_MATCHING draft
+    tools/rtldump.py <Name> --lines         # + source-line-mapped object/disassembly
 
 The dumps land in <scratchpad>/rtl/<Name>/ ; the tool prints the paths and a legend.
 
@@ -84,6 +85,114 @@ def which(prog):
     return p
 
 
+def _load_maspsx_config():
+    """Return the build-equivalent maspsx/as configuration.
+
+    permute.py already mirrors Build.hs's per-function gp externs and div
+    expansion flags.  Import it rather than growing a third hand-maintained
+    table here.  The import is deliberately lazy: ordinary RTL dumps do not
+    need maspsx or the assembler at all.
+    """
+    import permute
+    return permute.GP_EXTERNS, permute.MASPSX_EXTRA, permute.AS_FLAGS
+
+
+def compile_rtl(name, passes=None, draft=False, src=None, debug_lines=False,
+                assemble=False):
+    """Compile one source file and return paths to its asm/RTL artifacts.
+
+    This is the reusable backend for rtldump.py, regalloc/guide-style tools,
+    and future mechanical searches.  `debug_lines` adds cc1's `-g`: it does not
+    participate in the real build, but causes source NOTE objects to survive in
+    every RTL pass.  `assemble` additionally runs the exact maspsx/as pipeline
+    and writes an objdump whose instructions retain their originating C line.
+
+    Returns a dict with outdir, preprocessed, asm, dumps, stderr and, when
+    requested, processed_asm/object/objdump.
+    """
+    which(CC)
+    cpp = shutil.which(CPP) or which("cpp")
+    src = src or os.path.join("src", "main.exe", name + ".c")
+    if not os.path.exists(src):
+        raise FileNotFoundError(src)
+
+    want = list(passes or DEFAULT_PASSES)
+    bad = [p for p in want if p not in PASS_FLAG]
+    if bad:
+        raise ValueError(f"unknown pass(es) {bad}; choose from {sorted(PASS_FLAG)}")
+
+    outdir = os.path.join(SCRATCH, "rtl", name)
+    os.makedirs(outdir, exist_ok=True)
+    stem = os.path.join(outdir, name)
+    ic, sfile = stem + ".i", stem + ".s"
+
+    # A previous `--pass all` otherwise contaminates a later narrow run's file
+    # listing and, worse, lets consumers read a stale pass.  Keep only artifacts
+    # produced by this invocation.
+    prefix = os.path.basename(ic) + "."
+    for old in os.listdir(outdir):
+        if old.startswith(prefix) or old in {
+                os.path.basename(sfile), name + ".maspsx.s", name + ".o",
+                name + ".objdump"}:
+            try:
+                os.unlink(os.path.join(outdir, old))
+            except FileNotFoundError:
+                pass
+
+    cpp_cmd = [cpp, *CPP_DEFS, "-I", "include", "-I", os.path.join("src", "main.exe")]
+    if draft:
+        cpp_cmd += ["-DNON_MATCHING"]
+    cpp_cmd += [src]
+    with open(ic, "w") as f:
+        r = subprocess.run(cpp_cmd, stdout=f, stderr=subprocess.PIPE, text=True)
+    if r.returncode:
+        raise RuntimeError("cpp failed:\n" + r.stderr)
+
+    dflags = sorted({PASS_FLAG[p] for p in want})
+    debug = ["-g"] if debug_lines else []
+    r = subprocess.run([CC, *CC_FLAGS, *debug, *dflags, ic, "-o", sfile],
+                       stderr=subprocess.PIPE, text=True, cwd=outdir)
+    err = (r.stderr or "").strip()
+    if not os.path.exists(sfile):
+        raise RuntimeError(f"cc1 produced no .s (rc={r.returncode}):\n{err}")
+
+    dumps = sorted(os.path.join(outdir, f) for f in os.listdir(outdir)
+                   if f.startswith(prefix))
+    result = dict(outdir=outdir, preprocessed=ic, asm=sfile, dumps=dumps,
+                  stderr=err)
+
+    if assemble:
+        if not debug_lines:
+            raise ValueError("assemble=True requires debug_lines=True")
+        which("maspsx")
+        assembler = which("mipsel-unknown-linux-gnu-as")
+        objdump = which("mipsel-unknown-linux-gnu-objdump")
+        gp_externs, extra, as_flags = _load_maspsx_config()
+        processed = stem + ".maspsx.s"
+        obj = stem + ".o"
+        listing = stem + ".objdump"
+        maspsx_cmd = ["maspsx", "--aspsx-version=2.77", "-G8",
+                      *extra.get(name, [])]
+        for sym in gp_externs.get(name, []):
+            maspsx_cmd += ["--gp-extern", sym]
+        with open(sfile) as inp, open(processed, "w") as out:
+            r = subprocess.run(maspsx_cmd, stdin=inp, stdout=out,
+                               stderr=subprocess.PIPE, text=True)
+        if r.returncode:
+            raise RuntimeError("maspsx failed:\n" + r.stderr)
+        r = subprocess.run([assembler, *as_flags, "-I", ROOT, "-o", obj, processed],
+                           capture_output=True, text=True, cwd=ROOT)
+        if r.returncode:
+            raise RuntimeError("as failed:\n" + r.stderr)
+        with open(listing, "w") as out:
+            r = subprocess.run([objdump, "-drSl", obj], stdout=out,
+                               stderr=subprocess.PIPE, text=True)
+        if r.returncode:
+            raise RuntimeError("objdump failed:\n" + r.stderr)
+        result.update(processed_asm=processed, object=obj, objdump=listing)
+    return result
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("name")
@@ -92,48 +201,23 @@ def main() -> None:
     ap.add_argument("--draft", action="store_true",
                     help="compile the #else NON_MATCHING draft (define NON_MATCHING)")
     ap.add_argument("--src", help="override the .c path")
+    ap.add_argument("--lines", action="store_true",
+                    help="preserve C-line notes and emit a line-mapped .o/.objdump")
     args = ap.parse_args()
-
-    which(CC)
-    cpp = shutil.which(CPP) or which("cpp")
-
-    src = args.src or os.path.join("src", "main.exe", args.name + ".c")
-    if not os.path.exists(src):
-        sys.exit(f"rtldump: no {src}")
-
-    outdir = os.path.join(SCRATCH, "rtl", args.name)
-    os.makedirs(outdir, exist_ok=True)
-    stem = os.path.join(outdir, args.name)
-    ic, sfile = stem + ".i", stem + ".s"
-
-    # 1. preprocess exactly as ./Build does (add the draft define if asked)
-    cpp_cmd = [cpp, *CPP_DEFS, "-I", "include"]
-    if args.draft:
-        cpp_cmd += ["-DNON_MATCHING"]
-    cpp_cmd += [src]
-    with open(ic, "w") as f:
-        r = subprocess.run(cpp_cmd, stdout=f, stderr=subprocess.PIPE, text=True)
-    if r.returncode:
-        sys.exit(f"rtldump: cpp failed:\n{r.stderr}")
-
-    # 2. cc1 with the real flags + the requested dump letters
     want = [p.strip() for p in args.passes.split(",") if p.strip()]
-    bad = [p for p in want if p not in PASS_FLAG]
-    if bad:
-        sys.exit(f"rtldump: unknown pass(es) {bad}; choose from {sorted(PASS_FLAG)}")
-    dflags = sorted({PASS_FLAG[p] for p in want})
-    # cc1 writes each dump next to the INPUT as <input>.<passname> (e.g. foo.i.greg)
-    r = subprocess.run([CC, *CC_FLAGS, *dflags, ic, "-o", sfile],
-                       stderr=subprocess.PIPE, text=True, cwd=outdir)
-    err = (r.stderr or "").strip()
-    if not os.path.exists(sfile):
-        sys.exit(f"rtldump: cc1 produced no .s (rc={r.returncode}):\n{err}")
-
-    dumps = sorted(f for f in os.listdir(outdir)
-                   if f.startswith(os.path.basename(ic) + ".") and not f.endswith(".s"))
+    try:
+        result = compile_rtl(args.name, want, args.draft, args.src,
+                             debug_lines=args.lines, assemble=args.lines)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        sys.exit(f"rtldump: {e}")
+    outdir, sfile, err = result["outdir"], result["asm"], result["stderr"]
+    dumps = [os.path.basename(p) for p in result["dumps"]]
     print(f"rtldump: {args.name}{' (draft)' if args.draft else ''} -> {outdir}")
     print(f"  asm:   {sfile}")
     print(f"  dumps: {', '.join(dumps) if dumps else '(none — check the pass names)'}")
+    if args.lines:
+        print(f"  object: {result['object']}")
+        print(f"  lines:  {result['objdump']}")
     if err:
         print(f"  cc1 stderr: {err.splitlines()[-1]}")
     print("\n  reg legend: 2 v0  3 v1  4-7 a0-a3  8-15 t0-t7  16-23 s0-s7  30 fp  31 ra")

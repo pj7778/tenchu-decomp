@@ -85,11 +85,12 @@ Everything the pipeline needs, in the order you touch it:
 | `tools/gpsyms.py <Name> --write` | derive the gp-extern set from `%gp_rel` and sync Build.hs + permute.py. Shake-oracle-tracked, so it just takes effect. |
 | `tools/clonematch.py <Matched>` | write the `.c` for exact byte-identical unmatched siblings (verified). |
 | `tools/matchdiff.py <Name>` / `tools/asmdiff.py <Name>` | iterate. matchdiff = whole-image gate; asmdiff = aligned view for big/split functions. |
-| `tools/autorules.py <Name>` | once the draft compiles: mechanically sweep the *local* cookbook rules (type-width flips; `&&` split/merge and single-use temp inline via tree-sitter) and greedily keep what shrinks the asmdiff, reporting which edit helped. Deterministic first pass; a "no win" verdict means the residual is structure/regalloc, not a local rule. |
+| `tools/autorules.py <Name>` | once the draft compiles: mechanically sweep the *local* cookbook rules and greedily keep what shrinks the authoritative byte diff. `--guided` consumes `rtlguide`, enables the advanced zero-code barriers/CFG fence only near implicated C lines, and uses a bounded beam so a neutral first edit can enable a later win. `--rules`, `--clobber`, `--beam`, and `--budget` keep searches reproducible and bounded. |
 | `tools/permute.py <Name>` | decomp-permuter for pure register-allocation ties (the stochastic search; autorules is its deterministic, explainable complement). |
 | `tools/dedupe-symbols.py [--check]` | one name per address in `config/symbols.main.exe.txt`. splat >= 0.4x refuses duplicates, and our file cannot disambiguate them (it doubles as an ld script, no comment syntax). Re-run after any Ghidra symbol import. |
 | `tools/coverage.py [--all]` | code claimed by NO function — finds under-sized `functions.tsv` entries (a truncated carve still builds green; the tail becomes a `.data` blob that defines the `.L` labels, so nothing complains). `LoadCard` and `FUN_800593a0` are the two in game code. |
 | `tools/rtldump.py <Name> [--pass …] [--draft]` | **the escalation tool** — standalone cc1-281 RTL dumps (`.greg`/`.lreg`/`.loop`/`.combine`/`.jump2`/`.sched2`/`.dbr`), race-free in the scratchpad, ~1 s. When a same-length residual beats respelling + the permuter, dump the pass that owns the diverging decision and read it (cookbook: "Reading cc1's RTL dumps"). Cracked 9 "permuter-immune" ties this session. |
+| `tools/rtlguide.py <Name>` | **mechanical RTL escalation** — aligns target asm with our candidate, classifies each hunk by owning pass, recompiles with debug RTL notes, maps residual instructions back to C lines, names locals in the divergent hard registers, and emits the exact guided autorules command. The target has no RTL; target asm is the specification and our RTL is the causal trace. `--json` is the stable automation interface. |
 | `tools/regalloc.py <Name>` | **diagnose a register tie** — runs `cc1 -dg` and surfaces which values are live across calls (forced callee-saved), the pseudo→hard-reg map, and the copy-chains that bias the coloring. Run this BEFORE blindly permuting a sub-C tie; it tells you which copy-chain to break. |
 | `tools/extract-demo.py`, `tools/psxsym.py`, `tools/symdump.py` | carve/parse/dump the demo disc's `PSX.SYM` — original prototypes, locals, structs, TU map. See [psx-sym.md](psx-sym.md). `matcher-prompt.py` injects the per-function facts automatically. |
 | `tools/symmatch.py`, `tools/xbuildnames.py`, `tools/callmatch.py`, `tools/datamatch.py` | recover original **names** (functions, then globals) from `PSX.SYM` + the demo `PSX.EXE`. |
@@ -502,8 +503,10 @@ against context prototypes), so a small m2c fix-up layer is where more zeros hid
   The tell that you're in tie territory (when to reach for it): `autorules`
   reports no win AND a bounded permuter run never beats the base score. Run
   `regalloc.py` then break the copy-chain / shorten the live range it points at,
-  instead of blind permuting. (Open v2: diff our greg allocation against the
-  target asm's registers to auto-flag the divergent value.)
+  instead of blind permuting. **v2 is built as `tools/rtlguide.py`:** it infers
+  candidate→target register goals from aligned target asm, attaches `.greg`
+  dispositions/preferences and cc1 `-g` locals, and gives `autorules --guided`
+  the implicated source lines and mutation families.
 - **GTE splitting is DONE, upstream.** splat >= 0.4x generates
   `include/gte_macros.inc`, so `as` assembles the GTE command opcodes; all 25 GTE
   functions are carved and `./Build check` is byte-identical. (Our stopgap

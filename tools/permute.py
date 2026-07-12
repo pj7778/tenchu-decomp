@@ -211,6 +211,7 @@ GP_EXTERNS = {
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
 # maspsxGpExterns (e.g. --expand-div for TUs that divide by a variable).
 MASPSX_EXTRA = {
+    "UpdateTexScroll": ["--expand-div"],
     "MakeDifSub": ["--expand-div"],
     "DrawFlyWire": ["--expand-div"],
     "UpdateSplineControl": ["--expand-div"],
@@ -238,6 +239,8 @@ MASPSX_EXTRA = {
     "GetAreaMapLevel": ["--expand-div"],
     "bow_shoot_logic": ["--expand-div"],
     "Think3escape": ["--expand-div"],
+    "SuccessionAttack": ["--expand-div"],
+    "GetSpline": ["--expand-div"],
     "StateTransition": ["--expand-div"],
 }
 

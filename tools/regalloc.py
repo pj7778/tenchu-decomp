@@ -27,6 +27,8 @@ Run inside the nix devShell.
 """
 import argparse, os, re, subprocess, sys, tempfile
 
+import rtldump
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 SRC = "src/main.exe"
@@ -125,6 +127,15 @@ def analyse(name, body):
     disp = {}
     for m in re.finditer(r"(\d+) in (\d+)", body.split(";; Hard regs")[0]):
         disp[int(m.group(1))] = int(m.group(2))
+    preferences = {}
+    conflicts = {}
+    for line in body.splitlines():
+        m = re.match(r";; (\d+) preferences:\s*(.*)", line)
+        if m:
+            preferences[int(m.group(1))] = [int(x) for x in m.group(2).split()]
+        m = re.match(r";; (\d+) conflicts:\s*(.*)", line)
+        if m:
+            conflicts[int(m.group(1))] = [int(x) for x in m.group(2).split()]
     um = re.search(r";; Hard regs used:\s*(.*)", body)
     used_str = " ".join(rn(int(x)) for x in um.group(1).split()) if um else ""
     moves, calls, setops = [], [], {}
@@ -144,7 +155,7 @@ def analyse(name, body):
         for rm in REG.finditer(flat):
             nm = rm.group(2)
             reg_first.setdefault(nm, num)
-    return dict(disp=disp, used=used_str,
+    return dict(disp=disp, preferences=preferences, conflicts=conflicts, used=used_str,
                 moves=moves, calls=calls, setops=setops, reg_first=reg_first)
 
 
@@ -171,8 +182,12 @@ def report(name, a, show_rtl, body):
             print(f"    i{num:<4} {src:>3} -> {dst:<3}{tag}")
     else:
         print("    (none)")
-    print(f"  pseudo dispositions: " +
-          "  ".join(f"p{p}->{rn(h)}" for p, h in sorted(a["disp"].items())))
+    dispositions = []
+    for p, h in sorted(a["disp"].items()):
+        pref = a["preferences"].get(p, [])
+        suffix = (" pref=" + "/".join(rn(x) for x in pref)) if pref else ""
+        dispositions.append(f"p{p}->{rn(h)}{suffix}")
+    print(f"  pseudo dispositions: " + "  ".join(dispositions))
     print("  reading: a value in $s0-$s7 is there ONLY because it is live across a"
           "\n  call; to move it, shorten its live range past the call or break the"
           "\n  copy-chain above that ties it to that register.")
@@ -194,9 +209,21 @@ def main():
         pp = open(args.target).read()
         default_func = None
     else:
-        pp = preprocess(args.target)
+        path = os.path.join(SRC, args.target + ".c")
+        if not os.path.exists(path):
+            sys.exit(f"regalloc: {path} not found")
+        draft = "ifndef NON_MATCHING" in open(path).read()
+        try:
+            result = rtldump.compile_rtl(args.target, ["greg"], draft=draft)
+        except (FileNotFoundError, ValueError, RuntimeError) as e:
+            sys.exit(f"regalloc: {e}")
+        greg = next((p for p in result["dumps"] if p.endswith(".greg")), None)
+        if greg is None:
+            sys.exit("regalloc: cc1 produced no greg dump")
+        dump = open(greg).read()
         default_func = args.target
-    dump = run_greg(pp)
+    if args.raw:
+        dump = run_greg(pp)
     funcs = split_functions(dump)
     if not funcs:
         sys.exit("regalloc: no functions in the greg dump (did it compile?)")
