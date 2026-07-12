@@ -143,6 +143,28 @@ int F(void) { return Global; }
 """
         self.assertEqual(self.candidates(autorules.rule_case_fence, source), [])
 
+    def test_plus_group_enumerates_constant_placement_without_reordering_calls(self):
+        source = """int F(int a) {
+    return abs(a) / 2 + 25 + rand() % 25;
+}
+"""
+        out = self.candidates(autorules.rule_plus_group, source)
+        self.assertEqual(len(out), 5)
+        texts = [text for _label, text in out]
+        self.assertTrue(any(
+            "(abs(a) / 2) + ((rand() % 25) + (25))" in text
+            for text in texts
+        ))
+        self.assertTrue(all(text.index("abs(a)") < text.index("rand()")
+                            for text in texts))
+
+    def test_plus_group_requires_exactly_one_literal_leaf(self):
+        source = """int F(void) {
+    return first() + second() + third();
+}
+"""
+        self.assertEqual(self.candidates(autorules.rule_plus_group, source), [])
+
     def test_registered_rules_never_emit_inline_asm(self):
         self.assertNotIn("__asm__", inspect.getsource(autorules))
         for key, _description, rule in autorules.RULES + autorules.AGGRESSIVE_RULES:
@@ -214,6 +236,25 @@ class RtlGuideTests(unittest.TestCase):
                       ["addu v1,v1,a0", "sw v1,0(gp)"])
         self.assertEqual(rtlguide.known_residual_signatures([h]),
                          ["commutative-plus-destination"])
+
+    def test_relocated_addiu_is_combine_reassociation(self):
+        target = [
+            (0x1000, "addiu s0,s0,25"),
+            (0x1004, "sra v1,v0,0x1f"),
+            (0x1008, "mfhi t0"),
+            (0x100c, "subu v0,v0,v1"),
+        ]
+        ours = [
+            (0x1000, "sra v1,v0,0x1f"),
+            (0x1004, "mfhi t0"),
+            (0x1008, "subu v0,v0,v1"),
+            (0x100c, "addiu v0,v0,25"),
+        ]
+        hunks, _pairs = rtlguide.diff_hunks(target, ours)
+        self.assertEqual(len(hunks), 1)
+        self.assertEqual(rtlguide.classify_hunk(hunks[0]), "combine/expression")
+        self.assertEqual(rtlguide.known_residual_signatures(hunks),
+                         ["constant-add-reassociation"])
 
     def test_branch_target_drift_has_same_shape(self):
         self.assertEqual(rtlguide.shape("bnez v0,0x80012340"),
@@ -288,6 +329,7 @@ class RtlGuideTests(unittest.TestCase):
         self.assertIn("loop-fence", rules)
         self.assertIn("loop-range", rules)
         self.assertIn("shift16-mul", rules)
+        self.assertIn("plus-group", rules)
         self.assertIn("type-width", rules)
         self.assertFalse(any("barrier" in rule or "clobber" in rule for rule in rules))
 

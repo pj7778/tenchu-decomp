@@ -87,7 +87,7 @@ CATEGORY_RULES = {
     ],
     "combine/expression": [
         "abs-ge", "cmp-swap", "cmp-polarity", "min-ternary", "ptr-index-sum",
-        "shift16-mul", "split-chain",
+        "shift16-mul", "plus-group", "split-chain",
     ],
     "structure/length": ["type-width", "and-nest", "temp-inline", "case-fence"],
 }
@@ -184,19 +184,33 @@ def diff_hunks(target, ours):
         else:
             groups[-1].append(item)
     # SequenceMatcher represents `A; branch` -> `branch; A` as an insertion and
-    # a deletion separated by the equal branch.  Join only those complementary
-    # one-sided groups (not arbitrary neighbouring register hunks), so the
-    # scheduler classifier sees the full reordered multiset.
+    # a deletion separated by the equal branch.  It does the same for a combine
+    # expression moved across a short expansion (`addiu A,25; rem` versus
+    # `rem; addiu B,25`). Join complementary one-sided groups when they are
+    # adjacent, or when their register-erased shapes prove that the same short
+    # instruction run was relocated. This lets the classifier see the complete
+    # reordered expression instead of two false structure/length hunks.
     merged = []
     for group in groups:
-        if merged and group[0][0] <= merged[-1][-1][0] + 2:
+        if merged:
             left_t = any(x[1] is not None for x in merged[-1])
             left_o = any(x[2] is not None for x in merged[-1])
             right_t = any(x[1] is not None for x in group)
             right_o = any(x[2] is not None for x in group)
             complementary = ((left_t and not left_o and right_o and not right_t)
                              or (left_o and not left_t and right_t and not right_o))
-            if complementary:
+            gap = group[0][0] - merged[-1][-1][0]
+            left_shapes = [shape(target[ti][1]) for _p, ti, _oi in merged[-1]
+                           if ti is not None]
+            left_shapes += [shape(ours[oi][1]) for _p, _ti, oi in merged[-1]
+                            if oi is not None]
+            right_shapes = [shape(target[ti][1]) for _p, ti, _oi in group
+                            if ti is not None]
+            right_shapes += [shape(ours[oi][1]) for _p, _ti, oi in group
+                             if oi is not None]
+            relocated = (gap <= 32 and len(left_shapes) <= 2 and
+                         Counter(left_shapes) == Counter(right_shapes))
+            if complementary and (gap <= 2 or relocated):
                 start, end = merged[-1][0][0], group[-1][0]
                 merged[-1] = [(p, ti, oi) for p, (ti, oi) in
                               enumerate(pairs[start:end + 1], start)]
@@ -252,6 +266,37 @@ def known_residual_signatures(hunks):
     for hunk in hunks:
         target = [x[1] for x in hunk["target"]]
         ours = [x[1] for x in hunk["ours"]]
+
+        # Cancel the aligned instructions common to both sides. A lone addiu
+        # left on each side, with identical immediate/self-add shape but at a
+        # different position, is the characteristic gcc fold reassociation
+        # residual (`A + C + B` versus `A + (B + C)`).
+        remaining_ours = Counter(ours)
+        target_only = []
+        for insn in target:
+            if remaining_ours[insn]:
+                remaining_ours[insn] -= 1
+            else:
+                target_only.append(insn)
+        remaining_target = Counter(target)
+        ours_only = []
+        for insn in ours:
+            if remaining_target[insn]:
+                remaining_target[insn] -= 1
+            else:
+                ours_only.append(insn)
+        if len(target_only) == len(ours_only) == 1:
+            ti, oi = target_only[0], ours_only[0]
+            tr, or_ = registers(ti), registers(oi)
+            if (mnemonic(ti) == mnemonic(oi) == "addiu" and
+                    shape(ti) == shape(oi) and
+                    len(tr) == len(or_) == 2 and
+                    tr[0] == tr[1] and or_[0] == or_[1] and
+                    NUM_RE.findall(ti) == NUM_RE.findall(oi) and
+                    target.index(ti) != ours.index(oi)):
+                if "constant-add-reassociation" not in found:
+                    found.append("constant-add-reassociation")
+
         if (len(target) == len(ours) == 2 and
                 target == list(reversed(ours)) and
                 all(mnemonic(x) in LOAD_OPS for x in target)):

@@ -453,6 +453,110 @@ def rule_temp_inline(text, name, span):
                splice(t1, ds, de, b"").decode())
 
 
+def _unparen(node):
+    """Strip expression parentheses while retaining the underlying AST node."""
+    while node is not None and node.type == "parenthesized_expression":
+        children = [c for c in node.named_children if c.type != "comment"]
+        if len(children) != 1:
+            break
+        node = children[0]
+    return node
+
+
+def _binary_operator(data, node):
+    node = _unparen(node)
+    if node is None or node.type != "binary_expression":
+        return None
+    op = node.child_by_field_name("operator")
+    return _txt(data, op) if op is not None else None
+
+
+def _plus_leaves(data, node):
+    """Flatten one parenthesized top-level `+` tree, in source leaf order."""
+    node = _unparen(node)
+    if _binary_operator(data, node) != b"+":
+        return [node]
+    return (_plus_leaves(data, node.child_by_field_name("left")) +
+            _plus_leaves(data, node.child_by_field_name("right")))
+
+
+def _integer_constant(node):
+    """True for a literal integer leaf, including a unary +/- literal."""
+    node = _unparen(node)
+    if node is None:
+        return False
+    if node.type == "number_literal":
+        return True
+    if node.type != "unary_expression":
+        return False
+    op = node.child_by_field_name("operator")
+    arg = node.child_by_field_name("argument")
+    if op is None or arg is None:
+        return False
+    return op.type in {"+", "-"} and _unparen(arg).type == "number_literal"
+
+
+def rule_plus_group(text, name, span):
+    """Enumerate the six trees for two ordered expressions plus one constant.
+
+    gcc-2.8.1 fold does not treat source-equivalent additive trees alike:
+    `A + (B + C)` becomes `(A + C) + B`, whereas `(A + C) + B` can become
+    `A + (B + C)`.  That decides which live value receives an `addiu`, and can
+    also decide the final `addu` destination.  Keep the two nonconstant leaves
+    in their original relative order (so calls retain their source order), move
+    only the side-effect-free literal, and try both associations.  Exactly
+    three leaves and one literal keeps the search bounded and explainable.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    for expr in _find(body, ("binary_expression",)):
+        if _binary_operator(data, expr) != b"+":
+            continue
+        leaves = _plus_leaves(data, expr)
+        if len(leaves) != 3:
+            continue
+        constants = [n for n in leaves if _integer_constant(n)]
+        if len(constants) != 1:
+            continue
+        line = _line(data, expr.start_byte)
+        if not _guided_site(line):
+            continue
+        constant = constants[0]
+        values = [n for n in leaves if n is not constant]
+        # Preserve the relative order of all possibly effectful expressions;
+        # only the literal migrates among them.
+        orders = (
+            (values[0], values[1], constant, "const-last"),
+            (values[0], constant, values[1], "const-middle"),
+            (constant, values[0], values[1], "const-first"),
+        )
+        original_order = tuple(n.start_byte for n in leaves)
+        raw = _unparen(expr)
+        left = raw.child_by_field_name("left")
+        right = raw.child_by_field_name("right")
+        original_assoc = None
+        if len(_plus_leaves(data, left)) == 2 and len(_plus_leaves(data, right)) == 1:
+            original_assoc = "left"
+        elif len(_plus_leaves(data, left)) == 1 and len(_plus_leaves(data, right)) == 2:
+            original_assoc = "right"
+        for a, b, c, position in orders:
+            order = (a.start_byte, b.start_byte, c.start_byte)
+            parts = [_txt(data, n) for n in (a, b, c)]
+            variants = (
+                ("left", b"((" + parts[0] + b") + (" + parts[1] +
+                 b")) + (" + parts[2] + b")"),
+                ("right", b"(" + parts[0] + b") + ((" + parts[1] +
+                 b") + (" + parts[2] + b"))"),
+            )
+            for assoc, repl in variants:
+                if order == original_order and assoc == original_assoc:
+                    continue
+                yield (f"plus-group {position}/{assoc} L{line}",
+                       splice(data, expr.start_byte, expr.end_byte, repl).decode())
+
+
 def rule_abs_ge(text, name, span):
     """Rewrite an abs ternary to its GE form: `(x < 0) ? -x : x` -> `(x >= 0) ? x : -x`.
 
@@ -1180,6 +1284,7 @@ RULES = [
 AGGRESSIVE_RULES = [
     ("cmp-polarity", "swap two local comparison operands (regalloc ref-order lever)", rule_cmp_polarity),
     ("shift16-mul", "casted short x<<16 -> x*0x10000 (raw sll lever)", rule_shift16_mul),
+    ("plus-group", "enumerate 3-term + grouping/constant placement (fold lever)", rule_plus_group),
     ("loop-fence", "wrap an if/loop in a zero-code one-shot do loop", rule_loop_fence),
     ("loop-range", "wrap 2-4 adjacent statements in one zero-code do loop", rule_loop_range),
     ("case-fence", "if/else -> two-way switch (hard cross-jump CODE_LABEL)", rule_case_fence),

@@ -1888,12 +1888,27 @@ file. First split decompiler SSA roles for correctness, then deliberately re-mer
 only where `.lreg` proves disjoint lives and target asm proves one hard-register
 home.
 
-### `A + (B + 2)` and `B + 2 + A` pick different destination registers
+### `A + (B + C)` controls which operand receives the constant
 
 fold canonicalises `A + (B + C)` to `(A + C) + B`, so the `addiu` lands on A's
 register — where it can fill a guard's delay slot — and the `addu`'s destination
 ties to that dying operand. The mirrored spelling emits the same instructions with
 swapped operands and a different result colour (`vfree`'s tail sum: `$v1` vs `$v0`).
+
+This is visible across long arithmetic expansions, not only adjacent additions.
+`MoveKorogari` needed the constant on `abs(vy) / 2` before cc1 expanded
+`rand() % 25`: `A + 25 + B` put 25 on B, and `A + B + 25` emitted it after the
+final sum, while **`A + (B + 25)`** produced the target `(A + 25) + B`. When
+SequenceMatcher sees that `addiu` once as a deletion and once as an insertion
+across the remainder sequence, `rtlguide` now rejoins the pair, classifies it as
+`combine/expression`, and reports `constant-add-reassociation` instead of two
+false structure/length hunks.
+
+**Now mechanized:** guided autorules rule `plus-group` enumerates the six
+association/constant-position trees for exactly two expressions and one integer
+literal. It preserves the relative source order of both nonconstant expressions,
+so two calls are never exchanged merely to move the literal. Exact byte scoring
+chooses the surviving fold tree.
 
 ### Steering allocation: donate a call-arg preference to a low-priority pseudo
 
