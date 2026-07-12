@@ -103,6 +103,12 @@ The ordered triage — fix categories in THIS order, re-running
    count (matchdiff's whole-image number explodes), the *structure* is wrong —
    dispatch shape, loop shape, missing/extra temps, tail merging. Fix before
    anything else; operand diffs are meaningless while the length is off.
+   Exact length is necessary, not sufficient: compare `rtlguide`'s physical
+   control-flow inventory too. AddEnemy had an exact-length guided candidate
+   only because an identical-arm fence invented a conditional branch absent
+   from retail. The structurally honest checkpoint stayed five instructions
+   short; accepting the balanced count would have hidden the real allocation
+   problem.
 2. **Wrong/missing/reordered instructions next.** Map each to a cookbook rule
    (switch vs ladder, while(1)+break, fold reassociation, temps-vs-inline,
    buffer casts, statement order). `tools/findsimilar.py <Name>` names the

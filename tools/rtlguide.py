@@ -58,6 +58,7 @@ BRANCH = {
     "b", "beq", "beqz", "bne", "bnez", "bgez", "bgtz", "blez", "bltz",
     "bgezal", "bltzal", "j", "jal", "jalr", "jr",
 }
+CONDITIONAL_BRANCH = BRANCH - {"b", "j", "jal", "jalr", "jr"}
 MOVEISH = {"move", "movn", "movz"}
 COMBINE_OPS = {
     "add", "addu", "addiu", "sub", "subu", "and", "andi", "or", "ori",
@@ -168,6 +169,17 @@ def mnemonic(insn: str) -> str:
 def call_count(insns) -> int:
     """Count physical calls in an `(address, asm)` instruction stream."""
     return sum(mnemonic(insn) in CALL_OPS for _addr, insn in insns)
+
+
+def control_flow_counts(insns) -> dict[str, int]:
+    """Physical control-flow inventory for structural-candidate auditing."""
+    operations = [mnemonic(insn) for _addr, insn in insns]
+    return {
+        "conditional_branches": sum(op in CONDITIONAL_BRANCH for op in operations),
+        "unconditional_jumps": sum(op in {"b", "j"} for op in operations),
+        "calls": sum(op in CALL_OPS for op in operations),
+        "returns": sum(op == "jr" for op in operations),
+    }
 
 
 def call_symbol(insn: str) -> str | None:
@@ -746,6 +758,10 @@ def assembly_guide(name):
         ],
         call_tail_hint=call_count(target) > call_count(ours),
         call_counts=dict(target=call_count(target), candidate=call_count(ours)),
+        control_flow_counts=dict(
+            target=control_flow_counts(target),
+            candidate=control_flow_counts(ours),
+        ),
         known_residual_signatures=known_residual_signatures(hunks, target, ours),
         register_substitutions=[
             dict(ours=a, target=b, count=n)
@@ -1207,6 +1223,20 @@ def print_report(g, max_hunks=12):
               "separate when result mode or CALL_INSN_FUNCTION_USAGE differs. "
               "Check the caller's original declaration and already-live argument "
               "registers; this is diagnostic, not an automatic prototype rewrite.")
+
+    flow = g.get("control_flow_counts", {})
+    if flow and flow.get("target") != flow.get("candidate"):
+        target_flow = flow["target"]
+        candidate_flow = flow["candidate"]
+        print("\n  control-flow audit (physical instructions):")
+        print("    " + "  ".join(
+            f"{key}={target_flow[key]}/{candidate_flow[key]} target/candidate"
+            for key in target_flow
+        ))
+        if (candidate_flow["conditional_branches"] >
+                target_flow["conditional_branches"]):
+            print("    WARNING: candidate has target-absent conditional branch(es); "
+                  "an exact length or lower byte score is not structural proof.")
 
     print("\n  mechanical search:")
     print(f"    rules: {', '.join(g['rules']) or '(no local rule; source structure first)'}")

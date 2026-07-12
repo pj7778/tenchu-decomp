@@ -887,6 +887,32 @@ class RtlGuideTests(unittest.TestCase):
         self.assertEqual(guide["target_only_calls"], [
             {"callee": "DeleteConflict", "count": 1},
         ])
+        self.assertEqual(guide["control_flow_counts"], {
+            "target": {
+                "conditional_branches": 0,
+                "unconditional_jumps": 0,
+                "calls": 1,
+                "returns": 0,
+            },
+            "candidate": {
+                "conditional_branches": 0,
+                "unconditional_jumps": 1,
+                "calls": 0,
+                "returns": 0,
+            },
+        })
+
+    def test_control_flow_counts_exposes_target_absent_branch(self):
+        target = [(0x1000, "addiu v0,v0,1"), (0x1004, "jr ra")]
+        candidate = [
+            (0x1000, "beqz a0,0x1010"),
+            (0x1004, "nop"),
+            (0x1008, "jr ra"),
+        ]
+        self.assertEqual(
+            rtlguide.control_flow_counts(target)["conditional_branches"], 0)
+        self.assertEqual(
+            rtlguide.control_flow_counts(candidate)["conditional_branches"], 1)
 
     def test_call_rtl_fingerprint_includes_result_mode_and_usage(self):
         body = """;; Function F
