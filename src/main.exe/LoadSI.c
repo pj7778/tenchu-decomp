@@ -40,29 +40,11 @@
  * scratch buffer and skipping the first 0x200-byte card-file header before
  * copying the real 0x1E00-byte payload into the returned buffer.
  *
- * STATUS: NON_MATCHING — 7 of 80 bytes differ (structural fidelity is
- * complete: arithmetic, control flow, frame layout, and every symbol/gp fix
- * below are verified correct; the residual is purely register allocation).
- * The draft uses TWO extra callee-saved registers ($s3/$s4 vs the target's
- * $s0-$s2) to CACHE `&cmd`/`&result` across the two `MemCardSync(0,&cmd,
- * &result);` call sites; the target instead RECOMPUTES `addiu
- * $a1,$sp,0x20E0` / `addiu $a2,$sp,0x20E4` fresh at each site with no
- * persistent register. Since GCC 2.8.1's allocator has no rematerialization
- * (once a pseudo gets a hard reg via global-alloc, it keeps it for its whole
- * live range — no IRA/LRA-style respill-on-demand), avoiding the cache
- * requires cc1 to see the two `&cmd`/`&result` occurrences as genuinely
- * unrelated expressions, not one CSE'd value spanning the gap. Tried and
- * ruled out: a `do{}while(0)` wrapper around each MemCardSync call
- * (unrelated instructions shifted; same 2-extra-register outcome); an
- * explicit `if (result!=0 && result!=3) goto card_error;` goto-ladder in
- * place of the `if (…||…) {…} else {…}` (byte-for-byte identical output —
- * the merge point's predecessor count doesn't change). The `if(…||…)` body
- * IS a genuine 2-predecessor label (reached by both the first test's taken
- * jump and the second test's fallthrough), which per the cookbook should
- * block cse's cross-block value reuse — it evidently doesn't here. Root
- * cause not fully pinned; a `cc1 -dg`/`-di` RTL dump bisection would be the
- * next step, or accept as the permuter's "same-length…" case doesn't apply
- * (this residual is NOT same-length: 87 vs 80).
+ * The two error arms spell their cleanup independently. jump2 merges those
+ * tails back together, while the earlier CSE pass consequently treats the
+ * two MemCardSync stack-address pairs as separate expressions and
+ * rematerializes them at each call. The one-shot loop around `msg = 0`
+ * retains the target's shared $s1 zero/message lifetime and scheduling.
  *
  * Matching notes:
  *  - Register mapping in PSX.SYM ($s0=name, $s1=ret) is the DEMO build's —
@@ -107,11 +89,6 @@ extern void *memcpy(void *dst, void *src, u32 n);
 extern void sprintf(char *s, char *fmt, ...);
 extern void AdtMessageBox(char *fmt, ...);
 
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/LoadSI", LoadSI);
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/LoadSI", load_stage_resource___override__prt_8005c2f4_aee7b64a);
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/LoadSI", load_stage_resource___override__prt_8005c36c_6152584a);
-#else
 void *LoadSI(int target, u8 *name)
 {
     void *ret;
@@ -125,35 +102,38 @@ void *LoadSI(int target, u8 *name)
     {
         sprintf(fn, D_80097D90, ImagePath, name);
         ret = FileRead(fn);
-        return ret;
+        goto return_result;
     }
-    msg = 0;
-    ret = valloc(0x2000);
-    MemCardAccept(0);
-    MemCardSync(0, &cmd, &result);
-    if (result == 0 || result == 3)
+    do
     {
-        sprintf(fn, D_80097D98, D_80097D8C, StageID, name);
-        MemCardReadFile(0, fn, block, 0, 0x2000);
-        MemCardSync(0, &cmd, &result);
-        if (result == 0)
-        {
-            memcpy(ret, block + 0x200, 0x1E00);
-            goto done;
-        }
-        msg = D_800141A4;
-    }
-    else
+        msg = 0;
+    } while (0);
+    ret = valloc(0x2000);
+    MemCardAccept((s32)msg);
+    MemCardSync((s32)msg, &cmd, &result);
+    if (result != 0 && result != 3)
     {
         msg = D_80014168;
+        vfree(ret);
+        ret = 0;
+        goto done;
     }
-    vfree(ret);
-    ret = 0;
+    sprintf(fn, D_80097D98, D_80097D8C, StageID, name);
+    MemCardReadFile(0, fn, block, 0, 0x2000);
+    MemCardSync(0, &cmd, &result);
+    if (result != 0)
+    {
+        msg = D_800141A4;
+        vfree(ret);
+        ret = 0;
+        goto done;
+    }
+    memcpy(ret, block + 0x200, 0x1E00);
 done:
     if (msg != 0)
     {
         AdtMessageBox(msg, result);
     }
+return_result:
     return ret;
 }
-#endif /* NON_MATCHING */
