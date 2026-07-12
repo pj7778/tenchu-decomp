@@ -79,6 +79,7 @@ CATEGORY_RULES = {
         "type-width", "cmp-polarity", "loop-fence", "loop-range", "split-chain",
         "or-inplace", "add-prefix-temp", "flag-arm-assign",
         "identical-arm-fence", "subscript-postinc", "switch-cse-evict",
+        "call-arg-pair",
     ],
     "cse/coalescing": [
         "type-width", "loop-fence", "loop-range", "temp-inline",
@@ -89,6 +90,7 @@ CATEGORY_RULES = {
         "type-width", "loop-fence", "loop-range", "cmp-swap", "cmp-polarity",
         "split-chain", "or-inplace", "vector-copy-adjust", "flag-arm-assign",
         "loop-boundary-shift", "identical-arm-fence", "subscript-postinc",
+        "call-arg-pair",
     ],
     "combine/expression": [
         "abs-ge", "builtin-abs", "cmp-swap", "cmp-polarity", "min-ternary", "ptr-index-sum",
@@ -97,6 +99,7 @@ CATEGORY_RULES = {
     "structure/length": [
         "type-width", "and-nest", "temp-inline", "case-fence",
         "vector-copy-adjust", "builtin-abs", "subscript-postinc",
+        "call-arg-pair",
     ],
 }
 
@@ -125,6 +128,11 @@ SIGNATURE_HINTS = {
     "postincrement-working-copy": (
         "target increments through a distinct working register and copies it "
         "back; try merging the adjacent increment into array[index++]"
+    ),
+    "call-result-argument-pipeline": (
+        "target transforms the first result across the second call and uses "
+        "that call's delay slot; inline the adjacent producer pair into their "
+        "common consumer arguments"
     ),
 }
 
@@ -423,6 +431,32 @@ def _postincrement_working_copy(target, ours):
     return False
 
 
+def _call_result_argument_pipeline(target, ours):
+    """Target keeps first call result across a second call via its delay slot."""
+    def has_pipeline(stream):
+        for i, (_addr, first_call) in enumerate(stream):
+            if mnemonic(first_call) not in CALL_OPS:
+                continue
+            for j in range(i + 1, min(i + 5, len(stream))):
+                transform = stream[j][1]
+                regs = registers(transform)
+                if (mnemonic(transform) != "andi" or len(regs) < 2 or
+                        regs[1] != "v0"):
+                    continue
+                saved = regs[0]
+                for k in range(j + 1, min(j + 4, len(stream) - 1)):
+                    if mnemonic(stream[k][1]) not in CALL_OPS:
+                        continue
+                    delay = stream[k + 1][1]
+                    delay_regs = registers(delay)
+                    if (mnemonic(delay) == "sll" and len(delay_regs) >= 2 and
+                            delay_regs[0] == saved and delay_regs[1] == saved):
+                        return True
+        return False
+
+    return has_pipeline(target) and not has_pipeline(ours)
+
+
 def known_residual_signatures(hunks, target_stream=None, ours_stream=None):
     """Name narrow, previously root-caused residual shapes.
 
@@ -437,6 +471,8 @@ def known_residual_signatures(hunks, target_stream=None, ours_stream=None):
             found.append("post-comparison-flag-definition")
         if _builtin_abs_gap(target_stream, ours_stream):
             found.append("builtin-abs-inline")
+        if _call_result_argument_pipeline(target_stream, ours_stream):
+            found.append("call-result-argument-pipeline")
     for hunk in hunks:
         target = [x[1] for x in hunk["target"]]
         ours = [x[1] for x in hunk["ours"]]

@@ -337,6 +337,38 @@ int F(int value) {
         self.assertIn("__builtin_abs(value)", out[0][1])
         self.assertIn("int abs(int);", out[0][1])
 
+    def test_call_argument_pair_inlines_same_call_producers_atomically(self):
+        source = """int rand(void);
+void sink(int, int);
+int F(void) {
+    int x;
+    int y;
+    x = rand();
+    y = rand();
+    sink((x & 7) << 12, (y & 7) << 12);
+    return 0;
+}
+"""
+        out = self.candidates(autorules.rule_call_arg_pair_inline, source)
+        self.assertEqual(len(out), 1)
+        candidate = out[0][1]
+        self.assertNotIn("x = rand();", candidate)
+        self.assertNotIn("y = rand();", candidate)
+        self.assertIn("sink((rand() & 7) << 12, (rand() & 7) << 12);",
+                      candidate)
+
+    def test_call_argument_pair_rejects_later_use_or_different_calls(self):
+        later = """int rand(void); void sink(int, int);
+int F(void) { int x; int y; x=rand(); y=rand(); sink(x,y); return x; }
+"""
+        different = """int first(void); int second(void); void sink(int, int);
+int F(void) { int x; int y; x=first(); y=second(); sink(x,y); return 0; }
+"""
+        self.assertEqual(
+            self.candidates(autorules.rule_call_arg_pair_inline, later), [])
+        self.assertEqual(
+            self.candidates(autorules.rule_call_arg_pair_inline, different), [])
+
     def test_subscript_postincrement_splits_and_merges(self):
         merged_source = """int F(int *array) {
     int i;
@@ -653,6 +685,27 @@ class RtlGuideTests(unittest.TestCase):
         self.assertEqual(
             rtlguide.known_residual_signatures([h]),
             ["postincrement-working-copy"],
+        )
+
+    def test_known_call_result_argument_pipeline_signature(self):
+        target = [
+            (0x1000, "jal 0x800761d4"),
+            (0x1004, "nop"),
+            (0x1008, "andi s0,v0,0x7"),
+            (0x100c, "jal 0x800761d4"),
+            (0x1010, "sll s0,s0,0xc"),
+        ]
+        ours = [
+            (0x1000, "jal 0x800761d4"),
+            (0x1004, "nop"),
+            (0x1008, "andi s0,v0,0x7"),
+            (0x100c, "sll s0,s0,0xc"),
+            (0x1010, "jal 0x800761d4"),
+            (0x1014, "nop"),
+        ]
+        self.assertEqual(
+            rtlguide.known_residual_signatures([], target, ours),
+            ["call-result-argument-pipeline"],
         )
 
     def test_relocated_addiu_is_combine_reassociation(self):

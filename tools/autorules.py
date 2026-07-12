@@ -457,6 +457,91 @@ def rule_temp_inline(text, name, span):
                splice(t1, ds, de, b"").decode())
 
 
+def rule_call_arg_pair_inline(text, name, span):
+    """Inline two adjacent same-call results into one consumer call.
+
+    ``x = rand(); y = rand(); sink(F(x), F(y));`` can serialize both result
+    transformations before ``sink``.  Inlining the pair atomically lets cc1
+    keep the first transformed argument live across the second call and place
+    its final shift in that call's delay slot.  Restrict this to two distinct,
+    nonvolatile, non-address-taken automatic locals, byte-identical producer
+    calls, one use apiece in the immediately following standalone consumer,
+    and no later uses.  The pair is one candidate because inlining only one
+    producer changes call order and cannot expose the intended pipeline.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    locals_ = _nonvolatile_local_names(data, body)
+    body_text = _txt(data, body)
+    identifiers = _find(body, ("identifier",))
+    for block in _find(body, ("compound_statement",)):
+        statements = [child for child in block.named_children
+                      if child.type != "comment"]
+        for first, second, consumer in zip(
+                statements, statements[1:], statements[2:]):
+            one = _plain_assignment(data, first)
+            two = _plain_assignment(data, second)
+            if one is None or two is None or one[0] == two[0]:
+                continue
+            names = (one[0], two[0])
+            producers = (_unparen(one[1]), _unparen(two[1]))
+            if (any(local not in locals_ for local in names) or
+                    any(producer is None or producer.type != "call_expression"
+                        for producer in producers) or
+                    _txt(data, producers[0]).strip() !=
+                    _txt(data, producers[1]).strip()):
+                continue
+            if (data[first.end_byte:second.start_byte].strip() or
+                    data[second.end_byte:consumer.start_byte].strip() or
+                    consumer.type != "expression_statement"):
+                continue
+            expressions = [child for child in consumer.named_children
+                           if child.type != "comment"]
+            if len(expressions) != 1 or expressions[0].type != "call_expression":
+                continue
+            # Before substitution the consumer itself must be the only call;
+            # nested calls could reorder unrelated side effects.
+            if len(_find(consumer, ("call_expression",))) != 1:
+                continue
+            uses = {}
+            valid = True
+            for local, definition in zip(names, (first, second)):
+                if re.search(rb"&\s*" + re.escape(local) + rb"\b", body_text):
+                    valid = False
+                    break
+                consumer_uses = [ident for ident in _find(consumer, ("identifier",))
+                                 if _txt(data, ident) == local]
+                later = [ident for ident in identifiers
+                         if ident.start_byte >= definition.start_byte and
+                         _txt(data, ident) == local]
+                # assignment LHS + exactly one consumer use, with no later use
+                if len(consumer_uses) != 1 or len(later) != 2:
+                    valid = False
+                    break
+                uses[local] = consumer_uses[0]
+            if not valid:
+                continue
+            line = _line(data, first.start_byte)
+            if not _guided_site(line):
+                continue
+            raw = data[consumer.start_byte:consumer.end_byte]
+            replacements = []
+            for local, producer in zip(names, producers):
+                use = uses[local]
+                replacements.append((use.start_byte - consumer.start_byte,
+                                     use.end_byte - consumer.start_byte,
+                                     _txt(data, producer).strip()))
+            for start, end, replacement in sorted(replacements, reverse=True):
+                raw = raw[:start] + replacement + raw[end:]
+            yield (
+                f"call-arg-pair-inline {names[0].decode()}/{names[1].decode()} "
+                f"L{line}",
+                splice(data, first.start_byte, consumer.end_byte, raw).decode(),
+            )
+
+
 def _unparen(node):
     """Strip expression parentheses while retaining the underlying AST node."""
     while node is not None and node.type == "parenthesized_expression":
@@ -2104,6 +2189,7 @@ RULES = [
     ("extern-array", "extern T NAME; -> extern T NAME[]; + NAME->NAME[0] (-G8 split)", rule_extern_array),
     ("and-nest", "split/merge if(a && b) <-> nested ifs (no else)", rule_and_nest),
     ("temp-inline", "inline a single-use local temp into its use", rule_temp_inline),
+    ("call-arg-pair", "inline adjacent same-call temps into one consumer call", rule_call_arg_pair_inline),
     ("abs-ge", "rewrite (x<0)?-x:x -> (x>=0)?x:-x (the abssi2 fold)", rule_abs_ge),
     ("builtin-abs", "abs(x) -> __builtin_abs(x) under cc1 -fno-builtin", rule_builtin_abs),
     ("or-inplace", "rewrite X = X|C -> X |= C (local-alloc lever)", rule_or_inplace),

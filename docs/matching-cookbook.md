@@ -778,7 +778,8 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   preferences and rotate the scan's address/index registers even though the
   live ranges do not overlap. Give the later scan its own block-scoped
   `short scan_i` when the target uses a different hard-register colouring
-  (ActKAGI). This is a scope/regalloc lever, not a semantic loop change.
+  (ActKAGI; independently confirmed by SwimCheck's splash loop and later
+  CVAhuman scan). This is a scope/regalloc lever, not a semantic loop change.
 - **Index the table (`T[i].f`) rather than walking a pointer (`e++`) when the
   loop touches two or more fields.** With a walking pointer cc1 strength-reduces
   the induction variable so that the LAST field it touches sits at offset 0 —
@@ -1035,6 +1036,16 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   respect store order: publishing the offset results before an independent
   countdown initializer can let sched fill the target's load/call gaps without
   changing the arithmetic (ProcItemDokudango).
+- **Two adjacent call results consumed once by one later call may belong
+  directly in that call's argument list.** Separate
+  `x = rand(); y = rand(); SetSplash(..., (x&7)<<12, (y&7)<<12, ...);`
+  statements finish the first transform before starting the second. Writing
+  both `rand()` expressions directly in `SetSplash` lets cc1 keep the first
+  masked result across the second `jal` and put its `sll` in that call's delay
+  slot—the exact SwimCheck pipeline. `autorules` now performs the paired
+  `call-arg-pair` rewrite atomically only for byte-identical producer calls,
+  distinct nonvolatile locals with one consumer use each, and no later uses;
+  `rtlguide` names the target pattern `call-result-argument-pipeline`.
 - **A narrow stepwise remainder/result temp can end a hard-register conflict
   that an `int` temp creates.** In `t = rand() % 25; t -= 26; t -= other / 20`,
   an `int t` is first used as the `/25` quotient while raw rand `$v0` is still
@@ -1431,6 +1442,12 @@ near entry; `AdtMessageBox` wants the inline form.)
   decrement and promoted value, leaving a copy and one missing instruction.
   ProcItemFire's switch matched only with the full-width host; ProcItemSmoke is
   the same family.
+- **A named snapshot of a full-word global must stay full-width even if its
+  comparisons fit in 16 bits.** Declaring `s32 clock = GameClock;` preserves
+  the target `lw` and one SI pseudo; a `u16`/`s16` snapshot lets combine narrow
+  the read to `lhu`/`lh` and can merge it into a nearby case literal
+  (ProcItemArrow). This is already mechanical through `type-width`: do not
+  infer a local's width solely from the constants compared against it.
 - The **cast type's alignment drives copy code**: `*(VECTOR *)a =
   *(VECTOR *)b` is a word block move (4×`lw`+4×`sw`, `$t2/$t3/$t4/$t1`
   rotation; a 0x50-byte struct assignment becomes the 16-bytes-per-iteration
@@ -2423,6 +2440,12 @@ before local-alloc, so the def is gone before it can bias anything.
 - Cached pointers that live in `$s`-registers across calls
   (`p = &item->param;`) are real source temporaries — indexing the base
   struct directly doesn't allocate the register (see ProcItemManebue).
+- **Initialize a pointer alias at its first path-specific use, not
+  automatically at function entry.** An early `locate = dtL` keeps the alias
+  live across unrelated guards and hoists the gp load. Assigning it only in the
+  successful conflict-object arm places the load at the target use and can
+  keep the alias caller-saved (SwimCheck). Ghidra's entry SSA name is not proof
+  of source placement; follow the first machine use and predecessor set.
 - **But a dead pointer chain may need to remain direct.**
   `human->model->rotate.vy += K` lets cse overwrite/coalesce the dead `human`
   and model intermediates into the target register. Naming
