@@ -727,6 +727,16 @@ class RtlGuideTests(unittest.TestCase):
             ["call-result-argument-pipeline"],
         )
 
+    def test_known_commutative_equality_register_order_signature(self):
+        h = self.hunk(
+            ["lh v0,2164(gp)", "li v1,2310", "bne v0,v1,0x1040"],
+            ["lh v1,2164(gp)", "li v0,2310", "bne v1,v0,0x1040"],
+        )
+        self.assertEqual(
+            rtlguide.known_residual_signatures([h]),
+            ["commutative-equality-register-order"],
+        )
+
     def test_relocated_addiu_is_combine_reassociation(self):
         target = [
             (0x1000, "addiu s0,s0,25"),

@@ -2443,6 +2443,15 @@ before local-alloc, so the def is gone before it can bias anything.
   found the narrow form that removed the final `$v0/$v1` tie. Do this only when
   the local is live on every path reaching the comparison—the early placement
   is a scheduling/lifetime claim, not cosmetic hoisting.
+- **A three-instruction load/literal/equality reversal is a bounded
+  commutative tie.** When target and candidate are identical except
+  `load $v0; li $v1,K; bne $v0,$v1` versus
+  `load $v1; li $v0,K; bne $v1,$v0`, try `K != value` versus `value != K`
+  once (`eq-literal-swap`). If the score is flat, the logical comparison and
+  branch shape are already right; do not widen into unrelated permutations.
+  ActJUMP stayed at its final 3-byte residual under both forms (and swapping
+  inequality arms worsened it), so `rtlguide` now names this exact pattern
+  `commutative-equality-register-order` as an early-stop signature.
 - **A same-address store must go through whichever pointer variable holds the
   base register the asm uses** (`it->param` vs a `pp` alias, even when
   numerically identical): value unaffected, but it decides a delay-slot

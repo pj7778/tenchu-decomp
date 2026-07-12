@@ -134,6 +134,11 @@ SIGNATURE_HINTS = {
         "that call's delay slot; inline the adjacent producer pair into their "
         "common consumer arguments"
     ),
+    "commutative-equality-register-order": (
+        "target and candidate differ only by load/literal homes and reversed "
+        "beq/bne operands; try eq-literal-swap once, then treat a flat result "
+        "as a bounded global-allocation tie"
+    ),
 }
 
 
@@ -479,6 +484,29 @@ def known_residual_signatures(hunks, target_stream=None, ours_stream=None):
         if (_postincrement_working_copy(target, ours) and
                 "postincrement-working-copy" not in found):
             found.append("postincrement-working-copy")
+
+        # One memory load and one literal feed a commutative equality branch,
+        # with their $v0/$v1 homes exchanged as a pair. This is the exact
+        # ActJUMP terminal residual; source operand swapping is the only local
+        # semantic equivalence worth one bounded trial.
+        if len(target) == len(ours) == 3:
+            t0, t1, t2 = target
+            o0, o1, o2 = ours
+            tr0, tr1, tr2 = registers(t0), registers(t1), registers(t2)
+            or0, or1, or2 = registers(o0), registers(o1), registers(o2)
+            if (mnemonic(t0) == mnemonic(o0) and mnemonic(t0) in LOAD_OPS and
+                    shape(t0) == shape(o0) and
+                    mnemonic(t1) == mnemonic(o1) == "li" and
+                    NUM_RE.findall(t1) == NUM_RE.findall(o1) and
+                    mnemonic(t2) == mnemonic(o2) and
+                    mnemonic(t2) in {"beq", "bne"} and
+                    len(tr0) >= 1 and len(or0) >= 1 and
+                    len(tr1) >= 1 and len(or1) >= 1 and
+                    len(tr2) >= 2 and len(or2) >= 2 and
+                    tr0[0] == or1[0] and tr1[0] == or0[0] and
+                    tr2[:2] == list(reversed(or2[:2])) and
+                    "commutative-equality-register-order" not in found):
+                found.append("commutative-equality-register-order")
 
         # Cancel the aligned instructions common to both sides. A lone addiu
         # left on each side, with identical immediate/self-add shape but at a
