@@ -129,9 +129,11 @@ def score_one(name, addr, size):
     ours = our_insns(addr, size)
     if not tgt:
         return None, "no-target"
-    # A genuine byte-match would have been promoted out of NON_MATCHING already,
-    # but check anyway so we never mislabel a real match as a partial.
-    if raw(ORIG, addr, size) == raw(OURS, addr, size) and len(ours) == len(tgt):
+    # Raw byte equality in the function's slot is the authoritative match test.
+    # Do NOT gate it on the instruction-count heuristic: our_insns() reads a
+    # slack window and can over-read, which made a genuine byte-match (e.g.
+    # item_use_gun, later promoted to a plain matched .c) score <100 as a partial.
+    if raw(ORIG, addr, size) == raw(OURS, addr, size):
         return 100.0, "exact"
     t = [stem(x) for x in tgt]
     o = [stem(x) for x in ours]
@@ -167,6 +169,11 @@ def main():
                 p = line.rstrip("\n").split("\t")
                 if len(p) >= 3:
                     prev[p[0]] = line.rstrip("\n")
+    # A full run owns the whole file: drop stale entries for functions that are
+    # no longer NON_MATCHING drafts (e.g. promoted to a plain matched .c).
+    if not args.only:
+        keep = set(names)
+        prev = {k: v for k, v in prev.items() if k in keep}
 
     results = {}
 
