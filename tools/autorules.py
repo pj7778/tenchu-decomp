@@ -2264,6 +2264,44 @@ def rule_case_fence(text, name, span):
                    splice(data, iff.start_byte, iff.end_byte, repl).decode())
 
 
+def rule_if_else_invert(text, name, span):
+    """Invert a two-compound-arm if/else without changing its behavior.
+
+    cc1 lays the source consequence and alternative out asymmetrically.  The
+    exact same control flow with the other body first can therefore require
+    ``if (!(condition)) { no } else { yes }``.  Restrict this guided rule to
+    compound arms so it cannot create a dangling-else ambiguity or disturb
+    statement ownership; the condition is still evaluated exactly once.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    for iff in _find(body, ("if_statement",)):
+        cond = iff.child_by_field_name("condition")
+        yes = iff.child_by_field_name("consequence")
+        no = iff.child_by_field_name("alternative")
+        if cond is None or yes is None or no is None:
+            continue
+        if no.type == "else_clause":
+            arms = [child for child in no.named_children if child.type != "comment"]
+            if len(arms) != 1:
+                continue
+            no = arms[0]
+        if yes.type != "compound_statement" or no.type != "compound_statement":
+            continue
+        line = _line(data, iff.start_byte)
+        if not _guided_site(line):
+            continue
+        inner = _paren_inner(cond) if cond.type == "parenthesized_expression" else cond
+        if inner is None:
+            continue
+        repl = (b"if (!(" + _txt(data, inner).strip() + b")) " +
+                _txt(data, no) + b" else " + _txt(data, yes))
+        yield (f"if-else-invert L{line}",
+               splice(data, iff.start_byte, iff.end_byte, repl).decode())
+
+
 RULES = [
     ("type-width", "flip a local's integer type across width/signedness", rule_type_width),
     ("extern-array", "extern T NAME; -> extern T NAME[]; + NAME->NAME[0] (-G8 split)", rule_extern_array),
@@ -2290,6 +2328,7 @@ AGGRESSIVE_RULES = [
     ("plus-group", "enumerate 3-term + grouping/constant placement (fold lever)", rule_plus_group),
     ("add-prefix-temp", "name a signed 2-term seam in a narrowed 3-term sum", rule_add_prefix_temp),
     ("flag-arm-assign", "move local 0/1 definitions after each arm's comparisons", rule_flag_arm_assign),
+    ("if-else-invert", "invert a compound if/else to swap physical body layout", rule_if_else_invert),
     ("switch-cse-evict", "dead-overwrite an entry index before a fresh switch load", rule_switch_cse_evict),
     ("pointee-volatile", "toggle volatile on a local integer pointer's pointee", rule_pointee_volatile),
     ("loop-fence", "wrap an if/loop in a zero-code one-shot do loop", rule_loop_fence),

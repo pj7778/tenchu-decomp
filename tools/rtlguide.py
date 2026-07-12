@@ -86,7 +86,7 @@ CATEGORY_RULES = {
         "vector-copy-adjust", "subscript-postinc", "switch-cse-evict",
         "pointee-volatile",
     ],
-    "jump/cross-jump": ["case-fence", "and-nest"],
+    "jump/cross-jump": ["case-fence", "and-nest", "if-else-invert"],
     "schedule/delay": [
         "type-width", "loop-fence", "loop-range", "cmp-swap", "cmp-polarity",
         "split-chain", "or-inplace", "vector-copy-adjust", "flag-arm-assign",
@@ -100,7 +100,7 @@ CATEGORY_RULES = {
     "structure/length": [
         "type-width", "and-nest", "temp-inline", "case-fence",
         "vector-copy-adjust", "builtin-abs", "subscript-postinc",
-        "call-arg-pair",
+        "call-arg-pair", "if-else-invert",
     ],
 }
 

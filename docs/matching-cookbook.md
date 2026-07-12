@@ -1442,6 +1442,10 @@ near entry; `AdtMessageBox` wants the inline form.)
   (`(PARAM_ITEM_USE *)buf`, `*(VECTOR *)(buf + 0x10)`, ...). cc1 2.8 does
   **not** share stack slots between sibling scopes, so distinct scoped locals
   can't reproduce the overlap.
+  Large file-format buffers follow the same rule: `LoadCard` and `SaveCard`
+  each have one `u8 block[0x2000]` at sp+0xe0, with the 0x200-byte card header
+  and payload represented by typed casts into that buffer. Ghidra's several
+  arrays are views, not separately allocated objects.
 - **For mutually-exclusive aggregate layouts, make the overlap an explicit
   union instead of hoping scopes share slots.** Run `tools/stackplan.py <Name>`:
   it reads the candidate's outgoing-argument size, the target's first
@@ -1486,6 +1490,12 @@ near entry; `AdtMessageBox` wants the inline form.)
   rotation; a 0x50-byte struct assignment becomes the 16-bytes-per-iteration
   copy loop), while `*(SVECTOR *)a = *(SVECTOR *)b` (align 2) is `lwl/lwr` +
   `swl/swr` pairs.
+  - **An opaque `struct { u8 bytes[N]; }` deliberately carries alignment 1.**
+    Assigning that struct between two byte-buffer views makes `emit_block_move`
+    generate its runtime-alignment path and aligned/unaligned loop family.
+    This exactly recovered LoadCard's 0xe70-byte persistent-state copy,
+    SaveCard's 0x20-byte palette copy, and its three 0x80-byte icon copies.
+    Do not hand-transcribe the resulting `lwl/lwr/swl/swr` loops.
   - **This holds for a member of a parameter union too, even when Ghidra renders
     it as `long`-by-`long` temp copies.** `ef->param.bleed.pos = *pos;` (VECTOR,
     align 4) and `.vec = *vec;` (SVECTOR, align 2) reproduce the target's batched
@@ -2358,7 +2368,10 @@ their definitions before reaching for the permuter.
   assignment after the call may make the visible instruction order look the
   same while deleting that saved register. DrawBlood and FUN_8003562c both
   needed the source-before-call form; use `regalloc.py`/stackplan to decide,
-  not the final instruction address alone.
+  not the final instruction address alone. SaveCard is the smaller inverse-
+  looking example: assigning `chan = 0` before the third `GetArcData` call lets
+  sched move that definition after the call but before the `$v0` result copy.
+  Writing it where the final assembly appears loses that schedule.
 
 - **A named `zero` local can flip a pure register-swap tie — cheaper than the
   permuter.** Comparing a loop bound against a `zero` local (`int zero = 0; …
