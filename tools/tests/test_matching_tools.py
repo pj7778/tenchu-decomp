@@ -62,6 +62,29 @@ int F(void) {
         self.assertEqual(
             self.candidates(autorules.rule_eq_literal_swap, effect), [])
 
+    def test_pointee_volatile_toggles_local_integer_pointer(self):
+        source = """typedef unsigned short u16;
+int F(u16 *input) {
+    u16 *view;
+    view = input;
+    return *view;
+}
+"""
+        added = self.candidates(autorules.rule_pointee_volatile, source)
+        self.assertEqual(len(added), 1)
+        self.assertIn("volatile u16 *view;", added[0][1])
+        removed = self.candidates(autorules.rule_pointee_volatile, added[0][1])
+        self.assertEqual(len(removed), 1)
+        self.assertIn("u16 *view;", removed[0][1])
+        self.assertNotIn("volatile u16 *view;", removed[0][1])
+
+    def test_pointee_volatile_rejects_multiple_declarators(self):
+        source = """typedef unsigned short u16;
+int F(void) { u16 *first, *second; return 0; }
+"""
+        self.assertEqual(
+            self.candidates(autorules.rule_pointee_volatile, source), [])
+
     def test_loop_fence_wraps_an_if(self):
         source = """int F(int value) {
     if (value) value++;

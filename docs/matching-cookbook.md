@@ -795,6 +795,14 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   `short scan_i` when the target uses a different hard-register colouring
   (ActKAGI; independently confirmed by SwimCheck's splash loop and later
   CVAhuman scan). This is a scope/regalloc lever, not a semantic loop change.
+- **Sibling scans in one function can deliberately use different loop forms.**
+  In StartStageSequence the first scans are `while`, but the third reorder loop
+  and the score loop must be `for`. Their otherwise similar bodies are not a
+  reason to normalize the source: only the `for` loop notes make reorg copy the
+  top-of-loop `i+1` into two branch delay slots. Writing all loops as `while`
+  produced the exact frame, registers, and bodies but was exactly two
+  instructions short. When target-only increments sit in branch slots, compare
+  `.loop`/`.dbr` before adding explicit duplicate increments.
 - **Index the table (`T[i].f`) rather than walking a pointer (`e++`) when the
   loop touches two or more fields.** With a walking pointer cc1 strength-reduces
   the induction variable so that the LAST field it touches sits at offset 0 —
@@ -1333,6 +1341,16 @@ though a `nb` variable computed moments earlier holds the numerically identical
 address; spelling it `vh.next = nb;` drops the reload the target has, because cc1
 will not refetch what it can already see live in a register. Provable equality is not
 a licence to reuse the variable.
+
+**A short-lived pointer-to-volatile scalar can preserve a second signed/unsigned
+view and its derived base.** `volatile u16 *stg_think = &stg->think;` forces a
+later `*stg_think` to remain a real halfword load. In StartStageSequence this
+prevented CSE from replacing the second read with the earlier chrid value and
+made its address reuse the target's derived `$s1-10` base rather than rebuild
+`$s2+2`; a nonvolatile pointer deleted the load. Guided autorules now toggles
+this local pointee qualifier as `pointee-volatile`, restricted to plain integer
+pointer declarations. Treat a winning volatile view as evidence that the
+original source required distinct accesses, and keep it site-local.
 
 **Corroborate an otherwise dead target load in another shipped build before
 encoding it.** A load whose result is never consumed can be a real volatile-style

@@ -280,6 +280,52 @@ def rule_type_width(text, name, span):
                 yield (f"{m.group(6)}: {cur}→{rep}", "\n".join(nl))
 
 
+POINTER_DECL = re.compile(
+    r"^(\s*)((?:(?:const|volatile)\s+)*)(" +
+    "|".join(sorted(TYPES, key=len, reverse=True)) +
+    r")(\s+\*+\s*([A-Za-z_]\w*))"
+)
+
+
+def rule_pointee_volatile(text, name, span):
+    """Toggle prefix ``volatile`` on a local integer pointer declaration.
+
+    ``volatile u16 *p`` forces each ``*p`` access to remain a real load/store;
+    without it cse can reuse an earlier signed/unsigned view or reconstruct the
+    address from a different base.  The qualifier applies to the pointee, not
+    the pointer object.  Keep this guided/opt-in and restrict it to one plain
+    local pointer declarator on one line; authoritative scoring decides whether
+    the target demonstrates the volatile accesses.
+    """
+    lines, ranges = body_line_ranges(text, span, name)
+    for rng in ranges:
+        for index, raw, code in uncommented(lines, rng):
+            match = POINTER_DECL.match(code)
+            if not match or not _guided_site(index + 1):
+                continue
+            tail = code[match.end():]
+            if "," in tail.split(";", 1)[0]:
+                continue
+            qualifiers = match.group(2).split()
+            if "volatile" in qualifiers:
+                qualifiers.remove("volatile")
+                tag = "remove"
+            else:
+                qualifiers.append("volatile")
+                tag = "add"
+            qualifier_text = ((" ".join(qualifiers) + " ")
+                              if qualifiers else "")
+            replacement = (match.group(1) + qualifier_text + match.group(3) +
+                           match.group(4))
+            changed = replacement + raw[match.end():]
+            if changed == raw:
+                continue
+            updated = lines[:]
+            updated[index] = changed
+            yield (f"pointee-volatile {tag} {match.group(5)} L{index + 1}",
+                   "\n".join(updated))
+
+
 def _swap_decl_type(raw, m, rep):
     """Replace the type token in `raw` at the position it occupies in the
     matched (comment-stripped) code. We re-find the type token followed by the
@@ -2245,6 +2291,7 @@ AGGRESSIVE_RULES = [
     ("add-prefix-temp", "name a signed 2-term seam in a narrowed 3-term sum", rule_add_prefix_temp),
     ("flag-arm-assign", "move local 0/1 definitions after each arm's comparisons", rule_flag_arm_assign),
     ("switch-cse-evict", "dead-overwrite an entry index before a fresh switch load", rule_switch_cse_evict),
+    ("pointee-volatile", "toggle volatile on a local integer pointer's pointee", rule_pointee_volatile),
     ("loop-fence", "wrap an if/loop in a zero-code one-shot do loop", rule_loop_fence),
     ("loop-range", "wrap 2-4 adjacent statements in one zero-code do loop", rule_loop_range),
     ("loop-boundary-shift", "move the next statement across an existing LOOP_END", rule_loop_boundary_shift),
@@ -2252,7 +2299,7 @@ AGGRESSIVE_RULES = [
     ("case-fence", "if/else -> two-way switch (hard cross-jump CODE_LABEL)", rule_case_fence),
 ]
 
-LINE_RULES = {rule_type_width, rule_extern_array}
+LINE_RULES = {rule_type_width, rule_extern_array, rule_pointee_volatile}
 AST_RULES = {gen for _key, _desc, gen in RULES + AGGRESSIVE_RULES
              if gen not in LINE_RULES}
 

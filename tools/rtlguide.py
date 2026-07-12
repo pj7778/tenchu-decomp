@@ -84,13 +84,14 @@ CATEGORY_RULES = {
     "cse/coalescing": [
         "type-width", "loop-fence", "loop-range", "temp-inline",
         "vector-copy-adjust", "subscript-postinc", "switch-cse-evict",
+        "pointee-volatile",
     ],
     "jump/cross-jump": ["case-fence", "and-nest"],
     "schedule/delay": [
         "type-width", "loop-fence", "loop-range", "cmp-swap", "cmp-polarity",
         "split-chain", "or-inplace", "vector-copy-adjust", "flag-arm-assign",
         "loop-boundary-shift", "identical-arm-fence", "subscript-postinc",
-        "call-arg-pair", "eq-literal-swap",
+        "call-arg-pair", "eq-literal-swap", "pointee-volatile",
     ],
     "combine/expression": [
         "abs-ge", "builtin-abs", "cmp-swap", "cmp-polarity", "min-ternary", "ptr-index-sum",
