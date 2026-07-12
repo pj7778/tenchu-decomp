@@ -68,11 +68,6 @@
  *    vararg materialisation.
  */
 
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/CVAsetup", CVAsetup);
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/CVAsetup", reload_animations__override__prt_80050014_a9b16ba2);
-#else /* NON_MATCHING */
-
 extern u32 *PERSISTENT_EVENT_LIST_THING;
 extern char *STAGE_ANIMATION_PREFICES[];
 extern char D_80013624[]; /* "%sSTAGE%d%c.CAD" */
@@ -168,5 +163,3 @@ void CVAsetup(void)
         LoadTIMpackAndFree(adr);
     }
 }
-
-#endif /* NON_MATCHING */
