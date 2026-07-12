@@ -205,6 +205,7 @@ GP_EXTERNS = {
     "item_use_gun": ["COUNTER_FOR_ITEM_ARRAY_"],
     "SetSmokeS": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
     "SetupAppearance": ["NowStage", "PLAYER_REDUCE_DAMAGE_DUE_TO_ARMOUR", "D_800979A6", "AMD_LOADED_FOR_CHARACTER_KIND"],
+    "StateTransition": ["StrainRatio", "Me_THINK_C", "Pad", "Attrib", "D_80097F1C", "ActionHalt", "FRAMES_UNTIL_END_OF_ALERT", "SR", "Distance", "D_80097F10", "D_80097F18", "D_80097F14", "EngageLevel", "Degree"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
@@ -237,6 +238,7 @@ MASPSX_EXTRA = {
     "GetAreaMapLevel": ["--expand-div"],
     "bow_shoot_logic": ["--expand-div"],
     "Think3escape": ["--expand-div"],
+    "StateTransition": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash

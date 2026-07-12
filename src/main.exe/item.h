@@ -275,7 +275,9 @@ typedef struct
                                     by any matched function yet) */
     u16 sound;                   /* 0xAC (default sound id, OR'd into Sound()'s seid) */
     s16 active_item;             /* 0xAE (item_kind2 the character is using) */
-    u8 pad3[0x4];                /* 0xB0 */
+    s32 field76_0xb0;            /* 0xB0 (packed movement hint/count word;
+                                    StateTransition and the character_state
+                                    twin both read/write it as a whole word) */
     u8 item[0x1A];               /* 0xB4 (carry count per item_kind2 — ProcItemDrop;
                                     DoInfoViewProc's cursor wraps at index 0x19) */
 } Humanoid;

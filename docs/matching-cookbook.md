@@ -1920,6 +1920,51 @@ in `do { … } while (0);` (its back-edge note halts the scan). Reach for this w
 a draft collapses two registers into one that the target keeps distinct
 (ProcItemSmoke).
 
+### An empty extended asm can split an equivalence without emitting code
+
+When the target keeps two equal values in different hard registers but cc1
+coalesces them—or substitutes the original operand back into an operation—an
+empty read/write asm is a last, byte-neutral register-allocation barrier:
+
+```c
+loaded = me->target;
+saved = loaded;
+__asm__("" : "+r"(loaded));
+x = loaded->locate.coord.t[0];
+z = saved->locate.coord.t[2];
+```
+
+The asm emits **zero instructions**, but its opaque `+r` definition means
+`loaded` may differ afterward, so `loaded` and `saved` cannot coalesce.  In
+StateTransition this preserves the target's `lw $v0,...; nop; move $a1,$v0`,
+with the two coordinate reads then consuming `$v0` and `$a1` respectively.
+The same lever stops source propagation through an absolute-value temporary:
+
+```c
+absolute = value;
+if (value < 0) {
+    __asm__("" : "+r"(absolute));
+    absolute = -absolute;
+}
+```
+
+That keeps the target's `move dest,src` in the branch delay slot followed by
+`negu dest,dest`; without the barrier combine rewrites the latter as
+`negu dest,src`.
+
+A related zero-code form invalidates a stale hard-register equivalence:
+
+```c
+__asm__("" ::: "$2");       /* $v0 is no longer known to equal value */
+absolute = value;            /* explicit move $v0,... now survives */
+```
+
+Use the hard-register clobber only after RTL/asmdiff proves the exact missing
+copy, and document it in the matched file: it is compiler-specific and can
+reshape unrelated allocation if placed in a wider live range.  These barriers
+are appropriate only after ordinary temps, statement order, block boundaries,
+and the bounded permuter have failed (StateTransition).
+
 ### A search-flag's initialiser placement flips it callee- vs caller-saved
 
 `found = 0;` written at the **top of the search loop** is loop-invariant → loop.c
@@ -2233,6 +2278,18 @@ before local-alloc, so the def is gone before it can bias anything.
   FileOption case 0xd, CURRENT(2).
 
 ## Shared tails
+
+**A referenced `case` label is a hard cross-jump fence.** gcc-2.8.1
+`jump.c:find_cross_jump` scans backward from two jumps, but immediately gives
+up when stream 1 reaches a `CODE_LABEL` (it merely skips labels in stream 2).
+If two branches should share their final tail but must retain separate copies
+of the check immediately before it, put the exceptional copy behind a real
+switch label.  StateTransition uses a boolean `switch` with `case 0` and
+`default`: the three independently written Findenemies tails still
+cross-jump into one block and carry their already-loaded Humanoid pointer into
+the join, while the case-0 post-alert type check stays distinct from case 1.
+An ordinary `if`, `do{}while(0)`, or an unreferenced alias label did not stop
+that over-merge; the label must survive as an actual branch target.
 
 **A named `goto` label pins cross-jump's choice of primary copy.** When several
 unconditional exits share a tail (e.g. every reject does `x = -1; goto ret;`), route them
