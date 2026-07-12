@@ -141,6 +141,13 @@ The ordered triage — fix categories in THIS order, re-running
      access is proven `%gp_rel`, since that symbol categorically must stay on
      the small-data path. (Structural rules that need diff-reading to place —
      loop shape, switch-vs-ladder, union-offset casts — stay manual.)
+     Autorules does not rewrite the checked-in C while scoring: candidates live
+     under `.shake` and Build.hs consumes them through a per-function source
+     override. Only an accepted result is atomically published. TERM/HUP also
+     tears down the owned build process group, and Linux parent-death handling
+     prevents a dead command frontend from orphaning the search. Still poll a
+     yielded command until it returns an exit status; staging makes interruption
+     safe, not complete.
 4. **A whole-image `./Build check` failure while a function is mid-match is
    EXPECTED, not a regression** — a function of the wrong length shifts every
    later object (even already-matched siblings show huge matchdiff diffs).

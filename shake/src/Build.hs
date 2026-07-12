@@ -475,6 +475,18 @@ nonMatchingFlags src = do
   let names = maybe [] (words . map (\c -> if c == ',' then ' ' else c)) mval
   pure ["-DNON_MATCHING" | mval == Just "all" || takeBaseName src `elem` names]
 
+-- | Matching tools may compile a staged candidate without rewriting the
+-- checked-in source file.  The variable is deliberately per function: changing
+-- one candidate invalidates only that file's preprocessing rule, rather than
+-- making every C object depend on one global override value.
+--
+-- This is an internal tool interface, e.g.
+-- @TENCHU_MATCH_SOURCE_ProcItemFire=.shake/autorules-.../ProcItemFire.c@.
+matchingSource :: FilePath -> Action FilePath
+matchingSource src = do
+  override <- getEnv ("TENCHU_MATCH_SOURCE_" <> takeBaseName src)
+  pure (maybe src id override)
+
 -- | The sha256 of the known-good target @disks/tenchu/main.exe@. Pinned so that
 -- @check@ can detect a swapped/corrupt base image rather than merely proving the
 -- build is self-consistent with whatever splat happened to extract.
@@ -566,11 +578,12 @@ objRules = do
     -- only headers :(. Very sad. Not sure what to do about it. Parse the file
     -- and find INCLUDE_ASM by hand? But maybe it'll already recompile if
     -- anything in mainGen changes.
-    need [targetGen, src]
+    compileSrc <- matchingSource src
+    need [targetGen, compileSrc]
     liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
     nm <- nonMatchingFlags src
     withTempFile $ \makeOut -> do
-      cmd_ cpp (cppFlags <> nm <> ["-MMD", "-MF", makeOut, "-I", takeDirectory header]) src out
+      cmd_ cpp (cppFlags <> nm <> ["-MMD", "-MF", makeOut, "-I", takeDirectory header]) compileSrc out
       neededMakefileDependencies makeOut
 
   processedDir <//> "*.s" %> \out -> do

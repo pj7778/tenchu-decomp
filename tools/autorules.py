@@ -35,10 +35,13 @@ Run inside the nix devShell. Each candidate costs one ./Build (incremental), so
 a run is a few dozen builds — a minute or two, unattended.
 
 Candidate output is line-buffered for monitors. Matching tools share one
-per-worktree lock, and SIGTERM/SIGHUP restore the original source just like
-Ctrl-C, so a yielded or interrupted run cannot silently overlap a permuter.
+per-worktree lock. Candidates compile from a private staged source, so even an
+ungraceful exit cannot strand a speculative rewrite in the checked-in file.
+SIGTERM/SIGHUP also tear down the active build process group, and on Linux a
+parent-death signal prevents a command frontend from orphaning autorules.
 """
-import argparse, glob, hashlib, os, re, signal, subprocess, sys
+import argparse, ctypes, glob, hashlib, os, re, signal, subprocess, sys, tempfile
+from contextlib import contextmanager
 
 from matchlock import MatchToolBusy, matching_tool_lock
 
@@ -49,6 +52,7 @@ SRC = "src/main.exe"
 ASMDIFF = "tools/asmdiff.py"
 MATCHDIFF = "tools/matchdiff.py"
 INVALID = 10**9  # candidate did not compile
+SOURCE_OVERRIDE_PREFIX = "TENCHU_MATCH_SOURCE_"
 
 # rtlguide fills this for the expensive/codegen-specific rule family.  A small
 # tolerance accounts for instructions attributed to an adjacent statement by
@@ -1805,13 +1809,163 @@ AST_RULES = {gen for _key, _desc, gen in RULES + AGGRESSIVE_RULES
 SUMMARY = re.compile(r": (\d+) differing lines in \d+ blocks; "
                      r"length ours (\d+) vs target (\d+)\]")
 
+_PR_SET_PDEATHSIG = 1
+_LIBC = ctypes.CDLL(None, use_errno=True) if sys.platform.startswith("linux") else None
 
-def score(name, partial):
+
+def _source_override_var(name):
+    """Shake's per-function staged-source environment oracle."""
+    return SOURCE_OVERRIDE_PREFIX + name
+
+
+def _set_parent_death_signal(sig):
+    """Ask Linux to signal this process when its current parent exits."""
+    if _LIBC is None:
+        return
+    if _LIBC.prctl(_PR_SET_PDEATHSIG, sig, 0, 0, 0) != 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err))
+
+
+def arm_parent_death_signal():
+    """Prevent a command runner's death from orphaning the autorules driver.
+
+    PR_SET_PDEATHSIG has a small setup race. Checking getppid again closes it:
+    if the original parent disappeared between the two calls, abort before the
+    driver can start a candidate search.
+    """
+    if _LIBC is None:
+        return
+    parent = os.getppid()
+    _set_parent_death_signal(signal.SIGTERM)
+    if os.getppid() != parent:
+        raise InterruptedError("autorules parent exited during startup")
+
+
+@contextmanager
+def interruption_handlers():
+    """Convert frontend termination into a catchable driver interruption."""
+    def interrupted(signum, _frame):
+        raise InterruptedError(f"autorules interrupted by signal {signum}")
+
+    old_handlers = {}
+    for sig in (signal.SIGTERM, getattr(signal, "SIGHUP", None)):
+        if sig is not None:
+            old_handlers[sig] = signal.signal(sig, interrupted)
+    try:
+        yield
+    finally:
+        for sig, handler in old_handlers.items():
+            signal.signal(sig, handler)
+
+
+def _child_parent_death_setup(expected_parent):
+    """Popen child hook: do not leave ./Build alive if autorules is killed."""
+    if _LIBC is None:
+        return
+    # SIGKILL is intentional here. The child has not exec'd yet, so running a
+    # Python signal handler in the post-fork/pre-exec window would be unsafe.
+    _set_parent_death_signal(signal.SIGKILL)
+    if os.getppid() != expected_parent:
+        os._exit(128 + signal.SIGKILL)
+
+
+def _terminate_process_group(proc):
+    """Terminate and reap a subprocess plus every descendant in its session."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        proc.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        pass
+    # The group can outlive its leader: a shell/Shake process may exit on TERM
+    # before one of its compiler children does. Probe by sending KILL even when
+    # wait() already reaped the immediate child; ESRCH means the group is gone.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    if proc.poll() is None:
+        proc.wait()
+
+
+def _run_owned(args, **kwargs):
+    """subprocess.run equivalent whose process group cannot escape an abort.
+
+    `subprocess.run` does not terminate its child when a Python signal handler
+    raises during `wait()`. Autorules used to restore the source in that case
+    while the interrupted Shake/build tree continued independently. Give each
+    command a session, kill the whole group on every exception, and arrange for
+    the immediate child to die even if autorules itself receives SIGKILL.
+    """
+    parent = os.getpid()
+    child_setup = ((lambda: _child_parent_death_setup(parent))
+                   if _LIBC is not None else None)
+    proc = subprocess.Popen(
+        args,
+        start_new_session=True,
+        preexec_fn=child_setup,
+        **kwargs,
+    )
+    try:
+        stdout, stderr = proc.communicate()
+    except BaseException:
+        _terminate_process_group(proc)
+        raise
+    return subprocess.CompletedProcess(args, proc.returncode, stdout, stderr)
+
+
+def _write_text(path, text):
+    with open(path, "w") as stream:
+        stream.write(text)
+
+
+def atomic_write(path, text):
+    """Publish the selected result in one rename, preserving source mode."""
+    directory = os.path.dirname(os.path.abspath(path))
+    mode = os.stat(path).st_mode
+    fd, temporary = tempfile.mkstemp(
+        prefix="." + os.path.basename(path) + ".autorules-", dir=directory,
+        text=True,
+    )
+    try:
+        with os.fdopen(fd, "w") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, mode)
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+@contextmanager
+def staged_candidate(name, original):
+    """Yield a private candidate file consumed through matchingSource."""
+    os.makedirs(os.path.join(ROOT, ".shake"), exist_ok=True)
+    with tempfile.TemporaryDirectory(
+            prefix=f"autorules-{name}-", dir=os.path.join(ROOT, ".shake")) as directory:
+        path = os.path.join(directory, name + ".c")
+        _write_text(path, original)
+        yield path
+
+
+def score(name, partial, source_override=None):
     env = dict(os.environ)
     if partial:
         env["NON_MATCHING"] = name
-    b = subprocess.run(["./Build"], stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL, env=env)
+    override_var = _source_override_var(name)
+    if source_override is None:
+        env.pop(override_var, None)
+    else:
+        env[override_var] = os.path.abspath(source_override)
+    b = _run_owned(["./Build"], stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL, env=env)
     if b.returncode in (126, 127):
         # Could not exec ./Build (execve E2BIG: an env string > 128 KiB, see
         # docs/build-system.md). Scoring that as "this edit does not compile"
@@ -1829,8 +1983,9 @@ def score(name, partial):
     # agent. matchdiff -n reuses this same build (no rebuild). A LENGTH MISMATCH
     # (wrong-length draft, everything shifts) gets a large penalty so the greedy
     # search never prefers it.
-    r = subprocess.run([sys.executable, MATCHDIFF, name, "-n"],
-                       capture_output=True, text=True, env=env)
+    r = _run_owned([sys.executable, MATCHDIFF, name, "-n"],
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                   text=True, env=env)
     out = r.stdout
     if "MATCH!" in out:
         return (True, 0, None, None)
@@ -1846,8 +2001,7 @@ def score(name, partial):
 
 
 def write(path, lines):
-    with open(path, "w") as f:
-        f.write("\n".join(lines))
+    _write_text(path, "\n".join(lines))
 
 
 def _candidates(text, name, partial, rules):
@@ -1865,6 +2019,7 @@ def _candidates(text, name, partial, rules):
 
 
 def greedy_search(path, original, name, partial, rules, base, once=False):
+    """Search using `path` as a private staged source, never the live file."""
     cur_text = original
     applied = []
     match = False
@@ -1873,7 +2028,7 @@ def greedy_search(path, original, name, partial, rules, base, once=False):
         tried = 0
         for _key, label, new_text in _candidates(cur_text, name, partial, rules):
             write(path, new_text.split("\n"))
-            m, sc, _l1, _l2 = score(name, partial)
+            m, sc, _l1, _l2 = score(name, partial, path)
             write(path, cur_text.split("\n"))
             tried += 1
             ds = "  invalid" if sc == INVALID else f"  {base}→{sc}"
@@ -1928,7 +2083,7 @@ def beam_search(path, original, name, partial, rules, base, width, depth,
                 if digest in cache:
                     m, sc = cache[digest]
                 else:
-                    m, sc, _l1, _l2 = score(name, partial)
+                    m, sc, _l1, _l2 = score(name, partial, path)
                     cache[digest] = (m, sc)
                     tried += 1
                 write(path, state["text"].split("\n"))
@@ -2063,34 +2218,19 @@ def main():
     if args.once and beam:
         args.depth = 1
 
-    # exec/session frontends commonly terminate a yielded command with SIGTERM
-    # or SIGHUP.  Python's default SIGTERM action bypasses the exception handler
-    # below and used to leave whichever candidate happened to be under test in
-    # the live source file.  Turn those signals into an exception so restoration
-    # is just as reliable as Ctrl-C.
-    def interrupted(signum, _frame):
-        raise InterruptedError(f"autorules interrupted by signal {signum}")
-
-    old_handlers = {}
-    for sig in (signal.SIGTERM, getattr(signal, "SIGHUP", None)):
-        if sig is not None:
-            old_handlers[sig] = signal.signal(sig, interrupted)
-    try:
+    # Every speculative rewrite lives under .shake and reaches the compiler via
+    # TENCHU_MATCH_SOURCE_<Name>. The checked-in path is published only once, if
+    # an improving result is accepted below.
+    with staged_candidate(name, original) as candidate_path:
         if beam:
             cur_text, base, match, applied = beam_search(
-                path, original, name, partial, rules, base, beam, args.depth,
+                candidate_path, original, name, partial, rules, base, beam, args.depth,
                 allow_regress, args.budget,
             )
         else:
             cur_text, base, match, applied = greedy_search(
-                path, original, name, partial, rules, base, args.once,
+                candidate_path, original, name, partial, rules, base, args.once,
             )
-    except BaseException:
-        write(path, original.split("\n"))  # never leave a half-mutated file
-        raise
-    finally:
-        for sig, handler in old_handlers.items():
-            signal.signal(sig, handler)
 
     print()
     if applied:
@@ -2099,10 +2239,10 @@ def main():
     print("result: MATCH ✓" if match else f"result: {base} differing (residual)")
 
     if args.dry or not applied:
-        write(path, original.split("\n"))
         if applied:
-            print(f"(--dry: reverted {path})")
+            print(f"(--dry: left {path} unchanged)")
     else:
+        atomic_write(path, cur_text)
         print(f"wrote {path}")
     return 0 if match else 1
 
@@ -2110,9 +2250,13 @@ def main():
 if __name__ == "__main__":
     target = next((x for x in sys.argv[1:] if not x.startswith("-")), "-")
     try:
-        with matching_tool_lock("autorules", target):
-            sys.exit(main())
+        with interruption_handlers():
+            arm_parent_death_signal()
+            with matching_tool_lock("autorules", target):
+                sys.exit(main())
     except MatchToolBusy as e:
         sys.exit(f"autorules: {e}")
     except InterruptedError as e:
-        sys.exit(f"autorules: {e}; original source restored")
+        sys.exit(f"autorules: {e}; live source unchanged")
+    except KeyboardInterrupt:
+        sys.exit("autorules: interrupted; live source unchanged")

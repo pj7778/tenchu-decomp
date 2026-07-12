@@ -8,6 +8,8 @@ import contextlib
 import io
 import inspect
 import fcntl
+import signal
+import subprocess
 
 TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if TOOLS not in sys.path:
@@ -312,7 +314,7 @@ int F(void) { volatile int x; x = rand() % 30; return x; }
             path = f.name
             f.write("A")
         try:
-            def fake_score(_name, _partial):
+            def fake_score(_name, _partial, _source_override):
                 with open(path) as f:
                     return scores[f.read()]
 
@@ -327,6 +329,98 @@ int F(void) { volatile int x; x = rand() % 30; return x; }
             self.assertEqual([x[0] for x in applied], ["first", "second"])
         finally:
             os.unlink(path)
+
+
+class AutoRulesLifecycleTests(unittest.TestCase):
+    def test_greedy_search_never_rewrites_the_live_source(self):
+        def candidate(text, _name, _span):
+            if text == "original":
+                yield "improve", "winner"
+
+        with tempfile.TemporaryDirectory() as directory:
+            live = os.path.join(directory, "F.c")
+            staged = os.path.join(directory, "candidate.c")
+            with open(live, "w") as stream:
+                stream.write("original")
+            with open(staged, "w") as stream:
+                stream.write("original")
+
+            def fake_score(_name, _partial, source_override):
+                self.assertEqual(source_override, staged)
+                with open(live) as stream:
+                    self.assertEqual(stream.read(), "original")
+                with open(staged) as stream:
+                    text = stream.read()
+                return (False, {"winner": 1}[text], None, None)
+
+            rules = [("candidate", "", candidate)]
+            with mock.patch.object(autorules, "score", side_effect=fake_score):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    result = autorules.greedy_search(
+                        staged, "original", "F", False, rules, 2,
+                    )
+            self.assertEqual(result[:2], ("winner", 1))
+            with open(live) as stream:
+                self.assertEqual(stream.read(), "original")
+
+    def test_score_passes_per_function_staged_source_to_every_child(self):
+        calls = []
+
+        def fake_run(args, **kwargs):
+            calls.append((args, kwargs["env"]))
+            if args == ["./Build"]:
+                return subprocess.CompletedProcess(args, 0)
+            return subprocess.CompletedProcess(args, 0, "MATCH!\n", "")
+
+        staged = "/tmp/private/F.c"
+        with mock.patch.object(autorules, "_run_owned", side_effect=fake_run):
+            self.assertEqual(autorules.score("F", False, staged)[:2], (True, 0))
+        variable = autorules._source_override_var("F")
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(call[1][variable] == staged for call in calls))
+
+    def test_baseline_score_ignores_an_inherited_candidate_override(self):
+        calls = []
+
+        def fake_run(args, **kwargs):
+            calls.append(kwargs["env"])
+            if args == ["./Build"]:
+                return subprocess.CompletedProcess(args, 0)
+            return subprocess.CompletedProcess(args, 0, "MATCH!\n", "")
+
+        variable = autorules._source_override_var("F")
+        with mock.patch.dict(os.environ, {variable: "/stale/candidate.c"}), \
+                mock.patch.object(autorules, "_run_owned", side_effect=fake_run):
+            autorules.score("F", False)
+        self.assertTrue(all(variable not in env for env in calls))
+
+    def test_run_owned_terminates_process_group_on_interruption(self):
+        process = mock.Mock(pid=1234)
+        process.communicate.side_effect = InterruptedError("stop")
+        with mock.patch.object(autorules.subprocess, "Popen", return_value=process), \
+                mock.patch.object(autorules, "_terminate_process_group") as terminate:
+            with self.assertRaises(InterruptedError):
+                autorules._run_owned(["worker"])
+        terminate.assert_called_once_with(process)
+
+    def test_teardown_kills_descendants_after_group_leader_exits(self):
+        process = mock.Mock(pid=1234)
+        process.wait.return_value = 0
+        process.poll.return_value = 0
+        with mock.patch.object(autorules.os, "killpg") as killpg:
+            autorules._terminate_process_group(process)
+        self.assertEqual(
+            killpg.call_args_list,
+            [mock.call(1234, signal.SIGTERM), mock.call(1234, signal.SIGKILL)],
+        )
+
+    def test_parent_death_setup_closes_the_setup_race(self):
+        with mock.patch.object(autorules, "_LIBC", object()), \
+                mock.patch.object(autorules.os, "getppid", side_effect=[10, 11]), \
+                mock.patch.object(autorules, "_set_parent_death_signal") as arm:
+            with self.assertRaises(InterruptedError):
+                autorules.arm_parent_death_signal()
+        arm.assert_called_once_with(signal.SIGTERM)
 
 
 class RtlGuideTests(unittest.TestCase):
@@ -735,6 +829,16 @@ sw $2,24($sp)
 
 
 class BuildConfigurationTests(unittest.TestCase):
+    def test_matching_source_override_is_per_function_and_used_by_cpp(self):
+        path = os.path.join(os.path.dirname(TOOLS), "shake", "src", "Build.hs")
+        with open(path) as f:
+            build = f.read()
+        self.assertIn(
+            'getEnv ("TENCHU_MATCH_SOURCE_" <> takeBaseName src)', build,
+        )
+        self.assertIn("compileSrc <- matchingSource src", build)
+        self.assertRegex(build, r"cmd_ cpp .* compileSrc out")
+
     def test_expand_div_table_matches_build(self):
         path = os.path.join(os.path.dirname(TOOLS), "shake", "src", "Build.hs")
         with open(path) as f:

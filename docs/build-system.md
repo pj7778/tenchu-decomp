@@ -175,6 +175,15 @@ Don't chase the fd/tmp red herring — wrap the whole invocation, e.g.
 `nix develop --command bash -c './Build check'`. This applies to every tool that
 shells out to `./Build` (`matchdiff`, `asmdiff`, `autorules`, `gpsyms`).
 
+**Matching-source overrides are an internal safety interface.** Build.hs reads
+`TENCHU_MATCH_SOURCE_<Function>` in only that function's preprocessing rule and,
+when set, compiles the named staged `.c` file instead of
+`src/main.exe/<Function>.c`. The per-function variable is important: one
+changing candidate must not invalidate every C preprocessing rule.
+`tools/autorules.py` uses this interface to keep all speculative rewrites under
+`.shake`, then atomically publishes only the selected result. It is not a
+user-facing nonmatching-build mode; use `NON_MATCHING=<Function>` for that.
+
 **Two nixpkgs on purpose.** `flake.nix` has two nixpkgs inputs:
 
 - `nixpkgs` — **pinned to 2023-03** and load-bearing for byte-exactness. The

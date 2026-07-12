@@ -86,7 +86,7 @@ Everything the pipeline needs, in the order you touch it:
 | `tools/maspsxflags.py <Name> --write` | preferred combined setup pass: sync gp externs and detect/sync ASPSX guarded variable division's `--expand-div` flag from the target asm. |
 | `tools/clonematch.py <Matched>` | write the `.c` for exact byte-identical unmatched siblings (verified). |
 | `tools/matchdiff.py <Name>` / `tools/asmdiff.py <Name>` | iterate. matchdiff = whole-image gate; asmdiff = aligned view for big/split functions. |
-| `tools/autorules.py <Name>` | once the draft compiles: mechanically sweep the *local* cookbook rules and greedily keep what shrinks the authoritative byte diff. It recognizes target-gp anti-sites, aggregate VECTOR copies, and high-word short spellings; `--guided` can fence one statement or a safe 2–4-statement range, try real case labels, and enumerate the six three-term addition trees while preserving nonconstant/call order. Output is line-buffered for monitoring, interrupted runs restore the source, and the per-worktree matching lock prevents overlap with other build-driving tools. It never emits inline asm. |
+| `tools/autorules.py <Name>` | once the draft compiles: mechanically sweep the *local* cookbook rules and greedily keep what shrinks the authoritative byte diff. It recognizes target-gp anti-sites, aggregate VECTOR copies, and high-word short spellings; `--guided` can fence one statement or a safe 2–4-statement range, try real case labels, and enumerate the six three-term addition trees while preserving nonconstant/call order. Output is line-buffered for monitoring. Candidates compile from a private staged source; only the selected result is atomically published. Owned build process groups, Linux parent-death handling, and the per-worktree matching lock prevent interrupted/orphaned work from mutating or racing the live source. It never emits inline asm. |
 | `tools/permute.py <Name>` | decomp-permuter for pure register-allocation ties (the stochastic search; autorules is its deterministic, explainable complement). It shares the per-worktree matching lock, so an accidental launch during autorules/diff/rtlguide fails immediately with the owning PID/target instead of producing a torn build. |
 | `tools/dedupe-symbols.py [--check]` | one name per address in `config/symbols.main.exe.txt`. splat >= 0.4x refuses duplicates, and our file cannot disambiguate them (it doubles as an ld script, no comment syntax). Re-run after any Ghidra symbol import. |
 | `tools/coverage.py [--all]` | code claimed by NO function — finds under-sized `functions.tsv` entries (a truncated carve still builds green; the tail becomes a `.data` blob that defines the `.L` labels, so nothing complains). `LoadCard` and `FUN_800593a0` are the two in game code. |
@@ -291,6 +291,12 @@ rules**:
   hand-wrote prompts → `matcher-prompt.py`. **Fix a tool bug centrally the
   moment the first agent hits it** — don't let N parallel agents each re-diagnose
   it (the `reverse.py` carve-drop cost ~every agent tokens before it was fixed).
+  Treat process lifecycle as part of tool correctness: a backup/restore wrapper
+  is insufficient when its invoking shell can die while the Python driver or a
+  build descendant survives. `autorules` now compiles candidates through
+  per-function staged-source Shake overrides, owns/reaps build process groups,
+  and arms a Linux parent-death signal. New mutating search tools should use the
+  same staged-then-atomic-publish boundary.
 - A transform that sometimes helps but is categorically wrong at a target site
   needs an **asm/RTL anti-oracle**, not a wider blind sweep. The extern-array
   rule now parses target `%gp_rel` operands and excludes those symbols. Prefer
@@ -397,6 +403,9 @@ lens.
   such as autorules→matchdiff `-n`, and kernel-released on exit. It prevents new
   collisions; it does not turn a yielded session into a completed command—keep
   polling the original session.
+  `autorules` additionally keeps speculative C under `.shake` and publishes a
+  winner with one atomic rename, so even SIGKILL cannot leave a candidate in
+  `src/`. Its normal TERM/HUP path also kills and reaps the active build session.
 
 - **Never hand-edit `config/splat.main.exe.yaml` carves** — use `reverse.py`;
   the data-offset math is easy to get wrong (bit me twice). It preserves
