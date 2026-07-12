@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -43,7 +44,529 @@
  *     extern struct SVECTOR ConflictDistance;
  * END PSX.SYM */
 
+/*
+ * STATUS: NON_MATCHING — exact target length (656 instructions / 2624
+ * bytes), with 6 differing bytes in two adjacent, independent loads:
+ *
+ *   target: lh v1,88(fp); lh a3,30(a2)
+ *   ours:   lh a3,30(a2); lh v1,88(fp)
+ *
+ * Build this guarded draft with `NON_MATCHING=DefaultActionHumanoid ./Build`.
+ * The remaining values and all later consumers use the target registers;
+ * only sched2's order differs.  Splitting `object->id` into either an s16
+ * or s32 local, changing declaration order, and scheduler-loop fencing were
+ * tested and reverted: s16 is equivalence-substituted and remains identical,
+ * while s32 adds a load-hazard nop and perturbs the collision-pointer allocno.
+ */
+
+typedef struct
+{
+    s32 level;
+    s32 height;
+    u16 attrib;
+    s16 degree;
+    u8 vector;
+    u8 direct;
+    u8 angleL;
+    u8 angleH;
+    struct AreaNodeType *area;
+    struct NodeIndexType *index;
+} HumanMapVector;
+
+typedef struct
+{
+    ModelType *model;
+    VECTOR position;
+    SVECTOR offset;
+    SVECTOR size;
+    void *common;
+    u8 result[64];
+    u8 pad[0x10];
+} HumanConflictObject;
+
+extern struct AreaNodeType *FieldArea;
+extern struct NodeIndexType *FieldIndex;
+extern HumanConflictObject ConflictObject[];
+extern u32 *GlobalAreaMap;
+extern Humanoid *StagePlayer;
+extern s16 RefrectMove[16][2];
+extern s16 RefrectVector[16];
+extern SVECTOR ConflictDistance;
+
+extern s32 GetAreaMapVector(u32 *area, HumanMapVector *map, VECTOR *position,
+                           s32 width, s16 mode);
+extern s16 GetConflictResult(ModelType *model, s16 index);
+extern s16 GetDirection(s32 x, s32 z, s16 rotate);
+extern s16 SetNowMotion(Humanoid *human, s16 motion, s16 move);
+extern s16 Sound(Humanoid *human, s16 id);
+extern s32 rsin(s32 angle);
+extern s32 rcos(s32 angle);
+
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DefaultActionHumanoid", DefaultActionHumanoid);
+#else
+short DefaultActionHumanoid(Humanoid *human)
+{
+    HumanMapVector *map;
+    SVECTOR *vector;
+    VECTOR *locate;
+    VECTOR *slocate;
+    ModelType *object;
+    long i;
+    long xx;
+    long yy;
+    long zz;
+    long ry;
+    long direction;
+
+    i = 1;
+    map = (HumanMapVector *)&human->map;
+    locate = human->locate;
+    vector = &human->vector;
+    object = *human->model->object;
+    human->rotate->vy &= 0xfff;
+    human->attribute = (u8)human->attribute;
+    slocate = (VECTOR *)((u8 *)human + 0x48);
+
+    if (map->vector == 0)
+    {
+        i = 0x11;
+    }
+    if (human->type != 0x85)
+    {
+        FieldArea = map->area;
+        FieldIndex = map->index;
+    }
+
+    {
+        VECTOR position;
+        VECTOR *wide;
+        HumanMapVector *call_map;
+
+        if (human->status == 7)
+        {
+            goto use_conflict_position;
+        }
+        call_map = map;
+        if (human->status == 0xb)
+        {
+            goto use_locate_position;
+        }
+        wide = locate;
+        if (map->height != 0)
+        {
+            goto probe_map;
+        }
+        {
+            s32 abs_x;
+            s32 abs_z;
+
+            abs_x = vector->vx;
+            if (abs_x < 0)
+            {
+                abs_x = -abs_x;
+            }
+            if (abs_x >= 0x51)
+            {
+                goto use_conflict_position;
+            }
+            abs_z = vector->vz;
+            if (abs_z < 0)
+            {
+                abs_z = -abs_z;
+            }
+            if (abs_z < 0x51)
+            {
+                goto probe_map;
+            }
+        }
+
+use_conflict_position:
+        position = ConflictObject[(*human->model->object)->id].position;
+        position.vy = locate->vy;
+        GetAreaMapVector(GlobalAreaMap, map, &position, human->width, i);
+        goto map_probe_done;
+use_locate_position:
+        wide = locate;
+probe_map:
+        GetAreaMapVector(GlobalAreaMap, call_map, wide, human->width, i);
+map_probe_done:
+        ;
+    }
+
+    if (map->attrib & 2)
+    {
+        human->attribute |= 0x200;
+        if (vector->vy < 0)
+        {
+            vector->vy = 0;
+        }
+        map->height = 1;
+    }
+
+    if (map->height > 0 && (human->attribute & 0x20) == 0)
+    {
+        human->attribute |= 0x100;
+        if (vector->vy < 400)
+        {
+            vector->vy += 20;
+        }
+        if (map->attrib & 0x200)
+        {
+            if (map->height < 25000 && human->life != 0)
+            {
+                if (human == StagePlayer)
+                {
+                    Sound(human, 0x49);
+                    SetCameraMode(14);
+                }
+                else
+                {
+                    Sound(human, 8);
+                }
+                human->life = 0;
+                if ((human->type & 0xf0) != 0x80 && human != StagePlayer)
+                {
+                    ReqLifeBar(human);
+                }
+            }
+            goto ground_motion;
+        }
+    }
+    else
+    {
+        if (vector->vy > 0 || map->level == (s32)0x80000000)
+        {
+            if ((map->attrib & 0x200) == 0)
+            {
+                human->attribute |= 0x800;
+            }
+            if (map->level != (s32)0x80000000)
+            {
+                locate->vy = map->level;
+            }
+            vector->vy = 0;
+        }
+ground_motion:
+        if ((map->attrib & 0x200) && map->height == 0 && human->status != 0x11)
+        {
+            SetNowMotion(human, 0x1100, 1);
+        }
+    }
+
+    if (*(s32 *)&map->vector & (s32)0xffff0000)
+    {
+        u16 attribute;
+
+        attribute = human->attribute;
+        human->attribute = attribute | 0x2000;
+        if (map->height < -450)
+        {
+            human->attribute = attribute | 0x3000;
+            locate->vy = map->level;
+        }
+        else if (map->height < 0)
+        {
+            locate->vy = map->level;
+        }
+    }
+
+    if (map->vector != 0)
+    {
+        human->attribute |= 0x400;
+        zz = map->level;
+        if (zz == (s32)0x80000000)
+        {
+            {
+                HumanMapVector mv;
+                VECTOR position;
+                s32 dx;
+                s32 dz;
+                s32 coefficient_x;
+                s32 coefficient_z;
+
+                position = ConflictObject[(*human->model->object)->id].position;
+                locate->vx = slocate->vx;
+                locate->vz = slocate->vz;
+                locate->vy = slocate->vy;
+                position.vy = locate->vy - 500;
+                GetAreaMapVector(GlobalAreaMap, &mv, &position, 300, 4);
+
+                coefficient_x = RefrectMove[mv.vector][0];
+                dx = position.vx - locate->vx;
+                locate->vx += coefficient_x * ((dx >= 0) ? dx : -dx);
+
+                coefficient_z = RefrectMove[mv.vector][1];
+                dz = position.vz - locate->vz;
+                locate->vz += coefficient_z * ((dz >= 0) ? dz : -dz);
+
+                if (mv.level != zz && locate->vy < mv.level)
+                {
+                    locate->vy = (vector->vy > 0)
+                        ? locate->vy + vector->vy
+                        : locate->vy + 20;
+                }
+                else
+                {
+                    vector->vz = 0;
+                    vector->vx = 0;
+                }
+            }
+        }
+        else
+        {
+            s32 angle_abs;
+
+            direction = map->vector;
+            ry = RefrectVector[direction];
+            if (ry == -1)
+            {
+                if (vector->vx != 0)
+                {
+                    goto reflect_motion;
+                }
+                if (vector->vz == 0)
+                {
+                    goto reflect_width;
+                }
+reflect_motion:
+                xx = -vector->vx;
+                zz = -vector->vz;
+                goto apply_reflection;
+reflect_width:
+                i = ((s32)((u16)human->width << 16)) >> 18;
+                xx = RefrectMove[direction][0] * i;
+                zz = RefrectMove[direction][1] * i;
+apply_reflection:
+                locate->vx += xx;
+                locate->vz += zz;
+            }
+            else
+            {
+                xx = (rsin(ry) * human->width) >> 14;
+                yy = rcos(ry);
+                i = human->rotate->vy - ry;
+                zz = (yy * human->width) >> 14;
+                angle_abs = (i >= 0) ? i : -i;
+                if (angle_abs >= 2000)
+                {
+                    i = (i > 0) ? i - 0x1000 : i + 0x1000;
+                }
+                angle_abs = (i >= 0) ? i : -i;
+                if (angle_abs < 0x708 || human != StagePlayer || map->height != 0)
+                {
+                    if (map->angleH == 0 &&
+                        (human->status == 2 || human->status == 6))
+                    {
+                        {
+                            SVECTOR *rotate;
+                            s32 rotate_y;
+
+                            rotate = human->rotate;
+                            rotate_y = rotate->vy;
+                            if (i > 0)
+                            {
+                                rotate_y -= 0x20;
+                            }
+                            else
+                            {
+                                rotate_y += 0x20;
+                            }
+                            rotate->vy = rotate_y;
+                        }
+                        MoveHumanoid(human, human->motion->motion->orderspd,
+                                     human->motion->motion->sidespd);
+                    }
+                    xx >>= 1;
+                    zz >>= 1;
+                }
+                locate->vx -= xx;
+                locate->vz -= zz;
+            }
+        }
+    }
+
+    if (object->attribute & 0x8000)
+    {
+        while (1)
+        {
+            i = GetConflictResult(object, -1);
+            if (i < 0)
+            {
+                break;
+            }
+            if (ConflictObject[i].common == human)
+            {
+                continue;
+            }
+            if (ConflictObject[i].size.pad & 1)
+            {
+                if (human->status != 0x11)
+                {
+                    u16 attribute;
+
+                    attribute = human->attribute;
+                    human->vector.pad = i;
+                    human->attribute = attribute | 0x4000;
+                }
+                continue;
+            }
+            if ((ConflictObject[i].size.pad & 8) == 0 &&
+                (human->attribute & 0x20) == 0)
+            {
+                s32 top;
+                s32 object_y;
+                s32 size_y;
+                HumanConflictObject *conflict;
+
+                human->attribute |= 0x8000;
+                xx = locate->vx;
+                zz = locate->vz;
+
+                locate->vx = xx - ((ConflictDistance.vx >= 0)
+                    ? human->width : -human->width) / 8;
+
+                locate->vz -= ((ConflictDistance.vz >= 0)
+                    ? human->width : -human->width) / 8;
+
+                do
+                {
+                    do
+                    {
+                        conflict = &ConflictObject[i];
+                    }
+                    while (0);
+                }
+                while (0);
+                size_y = conflict->size.vy;
+                yy = conflict->position.vy;
+                object_y = ConflictObject[object->id].position.vy;
+                top = yy - size_y;
+                if (object_y < top)
+                {
+                    locate->vx = xx;
+                    locate->vz = zz;
+                    if (conflict->size.pad & 4)
+                    {
+                        vector->vy = 0;
+                        map->level = top;
+                        locate->vy = top;
+                        map->height = 0;
+                        map->attrib &= 0xff80;
+                        human->attribute &= 0x7eff;
+                    }
+                    else
+                    {
+                        vector->vy = 10;
+                    }
+                    continue;
+                }
+                if (yy + size_y < object_y &&
+                    (human->status == 0 || human->status == 2 ||
+                     human->status == 5 || human->status == 6))
+                {
+                    s32 direction_abs;
+
+                    zz = GetDirection(ConflictObject[i].position.vx - locate->vx,
+                                      ConflictObject[i].position.vz - locate->vz,
+                                      human->locate->vy);
+                    do
+                    {
+                        do
+                        {
+                            do
+                            {
+                                do
+                                {
+                                    do
+                                    {
+                                        do
+                                        {
+                                            do
+                                            {
+                                                do
+                                                {
+                                                    do
+                                                    {
+                                                        do
+                                                        {
+                                                            do
+                                                            {
+                                                                do
+                                                                {
+                                                                    do
+                                                                    {
+                                                                        do
+                                                                        {
+                                                                            direction_abs = zz >= 0 ? zz : -zz;
+                                                                        }
+                                                                        while (0);
+                                                                    }
+                                                                    while (0);
+                                                                }
+                                                                while (0);
+                                                            }
+                                                            while (0);
+                                                        }
+                                                        while (0);
+                                                    }
+                                                    while (0);
+                                                }
+                                                while (0);
+                                            }
+                                            while (0);
+                                        }
+                                        while (0);
+                                    }
+                                    while (0);
+                                    direction = 0x1003;
+                                }
+                                while (0);
+                                if (direction_abs < 0x44c)
+                                {
+                                    direction = 0x1000;
+                                }
+                            }
+                            while (0);
+                            SetNowMotion(human, direction, 1);
+                        }
+                        while (0);
+                        Sound(human, 6);
+                    }
+                    while (0);
+                }
+
+                {
+                    SVECTOR *rotate;
+                    s32 rotate_y;
+
+                    rotate = human->rotate;
+                    yy = rotate->vy;
+                    if (i & 1)
+                    {
+                        rotate_y = yy + human->turn;
+                    }
+                    else
+                    {
+                        rotate_y = yy - human->turn;
+                    }
+                    rotate->vy = rotate_y;
+                }
+                if (human->vector.vx != 0 || human->vector.vz != 0)
+                {
+                    MoveHumanoid(human, human->motion->motion->orderspd,
+                                 human->motion->motion->sidespd);
+                    if (human->trace != 0 && (human->attribute & 8))
+                    {
+                        human->trace->count = -20;
+                    }
+                }
+            }
+        }
+    }
+    return human->attribute;
+}
+#endif
 
 // triage: VERY-HARD — 656 insns, mul/div, 7 loop, 10 callees, ~0.05 to ProcItemDrop
 // likely-relevant cookbook sections:
