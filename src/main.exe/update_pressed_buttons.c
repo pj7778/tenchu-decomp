@@ -1,44 +1,42 @@
 #include "common.h"
 #include "main.exe.h"
 
+/*
+ * Maintains one controller's current/previous/new input words and the recent
+ * non-zero input history. `frames_since_new_input` is signed deliberately:
+ * the increment-and-negative test is the original input-disable gate.
+ */
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/update_pressed_buttons", update_pressed_buttons);
+#else
+s16 update_pressed_buttons(some_character_button_values *buttons, u16 pressed)
+{
+    s16 i;
+    u16 previously_pressed;
 
-// triage: EASY — 47 insns, 1 loop, 0 callees, ~0.02 to FUN_800565f0
-// likely-relevant cookbook sections:
-//   - Loops: 1 back-edge(s) — for/while/do vs goto shape
+    if (buttons->frames_since_new_input < 6 && ++buttons->frames_since_new_input < 0) {
+        pressed = 0;
+    }
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// int FUN_8001b1a4(ushort *param_1,ushort param_2)
-//
-// {
-//   ushort uVar1;
-//   short sVar2;
-//   int iVar3;
-//
-//   uVar1 = param_1[3];
-//   if (((short)param_1[3] < 6) &&
-//      (param_1[3] = uVar1 + 1, (int)((uint)(ushort)(uVar1 + 1) << 0x10) < 0)) {
-//     param_2 = 0;
-//   }
-//   uVar1 = *param_1;
-//   *param_1 = param_2;
-//   param_1[1] = uVar1;
-//   param_1[2] = param_2 & ~uVar1;
-//   if ((param_1[1] != param_2) && (param_2 != 0)) {
-//     iVar3 = 3;
-//     if (5 < (short)param_1[3]) {
-//       param_1[4] = 0;
-//     }
-//     do {
-//       sVar2 = (short)iVar3;
-//       iVar3 = iVar3 + -1;
-//       param_1[sVar2 + 4] = param_1[sVar2 + 3];
-//     } while (0 < iVar3 * 0x10000);
-//     param_1[3] = 0;
-//     param_1[4] = *param_1;
-//   }
-//   return (int)(short)param_2;
-// }
+    previously_pressed = buttons->currently_pressed;
+    buttons->currently_pressed = pressed;
+    buttons->pressed_last_frame = previously_pressed;
+    buttons->newly_pressed = pressed & ~previously_pressed;
+
+    if (buttons->pressed_last_frame != pressed && pressed != 0) {
+        if (buttons->frames_since_new_input > 5) {
+            buttons->buttons_pressed_in_s16_succession[0] = 0;
+        }
+
+        for (i = 3; i > 0; i--) {
+            buttons->buttons_pressed_in_s16_succession[i] =
+                buttons->buttons_pressed_in_s16_succession[i - 1];
+        }
+
+        buttons->frames_since_new_input = 0;
+        buttons->buttons_pressed_in_s16_succession[0] = buttons->currently_pressed;
+    }
+
+    return pressed;
+}
+#endif
