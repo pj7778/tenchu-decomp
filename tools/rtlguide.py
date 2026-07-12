@@ -128,6 +128,11 @@ SIGNATURE_HINTS = {
         "split the path result from the final flag at the CFG join, then inspect "
         ".lreg/.greg before trying a bounded liveness fence"
     ),
+    "enclosing-global-field-load": (
+        "target keeps distinct base/value registers for a global load while "
+        "the candidate folds both into one; query the scalar name/address with "
+        "tools/symnear.py and try the proven nonzero field of an enclosing global"
+    ),
     "builtin-abs-inline": (
         "candidate calls abs but target has bgez/negu inline; spell the site "
         "__builtin_abs(...) because the matching cc1 receives -fno-builtin"
@@ -487,6 +492,30 @@ def _path_result_copy_join(target, ours):
     return False
 
 
+def _enclosing_global_field_load(target, ours):
+    """Target split-base global load vs candidate same-register scalar load."""
+    if len(target) != 2 or len(ours) != 2:
+        return False
+    target_high, target_load = target
+    ours_high, ours_load = ours
+    target_high_regs = registers(target_high)
+    target_load_regs = registers(target_load)
+    ours_high_regs = registers(ours_high)
+    ours_load_regs = registers(ours_load)
+    return (
+        mnemonic(target_high) == mnemonic(ours_high) == "lui" and
+        mnemonic(target_load) == mnemonic(ours_load) and
+        mnemonic(target_load) in LOAD_OPS and
+        shape(target_high) == shape(ours_high) and
+        shape(target_load) == shape(ours_load) and
+        len(target_high_regs) >= 1 and len(target_load_regs) >= 2 and
+        len(ours_high_regs) >= 1 and len(ours_load_regs) >= 2 and
+        target_load_regs[1] == target_high_regs[0] and
+        target_load_regs[0] != target_high_regs[0] and
+        ours_load_regs[0] == ours_load_regs[1] == ours_high_regs[0]
+    )
+
+
 def _call_result_argument_pipeline(target, ours):
     """Target keeps first call result across a second call via its delay slot."""
     def has_pipeline(stream):
@@ -537,6 +566,9 @@ def known_residual_signatures(hunks, target_stream=None, ours_stream=None):
         if (_postincrement_working_copy(target, ours) and
                 "postincrement-working-copy" not in found):
             found.append("postincrement-working-copy")
+        if (_enclosing_global_field_load(target, ours) and
+                "enclosing-global-field-load" not in found):
+            found.append("enclosing-global-field-load")
 
         # One memory load and one literal feed a commutative equality branch,
         # with their $v0/$v1 homes exchanged as a pair. This is the exact

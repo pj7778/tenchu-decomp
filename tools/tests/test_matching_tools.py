@@ -24,6 +24,7 @@ import permute
 import regalloc
 import rtlguide
 import stackplan
+import symnear
 
 
 class AutoRulesAdvancedTests(unittest.TestCase):
@@ -735,6 +736,16 @@ class RtlGuideTests(unittest.TestCase):
             [],
         )
 
+    def test_known_enclosing_global_field_load_signature(self):
+        h = self.hunk(
+            ["lui v0,0x8009", "lw v1,-24828(v0)"],
+            ["lui v1,0x8009", "lw v1,-24828(v1)"],
+        )
+        self.assertEqual(
+            rtlguide.known_residual_signatures([h]),
+            ["enclosing-global-field-load"],
+        )
+
     def test_known_builtin_abs_signature(self):
         target = [
             (0x1000, "bgez a0,0x1010"),
@@ -899,6 +910,32 @@ class RtlGuideTests(unittest.TestCase):
         out = rtlguide._jsonable(report)
         self.assertNotIn("target", out)
         self.assertEqual(out["hunks"][0]["target"], [[1, "nop"]])
+
+
+class SymbolNeighborTests(unittest.TestCase):
+    def test_parse_resolve_and_bounded_candidates(self):
+        text = """CamState = 0x80089EF0;
+CURRENTLY_SELECTED = 0x80089F00;
+SCALAR_ALIAS = 0x80089F04;
+AFTER = 0x80089F08;
+"""
+        with tempfile.NamedTemporaryFile("w+", delete=False) as stream:
+            path = stream.name
+            stream.write(text)
+        try:
+            symbols = symnear.load_symbols(path)
+            address = symnear.resolve_query("SCALAR_ALIAS", symbols)
+            self.assertEqual(address, 0x80089F04)
+            self.assertEqual(
+                symnear.nearby(symbols, address, before=0x20, after=0),
+                [
+                    (0x80089EF0, "CamState", 0x14),
+                    (0x80089F00, "CURRENTLY_SELECTED", 4),
+                    (0x80089F04, "SCALAR_ALIAS", 0),
+                ],
+            )
+        finally:
+            os.unlink(path)
 
 
 class MatchDiffArtifactTests(unittest.TestCase):

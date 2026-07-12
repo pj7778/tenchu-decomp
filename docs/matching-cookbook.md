@@ -1931,6 +1931,14 @@ reaching the same pointer as a NONZERO member of its enclosing struct
 `%hi`) is the only residual, switch between the alias spelling and the struct-member
 spelling (`CheckCheatCodes`, last 2 bytes).
 
+The same rule applies to scalar aliases at nonzero offsets. `StageSequence`
+initially read the scalar symbol at `0x80089f04`, which produced `lui v1; lw
+v1,...(v1)`. The target's `lui v0; lw v1,...(v0)` instead came from
+`CamState.mode` at `CamState + 0x14`. When that two-instruction residual
+appears, run `tools/symnear.py <scalar-name-or-address>` to list earlier fixed
+symbols and their exact offsets, then validate the candidate struct field.
+`rtlguide` labels the shape `enclosing-global-field-load`.
+
 ### A shared `f(0, x)` tail vs two explicit `f(0, lit)` calls place the const arg differently
 
 A shared `f(0, x)` after an if/else hoists one `$a0 = 0` into the merged call's delay
