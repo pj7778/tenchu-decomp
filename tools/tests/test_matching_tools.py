@@ -19,6 +19,7 @@ import autorules
 import matchlock
 import matchdiff
 import maspsxflags
+import merge_metadata_conflicts
 import permute
 import regalloc
 import rtlguide
@@ -1156,6 +1157,75 @@ class BuildConfigurationTests(unittest.TestCase):
         for name, values in pattern.findall(block):
             found[name] = __import__("re").findall(r'"([^"]+)"', values)
         self.assertEqual(found, permute.GP_EXTERNS)
+
+
+class MetadataConflictMergeTests(unittest.TestCase):
+    START = "<" * 7 + " HEAD"
+    MIDDLE = "=" * 7
+    END = ">" * 7 + " worker"
+
+    def test_build_metadata_conflict_is_ordered_union(self):
+        source = f'''  where
+{self.START}
+    extra "First" = ["--expand-div"]
+    extra "Shared" = ["--expand-div"]
+{self.MIDDLE}
+    extra "Second" = ["--expand-div"]
+    extra "Shared" = ["--expand-div"]
+{self.END}
+    extra _ = []
+'''
+        resolved, count = merge_metadata_conflicts.resolve_text(
+            "shake/src/Build.hs", source
+        )
+        self.assertEqual(count, 1)
+        self.assertNotIn("<<<<<<<", resolved)
+        self.assertLess(resolved.index('extra "First"'),
+                        resolved.index('extra "Second"'))
+        self.assertEqual(resolved.count('extra "Shared"'), 1)
+
+    def test_python_metadata_resolves_multiple_conflicts(self):
+        source = f'''GP_EXTERNS = {{
+{self.START}
+    "First": ["A"],
+{self.MIDDLE}
+    "Second": ["B"],
+{self.END}
+}}
+MASPSX_EXTRA = {{
+{self.START}
+    "Third": ["--expand-div"],
+{self.MIDDLE}
+    "Fourth": ["--expand-div"],
+{self.END}
+}}
+'''
+        resolved, count = merge_metadata_conflicts.resolve_text(
+            "tools/permute.py", source
+        )
+        self.assertEqual(count, 2)
+        for name in ("First", "Second", "Third", "Fourth"):
+            self.assertIn(f'"{name}"', resolved)
+
+    def test_metadata_merge_refuses_code_or_disagreeing_key(self):
+        code = f'''{self.START}
+    doSomething()
+{self.MIDDLE}
+    doSomethingElse()
+{self.END}
+'''
+        disagreement = f'''{self.START}
+    extra "F" = ["--one"]
+{self.MIDDLE}
+    extra "F" = ["--two"]
+{self.END}
+'''
+        with self.assertRaises(ValueError):
+            merge_metadata_conflicts.resolve_text("shake/src/Build.hs", code)
+        with self.assertRaises(ValueError):
+            merge_metadata_conflicts.resolve_text(
+                "shake/src/Build.hs", disagreement
+            )
 
 
 if __name__ == "__main__":

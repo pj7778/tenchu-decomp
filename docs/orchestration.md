@@ -84,6 +84,7 @@ Everything the pipeline needs, in the order you touch it:
 | `tools/access.py <Name> [--order]` | each pointer offset's width/signedness/direction from the mnemonics; `--order` = the store sequence. Struct layout without hand-tracing `.s`. |
 | `tools/gpsyms.py <Name> --write` | derive the gp-extern set from `%gp_rel` and sync Build.hs + permute.py. Shake-oracle-tracked, so it just takes effect. |
 | `tools/maspsxflags.py <Name> --write` | preferred combined setup pass: sync gp externs and detect/sync ASPSX guarded variable division's `--expand-div` flag from the target asm. |
+| `tools/merge_metadata_conflicts.py` | during a cherry-pick, conservatively resolve the recurring additive conflicts in Build.hs/permute.py gp and `--expand-div` tables. It unions only recognized metadata entries, rejects same-key disagreements or ordinary code, validates both files before writing, and leaves staging/`cherry-pick --continue` to the orchestrator. |
 | `tools/clonematch.py <Matched>` | write the `.c` for exact byte-identical unmatched siblings (verified). |
 | `tools/matchdiff.py <Name>` / `tools/asmdiff.py <Name>` | iterate. matchdiff = whole-image gate; asmdiff = aligned view for big/split functions. For guarded drafts, matchdiff also rejects a linked `<Name>.NON_MATCHING` INCLUDE_ASM stub, so `-n` cannot bless a stale trivial match. |
 | `tools/autorules.py <Name>` | once the draft compiles: mechanically sweep the *local* cookbook rules and greedily keep what shrinks the authoritative byte diff. It recognizes target-gp anti-sites, aggregate VECTOR copies, explicit builtin abs, subscript-postincrement working copies, paired same-call argument producers, and literal equality swaps; `--guided` can toggle a local integer pointer's volatile pointee, fence one statement or a safe 2–4-statement range, dead-evict a switch index from CSE, shift a statement across an existing LOOP_END, duplicate one statement into zero-code identical arms, try real case labels, and enumerate the six three-term addition trees while preserving nonconstant/call order. Output is line-buffered for monitoring. Candidates compile from a private staged source; only the selected result is atomically published. Owned build process groups, Linux parent-death handling, and the per-worktree matching lock prevent interrupted/orphaned work from mutating or racing the live source. It never emits inline asm. |
@@ -291,6 +292,10 @@ rules**:
   hand-wrote prompts → `matcher-prompt.py`. **Fix a tool bug centrally the
   moment the first agent hits it** — don't let N parallel agents each re-diagnose
   it (the `reverse.py` carve-drop cost ~every agent tokens before it was fixed).
+  Parallel function commits repeatedly colliding at the additive metadata
+  insertion point is the same class of friction: run
+  `merge_metadata_conflicts.py`, then review/stage, rather than manually
+  rebuilding both mirrored tables on every harvest.
   Treat process lifecycle as part of tool correctness: a backup/restore wrapper
   is insufficient when its invoking shell can die while the Python driver or a
   build descendant survives. `autorules` now compiles candidates through
