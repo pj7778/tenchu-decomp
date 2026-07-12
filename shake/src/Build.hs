@@ -383,6 +383,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "AttackShort" = ["Me_THINK_C", "Distance", "Degree", "EngageLevel", "Attrib", "AttackActionCount"]
     syms "DamageControl" = ["Me_MOTION_C", "MotionUpdateMode", "motID", "dtL", "D_80097F0E", "dtM", "dtR", "D_8009770C", "dtV"]
     syms "ProcItemNinken" = ["NINKEN_CHARACTER_PTR"]
+    syms "ActKAGI" = ["dtM", "Me_MOTION_C", "dtL", "D_80097F0E", "motID", "dtR", "MotionUpdateMode", "dtV"]
     syms _ = []
 
 as :: FilePath
