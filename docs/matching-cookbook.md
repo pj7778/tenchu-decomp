@@ -968,6 +968,10 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   a switch/loop-driven success flag is involved, try flipping its width: a
   `s16` flag matched where `s32` was 4 insns short (handle_char_state_using_item_,
   139→143).
+  SearchTarget's `mode = (status in range)` is the large-function version:
+  keeping `mode` as `s16` reproduces the repeated promotion/copy chain used by
+  its table indexes and comparisons; `s32` coalesces those target-visible
+  copies even though the logical value remains 0/1.
   - **A narrow switch guard can also prevent reuse of an SImode case constant.**
     In ActATTACK, `short cleanup_guard` gives each `cleanup_guard = 3` an HImode
     definition. It cannot coalesce with the switch comparison's SImode `3`, so
@@ -1141,6 +1145,11 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   one callee-saved reg and then `opad = trg;` into another, with the rest of
   the body reading `opad`, is the only way one value occupies two s-regs
   (PauseProc).
+  SearchTarget needed this across an arithmetic/stack join: update `delta_y`,
+  copy the resulting height into a separate `base_y`, store it to
+  `delta.vy`, and derive the later adjusted height from `base_y`. Reusing one
+  scalar collapses the target's `$v1`→`$a1` copy and renumbers the following
+  normalization loop.
   - **Branch variant — a second pointer feeds the guard-branch delay slot.**
     When one branch of an `if` reads a pointer/value the other computes, and the
     target combines the address *eagerly* (before the guard-flag load) with an
@@ -1456,6 +1465,11 @@ near entry; `AdtMessageBox` wants the inline form.)
   each have one `u8 block[0x2000]` at sp+0xe0, with the 0x200-byte card header
   and payload represented by typed casts into that buffer. Ghidra's several
   arrays are views, not separately allocated objects.
+  Conversely, three scalar deltas are sometimes one real `VECTOR` stack
+  local even when each component appears independently in Ghidra. SearchTarget
+  only recovered its exact 0x50 frame and sp+0x10 access plan with one `VECTOR
+  delta`; separate scalars colored into saved registers and erased the retail
+  workspace.
 - **For mutually-exclusive aggregate layouts, make the overlap an explicit
   union instead of hoping scopes share slots.** Run `tools/stackplan.py <Name>`:
   it reads the candidate's outgoing-argument size, the target's first
