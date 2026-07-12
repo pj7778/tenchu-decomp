@@ -28,29 +28,15 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 1 instruction too long (135 vs 134), ~318 of 536
- * raw bytes differ as a consequence (everything after the extra
- * instruction shifts). Every block/loop/offset/call here is confirmed
- * correct against the raw .s (including the Sprite3D+embedded-GsSPRITE
- * struct, the fan layout math, and the fresh-vs-cached pointer reuse
- * rule) — the SOLE residual is that the target shares ONE `lui` between
- * two DIFFERENT same-page globals: CHOSEN_LANGUAGE (referenced once, near
- * the top, for STAGE_ANIMATION_PREFICES[CHOSEN_LANGUAGE]) and
- * CHOSEN_CHARACTER's SECOND (late, stage-10 guard) reference reuse the
- * identical `%hi` (both addresses are 0x8001xxxx) via one register (a
- * callee-saved $s1, kept alive across 3 intervening calls: sprintf,
- * FileRead, SetPolyF4) instead of each materialising its own `lui`. This
- * draft's cc1 invocation re-materialises `%hi(CHOSEN_CHARACTER)` fresh at
- * that reference instead. Tried: a named `chosenChar` temp read once and
- * reused for both checks (makes it WORSE — cc1 then caches the VALUE
- * instead of the address, diverging structurally); narrowing `letter` to
- * u8 (no effect, confirming it isn't a register-pressure-from-that-local
- * issue). A bounded `tools/permute.py` run (~4 min, -j4, ~16.7k
- * iterations) plateaued at score 985, never near 0 — parked per the
- * cookbook's early-stop rather than chased further; this looks like a
- * genuine %hi-rematerialisation/CSE decision (a "second same-page
- * reference is worth caching" cost-model choice), not a plain register
- * swap, and no source lever tried moved it.
+ * STATUS: MATCHED — exact 536 bytes / 134 instructions.
+ *
+ * The final one-instruction residual was not a register-allocation quirk:
+ * CHOSEN_CHARACTER and CHOSEN_LANGUAGE are fields +4 and +0x5e of the same
+ * PersistentState blob at 0x80010000.  Expressing all three reads through
+ * PSTATE makes cc1 materialise that common base once, retain it in $s1
+ * across sprintf/FileRead/SetPolyF4, and reuse it for the late character
+ * guard.  Separate extern globals force a second `lui`; caching only the
+ * character VALUE also diverges because the target caches the address base.
  */
 
 /*
@@ -88,8 +74,6 @@ INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/CVAsetup", reload_animations__
 #else /* NON_MATCHING */
 
 extern u32 *PERSISTENT_EVENT_LIST_THING;
-extern u8 CHOSEN_CHARACTER;
-extern u8 CHOSEN_LANGUAGE;
 extern char *STAGE_ANIMATION_PREFICES[];
 extern char D_80013624[]; /* "%sSTAGE%d%c.CAD" */
 extern char D_80013634[]; /* "K:\\WORK\\CDIMAGE\\ANIM\\tanka.tpd" */
@@ -130,6 +114,8 @@ extern short GetTIMpackInfo(u32 *adr, GsIMAGE *image, int idx);
 extern Sprite3D *SetupSprite(Sprite3D *orgsprt, GsIMAGE *image);
 extern void LoadTIMpackAndFree(u32 *adr);
 
+#define PSTATE ((PersistentState *)0x80010000)
+
 void CVAsetup(void)
 {
     s16 i;
@@ -145,11 +131,11 @@ void CVAsetup(void)
         vfree(PERSISTENT_EVENT_LIST_THING);
     }
     letter = 0x41;
-    if (CHOSEN_CHARACTER == 0)
+    if (PSTATE->chr == 0)
     {
         letter = 0x52;
     }
-    sprintf(name, D_80013624, STAGE_ANIMATION_PREFICES[CHOSEN_LANGUAGE], StageID + 1, letter);
+    sprintf(name, D_80013624, STAGE_ANIMATION_PREFICES[PSTATE->language], StageID + 1, letter);
     PERSISTENT_EVENT_LIST_THING = FileRead(name);
 
     SetPolyF4(&TelopbgP);
@@ -161,7 +147,7 @@ void CVAsetup(void)
     TelopbgP.x3 = 0xA0;
     TelopbgP.x1 = 0xA0;
 
-    if (StageID == 10 && CHOSEN_CHARACTER == 0)
+    if (StageID == 10 && PSTATE->chr == 0)
     {
         adr = FileRead(D_80013634);
         for (i = 0; i < 6; i++)
