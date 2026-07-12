@@ -101,7 +101,7 @@ typedef struct DrawBloodScratch
 } DrawBloodScratch;
 
 extern GsSPRITE sprBlood[];
-extern GsSPRITE D_800BE9E8[];
+extern GsSPRITE sprBlood2[];
 extern GsOT *OTablePt;
 extern unsigned long *GlobalAreaMap;
 extern AreaNodeType *FieldArea;
@@ -128,7 +128,7 @@ void DrawBlood(TEffectSlot *ef)
     blood = &ef->param.blood;
     index = blood->unk22;
     spr = &sprBlood[index];
-    sprt = &D_800BE9E8[index];
+    sprt = &sprBlood2[index];
 
     state = blood->unk23;
     switch (state)
