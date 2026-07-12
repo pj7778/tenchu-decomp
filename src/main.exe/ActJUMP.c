@@ -85,9 +85,9 @@ extern void Sound(Humanoid *human, short id);
 extern void PadShockAR(short port, short power, short time, short mode);
 
 /*
- * Pure-C draft: exact 0x40 frame and exact 1,396-byte length.  The remaining
- * differences are confined to scheduler/CSE choices in the 0x907 landing
- * object reload and the post-GetMoveSpeed short-vector update.
+ * Pure-C draft: exact 0x40 frame, exact 1,396-byte length, and three differing
+ * bytes.  The sole residual is a commutative comparison whose two operands
+ * are allocated to v0/v1 in the opposite order.
  */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ActJUMP", ActJUMP);
@@ -98,13 +98,11 @@ void ActJUMP(void)
     u16 pad;
     ActJumpScratch scratch;
     short reflected;
-    short mid;
     short i;
     long level;
-    long value;
     long vertical;
+    long scaled;
     SVECTOR *velocity;
-    SVECTOR *speedp;
 
     if ((Me_MOTION_C->pad.trig & 0x40) != 0 && motID != 0x901)
     {
@@ -164,15 +162,20 @@ void ActJUMP(void)
             }
             return;
         }
-        mid = 0x804;
         if (motID == 0x907)
         {
+            ModelType *object;
+
             dtR->vy += (*Me_MOTION_C->model->object)->rotate.vy;
+            object = *Me_MOTION_C->model->object;
             motID = 0x806;
             D_80097F0E = 1;
-            (*Me_MOTION_C->model->object)->rotate.vy = 0;
+            object->rotate.vy = 0;
             return;
         }
+        motID = 0x804;
+        D_80097F0E = 0;
+        return;
     }
     else
     {
@@ -211,16 +214,17 @@ void ActJUMP(void)
             return;
         }
 
+        velocity = dtV;
         vertical = dtM->count - (dtM->motion->time >> 1);
         if (motID == 0x906)
         {
-            vertical *= 10;
+            scaled = vertical * 10;
         }
         else
         {
-            vertical *= 20;
+            scaled = vertical * 20;
         }
-        dtV->vy = vertical;
+        velocity->vy = scaled;
 
         if (((s16)dtPAD & 0xf000) != 0 && motID != 0x906)
         {
@@ -241,35 +245,15 @@ void ActJUMP(void)
             {
                 GetMoveSpeed(&scratch.speed, dtR->vy, 0, 10);
             }
-            do
+            velocity = dtV;
+            scratch.speed.vx = scratch.speed.vx + dtV->vx;
+            scratch.speed.vz = scratch.speed.vz + velocity->vz;
+            if (__builtin_abs(scratch.speed.vx) < 101)
             {
-                velocity = dtV;
-            } while (0);
-            speedp = &scratch.speed;
-            do
-            {
-                speedp->vx = speedp->vx + velocity->vx;
-            } while (0);
-            do
-            {
-                speedp->vz += velocity->vz;
-            } while (0);
-            value = speedp->vx;
-            if (value < 0)
-            {
-                value = -value;
-            }
-            if (value < 101)
-            {
-                value = speedp->vz;
-                if (value < 0)
+                if (__builtin_abs(scratch.speed.vz) < 101)
                 {
-                    value = -value;
-                }
-                if (value < 101)
-                {
-                    velocity->vx = speedp->vx;
-                    velocity->vz = speedp->vz;
+                    velocity->vx = scratch.speed.vx;
+                    velocity->vz = scratch.speed.vz;
                 }
             }
         }
@@ -286,15 +270,13 @@ void ActJUMP(void)
         {
             return;
         }
-        mid = 0x70f;
         if ((Me_MOTION_C->attribute & 0x40) == 0)
         {
             return;
         }
+        motID = 0x70f;
+        D_80097F0E = 0;
     }
-
-    motID = mid;
-    D_80097F0E = 0;
 }
 #endif
 
