@@ -1,0 +1,43 @@
+# Publishes the objdiff progress report that decomp.dev ingests.
+#
+# decomp.dev is artifact-driven: its bot scans this repo's Actions runs, downloads
+# an artifact named `<version>_report` (here `jp_report`), reads `report.json`
+# from it, and stores per-commit progress. So the *only* contract that matters is
+# the artifact name + a parseable objdiff report inside it. See docs/decomp-dev.md.
+#
+# This is build-free: tools/objdiff-report.py derives progress from committed
+# config (config/functions.main.exe.tsv + splat/symbols + matched src/main.exe/*.c),
+# so no nix / cc1 / reassembly is needed — the job finishes in seconds, which keeps
+# it cheap even for a private repo tracked by a self-hosted decomp.dev instance.
+#
+# Runs on the default branch (decomp.dev follows the repo's default branch for its
+# main progress history). This repo publishes from `master`; `main` is listed too
+# in case the default branch is ever renamed. Adjust if yours differs.
+name: Progress report
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Generate objdiff report
+        run: python3 tools/objdiff-report.py --out report.json
+
+      # Artifact name MUST match `^<version>[_-]report...` where <version> is the
+      # decomp.yaml version name ("jp"). The file inside must be named report.json.
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jp_report
+          path: report.json
+          if-no-files-found: error

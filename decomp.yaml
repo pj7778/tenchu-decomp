@@ -1,6 +1,12 @@
 # decomp_settings (https://github.com/ethteck/decomp_settings) project file —
 # consumed by coddog and other ecosystem tools. Paths assume a green ./Build
 # (the elf/map are our byte-identical rebuild of the original).
+#
+# NOTE: decomp.dev does NOT read this file. Its progress reporting is
+# artifact-driven — it ingests an objdiff report uploaded by CI as the
+# `jp_report` artifact (see docs/decomp-dev.md; generate with `./Build report`
+# / tools/objdiff-report.py). Set `repo:` below to the GitHub owner/name once
+# the repo is pushed (used by coddog; decomp.dev takes it from registration).
 name: Tenchu Stealth Assassins (JP)
 repo: local
 platform: psx

@@ -772,6 +772,13 @@ phonyRules = do
 
   phony "all" $ need (map tgExe targets)
 
+  -- Emit the objdiff progress report decomp.dev ingests (.shake/build/tenchu/report.json).
+  -- Build-free: tools/objdiff-report.py derives everything from the committed
+  -- config (function inventory + splat/symbols + matched .c files), so this needs
+  -- no reassembly. CI uploads it as the `jp_report` artifact. See docs/decomp-dev.md.
+  phony "report" $
+    cmd_ "tools/objdiff-report.py"
+
 -- | Launch our exe fast: mount the original disc and @-loadexe@ over it (no repack).
 -- Paths are absolutised — pcsx-redux resolves them against its own cwd. @extra@ are
 -- extra emulator flags (e.g. @-8mb@ for the grown mod, whose region is above 2MB).

@@ -38,6 +38,10 @@ decisions behind the toolchain. It's the reference companion to the terse
   extract it (`tools/extract-demo.py`), parse it (`tools/psxsym.py`), dump it
   (`tools/symdump.py`) and recover retail names from it (`tools/symmatch.py`,
   `tools/xbuildnames.py`, `tools/callmatch.py` — always `--verify`).
+- [decomp-dev.md](decomp-dev.md) — progress reporting on **decomp.dev**: how it
+  ingests (artifact-driven objdiff reports, never `decomp.yaml`), our build-free
+  generator (`tools/objdiff-report.py` / `./Build report`) + `jp_report` CI
+  workflow, and standing up a self-hosted instance against a (private) repo.
 
 ## Current state (verified 2026-07-02)
 

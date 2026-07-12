@@ -51,6 +51,13 @@ byte-identical `main.exe`.
   `psyq4.3`) — see `compiler-fidelity` in the toolchain doc.
 - **Modding + emulator loop works:** `./Build mod` (grow functions) and
   `./Build iso`/`iso-mod` (bootable disc for pcsx-redux). See docs/.
+- **decomp.dev progress reporting wired up:** `./Build report` /
+  `tools/objdiff-report.py` emit a valid objdiff v2 report (verified against the
+  real `report.proto` with protoc); `.github/workflows/report.yml` uploads it as
+  the `jp_report` artifact. Build-free (reads the committed
+  `config/functions.main.exe.tsv` + config), so CI is Python-only. decomp.dev is
+  artifact-driven and still needs a GitHub repo (private OK with a self-hosted
+  instance) — full setup in [`docs/decomp-dev.md`](docs/decomp-dev.md).
 
 New session: read this file + [`docs/README.md`](docs/README.md) (the docs index).
 
