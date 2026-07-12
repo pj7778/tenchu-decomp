@@ -1,5 +1,70 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
+
+typedef struct AreaNodeType
+{
+    s16 y;
+    s16 dy;
+    s16 x1;
+    s16 z1;
+    s16 x2;
+    s16 z2;
+    u16 attribute;
+    s16 division;
+} AreaNodeType;
+
+typedef struct
+{
+    ModelType *model;
+    VECTOR position;
+    SVECTOR offset;
+    SVECTOR size;
+    void *common;
+    u8 result[64];
+    u8 pad[0x10];
+} ConflictObjectType;
+
+typedef struct
+{
+    void *hint;
+    s16 vx;
+    s16 vy;
+    s16 vz;
+    u8 status;
+    u8 pad;
+    u8 count;
+} param_smoke;
+
+typedef union
+{
+    struct
+    {
+        SVECTOR vec;
+        VECTOR pos;
+        VECTOR pos_buf;
+    } explosion;
+    struct
+    {
+        VECTOR pos;
+        VECTOR random_pos;
+    } frame;
+} ProcItemJiraiScratch;
+
+extern u_long *GlobalAreaMap;
+extern AreaNodeType *FieldArea;
+extern ConflictObjectType ConflictObject[];
+extern SVECTOR D_80097AE4[];
+
+extern long GetAreaMapLevel(u_long *area, long x, long y, long z, int mode);
+extern s16 InsertConflict(ModelType *model);
+extern s16 GetConflictResult(ModelType *model, s32 n);
+extern s32 is_character_state_present_on_stage_(Humanoid *human);
+extern void SetExplosion(VECTOR *pos, SVECTOR *vec);
+extern void SetHinoko(VECTOR *pos, SVECTOR *vec, s32 n);
+extern void SetFrame(VECTOR *pos, short size, short time,
+                     GsCOORDINATE2 *super);
+extern void reset_alert_duration(void);
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -43,7 +108,249 @@
  *     extern struct ConflictObjectType ConflictObject[64];
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemJirai", ProcItemJirai);
+/*
+ * Advances the placed landmine through floor placement, collision arming,
+ * detonation, and its ten-frame-effect burst before disposal.
+ *
+ * Matching notes:
+ *  - The explosion and frame-effect aggregates are mutually exclusive and
+ *    share ProcItemJiraiScratch.  This reproduces the target's exact
+ *    sp+0x18..sp+0x3f working window and 0x60-byte frame.
+ *  - `call_item` makes both disposal predecessors materialize the indirect
+ *    call argument before entering their shared tail; calling `proc(item)`
+ *    instead fills the jalr delay slot and removes one of those moves.
+ *  - The zero-trip wrapper around `i = 0` keeps initialization after the
+ *    character-state call, where it fills the following branch delay slot.
+ *    That loop note initially gave `i` the allocator's preferred saved
+ *    register, so the second zero-trip wrapper weights the three `% 200`
+ *    expressions more heavily.  The generated division constant then takes
+ *    $s1 and leaves the target $s3 for `i`, without emitting extra code.
+ *  - This function needs maspsx `--expand-div` for the dynamic model-count
+ *    remainder guard; Build.hs and permute.py carry the mirrored flag.
+ */
+
+void ProcItemJirai(tag_TItem *item)
+{
+    Sprite3D *model;
+    param_smoke *param;
+    void (*proc)(tag_TItem *);
+    tag_TItem *call_item;
+    u8 ff;
+    ProcItemJiraiScratch scratch;
+
+    model = item->model;
+    param = (param_smoke *)item->param;
+    ff = 0xff;
+    if (item->mode == ff)
+    {
+        item->mode = 0;
+        return;
+    }
+
+    switch (item->mode)
+    {
+    case 0:
+    {
+        s32 size;
+        s32 collision_mode;
+        s32 n;
+
+        item->locate->locate.coord.t[1] =
+            GetAreaMapLevel(GlobalAreaMap,
+                            item->locate->locate.coord.t[0],
+                            item->locate->locate.coord.t[1],
+                            item->locate->locate.coord.t[2], 1);
+        if (item->locate->locate.coord.t[1] == (long)0x80000000 ||
+            (FieldArea->attribute & 4) != 0)
+        {
+            u8 count;
+
+            count = item->owner->item[item->type];
+            if (count != ff)
+            {
+                item->owner->item[item->type] = count + 1;
+            }
+            proc = item->proc;
+            if (proc == 0)
+            {
+                return;
+            }
+            call_item = item;
+            item->mode = ff;
+            goto dispose;
+        }
+
+        DeleteConflict(item->locate);
+        n = InsertConflict(item->locate);
+        size = 500;
+        collision_mode = 8;
+        ConflictObject[n].offset.vx = 0;
+        ConflictObject[n].offset.vz = 0;
+        ConflictObject[n].offset.vy = 0;
+        ConflictObject[n].size.vz = size;
+        ConflictObject[n].size.vy = size;
+        ConflictObject[n].size.vx = size;
+        ConflictObject[n].common = (void *)1;
+        ConflictObject[n].size.pad = collision_mode;
+        item->coll_size = size;
+        item->coll_ofsY = 0;
+        item->coll_mode = collision_mode;
+        item->coll_pause = 0;
+        item->mode = item->mode + 1;
+        break;
+    }
+
+    case 1:
+    {
+        s32 cid;
+
+        if ((item->locate->attribute & 0x8000) == 0)
+        {
+            cid = -1;
+        }
+        else
+        {
+            cid = GetConflictResult(item->locate, -1);
+        }
+        if (cid != -1 &&
+            is_character_state_present_on_stage_(
+                (Humanoid *)ConflictObject[cid].common) != 0)
+        {
+            s32 n;
+            s32 size;
+            s32 one;
+
+            DeleteConflict(item->locate);
+            n = InsertConflict(item->locate);
+            size = 1500;
+            one = 1;
+            ConflictObject[n].offset.vx = 0;
+            ConflictObject[n].offset.vz = 0;
+            ConflictObject[n].offset.vy = 0;
+            ConflictObject[n].size.vz = size;
+            ConflictObject[n].size.vy = size;
+            ConflictObject[n].size.vx = size;
+            ConflictObject[n].common = (void *)one;
+            ConflictObject[n].size.pad = one;
+            item->coll_size = size;
+            item->coll_ofsY = 0;
+            item->coll_mode = one;
+            item->coll_pause = 0;
+            item->mode = item->mode + one;
+        }
+        break;
+    }
+
+    case 2:
+        scratch.explosion.vec = D_80097AE4[0];
+        memset(&scratch.explosion.pos_buf, 0, sizeof(VECTOR));
+        scratch.explosion.pos_buf.vx = item->locate->locate.coord.t[0];
+        scratch.explosion.pos_buf.vy = item->locate->locate.coord.t[1];
+        scratch.explosion.pos_buf.vz = item->locate->locate.coord.t[2];
+        scratch.explosion.pos = scratch.explosion.pos_buf;
+        SetExplosion(&scratch.explosion.pos, &scratch.explosion.vec);
+        scratch.explosion.vec.vx = 75;
+        scratch.explosion.vec.vy = 200;
+        scratch.explosion.vec.vz = 75;
+        SetHinoko(&scratch.explosion.pos, &scratch.explosion.vec, 10);
+        scratch.explosion.vec.vx = 0;
+        scratch.explosion.vec.vy = -400;
+        scratch.explosion.vec.vz = 0;
+        SetSmoke(&scratch.explosion.pos, &scratch.explosion.vec, 20, 6);
+        SoundEx(&scratch.explosion.pos, 0x25);
+        item->mode = item->mode + 1;
+        param->count = 3;
+        reset_alert_duration();
+        break;
+
+    case 3:
+    {
+        s32 cid;
+        s32 count;
+
+        if ((item->locate->attribute & 0x8000) == 0)
+        {
+            cid = -1;
+        }
+        else
+        {
+            cid = GetConflictResult(item->locate, -1);
+        }
+        if (cid != -1)
+        {
+            Humanoid *human;
+            s32 i;
+            s32 present;
+
+            human = (Humanoid *)ConflictObject[cid].common;
+            present = is_character_state_present_on_stage_(human);
+            do
+            {
+                i = 0;
+            } while (0);
+            if (present != 0)
+            {
+                while (1)
+                {
+                    ModelType **objects;
+                    ModelType *frame_model;
+
+                    if (!(i < 10))
+                    {
+                        break;
+                    }
+                    objects = human->model->object;
+                    if (human->model->n > 0)
+                    {
+                        objects += rand() % human->model->n;
+                    }
+                    frame_model = *objects;
+                    memset(&scratch.frame.random_pos, 0, sizeof(VECTOR));
+                    i++;
+                    do
+                    {
+                        scratch.frame.random_pos.vx = rand() % 200 - 100;
+                        scratch.frame.random_pos.vy = rand() % 200 - 100;
+                        scratch.frame.random_pos.vz = rand() % 200 - 100;
+                    } while (0);
+                    scratch.frame.pos = scratch.frame.random_pos;
+                    SetFrame(&scratch.frame.pos, 0x3000,
+                             rand() % 60 + 60,
+                             (GsCOORDINATE2 *)frame_model);
+                }
+            }
+        }
+
+        count = param->count - 1;
+        param->count = count;
+        if ((u8)count != 0xff)
+        {
+            return;
+        }
+        proc = item->proc;
+        if (proc == 0)
+        {
+            return;
+        }
+        call_item = item;
+        item->mode = 0xff;
+dispose:
+        proc(call_item);
+        DeleteConflict(item->locate);
+        if (item->mode != 0)
+        {
+            AdtMessageBox(D_800121CC, item->type, (u32)item->mode);
+        }
+        item->owner = 0;
+        item->proc = 0;
+        return;
+    }
+    }
+
+    UpdateCoordinate(item->locate);
+    model->locate = item->locate->locate;
+    DrawSprite(model);
+}
 
 // triage: HARD — 427 insns, mul/div, 1 loop, indirect-call, 16 callees, ~0.27 to ProcItemDrop
 // likely-relevant cookbook sections:

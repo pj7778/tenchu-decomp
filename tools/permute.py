@@ -271,6 +271,7 @@ MASPSX_EXTRA = {
     "ControlHumanoid": ["--expand-div"],
     "ProcItemNapalm": ["--expand-div"],
     "ProcItemFire": ["--expand-div"],
+    "ProcItemJirai": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash
