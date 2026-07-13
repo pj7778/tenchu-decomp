@@ -11,7 +11,179 @@
  *     extern struct GsOT *OTablePt;
  * END PSX.SYM */
 
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80033f10", FUN_80033f10);
+#else
+
+#include "effect.h"
+
+typedef union
+{
+    s32 word;
+    struct
+    {
+        u8 b;
+        u8 g;
+        u8 r;
+        u8 pad;
+    } channel;
+} ImpactColor;
+
+typedef struct
+{
+    s32 px;
+    s32 py;
+    s32 pz;
+    GsCOORDINATE2 *super;
+    ImpactColor start_color;
+    ImpactColor end_color;
+    s16 start_size;
+    s16 end_size;
+    s16 rotate;
+    s16 rotate_speed;
+    u8 type;
+    u8 count;
+    u8 time;
+} RetailImpactType;
+
+extern GsSPRITE D_800BEAA8[];
+extern GsOT *OTablePt;
+extern void GsGetLs(GsCOORDINATE2 *coord, MATRIX *m);
+extern void GsSetLsMatrix(MATRIX *m);
+extern void GetScreenPosition(s32 x, s32 y, s32 z, SVECTOR *scr);
+extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
+extern void GsSortSprite(GsSPRITE *spr, GsOT *ot, s32 priority);
+
+void FUN_80033f10(TEffectSlot *ef)
+{
+    RetailImpactType *param;
+    GsSPRITE *spr;
+    SVECTOR scr;
+    s32 ratio;
+    s32 inverse;
+    s32 start;
+    s32 start2;
+    s32 end;
+    s32 end_raw;
+    s32 size;
+    s32 z;
+    s16 scale;
+    s32 priority;
+    GsCOORDINATE2 *super;
+
+    param = (RetailImpactType *)&ef->param;
+    ratio = (param->count << 12) / param->time;
+    spr = &D_800BEAA8[param->type];
+    spr->rotate = param->rotate << 12;
+    inverse = 0x1000 - ratio;
+
+    start = param->start_size * inverse;
+    param->rotate = param->rotate + param->rotate_speed;
+    if (start < 0)
+    {
+        start = start + 0xfff;
+    }
+
+    end = param->end_size * ratio;
+    if (end < 0)
+    {
+        end = end + 0xfff;
+    }
+    size = (start >> 12) + (end >> 12);
+
+    start = param->start_color.channel.r * inverse;
+    end_raw = param->end_color.channel.r;
+    if (start < 0)
+    {
+        start = start + 0xfff;
+    }
+    end = end_raw * ratio;
+    if (end < 0)
+    {
+        end = end + 0xfff;
+    }
+    spr->r = (start >> 12) + (end >> 12);
+
+    start2 = param->start_color.channel.g * inverse;
+    end_raw = param->end_color.channel.g;
+    if (start2 < 0)
+    {
+        start2 = start2 + 0xfff;
+    }
+    end = end_raw * ratio;
+    if (end < 0)
+    {
+        end = end + 0xfff;
+    }
+    spr->g = (start2 >> 12) + (end >> 12);
+
+    start2 = param->start_color.channel.b * inverse;
+    end_raw = param->end_color.channel.b;
+    if (start2 < 0)
+    {
+        start2 = start2 + 0xfff;
+    }
+    end = end_raw * ratio;
+    if (end < 0)
+    {
+        end = end + 0xfff;
+    }
+    spr->b = (start2 >> 12) + (end >> 12);
+
+    end = param->px;
+    start2 = param->py;
+    super = param->super;
+    inverse = param->pz;
+    if (super != 0)
+    {
+        *(s16 *)0x1f800020 = end;
+        *(s16 *)0x1f800022 = start2;
+        *(s16 *)0x1f800024 = inverse;
+        GsGetLs(super, (MATRIX *)0x1f800000);
+        GsSetLsMatrix((MATRIX *)0x1f800000);
+        scr.vz = (s16)RotTransPers((SVECTOR *)0x1f800020, (s32 *)&scr,
+                                   (void *)0x1f800028,
+                                   (void *)0x1f80002c);
+    }
+    else
+    {
+        GetScreenPosition(end, start2, inverse, &scr);
+    }
+
+    z = scr.vz;
+    if (z > 0x24)
+    {
+        scale = (s16)((size * 300) / z) + 1;
+        spr->scaley = scale;
+        spr->scalex = scale;
+        spr->x = scr.vx;
+        spr->y = scr.vy;
+
+        start2 = (s32)((u16)scr.vz << 16) >> 18;
+        if (start2 < 0)
+        {
+            goto zero;
+        }
+        priority = 0x4e1;
+        if (start2 < 0x4e2)
+        {
+            priority = start2;
+        }
+        goto done;
+    zero:
+        priority = 0;
+    done:
+        GsSortSprite(spr, OTablePt, (u16)priority);
+    }
+
+    if (param->count >= param->time)
+    {
+        ef->proc = 0;
+    }
+    param->count = param->count + 1;
+}
+
+#endif
 
 // triage: MEDIUM — 193 insns, mul/div, 5 callees, ~0.04 to ReqItemShinsoku
 // likely-relevant cookbook sections:
@@ -126,4 +298,116 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80033f10", FUN_8
 //   }
 //   *(char *)((int)param_1 + 0x25) = *(char *)((int)param_1 + 0x25) + '\x01';
 //   return;
+// }
+
+// m2c (mipsel-gcc-c reference — cleaner control flow + register
+// temps straight from the asm; Ghidra above has the real types):
+//
+// ? GetScreenPosition(s32, s32, s32, u16 *);          /* extern */
+// ? GsGetLs(s32, ?, s32, s32);                        /* extern */
+// ? GsSetLsMatrix(?);                                 /* extern */
+// ? GsSortSprite(void *, s32, s32);                   /* extern */
+// s16 RotTransPers(?, u16 *, ?, ?);                   /* extern */
+// extern ? D_800BEAA8;
+// extern s32 OTablePt;
+//
+// void FUN_80033f10(void *arg0) {
+//     u16 sp10;
+//     s16 sp14;
+//     s16 temp_v0_2;
+//     s32 temp_a0;
+//     s32 temp_a2;
+//     s32 temp_a2_2;
+//     s32 temp_lo;
+//     s32 temp_v0;
+//     s32 temp_v1;
+//     s32 temp_v1_2;
+//     s32 var_a0;
+//     s32 var_a0_2;
+//     s32 var_a2;
+//     s32 var_v0;
+//     s32 var_v0_2;
+//     s32 var_v0_3;
+//     s32 var_v0_4;
+//     s32 var_v1;
+//     s32 var_v1_2;
+//     void *temp_s0;
+//     void *temp_s1;
+//
+//     temp_s0 = arg0 + 4;
+//     temp_lo = (s32) (temp_s0->unk21 << 0xC) / (s32) temp_s0->unk22;
+//     temp_s1 = (temp_s0->unk20 * 0x24) + &D_800BEAA8;
+//     temp_s1->unk20 = (s32) (temp_s0->unk1C << 0xC);
+//     temp_a2 = 0x1000 - temp_lo;
+//     var_a0 = temp_s0->unk18 * temp_a2;
+//     temp_s0->unk1C = (s16) ((u16) temp_s0->unk1C + temp_s0->unk1E);
+//     if (var_a0 < 0) {
+//         var_a0 += 0xFFF;
+//     }
+//     var_v0 = temp_s0->unk1A * temp_lo;
+//     if (var_v0 < 0) {
+//         var_v0 += 0xFFF;
+//     }
+//     var_a0_2 = temp_s0->unk12 * temp_a2;
+//     if (var_a0_2 < 0) {
+//         var_a0_2 += 0xFFF;
+//     }
+//     var_v0_2 = temp_s0->unk16 * temp_lo;
+//     if (var_v0_2 < 0) {
+//         var_v0_2 += 0xFFF;
+//     }
+//     temp_s1->unk14 = (s8) ((var_a0_2 >> 0xC) + (var_v0_2 >> 0xC));
+//     var_v1 = temp_s0->unk11 * temp_a2;
+//     if (var_v1 < 0) {
+//         var_v1 += 0xFFF;
+//     }
+//     var_v0_3 = temp_s0->unk15 * temp_lo;
+//     if (var_v0_3 < 0) {
+//         var_v0_3 += 0xFFF;
+//     }
+//     temp_s1->unk15 = (s8) ((var_v1 >> 0xC) + (var_v0_3 >> 0xC));
+//     var_v1_2 = temp_s0->unk10 * temp_a2;
+//     if (var_v1_2 < 0) {
+//         var_v1_2 += 0xFFF;
+//     }
+//     var_v0_4 = temp_s0->unk14 * temp_lo;
+//     if (var_v0_4 < 0) {
+//         var_v0_4 += 0xFFF;
+//     }
+//     temp_s1->unk16 = (s8) ((var_v1_2 >> 0xC) + (var_v0_4 >> 0xC));
+//     temp_v0 = arg0->unk4;
+//     temp_v1 = temp_s0->unk4;
+//     temp_a0 = temp_s0->unkC;
+//     temp_a2_2 = temp_s0->unk8;
+//     if (temp_a0 != 0) {
+//         *(s16 *)0x1F800020 = (s16) temp_v0;
+//         *(s16 *)0x1F800022 = (s16) temp_v1;
+//         *(s16 *)0x1F800024 = (s16) temp_a2_2;
+//         GsGetLs(temp_a0, 0x1F800000, temp_a2_2, temp_lo);
+//         GsSetLsMatrix(0x1F800000);
+//         sp14 = RotTransPers(0x1F800020, &sp10, 0x1F800028, 0x1F80002C);
+//     } else {
+//         GetScreenPosition(temp_v0, temp_v1, temp_a2_2, &sp10);
+//     }
+//     if (sp14 >= 0x25) {
+//         temp_v0_2 = ((s32) (((var_a0 >> 0xC) + (var_v0 >> 0xC)) * 0x12C) / sp14) + 1;
+//         temp_s1->unk1E = temp_v0_2;
+//         temp_s1->unk1C = temp_v0_2;
+//         temp_s1->unk4 = sp10;
+//         temp_s1->unk6 = sp12;
+//         temp_v1_2 = (s32) ((u16) sp14 << 0x10) >> 0x12;
+//         if (temp_v1_2 >= 0) {
+//             var_a2 = 0x4E1;
+//             if (temp_v1_2 < 0x4E2) {
+//                 var_a2 = temp_v1_2;
+//             }
+//         } else {
+//             var_a2 = 0;
+//         }
+//         GsSortSprite(temp_s1, OTablePt, var_a2 & 0xFFFF);
+//     }
+//     if ((u8) temp_s0->unk21 >= (u8) temp_s0->unk22) {
+//         arg0->unk0 = 0;
+//     }
+//     temp_s0->unk21 = (u8) (temp_s0->unk21 + 1);
 // }
