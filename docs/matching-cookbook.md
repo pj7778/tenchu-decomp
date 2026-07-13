@@ -586,6 +586,18 @@ plain C is the matched file.
   placed tails; nested `if`s were twelve bytes short. Guided autorules rule
   `sparse-eq-switch` recognizes a three-arm equality ladder over one
   nonvolatile local and tests all six case-body orders mechanically.
+- **A three-way value ladder may need its literal default BEFORE both tests.**
+  `if (A) x=ONE; else { x=DEFAULT; if (B) x=TWO; }` and
+  `x=DEFAULT; if (A) x=ONE; else if (B) x=TWO;` have the same final automatic
+  value, but the latter lets reorg put the default definition in a comparison
+  branch delay slot and leaves the two overrides as explicit outcome islands.
+  In `Think4contact` that source shape restored the missing unconditional jump
+  and inline zero-path conversion, taking a 183-byte/eight-byte-short park
+  directly to exact. Guided `default-ladder-hoist` recognizes only three plain
+  literal assignments to one nonvolatile unaddressed local, empty arms apart
+  from those assignments, no second nested else, and conditions that do not
+  read the destination. This is the general-literal counterpart to the 0/1-only
+  `flag-arm-assign` rule.
 - **A switch's shared continuation sitting physically BETWEEN two case bodies
   is NOT after-switch code — it is a duplicated tail.** When the target shows
   e.g. `item->mode++; return;` in the middle of the case bodies (case 0 ends in

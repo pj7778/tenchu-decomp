@@ -95,7 +95,7 @@ CATEGORY_RULES = {
         "switch-cse-evict", "assignment-chain",
         "pointee-volatile", "array-alias-remat", "member-scalar-alias",
     ],
-    "jump/cross-jump": ["literal-indirect-inline", "shared-result-return", "shared-writeback-compound", "terminal-arm-flip", "terminal-guard-flip", "shared-terminal-tail", "case-fence", "sparse-eq-switch", "mul-affine-shape", "and-nest", "if-else-invert", "shared-tail-assign"],
+    "jump/cross-jump": ["default-ladder-hoist", "literal-indirect-inline", "shared-result-return", "shared-writeback-compound", "terminal-arm-flip", "terminal-guard-flip", "shared-terminal-tail", "case-fence", "sparse-eq-switch", "mul-affine-shape", "and-nest", "if-else-invert", "shared-tail-assign"],
     "schedule/delay": [
         "terminal-call-return", "deferred-global-capture", "shared-result-return", "type-width", "empty-loop-boundary", "loop-fence",
         "nested-loop-fence", "paired-loop-fence", "loop-range", "cmp-swap", "cmp-polarity", "shift-stage", "ptr-base-split", "deref-address-split",
@@ -112,7 +112,7 @@ CATEGORY_RULES = {
         "shift16-mul", "plus-group", "add-prefix-temp", "split-chain", "deref-address-split",
     ],
     "structure/length": [
-        "shared-result-return", "type-width", "identical-arm-fence", "and-nest", "temp-inline", "case-fence",
+        "default-ladder-hoist", "shared-result-return", "type-width", "identical-arm-fence", "and-nest", "temp-inline", "case-fence",
         "vector-copy-adjust", "builtin-abs", "subscript-postinc",
         "call-arg-pair", "shared-writeback-compound", "terminal-guard-flip", "shared-terminal-tail", "if-else-invert", "empty-loop-boundary",
     ],

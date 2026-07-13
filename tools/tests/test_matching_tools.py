@@ -2410,6 +2410,46 @@ int F(int value) {
             self.assertEqual(self.candidates(autorules.rule_flag_arm_assign,
                                              source), [])
 
+    def test_default_ladder_hoist_moves_literal_default_before_comparisons(self):
+        source = """int F(int turn, int degree) {
+    int result;
+    if (turn < degree) {
+        result = 0x2000;
+    } else {
+        result = 0;
+        if (degree < -turn) {
+            result = -0x8000;
+        }
+    }
+    return result;
+}
+"""
+        out = self.candidates(autorules.rule_default_ladder_hoist, source)
+        self.assertEqual(len(out), 1)
+        candidate = out[0][1]
+        self.assertIn("result = 0;\n    if (turn < degree)", candidate)
+        self.assertIn("else if (degree < -turn)", candidate)
+        self.assertEqual(candidate.count("result = 0;"), 1)
+
+    def test_default_ladder_hoist_rejects_work_or_observed_default(self):
+        work = """int F(int turn, int degree) {
+    int result;
+    if (turn < degree) { result = 1; }
+    else { result = 0; observe(); if (degree < -turn) { result = 2; } }
+    return result;
+}
+"""
+        observed = """int F(int turn, int degree) {
+    int result;
+    if (result < degree) { result = 1; }
+    else { result = 0; if (degree < -turn) { result = 2; } }
+    return result;
+}
+"""
+        for source in (work, observed):
+            self.assertEqual(
+                self.candidates(autorules.rule_default_ladder_hoist, source), [])
+
     def test_flag_return_split_moves_override_to_success_exit(self):
         source = """typedef int s32;
 int helper(void);

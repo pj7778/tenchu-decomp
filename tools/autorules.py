@@ -3806,6 +3806,91 @@ def rule_flag_arm_assign(text, name, span):
         )
 
 
+def rule_default_ladder_hoist(text, name, span):
+    """Hoist a three-way literal result's default before two comparisons.
+
+    ``if (A) x=ONE; else { x=DEFAULT; if (B) x=TWO; }`` and
+    ``x=DEFAULT; if (A) x=ONE; else if (B) x=TWO;`` are equivalent for a
+    nonvolatile unaddressed automatic local.  The latter gives gcc 2.8.1 a
+    default definition for a branch delay slot and keeps the two overrides as
+    explicit outcome islands; it closed Think4contact's 183-byte CFG residual.
+
+    Keep the rewrite narrow: exactly three plain literal assignments, no work
+    or declarations in the arms, no second else, and neither condition reads
+    the destination local.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    locals_ = _nonvolatile_local_names(data, body)
+    body_text = _txt(data, body)
+
+    def only_statement(compound):
+        if compound is None or compound.type != "compound_statement":
+            return None
+        statements = [child for child in compound.named_children
+                      if child.type != "comment"]
+        return statements[0] if len(statements) == 1 else None
+
+    for iff in _find(body, ("if_statement",)):
+        condition = iff.child_by_field_name("condition")
+        yes = iff.child_by_field_name("consequence")
+        alternative = iff.child_by_field_name("alternative")
+        if condition is None or yes is None or alternative is None or \
+                alternative.type != "else_clause":
+            continue
+        alternatives = [child for child in alternative.named_children
+                        if child.type != "comment"]
+        if len(alternatives) != 1 or alternatives[0].type != "compound_statement":
+            continue
+        no = alternatives[0]
+        no_statements = [child for child in no.named_children
+                         if child.type != "comment"]
+        if len(no_statements) != 2 or no_statements[1].type != "if_statement":
+            continue
+        default_statement, nested = no_statements
+        nested_condition = nested.child_by_field_name("condition")
+        nested_yes = nested.child_by_field_name("consequence")
+        if nested_condition is None or nested_yes is None or \
+                nested.child_by_field_name("alternative") is not None:
+            continue
+        yes_statement = only_statement(yes)
+        nested_statement = only_statement(nested_yes)
+        first = (_plain_assignment(data, yes_statement)
+                 if yes_statement is not None else None)
+        default = _plain_assignment(data, default_statement)
+        second = (_plain_assignment(data, nested_statement)
+                  if nested_statement is not None else None)
+        if (first is None or default is None or second is None or
+                not (first[0] == default[0] == second[0])):
+            continue
+        local = first[0]
+        if (local not in locals_ or
+                re.search(rb"&\s*\(?\s*" + re.escape(local) + rb"\b",
+                          body_text) or
+                not all(_integer_constant(rhs)
+                        for _lhs, rhs in (first, default, second)) or
+                any(_txt(data, ident) == local
+                    for cond in (condition, nested_condition)
+                    for ident in _find(cond, ("identifier",)))):
+            continue
+        line = _line(data, iff.start_byte)
+        if not any(_guided_site(candidate_line) for candidate_line in (
+                line, _line(data, nested.start_byte))):
+            continue
+        indent = _indent_at(data, iff.start_byte)
+        outer = (data[iff.start_byte:yes.start_byte] + _txt(data, yes))
+        replacement = (
+            _txt(data, default_statement).strip() + b"\n" + indent + outer +
+            b"\n" + indent + b"else " + _txt(data, nested)
+        )
+        yield (
+            f"default-ladder-hoist {local.decode()} L{line}",
+            splice(data, iff.start_byte, iff.end_byte, replacement).decode(),
+        )
+
+
 def rule_guard_flag_assign(text, name, span):
     """Toggle a local flag definition across a single-goto guard.
 
@@ -7655,6 +7740,7 @@ AGGRESSIVE_RULES = [
     ("plus-group", "enumerate 3-term + grouping/constant placement (fold lever)", rule_plus_group),
     ("add-prefix-temp", "name a signed 2-term seam in a narrowed 3-term sum", rule_add_prefix_temp),
     ("flag-arm-assign", "move local 0/1 definitions between pre-zero and two-arm forms", rule_flag_arm_assign),
+    ("default-ladder-hoist", "hoist a three-way literal result default before both comparisons", rule_default_ladder_hoist),
     ("guard-flag-assign", "move a local flag definition before a guard or onto both goto edges", rule_guard_flag_assign),
     ("guard-exit-copy", "move a local value copy across its unique loop-break guard", rule_guard_exit_copy),
     ("shared-tail-assign", "duplicate one shared assignment into both preceding arms", rule_shared_tail_assign),
