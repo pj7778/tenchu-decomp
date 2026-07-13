@@ -307,6 +307,7 @@ GP_EXTERNS = {
     "ActCHASE": ["Me_MOTION_C", "dtM", "dtPAD", "MotionUpdateMode", "motID", "D_80097F0E", "dtL", "dtR", "dtCMD"],
     "ActENGAGE": ["dtM", "dtV", "dtPAD", "motID", "Me_MOTION_C", "D_80097F0E", "dtL", "dtCMD", "dtR"],
     "DrawShadow": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_", "D_80097F34"],
+    "register_character_death": ["D_800979DE", "FRAMES_UNTIL_END_OF_ALERT"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
@@ -361,6 +362,7 @@ MASPSX_EXTRA = {
     "SetupBG": ["--expand-div"],
     "SetWire": ["--expand-div"],
     "SetLightningI": ["--expand-div"],
+    "register_character_death": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash
