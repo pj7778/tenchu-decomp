@@ -35,6 +35,7 @@ import argparse, bisect, collections, os, struct, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import psxsym as P
+import function_inventory as FI
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VB, FO = 0x80011000, 0x800
@@ -130,6 +131,10 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("sym", nargs="?", default=f"{REPO}/disks/demo/PSX.SYM")
     ap.add_argument("--functions", default=f"{REPO}/.shake/ghidra-export/functions.tsv")
+    ap.add_argument("--splat", default=f"{REPO}/config/splat.main.exe.yaml",
+                    help="current named C subsegments overlaid onto the function inventory")
+    ap.add_argument("--no-name-overlay", action="store_true",
+                    help="use names in --functions verbatim (normally stale after renames)")
     ap.add_argument("--exe", default=f"{REPO}/disks/tenchu/main.exe")
     ap.add_argument("--apply", metavar="TSV")
     ap.add_argument("--min", choices=("HIGH", "MED"), default="MED")
@@ -155,11 +160,12 @@ def main() -> None:
     for f in demo:
         dtu[f.file.split("\\")[-1]].append(f)
 
+    rows = FI.load_functions(args.functions)
+    if not args.no_name_overlay:
+        rows, renamed = FI.overlay_current_names(rows, args.splat)
+        print(f"retail current-name overlays: {renamed}")
     retail = []
-    for line in open(args.functions):
-        p = line.rstrip("\n").split("\t")
-        if len(p) < 3: continue
-        a, s, n = int(p[0], 16), int(p[1]), p[2]
+    for a, s, n in rows:
         if a < GAME_END and s > 0:
             retail.append(R(a, s, n, exe))
     retail.sort(key=lambda r: r.addr)

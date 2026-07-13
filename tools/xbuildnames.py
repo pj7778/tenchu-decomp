@@ -27,6 +27,7 @@ import argparse, collections, hashlib, os, struct, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import psxsym as P
+import function_inventory as FI
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLACEHOLDER = ("FUN_", "LAB_", "DAT_", "DEAD_", "thunk", "SUB_", "sub_")
@@ -69,6 +70,10 @@ def main() -> None:
     ap.add_argument("--psxexe-funcs", default=f"{REPO}/reference/demo-psxexe.functions.tsv",
                     help="TSV: addr<TAB>size<TAB>name")
     ap.add_argument("--functions", default=f"{REPO}/.shake/ghidra-export/functions.tsv")
+    ap.add_argument("--splat", default=f"{REPO}/config/splat.main.exe.yaml",
+                    help="current named C subsegments overlaid onto the function inventory")
+    ap.add_argument("--no-name-overlay", action="store_true",
+                    help="use names in --functions verbatim (normally stale after renames)")
     ap.add_argument("--exe", default=f"{REPO}/disks/tenchu/main.exe")
     ap.add_argument("--apply", metavar="TSV")
     args = ap.parse_args()
@@ -97,12 +102,12 @@ def main() -> None:
     # --- dest: retail main.exe
     rexe = open(args.exe, "rb").read()
     VB, FO = 0x80011000, 0x800
+    rows = FI.load_functions(args.functions)
+    if not args.no_name_overlay:
+        rows, renamed = FI.overlay_current_names(rows, args.splat)
+        print(f"retail current-name overlays: {renamed}")
     dst: dict[int, tuple[str, list[int]]] = {}
-    for line in open(args.functions):
-        p = line.rstrip("\n").split("\t")
-        if len(p) < 3:
-            continue
-        a, size, name = int(p[0], 16), int(p[1]), p[2]
+    for a, size, name in rows:
         off = a - VB + FO
         if size < 8 or size % 4 or off < 0 or off + size > len(rexe):
             continue

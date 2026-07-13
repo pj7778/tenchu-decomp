@@ -23,6 +23,7 @@ import argparse, collections, os, struct, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import psxsym as P
+import function_inventory as FI
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLACEHOLDER = ("FUN_", "LAB_", "DAT_", "DEAD_", "thunk", "SUB_", "sub_")
@@ -107,6 +108,10 @@ def main() -> None:
     ap.add_argument("--psxexe", default=f"{REPO}/disks/demo/PSX.EXE")
     ap.add_argument("--psxexe-funcs", default=f"{REPO}/reference/demo-psxexe.functions.tsv")
     ap.add_argument("--functions", default=f"{REPO}/.shake/ghidra-export/functions.tsv")
+    ap.add_argument("--splat", default=f"{REPO}/config/splat.main.exe.yaml",
+                    help="current named C subsegments overlaid onto the function inventory")
+    ap.add_argument("--no-name-overlay", action="store_true",
+                    help="use names in --functions verbatim (normally stale after renames)")
     ap.add_argument("--exe", default=f"{REPO}/disks/tenchu/main.exe")
     ap.add_argument("--apply", metavar="TSV")
     ap.add_argument("--verify", metavar="TSV",
@@ -127,11 +132,10 @@ def main() -> None:
     dsig = load_side(exe[0x800:0x800 + t_size], t_addr, dfuncs)
 
     rexe = open(args.exe, "rb").read()
-    rfuncs = []
-    for line in open(args.functions):
-        p = line.rstrip("\n").split("\t")
-        if len(p) >= 3:
-            rfuncs.append((int(p[0], 16), int(p[1]), p[2]))
+    rfuncs = FI.load_functions(args.functions)
+    if not args.no_name_overlay:
+        rfuncs, renamed = FI.overlay_current_names(rfuncs, args.splat)
+        print(f"retail current-name overlays: {renamed}")
     if args.verify:
         n = verify(rexe, rfuncs, exe[0x800:0x800 + t_size], t_addr, dfuncs, args.verify)
         print(f"\n{n} rejected" if n else "\nno rejects")

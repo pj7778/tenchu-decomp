@@ -62,6 +62,14 @@ If a function is still `FUN_…`, its block carries the recorded candidate name 
 `reference/psxsym-candidates.tsv` — a suggestion that was not confident enough to
 adopt. Do not rename on it without `tools/callmatch.py --verify`.
 
+The name-recovery tools take function boundaries/sizes from Ghidra's exported TSV,
+but overlay current function names from splat's named `c` subsegments by address.
+Never classify unresolved names or compare callee fingerprints from the raw Ghidra
+names alone: that snapshot is not rewritten when the repository adopts a name, so it
+silently turns known callees back into placeholders. Call containment is necessary,
+not sufficient; callbacks with the same small set of helpers still require prototype,
+constant, and semantic confirmation (the historical `AttackFire` collision).
+
 Parameter names are already the authors' own wherever they could be adopted
 (`tools/symnote.py --params` lists the three still blocked by a name collision with a
 local). Match the *locals* to the original list as you draft: that is the lever.

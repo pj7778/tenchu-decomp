@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""Load retail function boundaries with the repository's current names.
+
+Ghidra's ``functions.tsv`` remains the authoritative boundary/size inventory,
+but it is a snapshot: adopting a name in the decomp does not rewrite that
+export.  The named ``c`` subsegments in splat's current config are the
+authoritative source/object names.  Overlay those names by address so symbol
+recovery does not treat already-renamed functions as placeholders or lose
+their names when resolving callees.
+"""
+from __future__ import annotations
+
+import re
+
+
+VB = 0x80011000
+FO = 0x800
+
+_C_SUBSEGMENT = re.compile(
+    r"^\s*-\s*\[\s*(0x[0-9A-Fa-f]+)\s*,\s*c\s*,\s*"
+    r"([A-Za-z_][A-Za-z0-9_]*)\s*\]"
+)
+
+
+def load_functions(path: str) -> list[tuple[int, int, str]]:
+    """Read ``addr<TAB>size<TAB>name`` rows, ignoring comments/metadata."""
+    out = []
+    with open(path) as fh:
+        for line in fh:
+            p = line.rstrip("\n").split("\t")
+            if len(p) < 3 or line.startswith("#"):
+                continue
+            out.append((int(p[0], 16), int(p[1]), p[2]))
+    return out
+
+
+def load_splat_c_names(path: str, vb: int = VB, fo: int = FO) -> dict[int, str]:
+    """Return ``{vram: current_name}`` for named C subsegments.
+
+    Restricting this to ``c`` entries is deliberate.  Named data/rodata
+    entries and same-address linker aliases are not necessarily functions.
+    """
+    out = {}
+    with open(path) as fh:
+        for line in fh:
+            m = _C_SUBSEGMENT.match(line)
+            if not m:
+                continue
+            off = int(m.group(1), 16)
+            if off >= fo:
+                out[vb + off - fo] = m.group(2)
+    return out
+
+
+def overlay_current_names(
+    funcs: list[tuple[int, int, str]], splat_path: str
+) -> tuple[list[tuple[int, int, str]], int]:
+    """Replace stale inventory names where splat has a C entry at that address.
+
+    Boundaries and sizes always remain those from ``funcs``.  The returned
+    count is the number of names that actually changed.
+    """
+    current = load_splat_c_names(splat_path)
+    changed = 0
+    out = []
+    for addr, size, old in funcs:
+        new = current.get(addr, old)
+        changed += new != old
+        out.append((addr, size, new))
+    return out, changed

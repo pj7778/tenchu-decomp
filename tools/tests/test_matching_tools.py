@@ -17,6 +17,7 @@ if TOOLS not in sys.path:
 
 import autorules
 import asmdiff
+import function_inventory
 import matchlock
 import matchdiff
 import maspsxflags
@@ -26,6 +27,46 @@ import regalloc
 import rtlguide
 import stackplan
 import symnear
+
+
+class FunctionInventoryTests(unittest.TestCase):
+    def test_current_c_names_overlay_stale_boundaries(self):
+        with tempfile.TemporaryDirectory() as td:
+            funcs = os.path.join(td, "functions.tsv")
+            splat = os.path.join(td, "splat.yaml")
+            with open(funcs, "w") as fh:
+                fh.write("80011000\t16\tFUN_80011000\n")
+                fh.write("80011010\t20\tAlreadyCurrent\n")
+                fh.write("80011024\t12\tFUN_80011024\n")
+            with open(splat, "w") as fh:
+                fh.write("segments:\n")
+                fh.write("  - [0x800, c, RecoveredName]\n")
+                fh.write("  - [0x810, c, AlreadyCurrent]\n")
+                fh.write("  - [0x824, data, MisleadingDataName]\n")
+
+            rows = function_inventory.load_functions(funcs)
+            rows, changed = function_inventory.overlay_current_names(rows, splat)
+
+        self.assertEqual(changed, 1)
+        self.assertEqual(rows, [
+            (0x80011000, 16, "RecoveredName"),
+            (0x80011010, 20, "AlreadyCurrent"),
+            (0x80011024, 12, "FUN_80011024"),
+        ])
+
+    def test_splat_name_loader_ignores_non_c_aliases(self):
+        with tempfile.NamedTemporaryFile("w", delete=False) as fh:
+            path = fh.name
+            fh.write("  - [0x800, c, Function]\n")
+            fh.write("  - [0x804, asm, StaleAsmAlias]\n")
+            fh.write("  - { start: 0x800, type: .rodata, name: JumpTable }\n")
+        try:
+            self.assertEqual(
+                function_inventory.load_splat_c_names(path),
+                {0x80011000: "Function"},
+            )
+        finally:
+            os.unlink(path)
 
 
 class AutoRulesAdvancedTests(unittest.TestCase):

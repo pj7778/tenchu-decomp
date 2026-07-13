@@ -97,7 +97,7 @@ Everything the pipeline needs, in the order you touch it:
 | `tools/rtlguide.py <Name>` | **mechanical RTL escalation** — aligns target asm with our candidate, classifies each hunk by owning pass, recompiles with debug RTL notes, maps residual instructions back to C lines, names locals in the divergent hard registers, and emits the exact guided autorules command. It also audits target/candidate physical branch/jump/call/return counts (warning when a score win invents a conditional branch), detects target-only physical calls, distinguishes `jal abs` from target inline abs, recognizes postincrement working-copy, cross-call argument-pipeline, and terminal commutative-equality residuals, summarizes CALL_INSN fingerprints through jump2, names proven residual signatures, and reports source lines whose first RTL instruction is fenced by LOOP_END in sched/sched2. The target has no RTL; target asm is the specification and our RTL is the causal trace. `--json` is stable; direct runs share the matching lock. |
 | `tools/regalloc.py <Name>` | **diagnose a register tie** — reads both `-dl` and `-dg`, filters to real global allocnos, shows refs/live-length/computed priority, pseudo→hard-reg dispositions and copy chains. `--prefer a0` focuses the allocnos carrying one hard-register preference so distant call-argument donors become visible. `--compare P Q [--enclosed-refs N]` quantifies how many weighted refs/loop depths P needs to outrank Q; `--between SUBJECT LOWER UPPER` finds a bounded three-allocno priority window (equal-mode comparisons). Run this BEFORE blindly permuting a sub-C tie. |
 | `tools/extract-demo.py`, `tools/psxsym.py`, `tools/symdump.py` | carve/parse/dump the demo disc's `PSX.SYM` — original prototypes, locals, structs, TU map. See [psx-sym.md](psx-sym.md). `matcher-prompt.py` injects the per-function facts automatically. |
-| `tools/symmatch.py`, `tools/xbuildnames.py`, `tools/callmatch.py`, `tools/datamatch.py` | recover original **names** (functions, then globals) from `PSX.SYM` + the demo `PSX.EXE`. |
+| `tools/symmatch.py`, `tools/xbuildnames.py`, `tools/callmatch.py`, `tools/datamatch.py` | recover original **names** (functions, then globals) from `PSX.SYM` + the demo `PSX.EXE`. The function matchers keep Ghidra's boundary/size inventory but mechanically overlay current splat `c` names, so adopted names and named callees cannot go stale. |
 | `tools/symnote.py --write --all` | stamp every `src/main.exe/*.c` with a `BEGIN PSX.SYM` block: the original prototype, locals (name/type/register-or-stack), touched globals, and any recorded candidate name. Idempotent; `--check` gates staleness; `--rename-params` adopts the authors' parameter names. Comments only — `./Build check` must stay byte-identical. |
 | `tools/import_symbols.py --renames <tsv>` | adopt a rename table: renames existing symbols **and defines new ones** (rewriting splat's `D_…` auto-label across `src/`, the gp-extern lists, the yaml), then gates on a byte-identical `./Build check`. |
 
@@ -110,10 +110,13 @@ operating rules:
 - **Frame size + saved-register mask agreement is not evidence.** `symmatch` proposed
   `SetPadState` for `0x80032610` with *both* matching. The callees said
   `UpdateTexScroll`, and they were right. Call signature outranks frame shape.
-- **Always `tools/callmatch.py --verify <table>` before `import_symbols.py`.** It
-  checks that the demo function's named callees are *contained in* the retail
-  function's (containment, not equality — retail functions grow). It has rejected five
-  candidates and rescued one (`AttackFire`) from LOW.
+- **Always `tools/callmatch.py --verify <table>` before `import_symbols.py`, then
+  verify parameters/constants/semantics.** It checks that the demo function's named
+  callees are *contained in* the retail function's (containment, not equality — retail
+  functions grow). It rejects many positional false positives, but similar callbacks
+  can collide: the historical `AttackFire` adoption passed containment even though a
+  later demo-assembly audit identified retail `FUN_80027730` as the frame-range napalm
+  function and the currently named function as a one-frame lightning callback.
 - **Ambiguous ⇒ keep the placeholder, record the candidate.** `reference/psxsym-candidates.tsv`
   and `reference/psxsym-data-candidates.tsv` hold every suggestion we did not adopt;
   `matcher-prompt.py` surfaces them to whoever touches the function next.

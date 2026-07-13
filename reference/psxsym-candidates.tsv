@@ -4,20 +4,10 @@
 #   tools/callmatch.py --verify <this file>
 # before adopting one.
 #addr	current	candidate	source	confidence	tu	retail_size	demo_size
-80018278	FUN_80018278	UpdateCoordinate2	symmatch	HIGH	3DCTRL.C	48	52
-8001851c	FUN_8001851c	CreateCloneModel	symmatch	HIGH	3DCTRL.C	160	164
 800188d8	LoadTIMpackAndFree	ViewAdjustBG	symmatch	LOW	3DCTRL.C	44	60
-8001f6b8	FUN_8001f6b8	AttackFire	symmatch	LOW	MOTION.C	300	208
-8001fb98	FUN_8001fb98	ActACTION	symmatch	MED	MOTION.C	1392	804
-80026074	FUN_80026074	ActITEM	symmatch	HIGH	MOTION.C	572	548
-8002b990	FUN_8002b990	GotoPosition	symmatch	LOW	THINK.C	480	188
-8002d638	FUN_8002d638	Think3area	symmatch	HIGH	THINK_3.C	844	672
-8003250c	FUN_8003250c	DrawTargetS	symmatch	HIGH	EFFECT.C	260	264
-80032610	FUN_80032610	SetPadState	symmatch	MED	EFFECT.C	272	392
-800339d0	FUN_800339d0	SetSmokeS	symmatch	MED	EFFECT.C	496	420
+8002b990	turn_towards_player_	GotoPosition	symmatch	LOW	THINK.C	480	188
+80032720	FUN_80032720	SetPadState	symmatch	LOW	EFFECT.C	560	392
 80035f44	FUN_80035f44	DrawGore	symmatch	LOW	EFFECT.C	832	640
 80036284	FUN_80036284	SetGore	symmatch	LOW	EFFECT.C	728	160
-8003d528	FUN_8003d528	GetFreeItemSlot	symmatch	LOW	ITEM.C	576	244
+8003d528	create_ninken_character_	GetFreeItemSlot	symmatch	LOW	ITEM.C	576	244
 8003d768	FUN_8003d768	RequestItem	symmatch	LOW	ITEM.C	672	204
-80049f94	FUN_80049f94	TurnAroundAllItems	symmatch	HIGH	ITEM.C	408	412
-8004eaf0	FUN_8004eaf0	SetupImageToPolyFT4	symmatch	HIGH	IMAGES.C	288	292
