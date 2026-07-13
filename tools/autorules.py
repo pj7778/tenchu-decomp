@@ -2711,16 +2711,42 @@ def score(name, partial, source_override=None):
                    text=True, env=env)
     out = r.stdout
     if "MATCH!" in out:
-        return (True, 0, None, None)
+        return (True, 0, 0, 0)
+    # Raw linked bytes remain authoritative, but retain asmdiff's aligned-line
+    # count as a structural diagnostic.  A local rewrite can shorten the total
+    # byte diff while replacing a correct signed instruction sequence with a
+    # worse unsigned one elsewhere.  Reporting that non-Pareto movement keeps
+    # the greedy result reviewable without overruling a genuine byte match.
+    shape = _run_owned([sys.executable, ASMDIFF, name, "-n"],
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                       text=True, env=env)
+    sm = SUMMARY.search(shape.stdout)
+    shape_lines = int(sm.group(1)) if sm else None
+    length_delta = abs(int(sm.group(2)) - int(sm.group(3))) if sm else None
     lm = re.search(r"linked (\d+) bytes .*? extent (\d+)", out) or \
         re.search(r"extent (\d+) bytes, but the linker placed (\d+)", out)
     if "LENGTH MISMATCH" in out and lm:
         a, b_ = int(lm.group(1)), int(lm.group(2))
-        return (False, 1000 + abs(a - b_), None, None)
+        return (False, 1000 + abs(a - b_), shape_lines, length_delta)
     m = re.search(r"\((\d+) in the whole image\)", out)
     if not m:
-        return (False, INVALID, None, None)
-    return (False, int(m.group(1)), None, None)
+        return (False, INVALID, shape_lines, length_delta)
+    return (False, int(m.group(1)), shape_lines, length_delta)
+
+
+def shape_regression_note(before, after, match=False):
+    """Human-facing warning for a byte win that worsens aligned local shape."""
+    if match or before is None or after is None:
+        return ""
+    before_lines, before_length = before
+    after_lines, after_length = after
+    if (before_length is not None and after_length is not None and
+            after_length > before_length):
+        return f"  LENGTH-SHAPE REGRESSION {before_length}→{after_length}"
+    if (before_lines is not None and after_lines is not None and
+            before_length == after_length and after_lines > before_lines):
+        return f"  LOCAL-SHAPE REGRESSION {before_lines}→{after_lines} lines"
+    return ""
 
 
 def write(path, lines):
@@ -2741,7 +2767,8 @@ def _candidates(text, name, partial, rules):
             yield key, label, new_text
 
 
-def greedy_search(path, original, name, partial, rules, base, once=False):
+def greedy_search(path, original, name, partial, rules, base, once=False,
+                  shape=(None, None)):
     """Search using `path` as a private staged source, never the live file."""
     cur_text = original
     applied = []
@@ -2751,23 +2778,26 @@ def greedy_search(path, original, name, partial, rules, base, once=False):
         tried = 0
         for _key, label, new_text in _candidates(cur_text, name, partial, rules):
             write(path, new_text.split("\n"))
-            m, sc, _l1, _l2 = score(name, partial, path)
+            m, sc, l1, l2 = score(name, partial, path)
             write(path, cur_text.split("\n"))
             tried += 1
             ds = "  invalid" if sc == INVALID else f"  {base}→{sc}"
+            warning = (shape_regression_note(shape, (l1, l2), m)
+                       if sc < base else "")
             print(f"  {label:34} {ds}{'  ✓' if (sc < base) else ''}"
-                  f"{'  MATCH' if m else ''}")
+                  f"{'  MATCH' if m else ''}{warning}")
             if sc < base and (best is None or sc < best[0]):
-                best = (sc, label, new_text, m)
+                best = (sc, label, new_text, m, l1, l2)
         if best is None:
             print(f"  (no improving edit among {tried} candidates)")
             break
-        sc, label, new_text, m = best
+        sc, label, new_text, m, l1, l2 = best
         applied.append((label, base, sc))
         print(f"  → adopt [{label}]  {base}→{sc}")
         cur_text = new_text
         write(path, cur_text.split("\n"))
         base = sc
+        shape = (l1, l2)
         if m or once:
             match = m
             break
@@ -2775,7 +2805,7 @@ def greedy_search(path, original, name, partial, rules, base, once=False):
 
 
 def beam_search(path, original, name, partial, rules, base, width, depth,
-                allow_regress, budget):
+                allow_regress, budget, shape=(None, None)):
     """Bounded multi-edit search that retains neutral enabling transformations.
 
     The old greedy loop cannot discover `loop-fence A` (same byte score)
@@ -2783,7 +2813,7 @@ def beam_search(path, original, name, partial, rules, base, width, depth,
     enabling sequences and remains explainable: every path is printed.
     """
     start = base
-    initial = dict(text=original, score=base, match=False, path=[])
+    initial = dict(text=original, score=base, shape=shape, match=False, path=[])
     frontier = [initial]
     best = initial
     seen = {hashlib.sha1(original.encode()).digest()}
@@ -2804,19 +2834,22 @@ def beam_search(path, original, name, partial, rules, base, width, depth,
                     break
                 write(path, new_text.split("\n"))
                 if digest in cache:
-                    m, sc = cache[digest]
+                    m, sc, l1, l2 = cache[digest]
                 else:
-                    m, sc, _l1, _l2 = score(name, partial, path)
-                    cache[digest] = (m, sc)
+                    m, sc, l1, l2 = score(name, partial, path)
+                    cache[digest] = (m, sc, l1, l2)
                     tried += 1
                 write(path, state["text"].split("\n"))
                 ds = "invalid" if sc == INVALID else str(sc)
+                warning = (shape_regression_note(state["shape"], (l1, l2), m)
+                           if sc < state["score"] else "")
                 print(f"  d{level} {label:31} {state['score']}→{ds}"
-                      f"{'  ✓' if sc < best['score'] else ''}{'  MATCH' if m else ''}")
+                      f"{'  ✓' if sc < best['score'] else ''}{'  MATCH' if m else ''}"
+                      f"{warning}")
                 if sc == INVALID or sc > start + allow_regress:
                     continue
                 child = dict(
-                    text=new_text, score=sc, match=m,
+                    text=new_text, score=sc, shape=(l1, l2), match=m,
                     path=state["path"] + [(label, state["score"], sc)],
                 )
                 children.append(child)
@@ -2948,11 +2981,12 @@ def main():
         if beam:
             cur_text, base, match, applied = beam_search(
                 candidate_path, original, name, partial, rules, base, beam, args.depth,
-                allow_regress, args.budget,
+                allow_regress, args.budget, (lo, lt),
             )
         else:
             cur_text, base, match, applied = greedy_search(
                 candidate_path, original, name, partial, rules, base, args.once,
+                (lo, lt),
             )
 
     print()

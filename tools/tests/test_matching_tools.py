@@ -600,6 +600,34 @@ int F(void) { int x; int y; x=first(); y=second(); sink(x,y); return 0; }
 
 
 class AutoRulesLifecycleTests(unittest.TestCase):
+    def test_shape_regression_note_flags_equal_length_local_regression(self):
+        self.assertEqual(
+            autorules.shape_regression_note((2, 0), (5, 0)),
+            "  LOCAL-SHAPE REGRESSION 2→5 lines",
+        )
+        self.assertEqual(autorules.shape_regression_note((5, 0), (2, 0)), "")
+        self.assertEqual(
+            autorules.shape_regression_note((2, 0), (5, 0), match=True), "",
+        )
+
+    def test_score_retains_aligned_shape_as_a_secondary_diagnostic(self):
+        def fake_run(args, **kwargs):
+            if args == ["./Build"]:
+                return subprocess.CompletedProcess(args, 0)
+            if args[1].endswith("matchdiff.py"):
+                return subprocess.CompletedProcess(
+                    args, 1, "F: 4 differing bytes (4 in the whole image)\n", "",
+                )
+            self.assertTrue(args[1].endswith("asmdiff.py"))
+            return subprocess.CompletedProcess(
+                args, 1,
+                "[F: 3 differing lines in 1 blocks; length ours 8 vs target 8]\n",
+                "",
+            )
+
+        with mock.patch.object(autorules, "_run_owned", side_effect=fake_run):
+            self.assertEqual(autorules.score("F", False), (False, 4, 3, 0))
+
     def test_greedy_search_never_rewrites_the_live_source(self):
         def candidate(text, _name, _span):
             if text == "original":

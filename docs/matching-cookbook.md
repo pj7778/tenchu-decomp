@@ -143,7 +143,13 @@ The ordered triage — fix categories in THIS order, re-running
      `u16`→`u8` field retype can narrow a correct `lhu` to `lbu` at another,
      already-matched site — autorules scores *total* diff, not per-site
      correctness, so it reports the net shrink as a win (Think3chase). Target
-     asm is also an anti-oracle: `extern-array` refuses any symbol whose target
+     asm is also a structural oracle: autorules now retains asmdiff's aligned
+     differing-line count and prints `LOCAL-SHAPE REGRESSION` when a byte-count
+     win at equal length worsens it. That warning caught FUN_80052ea8's tempting
+     signed-`s16` to unsigned-`u16` retype; review the affected hunk instead of
+     accepting a length-only win blindly. The raw linked byte count remains the
+     authoritative objective, and an exact match is never warned. Target asm
+     is also an anti-oracle: `extern-array` refuses any symbol whose target
      access is proven `%gp_rel`, since that symbol categorically must stay on
      the small-data path. (Structural rules that need diff-reading to place —
      loop shape, switch-vs-ladder, union-offset casts — stay manual.)
@@ -1327,6 +1333,14 @@ pointer declaration initializer and a later bare assignment, including `T **`:
 DrawConstruction's `slot = DrawList + bucket` needed
 `slot = (T **)((u32)DrawList + bucket * sizeof(*slot))` for the terminal
 index-first `addu`.
+
+**Build a dynamic row base before a large constant field displacement.** For a
+flattened table, `state->stock[chr * stride + field]` encourages cc1 to add the
+constant into the dynamic index first, then address the struct base. If retail
+uses the large field displacement directly on a register, first spell
+`row = (u8 *)state + chr * stride; value = row[field];`. FUN_80052ea8 needed
+this shape to produce the folded `0x41f(row)` access instead of an extra
+`addiu` followed by `0x40c(base)`.
 
 **A `slti/xori/bnez` (set-condition + branch) success test is a NAMED flag variable.**
 `hitf = call(...) > 0x7ff; if (hitf) goto hit;` compiles the three-instruction
