@@ -118,9 +118,9 @@ extern MATRIX *ScaleMatrix(MATRIX *m, VECTOR *v);
 
 /* Matching checkpoint (retail): the pure-C draft has the exact 0x68 frame,
  * 564 instructions, exact 36/12/33/1 branch/jump/call/return inventory, and
- * target item/param/sentinel homes s3/s4/s5.  The remaining 41 differing
- * bytes are confined to the entry Humans-loop schedule, the decoy launch's
- * s0/s1/s2 rotation, and the mode-1 constant schedule.
+ * target item/param/sentinel homes s3/s4/s5.  The remaining 25 differing
+ * bytes are confined to the decoy launch's s0/s1/s2 rotation and the mode-1
+ * constant schedule.
  *
  * The otherwise-odd one-shot loops are measured allocator/scheduler fences:
  * the launch fence prevents a stack-address pseudo from occupying s3, while
@@ -151,10 +151,15 @@ void ProcItemNingyo(tag_TItem *item)
             if (n > 0)
             {
                 s32 limit;
+                TCameraStatus *camera;
 
-                humans = HumanGroup;
-                i = 0;
+                do
+                {
+                    i = 0;
+                } while (0);
+                camera = &CamState;
                 limit = n;
+                humans = HumanGroup;
                 do
                 {
                     Humanoid *human;
@@ -162,7 +167,7 @@ void ProcItemNingyo(tag_TItem *item)
                     human = *humans;
                     if (human->target == item->locate)
                     {
-                        human->target = (ModelType *)CamState.Owner->model;
+                        human->target = (ModelType *)camera->Owner->model;
                     }
                     i++;
                     humans++;
