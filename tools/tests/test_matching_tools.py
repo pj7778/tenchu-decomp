@@ -2133,6 +2133,39 @@ void Target(u32 value)
 
 
 class StackPlanTests(unittest.TestCase):
+    def test_vector_array_hint_finds_reused_second_xyz_triplet(self):
+        assembly = """
+glabel F
+    addiu $sp, $sp, -0x88
+    sw $s0, 0x70($sp)
+    addiu $a1, $sp, 0x48
+    lhu $v0, 0x48($sp)
+    lhu $v1, 0x4c($sp)
+    lhu $a0, 0x50($sp)
+    sw $v0, 0x58($sp)
+    sw $v1, 0x5c($sp)
+    sw $a0, 0x60($sp)
+    lw $v0, 0x58($sp)
+    lw $v1, 0x5c($sp)
+    lw $a0, 0x60($sp)
+"""
+        info = stackplan.analyze(assembly, args_hint=0x10)
+        self.assertEqual(
+            info["vector_array_hints"],
+            [{"base": 0x48, "second": 0x58}],
+        )
+
+    def test_vector_array_hint_rejects_unreloaded_word_spills(self):
+        accesses = {
+            0x48: {"addr": 1, "lhu": 1},
+            0x4c: {"lhu": 1},
+            0x50: {"lhu": 1},
+            0x58: {"sw": 1},
+            0x5c: {"sw": 1},
+            0x60: {"sw": 1},
+        }
+        self.assertEqual(stackplan.vector_array_hints(accesses), [])
+
     def test_successful_build_diagnostics_stay_in_log(self):
         with tempfile.TemporaryDirectory() as directory:
             log_path = os.path.join(directory, "stackplan-build.log")

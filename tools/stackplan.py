@@ -148,6 +148,35 @@ def stack_accesses(text):
     return {offset: dict(counts) for offset, counts in sorted(accesses.items())}
 
 
+def vector_array_hints(accesses):
+    """Find a stack signature consistent with ``VECTOR scratch[2]``.
+
+    A PSX ``VECTOR`` is a 16-byte, word-aligned x/y/z/pad aggregate.  An
+    address formed for its first element, scalar reads of that element's first
+    three words, and three word save/reloads exactly 0x10 bytes later are
+    stronger evidence for one two-element workspace than for three unrelated
+    spills.  Keep this as a hint: assembly proves the layout, not the source
+    type.
+    """
+    hints = []
+    for base, counts in sorted(accesses.items()):
+        if not counts.get("addr") or base % 4:
+            continue
+        first = [accesses.get(base + delta, {}) for delta in (0, 4, 8)]
+        second = [accesses.get(base + 0x10 + delta, {})
+                  for delta in (0, 4, 8)]
+        if not all(any(op.startswith("l") for op in slot) for slot in first):
+            continue
+        if not all(
+                access_width(slot)[0] == 4 and
+                any(op.startswith("s") for op in slot) and
+                any(op.startswith("l") for op in slot)
+                for slot in second):
+            continue
+        hints.append({"base": base, "second": base + 0x10})
+    return hints
+
+
 def infer_args_from_accesses(accesses):
     """Infer o32 outgoing space below the first address-taken local.
 
@@ -187,6 +216,7 @@ def analyze(text, args_hint=None):
     info = frame_info(text)
     info["saved_start"] = saved_area_start(text)
     info["accesses"] = stack_accesses(text)
+    info["vector_array_hints"] = vector_array_hints(info["accesses"])
     if info["args"] is None:
         info["args"] = (args_hint if args_hint is not None else
                         infer_args_from_accesses(info["accesses"]))
@@ -234,6 +264,10 @@ def print_side(label, info):
                 f"{op}x{count}" for op, count in sorted(info["accesses"][offset].items())
             )
             print(f"    sp+0x{offset:02x}: {counts}")
+    for hint in info.get("vector_array_hints", []):
+        print("  vector-array hint: the xyz words at "
+              f"sp+0x{hint['base']:x} and sp+0x{hint['second']:x} fit "
+              "one `VECTOR scratch[2]` workspace")
 
 
 def access_width(counts):

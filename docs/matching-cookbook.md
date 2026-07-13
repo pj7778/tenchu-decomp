@@ -1681,6 +1681,17 @@ near entry; `AdtMessageBox` wants the inline form.)
   loads as local workspace, so its fallback argument inference no longer hides
   that VECTOR merely because the following aggregate supplies the first
   formed stack address.
+- **Two xyz triplets exactly 0x10 bytes apart can be one `VECTOR[2]`
+  workspace, not an output plus three scalar spills.** The strong target
+  signature is an address formed for the first element, reads of its first
+  three words, then `sw`/`lw` pairs at `base+0x10/+0x14/+0x18`. In
+  FUN_80035f44, three independent `long` captures stayed in registers and
+  produced only 200 instructions; storing them in `rotated[1].vx/vy/vz`
+  recovered the target's sp+0x58/0x5c/0x60 workspace and 207 of 208
+  instructions. A named readback after the neighbouring field store supplied
+  the final schedule and matched all 832 bytes. `tools/stackplan.py` reports
+  this signature as a `vector-array hint`; treat it as layout evidence and
+  still verify that the values really have VECTOR semantics.
 - **For mutually-exclusive aggregate layouts, make the overlap an explicit
   union instead of hoping scopes share slots.** Run `tools/stackplan.py <Name>`:
   it reads the candidate's outgoing-argument size, the target's first
