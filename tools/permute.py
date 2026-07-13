@@ -283,6 +283,7 @@ GP_EXTERNS = {
     "FUN_8005b17c": ["D_80097D38", "D_80097D24", "D_80097D3C", "D_80097D40", "D_80097D28", "D_80097D2C"],
     "LoadConstruction": ["D_80097A70", "D_80097A74", "StageID"],
     "CreateStage": ["StageID"],
+    "SetWire": ["D_80097F28"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
@@ -334,6 +335,7 @@ MASPSX_EXTRA = {
     "SwimCheck": ["--expand-div"],
     "ProcItemArrow": ["--expand-div"],
     "SetupBG": ["--expand-div"],
+    "SetWire": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash

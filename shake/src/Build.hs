@@ -196,6 +196,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     extra "SwimCheck" = ["--expand-div"]
     extra "ProcItemArrow" = ["--expand-div"]
     extra "SetupBG" = ["--expand-div"]
+    extra "SetWire" = ["--expand-div"]
     extra _ = []
     -- Think1sleep.c is a fragment of the original think TU, which defines these.
     syms "Think1sleep" = ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"]
@@ -407,6 +408,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "FUN_8005b17c" = ["D_80097D38", "D_80097D24", "D_80097D3C", "D_80097D40", "D_80097D28", "D_80097D2C"]
     syms "LoadConstruction" = ["D_80097A70", "D_80097A74", "StageID"]
     syms "CreateStage" = ["StageID"]
+    syms "SetWire" = ["D_80097F28"]
     syms _ = []
 
 as :: FilePath

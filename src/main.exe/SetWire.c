@@ -61,7 +61,228 @@
  *     extern struct GsOT *OTablePt;
  * END PSX.SYM */
 
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetWire", SetWire);
+#else
+
+typedef struct
+{
+    u32 attribute;
+    s16 x0;
+    s16 y0;
+    s16 x1;
+    s16 y1;
+    u8 r;
+    u8 g;
+    u8 b;
+} GsLINE;
+
+typedef struct
+{
+    s32 vpx;
+    s32 vpy;
+    s32 vpz;
+    s32 vrx;
+    s32 vry;
+    s32 vrz;
+} WireViewInfo;
+
+typedef struct
+{
+    GsCOORDINATE2 locate;
+    SVECTOR rotate;
+} WireModel;
+
+extern WireViewInfo ViewInfo;
+extern MATRIX GsWSMATRIX;
+extern GsOT *OTablePt;
+extern WireModel *D_80097F28;
+
+extern void SetTransMatrix(MATRIX *matrix);
+extern void SetRotMatrix(MATRIX *matrix);
+extern s32 RotTransPers(SVECTOR *vector, s32 *screen, void *p, void *flag);
+extern s32 SquareRoot0(s32 value);
+extern s32 ratan2(s32 y, s32 x);
+extern s32 abs(s32 value);
+extern void GsSortLine(GsLINE *line, GsOT *ot, u16 priority);
+extern void UpdateCoordinate(WireModel *model);
+extern void DrawModel(WireModel *model);
+
+void SetWire(VECTOR *start, VECTOR *end, VECTOR *center, long len)
+{
+    VECTOR StockCenter;
+    SVECTOR scr;
+    SVECTOR oldscr;
+    GsLINE line;
+    int rx;
+    int ry;
+    int *rxp;
+    int *ryp;
+    int x;
+    int y;
+    int z;
+    long distance;
+    long lcount;
+    int i;
+    int ecount;
+
+    {
+        long initial_x;
+        long initial_y;
+        long initial_z;
+
+        initial_x = start->vx;
+        initial_y = start->vy;
+        initial_z = start->vz;
+        *(s32 *)0x1F800014 = 0;
+        *(s32 *)0x1F800018 = 0;
+        *(s32 *)0x1F80001C = 0;
+        *(s16 *)0x1F800020 = initial_x - (s16)ViewInfo.vpx;
+        *(s16 *)0x1F800022 = initial_y - (s16)ViewInfo.vpy;
+        *(s16 *)0x1F800024 = initial_z - (s16)ViewInfo.vpz;
+    }
+    SetTransMatrix((MATRIX *)0x1F800000);
+    SetRotMatrix(&GsWSMATRIX);
+    oldscr.vz = (s16)RotTransPers((SVECTOR *)0x1F800020, (s32 *)&oldscr,
+                                  (void *)0x1F800028, (void *)0x1F80002C);
+
+    {
+        long dx;
+        long dy;
+        long dz;
+        int large;
+
+        line.r = 0x50;
+        line.g = 0x48;
+        large = 0;
+        line.attribute = 0;
+        line.b = 0x38;
+
+        dx = start->vx - end->vx;
+        dy = start->vy - end->vy;
+        dz = start->vz - end->vz;
+        if (abs(dx) > 0x1000 || abs(dy) > 0x1000 || abs(dz) > 0x1000)
+        {
+            large = 1;
+        }
+
+        if (large)
+        {
+            dx /= 0x100;
+            dy /= 0x100;
+            dz /= 0x100;
+            distance = SquareRoot0(dx * dx + dy * dy + dz * dz) << 8;
+        }
+        else
+        {
+            distance = SquareRoot0(dx * dx + dy * dy + dz * dz);
+        }
+    }
+
+    lcount = distance / 300;
+    if (center == 0)
+    {
+        StockCenter.vx = (end->vx + start->vx) / 2;
+        center = &StockCenter;
+        center->vy = (end->vy + start->vy) / 2 + distance / 32;
+        center->vz = (end->vz + start->vz) / 2;
+    }
+
+    ecount = (lcount * len) / 0x1000;
+    i = 0;
+    while (1)
+    {
+        long t;
+        long Q;
+        long R;
+        long center_weight;
+        long value;
+
+        if (i >= ecount)
+        {
+            break;
+        }
+
+        t = 0x1000 - (i << 12) / lcount;
+        Q = t * t;
+        center_weight = t * 2;
+        if (Q < 0)
+        {
+            Q += 0xfff;
+        }
+        Q >>= 12;
+        R = 0x1000 - center_weight + Q;
+        center_weight -= Q * 2;
+
+        value = R * end->vx + center_weight * center->vx + Q * start->vx;
+        x = value / 0x1000;
+        value = R * end->vy + center_weight * center->vy + Q * start->vy;
+        y = value / 0x1000;
+        value = R * end->vz + center_weight * center->vz + Q * start->vz;
+        z = value / 0x1000;
+
+        *(s32 *)0x1F800014 = 0;
+        *(s32 *)0x1F800018 = 0;
+        *(s32 *)0x1F80001C = 0;
+        *(s16 *)0x1F800020 = x - (s16)ViewInfo.vpx;
+        *(s16 *)0x1F800022 = y - (s16)ViewInfo.vpy;
+        *(s16 *)0x1F800024 = z - (s16)ViewInfo.vpz;
+        SetTransMatrix((MATRIX *)0x1F800000);
+        SetRotMatrix(&GsWSMATRIX);
+        scr.vz = (s16)RotTransPers((SVECTOR *)0x1F800020, (s32 *)&scr,
+                                   (void *)0x1F800028, (void *)0x1F80002C);
+
+        if (((s32)scr.vz << 16) > 0 && oldscr.vz > 0)
+        {
+            int priority;
+
+            line.y0 = oldscr.vy;
+            priority = ((s32)scr.vz << 16) >> 18;
+            line.x0 = oldscr.vx;
+            line.x1 = scr.vx;
+            line.y1 = scr.vy;
+            if (priority < 0)
+            {
+                priority = 0;
+            }
+            else
+            {
+                if (priority >= 0x4e2)
+                {
+                    priority = 0x4e1;
+                }
+            }
+            GsSortLine(&line, OTablePt, (u16)priority);
+        }
+        oldscr = scr;
+        i++;
+    }
+
+    {
+        long dx;
+        long dy;
+        long dz;
+
+        dx = end->vx - start->vx;
+        dz = end->vz - start->vz;
+        dy = end->vy - start->vy;
+        rxp = &rx;
+        ryp = &ry;
+        *ryp = ratan2(-dx, -dz);
+        *rxp = ratan2(dy, SquareRoot0(dx * dx + dz * dz));
+    }
+
+    D_80097F28->locate.coord.t[0] = x;
+    D_80097F28->locate.coord.t[1] = y;
+    D_80097F28->locate.coord.t[2] = z;
+    D_80097F28->rotate.vx = *rxp;
+    D_80097F28->rotate.vy = *ryp;
+    D_80097F28->rotate.vz = 0;
+    UpdateCoordinate(D_80097F28);
+    DrawModel(D_80097F28);
+}
+
+#endif
 
 // triage: HARD — 372 insns, mul/div, 9 callees, ~0.10 to GetVectorRotation
 // likely-relevant cookbook sections:
