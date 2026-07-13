@@ -2573,6 +2573,11 @@ needed loop notes. Those constructs explain source-level intent and survive
 review; a synthetic clobber does not.
 
 `autorules` contains no asm-producing rule, and `rtlguide` never recommends one.
+`matchdiff` also treats an otherwise byte-exact result as incomplete while its
+source still contains a `NON_MATCHING` guard, `INCLUDE_ASM` fallback, or inline
+`__asm__`; it returns failure until the unconditional plain C is rebuilt and
+verified. This prevents an exact shadow draft from being committed as “matched”
+while the default executable still links retail assembly.
 A target-only move is reported only as a register goal for inspecting the
 candidate's copy chain. This is a deliberate stopping rule: exact bytes are the
 verification gate, but they do not make an arbitrary compiler directive a

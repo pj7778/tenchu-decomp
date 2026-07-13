@@ -1130,6 +1130,33 @@ AFTER = 0x80089F08;
 
 
 class MatchDiffArtifactTests(unittest.TestCase):
+    def test_exact_source_completion_rejects_guards_and_inline_asm(self):
+        source = """#ifndef NON_MATCHING
+INCLUDE_ASM("stub", F);
+#else
+void F(void) { __asm__ volatile ("" ::: "memory"); }
+#endif
+"""
+        with tempfile.NamedTemporaryFile("w+", delete=False) as stream:
+            path = stream.name
+            stream.write(source)
+        try:
+            self.assertEqual(matchdiff.source_completion_blockers(path), [
+                "NON_MATCHING guard", "INCLUDE_ASM fallback",
+                "inline __asm__",
+            ])
+        finally:
+            os.unlink(path)
+
+    def test_exact_plain_c_has_no_completion_blocker(self):
+        with tempfile.NamedTemporaryFile("w+", delete=False) as stream:
+            path = stream.name
+            stream.write("void F(void) { return; }\n")
+        try:
+            self.assertEqual(matchdiff.source_completion_blockers(path), [])
+        finally:
+            os.unlink(path)
+
     def test_nonmatching_stub_is_detected_from_link_map(self):
         content = """
  .text 0x80012340 0x20 .shake/build/main.exe/F.c.o

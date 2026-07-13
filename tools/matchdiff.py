@@ -31,6 +31,24 @@ YAML = "config/splat.main.exe.yaml"
 OBJDUMP = "mipsel-unknown-linux-gnu-objdump"
 
 
+def source_completion_blockers(path):
+    """Asm/guard constructs that make a byte-exact draft incomplete."""
+    if not os.path.exists(path):
+        return []
+    with open(path, errors="replace") as stream:
+        text = stream.read()
+    code = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    code = re.sub(r"//[^\n]*", "", code)
+    blockers = []
+    if re.search(r"^\s*#\s*ifndef\s+NON_MATCHING\b", code, re.M):
+        blockers.append("NON_MATCHING guard")
+    if re.search(r"^\s*INCLUDE_ASM\s*\(", code, re.M):
+        blockers.append("INCLUDE_ASM fallback")
+    if re.search(r"\b__asm__\b", code):
+        blockers.append("inline __asm__")
+    return blockers
+
+
 def linked_text_size(name):
     """Bytes the linker actually placed for <name>.c.o's .text, from the map.
 
@@ -254,8 +272,18 @@ def main():
         print("NOTE: diffs beyond the function window — if your function is a"
               " different LENGTH, everything after it shifts (symbols drift too).")
     if not diffs:
-        print("MATCH!" if total == 0 else "window matches but the image does not!")
-        return 0 if total == 0 else 1
+        if total != 0:
+            print("window matches but the image does not!")
+            return 1
+        blockers = source_completion_blockers(srcp)
+        if blockers:
+            print("C DRAFT BYTE-MATCHES, BUT IS NOT COMPLETE: " +
+                  ", ".join(blockers) + ".")
+            print("  Remove the guard/fallback or inline assembly, rebuild the "
+                  "plain C, and verify again before committing it as matched.")
+            return 1
+        print("MATCH!")
+        return 0
 
     o_dis = disasm(orig, off, size, addr)
     m_dis = disasm(ours, off, size, addr)
