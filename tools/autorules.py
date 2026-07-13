@@ -264,14 +264,29 @@ def rule_type_width(text, name, span):
     signed; a terminator's signedness; short-vs-int call results (PauseProc);
     an HImode switch guard that must not reuse an SImode case constant
     (ActATTACK).
-    For each local declaration we try each *distinct* (width, signedness)
-    canonical type. Line-based (robust without the AST); confined to the body.
+    For each provably single, plain scalar local declaration we try each
+    *distinct* (width, signedness) canonical type.  Pointer, array,
+    multi-declarator, and multi-line declarations are excluded: changing a
+    shared base type can change another declarator's pointee access width or
+    object layout, not just the scalar local's machine mode. Line-based (robust
+    without the AST); confined to the body.
     """
     lines, ranges = body_line_ranges(text, span, name)
     for rng in ranges:
         for i, raw, code in uncommented(lines, rng):
             m = DECL.match(code)
             if not m:
+                continue
+            # Group 5 is the optional pointer stars; the match ends immediately
+            # after the first identifier. Require that this whole declaration
+            # ends on the same line and has no comma, because in
+            # `s16 scalar, *view` retyping the apparently scalar first
+            # declarator also changes `view`'s pointee width.
+            suffix = code[m.end():]
+            declaration_tail = suffix.split(";", 1)[0]
+            if ("*" in m.group(5) or
+                    suffix.lstrip().startswith("[") or
+                    ";" not in suffix or "," in declaration_tail):
                 continue
             cur = m.group(3)
             w, s = TYPES[cur]
@@ -3286,6 +3301,199 @@ def rule_flag_arm_assign(text, name, span):
             )
 
 
+def rule_guard_flag_assign(text, name, span):
+    """Toggle a local flag definition across a single-goto guard.
+
+    ``flag = 1; if (reject) { goto done; }`` and the edge-local spelling
+    ``if (reject) { flag = 1; goto done; } flag = 1;`` are equivalent for a
+    nonvolatile, non-address-taken local when the condition provably cannot
+    read the flag.  The latter gives jump/reorg identical definitions on the
+    taken and fallthrough edges, which can merge the definition into the guard
+    branch's delay slot while shortening its live range past the comparison.
+
+    Keep this deliberately narrow: a literal 0/1 (or false/true), adjacent
+    statements, no else, a macro/call-free condition containing only known
+    locals/parameters, no call-like use that could hide an address capture of
+    the flag, and a compound arm containing only the goto (sink) or the
+    matching assignment plus goto (hoist). Both directions are enumerated so
+    scoring can recover either source shape.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    locals_ = _nonvolatile_local_names(data, body)
+
+    # Inspect unary address expressions through any number of parentheses.
+    # A text regex misses spellings such as `&(flag)` and
+    # `&(/* alias */ flag)`, after which a pointer-based guard can observe the
+    # assignment we are considering moving.
+    addressed = set()
+    for pointer in _find(body, ("pointer_expression",)):
+        operator = pointer.child_by_field_name("operator")
+        argument = _unparen(pointer.child_by_field_name("argument"))
+        if (operator is not None and _txt(data, operator) == b"&" and
+                argument is not None and argument.type == "identifier"):
+            addressed.add(_txt(data, argument))
+
+    # Source parsing happens before preprocessing, so an object-like macro in
+    # a condition is only an innocent-looking identifier to tree-sitter. Keep
+    # the transform conservative around every macro defined in this TU,
+    # including continued definitions.
+    macro_definitions = {}
+    source_lines = data.splitlines(keepends=True)
+    line_index = 0
+    while line_index < len(source_lines):
+        line = source_lines[line_index]
+        match = re.match(
+            rb"[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)", line
+        )
+        if match is None:
+            line_index += 1
+            continue
+        definition = [line]
+        while (definition[-1].rstrip(b"\r\n").endswith(b"\\") and
+               line_index + 1 < len(source_lines)):
+            line_index += 1
+            definition.append(source_lines[line_index])
+        macro_definitions[match.group(1)] = b"".join(definition)
+        line_index += 1
+
+    # A condition identifier is accepted only when it names a variable whose
+    # binding is visible in this function. Unknown identifiers may be macros
+    # supplied by an included header, which this unpreprocessed source cannot
+    # expand or prove independent of the flag.
+    known_condition_names = set(locals_)
+    function = body.parent
+    declarator = (function.child_by_field_name("declarator")
+                  if function is not None else None)
+    if declarator is not None:
+        for parameter in _find(declarator, ("parameter_declaration",)):
+            parameter_declarator = parameter.child_by_field_name("declarator")
+            identifier = _descend_ident(parameter_declarator)
+            if identifier is not None:
+                known_condition_names.add(_txt(data, identifier))
+
+    def flag_literal(node):
+        node = _unparen(node)
+        if node is None:
+            return None
+        raw = _txt(data, node).strip()
+        if node.type == "number_literal" and raw in (b"0", b"1"):
+            return int(raw)
+        if node.type in ("false", "true") and raw in (b"false", b"true"):
+            return int(raw == b"true")
+        return None
+
+    def safe(flag, rhs, condition):
+        if (flag not in locals_ or flag_literal(rhs) is None or
+                flag in addressed):
+            return False
+
+        condition_identifiers = {
+            _txt(data, identifier)
+            for identifier in _find(condition, ("identifier",))
+        }
+        if (_find(condition, ("call_expression",)) or
+                flag in condition_identifiers or
+                condition_identifiers & macro_definitions.keys() or
+                not condition_identifiers <= known_condition_names):
+            return False
+
+        # `CAPTURE(flag)` may be a function-like macro that expands to
+        # `save(&flag)`, even though the raw source contains no `&flag`.
+        # Likewise a no-argument/object macro whose replacement names `flag`
+        # can capture it invisibly. Reject both forms anywhere in the function.
+        for call in _find(body, ("call_expression",)):
+            if any(_txt(data, identifier) == flag
+                   for identifier in _find(call, ("identifier",))):
+                return False
+        for identifier in _find(body, ("identifier",)):
+            macro = macro_definitions.get(_txt(data, identifier))
+            if (macro is not None and
+                    re.search(rb"\b" + re.escape(flag) + rb"\b", macro)):
+                return False
+        return True
+
+    def render_guard(iff, consequence, arm_statements):
+        indent = _indent_at(data, iff.start_byte)
+        body_indent = indent + b"    "
+        prefix = data[iff.start_byte:consequence.start_byte].rstrip()
+        rendered = [prefix, b"\n", indent, b"{\n"]
+        for statement in arm_statements:
+            rendered.extend((body_indent, statement, b"\n"))
+        rendered.extend((indent, b"}"))
+        return b"".join(rendered)
+
+    for block in _find(body, ("compound_statement",)):
+        statements = [child for child in block.named_children
+                      if child.type != "comment"]
+        for index, iff in enumerate(statements):
+            if (iff.type != "if_statement" or
+                    iff.child_by_field_name("alternative") is not None):
+                continue
+            condition = iff.child_by_field_name("condition")
+            consequence = iff.child_by_field_name("consequence")
+            if (condition is None or consequence is None or
+                    consequence.type != "compound_statement" or
+                    any(child.type == "comment"
+                        for child in consequence.named_children)):
+                continue
+            arm = [child for child in consequence.named_children
+                   if child.type != "comment"]
+            line = _line(data, iff.start_byte)
+
+            # Pre-guard definition -> one definition on each outgoing edge.
+            if index > 0 and len(arm) == 1 and arm[0].type == "goto_statement":
+                previous = statements[index - 1]
+                parsed = _plain_assignment(data, previous)
+                if (parsed is not None and
+                        not data[previous.end_byte:iff.start_byte].strip() and
+                        safe(parsed[0], parsed[1], condition) and
+                        (_guided_site(line) or
+                         _guided_site(_line(data, previous.start_byte)))):
+                    assignment = _txt(data, previous).strip()
+                    guard = render_guard(
+                        iff, consequence,
+                        [assignment, _txt(data, arm[0]).strip()],
+                    )
+                    indent = _indent_at(data, iff.start_byte)
+                    replacement = guard + b"\n" + indent + assignment
+                    yield (
+                        f"guard-flag-assign sink {parsed[0].decode()} L{line}",
+                        splice(data, previous.start_byte, iff.end_byte,
+                               replacement).decode(),
+                    )
+
+            # Matching edge definitions -> one definition before the guard.
+            if (len(arm) != 2 or arm[1].type != "goto_statement" or
+                    index + 1 >= len(statements)):
+                continue
+            arm_assignment = _plain_assignment(data, arm[0])
+            following = statements[index + 1]
+            fallthrough_assignment = _plain_assignment(data, following)
+            if (arm_assignment is None or fallthrough_assignment is None or
+                    arm_assignment[0] != fallthrough_assignment[0] or
+                    flag_literal(arm_assignment[1]) !=
+                    flag_literal(fallthrough_assignment[1]) or
+                    data[iff.end_byte:following.start_byte].strip() or
+                    not safe(arm_assignment[0], arm_assignment[1], condition) or
+                    not (_guided_site(line) or
+                         _guided_site(_line(data, following.start_byte)))):
+                continue
+            assignment = _txt(data, arm[0]).strip()
+            guard = render_guard(
+                iff, consequence, [_txt(data, arm[1]).strip()]
+            )
+            indent = _indent_at(data, iff.start_byte)
+            replacement = assignment + b"\n" + indent + guard
+            yield (
+                f"guard-flag-assign hoist {arm_assignment[0].decode()} L{line}",
+                splice(data, iff.start_byte, following.end_byte,
+                       replacement).decode(),
+            )
+
+
 def rule_guard_exit_copy(text, name, span):
     """Move a simple local copy across a loop's unique break guard.
 
@@ -5345,6 +5553,7 @@ AGGRESSIVE_RULES = [
     ("plus-group", "enumerate 3-term + grouping/constant placement (fold lever)", rule_plus_group),
     ("add-prefix-temp", "name a signed 2-term seam in a narrowed 3-term sum", rule_add_prefix_temp),
     ("flag-arm-assign", "move local 0/1 definitions after each arm's comparisons", rule_flag_arm_assign),
+    ("guard-flag-assign", "move a local flag definition before a guard or onto both goto edges", rule_guard_flag_assign),
     ("guard-exit-copy", "move a local value copy across its unique loop-break guard", rule_guard_exit_copy),
     ("shared-tail-assign", "duplicate one shared assignment into both preceding arms", rule_shared_tail_assign),
     ("shared-return-split", "replace a goto to a return label with a second literal return", rule_shared_return_split),

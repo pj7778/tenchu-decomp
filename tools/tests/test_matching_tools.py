@@ -425,6 +425,42 @@ class AutoRulesAdvancedTests(unittest.TestCase):
             ["case-fence", "type-width"],
         )
 
+    def test_type_width_skips_pointer_and_array_declarations(self):
+        source = """typedef short s16;
+typedef unsigned short u16;
+void F(void) {
+    s16 scalar;
+    u16 *view;
+    u16 samples[4];
+    use(scalar, view, samples);
+}
+"""
+        labels = [label for label, _candidate in
+                  self.candidates(autorules.rule_type_width, source)]
+        self.assertTrue(any(label.startswith("scalar:") for label in labels))
+        self.assertFalse(any(label.startswith("view:") for label in labels))
+        self.assertFalse(any(label.startswith("samples:") for label in labels))
+
+    def test_type_width_skips_shared_base_multi_declarators(self):
+        source = """typedef short s16;
+void F(void) {
+    s16 scalar, *view;
+    s16 count, samples[4];
+    s16 first, second;
+    s16 multiline,
+        *later_view;
+    s16 lone;
+    use(scalar, view, count, samples, first, second, multiline, later_view, lone);
+}
+"""
+        labels = [label for label, _candidate in
+                  self.candidates(autorules.rule_type_width, source)]
+        self.assertTrue(any(label.startswith("lone:") for label in labels))
+        for skipped in ("scalar", "view", "count", "samples", "first",
+                        "second", "multiline", "later_view"):
+            self.assertFalse(any(label.startswith(skipped + ":")
+                                 for label in labels))
+
     def test_cmp_polarity_swaps_local_operands(self):
         source = """int F(int direction, int turn) {
     if (direction < turn) return 1;
@@ -1516,6 +1552,128 @@ int F(VECTOR *position) {
         candidate = out[0][1]
         self.assertLess(candidate.index("if (inner)"), candidate.index("flag = 1;"))
         self.assertIn("else\n    {\n        flag = 0;", candidate)
+
+    def test_guard_flag_assignment_moves_both_directions(self):
+        hoisted = """int F(int reject) {
+    short done;
+    done = 1;
+    if (reject) {
+        goto finish;
+    }
+    consume();
+finish:
+    return done;
+}
+"""
+        sunk = self.candidates(autorules.rule_guard_flag_assign, hoisted)
+        self.assertEqual(len(sunk), 1)
+        candidate = sunk[0][1]
+        self.assertEqual(candidate.count("done = 1;"), 2)
+        self.assertIn("done = 1;\n        goto finish;", candidate)
+        self.assertLess(candidate.rindex("done = 1;"), candidate.index("consume();"))
+
+        restored = self.candidates(autorules.rule_guard_flag_assign, candidate)
+        self.assertEqual(len(restored), 1)
+        restored_text = restored[0][1]
+        self.assertEqual(restored_text.count("done = 1;"), 1)
+        self.assertLess(restored_text.index("done = 1;"),
+                        restored_text.index("if (reject)"))
+
+    def test_guard_flag_assignment_accepts_true_and_rejects_observation(self):
+        boolean = """int F(int reject) {
+    short done;
+    done = true;
+    if (reject) { goto finish; }
+finish:
+    return done;
+}
+"""
+        self.assertEqual(
+            len(self.candidates(autorules.rule_guard_flag_assign, boolean)), 1)
+
+        observed = boolean.replace("if (reject)", "if (done && reject)")
+        self.assertEqual(
+            self.candidates(autorules.rule_guard_flag_assign, observed), [])
+
+    def test_guard_flag_assignment_accepts_actdamage_shape(self):
+        source = """int get_weapon_kind(void);
+void use_weapon(void);
+int F(void) {
+    short done;
+    short weapon_kind;
+    done = false;
+    weapon_kind = get_weapon_kind();
+    done = true;
+    if (weapon_kind != 0x2a) {
+        goto check_done;
+    }
+    use_weapon();
+check_done:
+    return done;
+}
+"""
+        candidates = self.candidates(autorules.rule_guard_flag_assign, source)
+        self.assertEqual(len(candidates), 1)
+        self.assertIn("done = true;\n        goto check_done;",
+                      candidates[0][1])
+
+    def test_guard_flag_assignment_rejects_macro_or_unknown_condition(self):
+        object_macro = """#define REJECT (done && reject)
+int F(int reject) {
+    short done;
+    done = true;
+    if (REJECT) { goto finish; }
+finish:
+    return done;
+}
+"""
+        unknown_object = object_macro.replace(
+            "#define REJECT (done && reject)\n", "")
+        unknown_call = unknown_object.replace(
+            "if (REJECT)", "if (REJECT(reject))")
+        for source in (object_macro, unknown_object, unknown_call):
+            self.assertEqual(
+                self.candidates(autorules.rule_guard_flag_assign, source), [])
+
+    def test_guard_flag_assignment_rejects_hidden_macro_capture(self):
+        argument_capture = """#define CAPTURE(x) remember(&(x))
+int F(int reject) {
+    short done;
+    CAPTURE(done);
+    done = true;
+    if (reject) { goto finish; }
+finish:
+    return done;
+}
+"""
+        implicit_capture = """#define CAPTURE() remember(&done)
+int F(int reject) {
+    short done;
+    CAPTURE();
+    done = true;
+    if (reject) { goto finish; }
+finish:
+    return done;
+}
+"""
+        unknown_capture = argument_capture.replace(
+            "#define CAPTURE(x) remember(&(x))\n", "")
+        for source in (argument_capture, implicit_capture, unknown_capture):
+            self.assertEqual(
+                self.candidates(autorules.rule_guard_flag_assign, source), [])
+
+    def test_guard_flag_assignment_rejects_parenthesized_address_alias(self):
+        source = """int F(void) {
+    short done;
+    short *alias = &(/* keep alias visible */ done);
+    done = true;
+    if (*alias) { goto finish; }
+finish:
+    return done;
+}
+"""
+        self.assertEqual(
+            self.candidates(autorules.rule_guard_flag_assign, source), [])
 
     def test_flag_return_split_moves_override_to_success_exit(self):
         source = """typedef int s32;
@@ -2874,6 +3032,7 @@ class RtlGuideTests(unittest.TestCase):
         self.assertIn("shift16-mul", rules)
         self.assertIn("plus-group", rules)
         self.assertIn("type-width", rules)
+        self.assertIn("guard-flag-assign", rules)
         self.assertIn("member-scalar-alias", rules)
         self.assertFalse(any("barrier" in rule or "clobber" in rule for rule in rules))
 

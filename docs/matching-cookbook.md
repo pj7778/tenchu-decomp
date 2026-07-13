@@ -1147,10 +1147,20 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
     shared `andi`. Declaring the guard `int` reuses the comparison constant and
     loses those target instructions. This is a type-mode decision even though
     every source value fits in either width.
+  - **A narrow completion flag can preserve a target-visible copy at its join
+    and stop a later call literal from borrowing the flag register.** In
+    ActDAMAGE, `short done` produces the retail `move v0,s0` join chain. It also
+    keeps `Sound(..., 1)` as a fresh literal instead of reusing the live `s0`
+    value; `bool`/`int` coalesces both effects away. Treat the copies and literal
+    rematerialisation as one HImode-lifetime clue, not two unrelated register
+    accidents.
   - **Mechanized:** `autorules`' default `type-width` rule enumerates the local
-    integer widths and signednesses. `rtlguide` now recommends it for regalloc,
-    CSE, schedule, and length residuals, so this case does not require guessing
-    which flag declaration to perturb.
+    scalar integer widths and signednesses. It deliberately skips pointer,
+    array, multi-declarator, and multi-line declarations: changing the shared
+    base type in `s16 scalar, *view;` changes memory access width even though
+    the first declarator looks scalar. `rtlguide` recommends `type-width` for
+    regalloc, CSE, schedule, and length residuals, so this case does not require
+    guessing which flag declaration to perturb.
   - **Store-before-sign-extend on a capture-and-increment.** `v = Global; Global
     = v + 1; idx = (short)v;` — the store to `Global` MUST come before the
     `(short)v`. While `v` is still memory-equivalent to `Global`, cse renders
@@ -2778,6 +2788,44 @@ placement that a comma-expression `(x = K, b != K)` would. Check register deadne
 the taken path before reaching for the comma spelling — the comma form assigns `x`
 too early and changes the allocation (`turn_towards_player_`; the parked draft had
 been blocked by exactly this misreading).
+
+### Sink a pre-guard flag assignment onto both edges to expose one delay-slot definition
+
+When a flag is assigned immediately before a rejecting guard, these two shapes
+are semantically equivalent for a nonvolatile local that the condition does not
+read:
+
+```c
+done = true;
+if (kind != EXPECTED) {
+    goto check_done;
+}
+```
+
+```c
+if (kind != EXPECTED) {
+    done = true;
+    goto check_done;
+}
+done = true;
+```
+
+The edge-local spelling begins both definitions after the comparison. jump/reorg
+can merge them into the comparison branch's delay slot, while the pre-guard form
+usually materialises the flag before the compared value. This was ActDAMAGE's
+last instruction-placement residual. Combined with a narrow (`short`) flag, it
+also preserved the retail join copy and kept an unrelated call's literal `1`
+from reusing the flag's saved register.
+
+Guided `autorules` exposes both directions as `guard-flag-assign`, restricted to
+an adjacent literal 0/1 (or false/true), a compound single-`goto` guard, a
+nonvolatile non-address-taken local, and a call/macro-free condition containing
+only known locals or parameters. It also rejects call-like uses of the flag and
+locally defined macro expansions that name it: before preprocessing,
+`#define REJECT (done && reject)` hides the read from an AST-only check, while
+`CAPTURE(done)` may hide `&done`. Unary-address detection follows parentheses
+and comments, so `&(done)` cannot hide an alias read in the guard. `rtlguide`
+prioritises the rule for regalloc and schedule/delay residuals.
 
 ### `x |= C; store x;` vs `store = x | C;` is a local-alloc lever
 

@@ -80,7 +80,7 @@ CATEGORY_RULES = {
         "allocation-donor-fence", "disjoint-local-alias", "type-width", "cmp-polarity",
         "empty-loop-boundary", "loop-fence", "nested-loop-fence",
         "paired-loop-fence", "loop-range", "split-chain", "shift-stage", "ptr-base-split",
-        "or-inplace", "add-prefix-temp", "flag-arm-assign",
+        "or-inplace", "add-prefix-temp", "flag-arm-assign", "guard-flag-assign",
         "guard-exit-copy",
         "shared-tail-assign", "redundant-field-donor", "identical-arm-fence",
         "subscript-postinc", "switch-cse-evict",
@@ -98,7 +98,7 @@ CATEGORY_RULES = {
     "schedule/delay": [
         "type-width", "empty-loop-boundary", "loop-fence",
         "nested-loop-fence", "paired-loop-fence", "loop-range", "cmp-swap", "cmp-polarity", "shift-stage", "ptr-base-split",
-        "split-chain", "or-inplace", "vector-copy-adjust", "flag-arm-assign", "shared-tail-assign",
+        "split-chain", "or-inplace", "vector-copy-adjust", "flag-arm-assign", "guard-flag-assign", "shared-tail-assign",
         "guard-exit-copy",
         "shared-return-split",
         "loop-boundary-shift", "identical-arm-fence", "subscript-postinc",
