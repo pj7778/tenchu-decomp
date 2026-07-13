@@ -3238,7 +3238,12 @@ review; a synthetic clobber does not.
 source still contains a `NON_MATCHING` guard, `INCLUDE_ASM` fallback, or inline
 `__asm__`; it returns failure until the unconditional plain C is rebuilt and
 verified. This prevents an exact shadow draft from being committed as “matched”
-while the default executable still links retail assembly.
+while the default executable still links retail assembly. The final link map,
+not the current source text, proves which body supplied the bytes: immediately
+after removing a guard, `asmdiff -n` can otherwise reuse the PREVIOUS default
+build's `<Name>.NON_MATCHING` stub and report a false exact sequence. Both
+`matchdiff` and `asmdiff` now reject that map marker even if the source has
+already become plain C (ActSQUAT exposed the stale-artifact path).
 A target-only move is reported only as a register goal for inspecting the
 candidate's copy chain. This is a deliberate stopping rule: exact bytes are the
 verification gate, but they do not make an arbitrary compiler directive a

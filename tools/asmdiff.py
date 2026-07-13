@@ -26,6 +26,7 @@ whole-image byte count is reliable.
 """
 import tempfile, argparse, os, re, subprocess, sys
 
+import matchdiff
 from matchlock import MatchToolBusy, matching_tool_lock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -38,6 +39,18 @@ OURS = ".shake/build/tenchu/main.exe"
 SYMBOLS = "config/symbols.main.exe.txt"
 TSV = ".shake/ghidra-export/functions.tsv"
 OBJDUMP = "mipsel-unknown-linux-gnu-objdump"
+
+
+def candidate_artifact_error(name):
+    """Explain why the current linked image is not a C-candidate artifact."""
+    if matchdiff.linked_nonmatching_stub(name):
+        return (
+            f"asmdiff: current image links {name}.NON_MATCHING — the "
+            "INCLUDE_ASM stub, not the guarded/plain C candidate. A no-build "
+            "comparison would be trivial or stale; rebuild the draft without "
+            "-n."
+        )
+    return None
 
 
 def resolve(name):
@@ -152,6 +165,13 @@ def main():
                          "with: env | awk -F= 'length($0) > 131072 {print $1}'. "
                          "See docs/build-system.md")
             sys.exit(f"asmdiff: ./Build FAILED (rc={r.returncode}), log: {log}\n{tail}")
+
+    # Check the final link map even when the source guard has just been removed:
+    # `-n` may still point at the previous default/stub build. Source text and
+    # timestamps cannot prove which artifact supplied the bytes; the map can.
+    artifact_error = candidate_artifact_error(args.name)
+    if artifact_error:
+        sys.exit(artifact_error)
 
     addr, size = resolve(args.name)
     tgt = dis(ORIG, addr, size)

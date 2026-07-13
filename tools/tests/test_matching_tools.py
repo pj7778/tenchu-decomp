@@ -3354,6 +3354,17 @@ void F(void) { __asm__ volatile ("" ::: "memory"); }
         finally:
             os.unlink(path)
 
+    def test_asmdiff_rejects_stale_nonmatching_artifact(self):
+        with mock.patch.object(matchdiff, "linked_nonmatching_stub",
+                               return_value=True):
+            error = asmdiff.candidate_artifact_error("ActSQUAT")
+        self.assertIn("ActSQUAT.NON_MATCHING", error)
+        self.assertIn("rebuild the draft without -n", error)
+
+        with mock.patch.object(matchdiff, "linked_nonmatching_stub",
+                               return_value=False):
+            self.assertIsNone(asmdiff.candidate_artifact_error("ActSQUAT"))
+
 
 class MaspsxFlagsTests(unittest.TestCase):
     def test_guarded_variable_division_is_detected(self):
