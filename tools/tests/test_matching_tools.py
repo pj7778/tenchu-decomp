@@ -179,6 +179,19 @@ int F(void) { u16 *first, *second; return 0; }
         self.assertEqual(len(pair), 1)
         self.assertEqual(pair[0].count("} while (0);"), 2)
 
+    def test_nested_loop_fence_adds_two_weights_atomically(self):
+        source = """int F(int value) {
+    value = value + 1;
+    return value;
+}
+"""
+        autorules.GUIDED_LINES = {2}
+        out = self.candidates(autorules.rule_nested_loop_fence, source)
+        depth_two = [text for label, text in out
+                     if label.startswith("nested-loop-fence 2 L2")]
+        self.assertEqual(len(depth_two), 1)
+        self.assertEqual(depth_two[0].count("} while (0);"), 2)
+
     def test_loop_fence_rejects_if_with_switch_break(self):
         source = """int F(int a) {
     switch (a) {
@@ -189,6 +202,30 @@ int F(void) { u16 *first, *second; return 0; }
 }
 """
         self.assertEqual(self.candidates(autorules.rule_loop_fence, source), [])
+
+    def test_sparse_equality_ladder_enumerates_case_body_orders(self):
+        source = """void F(int pad) {
+    if (pad == 0x20) { accept(); }
+    else if (pad == 0x2000) { left(); }
+    else if (pad == 0x8000) { right(); }
+}
+"""
+        autorules.GUIDED_LINES = {2}
+        out = self.candidates(autorules.rule_sparse_eq_switch, source)
+        self.assertEqual(len(out), 6)
+        labels = {label for label, _text in out}
+        self.assertTrue(any("0x2000,0x20,0x8000" in label for label in labels))
+        self.assertTrue(all("switch (pad)" in text for _label, text in out))
+
+    def test_sparse_equality_switch_rejects_different_indices(self):
+        source = """void F(int pad, int other) {
+    if (pad == 1) { a(); }
+    else if (other == 2) { b(); }
+    else if (pad == 3) { c(); }
+}
+"""
+        self.assertEqual(
+            self.candidates(autorules.rule_sparse_eq_switch, source), [])
 
     def test_loop_range_can_fence_three_adjacent_statements(self):
         source = """int F(int value) {

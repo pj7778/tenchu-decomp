@@ -483,6 +483,13 @@ plain C is the matched file.
   pushed later in memory (reached by a forward jump). Makibishi's nested
   switch needed `case 4:` before `case 1:` in source though the tests check 1
   first — check body ADDRESSES in the `.s`, not just the test order.
+- **Three sparse literal equalities may need `switch`, even without a jump
+  table.** gcc 2.8.1's `expand_case` builds a value-sorted comparison tree but
+  keeps case bodies in source order. FUN_8005b17c's `0x20`, `0x2000`, and
+  `0x8000` pad tests required the exact `0x2000`-centred tree and separately
+  placed tails; nested `if`s were twelve bytes short. Guided autorules rule
+  `sparse-eq-switch` recognizes a three-arm equality ladder over one
+  nonvolatile local and tests all six case-body orders mechanically.
 - **A switch's shared continuation sitting physically BETWEEN two case bodies
   is NOT after-switch code — it is a duplicated tail.** When the target shows
   e.g. `item->mode++; return;` in the middle of the case bodies (case 0 ends in
@@ -1030,6 +1037,11 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   m2c's rendering of a *call site*, not the callee's own arity: `AdtMessageBox`
   itself is plainly `void AdtMessageBox(char *fmt, ...)`, and all 87 call sites
   already declare it so.
+- **A pre-call `sll`/`sra` on an otherwise live argument register proves a
+  signed-short formal.** It can simultaneously reveal an argument Ghidra
+  omitted: FUN_8005b17c's `$a1` line number is explicitly sign-extended before
+  `SetupTelop`, proving the caller-local prototype is
+  `SetupTelop(u8 *, short)`, not the one-argument prototype in the old stub.
 - **Two `u16` out-parameter locals with a 4-byte stack GAP are one `SVECTOR`'s
   `.vx`/`.vz`** (the write skips `.vy`), not two scalars (LightningBolt's
   GetVectorRotation output).
@@ -2522,6 +2534,12 @@ paired rule lets scoring see the combination without requiring a regressing
 intermediate beam state. Single `loop-fence` also accepts a plain expression
 statement, covering LoadSI's exact `msg = 0` fence.
 
+When one value needs more than one unit of loop weight, `nested-loop-fence`
+tries two and three nested one-shot loops as one candidate. This avoids making
+a beam discover a useful depth through a neutral or regressing single wrapper.
+FUN_8005b17c needed two nested weights on `scan = text` to place its four
+call-crossing values in `s0`/`s1`/`s2`/`s3` order.
+
 ### Inline extended asm is an anti-rule, not a matching transformation
 
 An empty compiler barrier can make old GCC retain a desired copy without
@@ -2760,6 +2778,12 @@ before local-alloc, so the def is gone before it can bias anything.
   as the natural kaginawa spelling, but make all three pseudos globally
   allocated; reusing two for the earlier lightningbolt sums fixed its final
   15-instruction register permutation and matched all 5272 bytes.
+- **One local can intentionally span several disjoint semantic roles.** If
+  lifetimes do not overlap, old cc1 can keep page offset, line number, and final
+  result in one source `int`, preserving one callee-saved home across all three
+  regions. FUN_8005b17c reused `n` this way to keep every lifetime in `$s3`; a
+  final `(short)n` supplied the retail return extension. Separate descriptive
+  locals changed allocation even though their live ranges did not overlap.
 - **Byte-neutral respellings are permuter seed levers**: re-reading a cached
   field that cse folds back (`dsp->u = dsp->u + …` for `x + …`) or a
   do{}while(0) around an UNRELATED block shifts pseudo bookkeeping enough to

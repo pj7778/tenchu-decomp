@@ -40,7 +40,7 @@ ungraceful exit cannot strand a speculative rewrite in the checked-in file.
 SIGTERM/SIGHUP also tear down the active build process group, and on Linux a
 parent-death signal prevents a command frontend from orphaning autorules.
 """
-import argparse, ctypes, glob, hashlib, os, re, signal, subprocess, sys, tempfile
+import argparse, ctypes, glob, hashlib, itertools, os, re, signal, subprocess, sys, tempfile
 from contextlib import contextmanager
 
 from matchlock import MatchToolBusy, matching_tool_lock
@@ -2117,6 +2117,38 @@ def rule_loop_fence(text, name, span):
                splice(data, stmt.start_byte, stmt.end_byte, repl).decode())
 
 
+def rule_nested_loop_fence(text, name, span):
+    """Atomically add two or three zero-code loop weights at one safe site."""
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    for stmt in _find(body, (
+            "expression_statement", "if_statement", "for_statement",
+            "while_statement")):
+        if (stmt.type == "expression_statement" and
+                (stmt.parent is None or stmt.parent.type != "compound_statement")):
+            continue
+        if stmt.type == "if_statement" and _find(
+                stmt, ("break_statement", "continue_statement")):
+            continue
+        line = _line(data, stmt.start_byte)
+        if not _guided_site(line):
+            continue
+        indent = _indent_at(data, stmt.start_byte)
+        original = _txt(data, stmt)
+        for depth in (2, 3):
+            wrapped = original
+            for _ in range(depth):
+                wrapped = (b"do {\n" + indent + b"  " +
+                           wrapped.replace(b"\n", b"\n  ") + b"\n" + indent +
+                           b"} while (0);")
+            yield (
+                f"nested-loop-fence {depth} L{line}",
+                splice(data, stmt.start_byte, stmt.end_byte, wrapped).decode(),
+            )
+
+
 def rule_paired_loop_fence(text, name, span):
     """Put adjacent statement groups behind two separate one-shot loop notes.
 
@@ -2384,6 +2416,103 @@ def rule_case_fence(text, name, span):
                    splice(data, iff.start_byte, iff.end_byte, repl).decode())
 
 
+def rule_sparse_eq_switch(text, name, span):
+    """Turn a three-arm literal equality ladder into a sparse switch.
+
+    Old GCC's ``expand_case`` sorts sparse values into a comparison tree that
+    a chain of ``if`` statements cannot reproduce.  Restrict the transform to
+    a nonvolatile local identifier compared with three integer literals; this
+    makes evaluate-once switch semantics identical.  Enumerate case source
+    order because it controls body placement independently of the sorted test
+    tree.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    volatile_locals = set()
+    for decl in _find(body, ("declaration",)):
+        if b"volatile" not in _txt(data, decl):
+            continue
+        for ident in _find(decl, ("identifier",)):
+            volatile_locals.add(_txt(data, ident))
+
+    for top in _find(body, ("if_statement",)):
+        if top.parent is not None and top.parent.type == "else_clause":
+            continue
+        arms = []
+        cursor = top
+        tail = None
+        while cursor is not None and cursor.type == "if_statement":
+            condition = _unparen(cursor.child_by_field_name("condition"))
+            consequence = cursor.child_by_field_name("consequence")
+            if (condition is None or condition.type != "binary_expression" or
+                    consequence is None):
+                arms = []
+                break
+            operator = condition.child_by_field_name("operator")
+            left = condition.child_by_field_name("left")
+            right = condition.child_by_field_name("right")
+            if (operator is None or _txt(data, operator) != b"==" or
+                    left is None or right is None):
+                arms = []
+                break
+            if left.type == "identifier" and right.type == "number_literal":
+                variable, literal = _txt(data, left), _txt(data, right)
+            elif right.type == "identifier" and left.type == "number_literal":
+                variable, literal = _txt(data, right), _txt(data, left)
+            else:
+                arms = []
+                break
+            if (_find(consequence, ("break_statement", "case_statement")) or
+                    variable in volatile_locals):
+                arms = []
+                break
+            arms.append((variable, literal, _txt(data, consequence)))
+            alternative = cursor.child_by_field_name("alternative")
+            if alternative is None:
+                tail = None
+                break
+            if alternative.type == "else_clause":
+                children = [child for child in alternative.named_children
+                            if child.type != "comment"]
+                if len(children) != 1:
+                    arms = []
+                    break
+                alternative = children[0]
+            if alternative.type == "if_statement":
+                cursor = alternative
+            else:
+                tail = alternative
+                cursor = None
+        if len(arms) != 3 or len({arm[0] for arm in arms}) != 1:
+            continue
+        if len({arm[1] for arm in arms}) != 3:
+            continue
+        if tail is not None and _find(tail, ("break_statement", "case_statement")):
+            continue
+        line = _line(data, top.start_byte)
+        if not _guided_site(line):
+            continue
+        variable = arms[0][0]
+        indent = _indent_at(data, top.start_byte)
+        for order in itertools.permutations(arms):
+            pieces = [b"switch (" + variable + b")\n" + indent + b"{"]
+            for _var, literal, consequence in order:
+                pieces.append(indent + b"case " + literal + b":\n" + indent +
+                              consequence + b"\n" + indent + b"    break;")
+            if tail is not None:
+                pieces.append(indent + b"default:\n" + indent + _txt(data, tail) +
+                              b"\n" + indent + b"    break;")
+            pieces.append(indent + b"}")
+            tag = ",".join(literal.decode() for _v, literal, _c in order)
+            yield (
+                f"sparse-eq-switch {tag} L{line}",
+                splice(data, top.start_byte, top.end_byte,
+                       b"\n".join(pieces)).decode(),
+            )
+
+
 def rule_if_else_invert(text, name, span):
     """Invert a two-compound-arm if/else without changing its behavior.
 
@@ -2511,11 +2640,13 @@ AGGRESSIVE_RULES = [
     ("switch-cse-evict", "dead-overwrite an entry index before a fresh switch load", rule_switch_cse_evict),
     ("pointee-volatile", "toggle volatile on a local integer pointer's pointee", rule_pointee_volatile),
     ("loop-fence", "wrap an if/loop in a zero-code one-shot do loop", rule_loop_fence),
+    ("nested-loop-fence", "atomically add two or three loop weights at one site", rule_nested_loop_fence),
     ("paired-loop-fence", "wrap adjacent groups in two atomic one-shot loops", rule_paired_loop_fence),
     ("loop-range", "wrap 2-4 adjacent statements in one zero-code do loop", rule_loop_range),
     ("loop-boundary-shift", "move the next statement across an existing LOOP_END", rule_loop_boundary_shift),
     ("identical-arm-fence", "duplicate one statement into zero-code identical arms", rule_identical_arm_fence),
     ("case-fence", "if/else -> two-way switch (hard cross-jump CODE_LABEL)", rule_case_fence),
+    ("sparse-eq-switch", "three literal equality arms -> sparse switch permutations", rule_sparse_eq_switch),
 ]
 
 LINE_RULES = {rule_type_width, rule_extern_array, rule_pointee_volatile}
