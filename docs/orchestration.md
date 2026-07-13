@@ -7,12 +7,13 @@ tooling. If you're resuming this work, read this first, then
 
 The split of responsibility:
 - **Matcher agent** (`.claude/agents/matcher.md`) — matches ONE function (or a
-  bundle) in an isolated git worktree. Never commits. Reports MATCH/CURRENT(N),
-  files touched, new rules, and *where it had to reason manually that a tool
-  could have done the work* (that last part drives the tooling loop).
+  bundle) in an isolated git worktree. Commits an exact result or an honestly
+  documented checkpoint to its worker branch. Reports MATCH/CURRENT(N), files
+  touched, new rules, and *where it had to reason manually that a tool could
+  have done the work* (that last part drives the tooling loop).
 - **Orchestrator** (you) — picks targets, generates prompts, launches agents,
-  **harvests on green, commits**, folds reported rules into the cookbook, and
-  **builds a tool whenever a friction recurs**.
+  **reviews and cherry-picks on green**, folds reported rules into the
+  cookbook, and **builds a tool whenever a friction recurs**.
 
 ## Resuming the hands-off flywheel (quick-start)
 
@@ -20,6 +21,11 @@ The split of responsibility:
 count stale almost immediately.  Before reporting progress or choosing a target,
 run `tools/progress.py`; the committed whole-image build must remain
 byte-identical (sha256 `0690a5c1…3558`).
+
+The latest clean shutdown snapshot is
+[`flywheel-handoff.md`](flywheel-handoff.md). It records the last anchor,
+exhausted near-matches, and a revalidation-first candidate slate. Treat it as a
+dated launch pad; the commands above remain authoritative.
 
 ### Hard / large-function phase
 

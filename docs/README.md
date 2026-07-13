@@ -18,6 +18,9 @@ decisions behind the toolchain. It's the reference companion to the terse
   agents at scale**: the tool map, how to launch/prompt/harvest agents, model
   routing, the bundling economics (bundle by FAMILY), the reflection loop, and
   the high-leverage backlog. Read this to resume the batch-matching work.
+- [flywheel-handoff.md](flywheel-handoff.md) — the latest dated clean-shutdown
+  anchor: resume preflight, parked residuals to avoid repeating, target
+  priorities, and agent/worktree hygiene.
 - [matching-cookbook.md](matching-cookbook.md) — **start here for matching
   work**: the cc1 2.8.1 source idioms that byte-match (dispatch, loops, fold
   reassociation, stack buffers, regalloc steering), the `tools/matchdiff.py`
@@ -43,7 +46,7 @@ decisions behind the toolchain. It's the reference companion to the terse
   generator (`tools/objdiff-report.py` / `./Build report`) + `jp_report` CI
   workflow, and standing up a self-hosted instance against a (private) repo.
 
-## Current state (verified 2026-07-02)
+## Current state (verified 2026-07-13)
 
 The disassemble → reassemble round-trip **works and is byte-identical**:
 
@@ -58,10 +61,10 @@ BUILD GREEN (byte-identical)
   script; everything is reassembled with the GCC 2.8.1 cross toolchain + GNU
   `ld` back into a **byte-identical** `main.exe`
   (sha256 `0690a5c1…3558`).
-- `initialise_font` and `get_held_buttons` are **fully decompiled C functions
-  that byte-match** — proof the pipeline handles real C, not just `INCLUDE_ASM`
-  stubs. `get_held_buttons` was matched with the **decomp-permuter** (see the
-  case study). `Think1sleep` is still a WIP stub.
+- 402 of 555 game-code functions are **fully decompiled C functions that
+  byte-match**, covering 191332 of 302824 game-code bytes (63.18%). Run
+  `tools/progress.py` for the authoritative current count; parallel matching
+  makes handwritten totals stale quickly.
 
 ## What was wrong, and what got fixed
 
@@ -90,6 +93,7 @@ latent bugs. Fixed in this batch of work (see `build-system.md` for detail):
 
 ## Next step
 
-Finish `Think1sleep` (the active matching target) — see `PLAN.md` #1 and
-the analysis in `src/main.exe/Think1sleep.c`: gp globals as tentative
-definitions, `character_state` type-size fixes, then a permuter pass.
+Resume with the preflight and live-target selection in
+[`flywheel-handoff.md`](flywheel-handoff.md). Do not select work from this
+README's dated progress count or an old `NON_MATCHING` comment without checking
+the current source and `tools/triage.py` first.
