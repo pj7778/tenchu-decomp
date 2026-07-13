@@ -14,6 +14,8 @@ Run inside the nix devShell.
 """
 import argparse, os, re, subprocess, sys
 
+import function_inventory as FI
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 
@@ -22,20 +24,26 @@ TEXT_END = 0x80098000
 FILE_OFF = 0x800
 ORIG = "disks/tenchu/main.exe"
 TSV = ".shake/ghidra-export/functions.tsv"
+SPLAT = "config/splat.main.exe.yaml"
 SYMBOLS = "config/symbols.main.exe.txt"
 SRC = "src/main.exe"
 OBJDUMP = "mipsel-unknown-linux-gnu-objdump"
 
 
-def functions():
-    """sorted [(start, end, name)] inside the text segment."""
-    out = []
-    for line in open(TSV):
-        p = line.rstrip("\n").split("\t")
-        if len(p) == 3:
-            a, s, n = int(p[0], 16), int(p[1]), p[2]
-            if TEXT_START <= a < TEXT_END and s >= 8:
-                out.append((a, a + s, n))
+def functions(tsv=TSV, splat=SPLAT):
+    """Sorted ``(start, end, current_name)`` rows in the text segment.
+
+    Ghidra supplies the authoritative extents, while splat supplies names
+    adopted since the last export.  Using the shared inventory overlay keeps
+    both sources of truth consistent with the other matching tools.
+    """
+    rows = FI.load_functions(tsv)
+    rows, _ = FI.overlay_current_names(rows, splat)
+    out = [
+        (addr, addr + size, name)
+        for addr, size, name in rows
+        if TEXT_START <= addr < TEXT_END and size >= 8
+    ]
     out.sort()
     return out
 
@@ -77,7 +85,7 @@ def main():
     funcs = functions()
     byname = {n: (a, e) for a, e, n in funcs}
     if args.name not in byname:
-        sys.exit(f"xref: {args.name} not in {TSV}")
+        sys.exit(f"xref: {args.name} not in current function inventory")
     fstart, fend = byname[args.name]
     matched = matched_names()
 

@@ -32,6 +32,7 @@ import rtlguide
 import siblingdiff
 import stackplan
 import symnear
+import xref
 
 MATCHER_PROMPT_SPEC = importlib.util.spec_from_file_location(
     "matcher_prompt", os.path.join(TOOLS, "matcher-prompt.py")
@@ -170,6 +171,24 @@ class FunctionInventoryTests(unittest.TestCase):
 
         self.assertEqual(changed, 1)
         self.assertEqual(functions, {"RecoveredName": (0x80011000, 16)})
+
+    def test_xref_uses_current_c_names_with_ghidra_extents(self):
+        with tempfile.TemporaryDirectory() as td:
+            funcs = os.path.join(td, "functions.tsv")
+            splat = os.path.join(td, "splat.yaml")
+            with open(funcs, "w") as fh:
+                fh.write("80011000\t16\tFUN_80011000\n")
+                fh.write("80011010\t20\tAlreadyCurrent\n")
+            with open(splat, "w") as fh:
+                fh.write("  - [0x800, c, RecoveredName]\n")
+                fh.write("  - [0x810, c, AlreadyCurrent]\n")
+
+            rows = xref.functions(funcs, splat)
+
+        self.assertEqual(rows, [
+            (0x80011000, 0x80011010, "RecoveredName"),
+            (0x80011010, 0x80011024, "AlreadyCurrent"),
+        ])
 
 
 class FuzzyInventoryTests(unittest.TestCase):
