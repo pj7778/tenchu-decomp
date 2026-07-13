@@ -400,6 +400,7 @@ MASPSX_EXTRA = {
     "FUN_80033f10": ["--expand-div"],
     "FUN_80034dbc": ["--expand-div"],
     "DrawImpact": ["--expand-div"],
+    "FUN_80036284": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash
