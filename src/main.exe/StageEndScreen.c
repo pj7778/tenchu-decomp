@@ -17,10 +17,11 @@
 /*
  * STATUS: NON_MATCHING — complete pure-C reconstruction with the exact target
  * length (6084 bytes / 1521 instructions), 0xf0-byte frame, 81 conditional
- * branches, 15 jumps, and 70 calls.  matchdiff reports 3732 differing bytes.
- * The setup, decimal-rendering, rank, post-game, and epilogue regions also
- * have independently exact instruction/branch/jump/call counts; the residual
- * is broad cse/cross-jump/register-allocation ordering, not hidden asm.
+ * branches, 15 jumps, and 70 calls.  matchdiff reports 1690 differing bytes
+ * and fuzz-score reports 79.68%.  The decimal-rendering region now has the
+ * target's per-number stack-address, signed-copy, quotient, and remainder
+ * register shape; the residual is scheduling plus the surrounding setup,
+ * rank, post-game, and epilogue allocation, not hidden asm.
  */
 
 #ifndef NON_MATCHING
@@ -152,7 +153,12 @@ static inline void StageEndInitSprite(u_long *tim, GsIMAGE *image,
     {                                                                      \
         s32 dividend;                                                      \
         s32 remainder;                                                     \
+        s32 quotient;                                                      \
+        u32 value;                                                         \
+        s16 signed_value;                                                  \
+        GsSPRITE *sprite;                                                  \
                                                                            \
+        sprite = &stack.digit;                                             \
         value = (value_);                                                  \
         signed_value = (type_)value;                                       \
         sprite->x = (x_);                                                  \
@@ -207,14 +213,9 @@ label_:                                                                    \
                 sprite->u = base_u;                                        \
             } while (0);                                                   \
             sprite->x -= 12;                                               \
-            do                                                             \
-            {                                                              \
-                do                                                         \
-                {                                                          \
-                    value = quotient;                                      \
-                } while (0);                                               \
-            } while (0);                                                   \
-        } while ((s16)value != 0);                                        \
+            value = quotient;                                              \
+            quotient <<= 16;                                               \
+        } while (quotient != 0);                                           \
         if (negative != 0)                                                 \
         {                                                                  \
             base_u = sprite->u;                                            \
@@ -229,8 +230,13 @@ label_:                                                                    \
     {                                                                      \
         s32 dividend;                                                      \
         s32 remainder;                                                     \
+        s32 quotient;                                                      \
+        u32 value;                                                         \
+        s16 signed_value;                                                  \
         u8 base_u;                                                         \
+        GsSPRITE *sprite;                                                  \
                                                                            \
+        sprite = &stack.digit;                                             \
         value = (value_);                                                  \
         signed_value = (s16)value;                                         \
         sprite->x = best_x;                                                \
@@ -269,14 +275,9 @@ label_:                                                                    \
                 sprite->u = base_u;                                        \
             } while (0);                                                   \
             sprite->x -= 12;                                               \
-            do                                                             \
-            {                                                              \
-                do                                                         \
-                {                                                          \
-                    value = quotient;                                      \
-                } while (0);                                               \
-            } while (0);                                                   \
-        } while ((s16)value != 0);                                        \
+            value = quotient;                                              \
+            quotient <<= 16;                                               \
+        } while (quotient != 0);                                           \
         if (negative != 0)                                                 \
         {                                                                  \
             sprite->u = base_u + sprite->w * ten;                          \
@@ -291,7 +292,6 @@ void StageEndScreen(void)
     StageScoreResult *score;
     StageScoreStats *record;
     StageRankIcon *icon;
-    GsSPRITE *sprite;
     u_long *tim;
     u8 *best_stage;
     s32 selection;
@@ -305,11 +305,8 @@ void StageEndScreen(void)
     s16 item_index;
     u16 pad;
     u16 pressed;
-    u32 value;
     u32 base_u;
-    s32 signed_value;
     s32 negative;
-    s32 quotient;
 
     selection = 0;
     stack.old_pad = 0;
@@ -451,8 +448,6 @@ void StageEndScreen(void)
             StartDrawing();
             DrawBG(stack.background);
             FUN_800515b0(&stack.digit, stack.stats.clock, 0x61, -0x5d, 0);
-            sprite = &stack.digit;
-
             DRAW_SCORE_NUMBER(stack.stats.criticals, s32, 1, number_0,
                 10, top_y);
             DRAW_SCORE_NUMBER((s16)stack.stats.enemies - stack.stats.bosses,
