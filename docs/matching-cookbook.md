@@ -1064,6 +1064,17 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   the remainder). Write **`t + (rand() % 1000 - 500)`** — fold canonicalizes
   it into the original's `(t - 500) + rem`. Semantically that's also the
   natural "position + centered jitter".
+- **A named typed temp can isolate a centered-modulo tail from its base add.**
+  `coord = view + (delta % 6000 - 3000)` and
+  `offset = delta % 6000 - 3000; coord = view + offset;` preserve the same
+  arithmetic, but the second spelling gives the remainder/bias chain its own
+  pseudo and can change only the final add's allocation. In `FUN_80034dbc`,
+  the split form cut a 128-byte cascade to 26 bytes without changing length;
+  reusing one `u32 offset` across the three non-overlapping coordinate wraps
+  kept the modulo type exact. `autorules` rule `mod-bias-temp` now tries both
+  a short block-local temp at each safe identifier-only site and one typed temp
+  shared across repeated wraps. This is distinct from the rand-call rule below:
+  there is no side-effecting call to keep in place.
 - Keep calls **inline in expressions**: `x = rand() % 200 - 100;` uses `$v0`
   straight from the call; a temp (`r = rand(); x = r % ...`) inserts a
   `move`. cc1 evaluates the call operand of a binary expression first, so an
@@ -1405,6 +1416,17 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
     identity (early `$a2/$a3` uses versus later `$s7/$s6`) and matched all
     1,036 bytes. Autorules `param-width` now enumerates plain integer parameter
     widths and signedness mechanically.
+  - **The target stack load is direct parameter-width evidence, even when the
+    earlier-build symbol prototype disagrees.** Retail SetSmokeS loads its fifth
+    argument with `lhu stack+16`, proving `unsigned short time` despite the demo
+    PSX.SYM prototype's `int time`. The function still needs signed division:
+    keep the raw `u16` parameter for its narrow store, then use a separately
+    timed full-width host, `int t; ... t = (short)time;`, for `/` and `%`. That
+    combination preserves the entry/load mode, the raw stored bits, the signed
+    ASPSX division guards, and the target's two-instruction sign extension.
+    `param-width` now tries adjacent width+signedness changes atomically, so
+    `int`→`u16` does not depend on a score-improving `int`→`short` intermediate;
+    choosing which later uses need the signed host remains dataflow-guided.
 - **A param-union write to OFFSET 0 routes through a fresh `it->param` recast,
   nonzero offsets through the live `pp` pointer** — mechanical, not stylistic:
   `pp` holds its own register so `pp+0` encodes `sw rN,0(pp)`, but a fresh

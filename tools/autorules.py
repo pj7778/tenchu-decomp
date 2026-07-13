@@ -728,7 +728,11 @@ def rule_param_width(text, name, span):
     Decompilers often infer a parameter's type only from its narrowing stores.
     The entry allocation can still prove that the original parameter stayed
     full-width.  Keep pointers/arrays/function declarators out of this rule;
-    authoritative scoring decides among the bounded scalar alternatives.
+    authoritative scoring decides among the bounded scalar alternatives.  A
+    parameter may need width and signedness changed together (retail SetSmokeS
+    uses ``u16`` where the demo prototype says ``int``), so parameters also
+    get the two adjacent-width/opposite-sign "diagonal" candidates directly;
+    greedy search must not depend on an improving intermediate type.
     """
     data = text.encode()
     body = _func_body(data, name, _byte_span(text, span))
@@ -753,7 +757,15 @@ def rule_param_width(text, name, span):
             continue
         width, signed = TYPES[current]
         identifier = _txt(data, param_declarator).decode()
-        for next_width, next_signed in flip_targets(width, signed):
+        targets = list(flip_targets(width, signed))
+        width_index = WIDTH_ORDER.index(width)
+        for delta in (-1, 1):
+            adjacent = width_index + delta
+            if 0 <= adjacent < len(WIDTH_ORDER):
+                diagonal = (WIDTH_ORDER[adjacent], not signed)
+                if diagonal not in targets:
+                    targets.append(diagonal)
+        for next_width, next_signed in targets:
             replacement = CANON[(next_width, next_signed)].encode()
             yield (
                 f"param {identifier}: {current}→{replacement.decode()}",
@@ -1493,6 +1505,165 @@ def rule_rand_mod_split(text, name, span):
             repl = lhs + b" = rand() % " + modulus + b";"
             yield (f"rand-mod merge {lhs.decode()} L{_line(data, first.start_byte)}",
                    splice(data, first.start_byte, second.end_byte, repl).decode())
+
+
+def _mod_bias_assignment(data, statement):
+    """Recognise ``dst = base + (value % MOD - BIAS);``.
+
+    Return the source nodes needed by ``rule_mod_bias_temp``.  Keep this
+    deliberately narrow: three plain identifiers and literal constants make
+    splitting the expression side-effect neutral, and leave volatile/call/
+    alias-sensitive expressions to manual review.
+    """
+    assignment = _plain_assignment(data, statement)
+    if assignment is None:
+        return None
+    destination, rhs = assignment
+    rhs = _unparen(rhs)
+    if rhs is None or rhs.type != "binary_expression":
+        return None
+    operator = rhs.child_by_field_name("operator")
+    left = _unparen(rhs.child_by_field_name("left"))
+    right = _unparen(rhs.child_by_field_name("right"))
+    if operator is None or _txt(data, operator) != b"+":
+        return None
+
+    for base, biased in ((left, right), (right, left)):
+        if base is None or base.type != "identifier" or biased is None:
+            continue
+        if biased.type != "binary_expression":
+            continue
+        bias_operator = biased.child_by_field_name("operator")
+        remainder = _unparen(biased.child_by_field_name("left"))
+        bias = _unparen(biased.child_by_field_name("right"))
+        if (bias_operator is None or _txt(data, bias_operator) != b"-" or
+                remainder is None or remainder.type != "binary_expression" or
+                bias is None or bias.type != "number_literal"):
+            continue
+        remainder_operator = remainder.child_by_field_name("operator")
+        value = _unparen(remainder.child_by_field_name("left"))
+        modulus = _unparen(remainder.child_by_field_name("right"))
+        if (remainder_operator is None or
+                _txt(data, remainder_operator) != b"%" or value is None or
+                value.type != "identifier" or modulus is None or
+                modulus.type != "number_literal"):
+            continue
+        return destination, base, biased, value
+    return None
+
+
+def rule_mod_bias_temp(text, name, span):
+    """Split a centered-modulo coordinate through a typed temporary.
+
+    ``dst = base + (delta % RANGE - BIAS)`` and
+    ``offset = delta % RANGE - BIAS; dst = base + offset`` expose the same
+    arithmetic to C but not the same pseudo lifetimes to old cc1.  The latter
+    preserved the modulo chain and changed the final ``addu`` allocation in
+    ``FUN_80034dbc``.  Try a short block-local temp at each site, plus one
+    function-scope temp shared by repeated wraps of the same scalar type.
+
+    The modulo input must be a uniquely declared, non-qualified automatic
+    scalar, so the generated temp has exactly the expression's integer type.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+
+    declarations = {}
+    for declaration in _find(body, ("declaration",)):
+        type_node = declaration.child_by_field_name("type")
+        if type_node is None or re.search(
+                rb"\b(?:const|volatile|static|register|extern)\b",
+                _txt(data, declaration)):
+            continue
+        type_text = b" ".join(_txt(data, type_node).split())
+        if type_text.decode() not in TYPES:
+            continue
+        for child in declaration.named_children:
+            declarator = (child.child_by_field_name("declarator")
+                          if child.type == "init_declarator" else child)
+            if declarator is None or declarator.type != "identifier":
+                continue
+            ident = _txt(data, declarator)
+            declarations.setdefault(ident, []).append(
+                (type_text, declaration, declaration.parent == body))
+
+    existing = {_txt(data, ident) for ident in _find(body, ("identifier",))}
+    sites = []
+    for statement in _find(body, ("expression_statement",)):
+        match = _mod_bias_assignment(data, statement)
+        if match is None or statement.parent is None or \
+                statement.parent.type != "compound_statement":
+            continue
+        destination, base, biased, value = match
+        value_name = _txt(data, value)
+        records = declarations.get(value_name, ())
+        if len(records) != 1:
+            continue
+        type_text, declaration, top_level = records[0]
+        sites.append((statement, destination, base, biased, type_text,
+                      declaration, top_level))
+
+        index = 0
+        fresh = b"_match_mod_offset"
+        while fresh in existing:
+            index += 1
+            fresh = b"_match_mod_offset_" + str(index).encode()
+        indent = _indent_at(data, statement.start_byte)
+        inner = indent + b"    "
+        replacement = (
+            b"{\n" + inner + type_text + b" " + fresh + b";\n" +
+            inner + fresh + b" = " + _txt(data, biased) + b";\n" +
+            inner + destination + b" = " + _txt(data, base) + b" + " +
+            fresh + b";\n" + indent + b"}"
+        )
+        yield (
+            f"mod-bias block-temp {destination.decode()} "
+            f"L{_line(data, statement.start_byte)}",
+            splice(data, statement.start_byte, statement.end_byte,
+                   replacement).decode(),
+        )
+
+    # Repeated coordinate wraps often used one source scratch.  Emit one
+    # atomic shared-temp candidate per exact scalar spelling, but only when all
+    # involved inputs are function-scope locals so the insertion is in scope.
+    grouped = {}
+    for site in sites:
+        if site[6]:
+            grouped.setdefault(site[4], []).append(site)
+    for type_text, group in grouped.items():
+        if len(group) < 2:
+            continue
+        index = 0
+        fresh = b"_match_mod_offset"
+        while fresh in existing:
+            index += 1
+            fresh = b"_match_mod_offset_" + str(index).encode()
+        latest_declaration = max((site[5] for site in group),
+                                 key=lambda node: node.end_byte)
+        if latest_declaration.end_byte >= min(site[0].start_byte for site in group):
+            continue
+        declaration_indent = _indent_at(data, latest_declaration.start_byte)
+        insertion = (b"\n" + declaration_indent + type_text + b" " + fresh +
+                     b";")
+        replacements = [(latest_declaration.end_byte,
+                         latest_declaration.end_byte, insertion)]
+        for statement, destination, base, biased, *_rest in group:
+            indent = _indent_at(data, statement.start_byte)
+            replacement = (fresh + b" = " + _txt(data, biased) + b";\n" +
+                           indent + destination + b" = " + _txt(data, base) +
+                           b" + " + fresh + b";")
+            replacements.append((statement.start_byte, statement.end_byte,
+                                 replacement))
+        candidate = data
+        for start, end, replacement in sorted(replacements, reverse=True):
+            candidate = splice(candidate, start, end, replacement)
+        yield (
+            f"mod-bias shared-temp x{len(group)} "
+            f"L{_line(data, group[0][0].start_byte)}",
+            candidate.decode(),
+        )
 
 
 def _postincrement_name(data, statement):
@@ -4584,6 +4755,7 @@ RULES = [
     ("builtin-abs", "abs call/sign-fix -> __builtin_abs under cc1 -fno-builtin", rule_builtin_abs),
     ("or-inplace", "rewrite X = X|C -> X |= C (local-alloc lever)", rule_or_inplace),
     ("rand-mod", "split/merge x=rand()%K (call-result allocation lever)", rule_rand_mod_split),
+    ("mod-bias-temp", "split base+(delta%range-bias) through a typed temp", rule_mod_bias_temp),
     ("subscript-postinc", "split/merge a[i];i++ <-> a[i++] (working-copy lever)", rule_subscript_postinc),
     ("ptr-index-sum", "T *p = base+idx -> (T*)(idx*sizeof(T)+(int)base)", rule_ptr_index_sum),
     ("vector-copy", "four vx/vy/vz/pad field copies -> one struct assignment", rule_vector_copy),

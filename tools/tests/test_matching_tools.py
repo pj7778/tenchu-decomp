@@ -778,11 +778,22 @@ void F(void) {
 """
         out = self.candidates(autorules.rule_param_width, source)
         labels = [label for label, _candidate in out]
-        self.assertEqual(len(out), 5)
+        self.assertEqual(len(out), 8)
         self.assertIn("param x: s16→s32", labels)
         self.assertIn("param x: s16→u16", labels)
+        self.assertIn("param x: s16→u32", labels)
         self.assertIn("param y: u32→s32", labels)
+        self.assertIn("param y: u32→s16", labels)
         self.assertFalse(any("pointer" in label for label in labels))
+
+    def test_param_width_tries_joint_narrow_unsigned_change(self):
+        source = """void F(int time) {
+    use(time);
+}
+"""
+        labels = [label for label, _candidate in
+                  self.candidates(autorules.rule_param_width, source)]
+        self.assertIn("param time: int→u16", labels)
 
     def test_eq_literal_swap_rejects_two_values_or_side_effects(self):
         values = "int F(int a, int b) { return a == b; }\n"
@@ -1569,6 +1580,57 @@ int F(void) {
         out = self.candidates(autorules.rule_rand_mod_split, source)
         self.assertEqual(len(out), 1)
         self.assertIn("x = rand() % 100;", out[0][1])
+
+    def test_mod_bias_temp_emits_block_and_shared_typed_candidates(self):
+        source = """typedef unsigned int u32;
+void F(void) {
+    u32 delta_y;
+    u32 delta_x;
+    int view_y;
+    int view_x;
+    int y;
+    int x;
+    if (delta_y) {
+        y = view_y + (delta_y % 6000 - 3000);
+    }
+    if (delta_x) {
+        x = view_x + (delta_x % 6000 - 3000);
+    }
+}
+"""
+        out = self.candidates(autorules.rule_mod_bias_temp, source)
+        self.assertEqual(len(out), 3)
+        labels = [candidate[0] for candidate in out]
+        self.assertTrue(any("block-temp y" in label for label in labels))
+        self.assertTrue(any("block-temp x" in label for label in labels))
+        shared = next(candidate for label, candidate in out
+                      if "shared-temp x2" in label)
+        self.assertEqual(shared.count("u32 _match_mod_offset;"), 1)
+        self.assertEqual(shared.count("_match_mod_offset ="), 2)
+        self.assertIn("y = view_y + _match_mod_offset;", shared)
+        self.assertIn("x = view_x + _match_mod_offset;", shared)
+
+    def test_mod_bias_temp_rejects_calls_and_qualified_inputs(self):
+        call = """typedef unsigned int u32;
+u32 next(void);
+void F(void) {
+    u32 delta;
+    int x;
+    x = next() + (delta % 10 - 5);
+}
+"""
+        qualified = """typedef unsigned int u32;
+void F(void) {
+    volatile u32 delta;
+    int base;
+    int x;
+    x = base + (delta % 10 - 5);
+}
+"""
+        self.assertEqual(
+            self.candidates(autorules.rule_mod_bias_temp, call), [])
+        self.assertEqual(
+            self.candidates(autorules.rule_mod_bias_temp, qualified), [])
 
     def test_rand_mod_split_rejects_global_or_volatile_destinations(self):
         global_source = """int x;
