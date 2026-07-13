@@ -2678,6 +2678,35 @@ order, produced retail's `lw v1,Me_MOTION_C; beqz; ...; sw ...,0x74(v1)` tail
 exactly.  Apply only when no intervening call/write can change the global pointer;
 the target's single load before the branch is the anti-oracle.
 
+### A read-only decision tree can need direct global tests and a post-join capture
+
+The inverse capture shape is useful when retail performs path-specific scalar
+global loads before converging on one cached value. A decompiler may render:
+
+```c
+degree = Degree;
+if (degree > 0) {
+    ...
+} else {
+    if (degree < 0) ...;
+    degree = Degree;
+}
+use(degree);
+```
+
+If the tree has no call, memory store, exit, or update that can change the
+nonvolatile extern, test `Degree` directly in both conditions and place the one
+`degree = Degree` capture after the join. In Think3escape this restored the
+target's path-specific reloads and post-join pseudo. It had to be paired with
+widening the later `degree2 = Degree` local from s16 to s32: the capture move
+alone made the exact-length draft two instructions short, while the atomic pair
+reduced the authoritative checkpoint from `(False,84,29,0)` to
+`(False,24,22,0)` at exact length. Guided `deferred-global-capture` proves the
+tree is read-only, removes one exact in-tree reload, and emits that coordinated
+widening automatically when a later s16 local's sole definition captures a
+signed-s16 extern. `rtlguide` includes it early for regalloc, cse/coalescing,
+and scheduling residuals so the pair is tried before a blind permuter run.
+
 ### The abs idiom's `negu` source register is not a C-level choice
 
 `at = t; if (t < 0) at = -at;` and `at = (t < 0) ? -t : t;` compile identically:
@@ -3849,6 +3878,15 @@ before local-alloc, so the def is gone before it can bias anything.
   CFG edge differently and removed the conflict with no surviving branch.
   Confirm this in `.greg`'s conflict set before adding the fence; the visible
   C pointer name alone does not reveal the stack-address allocno.
+  The same function may need several eliminated fences for **different pass
+  facts**, so do not replace them with one blanket wrapper. Think3escape uses
+  three: one duplicate result assignment raises allocation weight enough for
+  `$a0`; one duplicate `abs_degree2 = degree2` prevents cse from sourcing the
+  later negate from the untouched raw value; and one duplicate
+  `human = Me_THINK_C` preserves the guarded `$v1`→`$a1` pointer copy. jump2
+  erases all three. Guided `identical-arm-fence` already enumerates each local
+  site independently; inspect `.cse` and `.greg` between accepted candidates
+  instead of assuming every byte-neutral fence is merely a weight donor.
 - **The discriminator of an eliminated identical-arm fence is still allocator
   input.** jump2 removes both the conditional and duplicate body, but global
   allocation has already seen the discriminator's live values. ActSTATE's

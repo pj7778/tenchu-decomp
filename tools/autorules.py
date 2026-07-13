@@ -6288,6 +6288,221 @@ def rule_working_copy_seed_merge(text, name, span):
                 )
 
 
+def rule_deferred_global_capture(text, name, span):
+    """Move a scalar-global capture behind a read-only decision tree.
+
+    Decompilers often turn path-specific global reads into one cached local
+    plus a reload in one arm::
+
+        value = Global;
+        if (value > 0) { ... }
+        else { if (value < 0) { ... } value = Global; }
+        use(value);
+
+    When the decision tree cannot mutate ``Global``, the source-equivalent
+    spelling can test ``Global`` directly and capture it once at the join.
+    Think3escape needed that shape to recover the target's path-specific loads
+    and post-join hard-register identity.
+
+    Require a nonvolatile extern scalar, a nonvolatile unaddressed local, one
+    exact reload in the tree, no calls/exits/updates/memory stores, and no other
+    use of the local in the tree.  Those restrictions prove that moving the
+    automatic assignment and deleting the redundant reload is unobservable.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+
+    externs = set()
+    extern_types = {}
+    root = _TS.parse(data).root_node
+    for declaration in _find(root, ("declaration",)):
+        raw = _txt(data, declaration)
+        if (re.search(rb"\bextern\b", raw) is None or
+                re.search(rb"\bvolatile\b", raw) or
+                _find(declaration, ("array_declarator", "function_declarator",
+                                    "pointer_declarator"))):
+            continue
+        type_node = declaration.child_by_field_name("type")
+        type_text = (b" ".join(_txt(data, type_node).strip().split()).decode()
+                     if type_node is not None else "")
+        for child in declaration.named_children:
+            declarator = (child.child_by_field_name("declarator")
+                          if child.type == "init_declarator" else child)
+            if declarator is not None and declarator.type == "identifier":
+                token = _txt(data, declarator)
+                externs.add(token)
+                extern_types[token] = TYPES.get(type_text)
+
+    locals_ = _nonvolatile_local_names(data, body)
+    body_text = _txt(data, body)
+    unsafe_control = (
+        "break_statement", "continue_statement", "goto_statement",
+        "labeled_statement", "return_statement",
+    )
+
+    for block in _find(body, ("compound_statement",)):
+        statements = [child for child in block.named_children
+                      if child.type != "comment"]
+        for capture_statement, decision in zip(statements, statements[1:]):
+            capture = _plain_assignment(data, capture_statement)
+            if capture is None or decision.type != "if_statement":
+                continue
+            local, global_node = capture
+            global_node = _unparen(global_node)
+            if (local not in locals_ or global_node is None or
+                    global_node.type != "identifier"):
+                continue
+            global_name = _txt(data, global_node)
+            if (global_name not in externs or local == global_name or
+                    re.search(rb"&\s*" + re.escape(local) + rb"\b", body_text) or
+                    data[capture_statement.end_byte:decision.start_byte].strip()):
+                continue
+            if (_find(decision, ("call_expression", "update_expression",
+                                *unsafe_control))):
+                continue
+            assignments_are_plain_locals = True
+            for assignment in _find(decision, ("assignment_expression",)):
+                operator = assignment.child_by_field_name("operator")
+                lhs = assignment.child_by_field_name("left")
+                if (operator is None or _txt(data, operator) != b"=" or
+                        lhs is None or lhs.type != "identifier" or
+                        _txt(data, lhs) not in locals_ or
+                        assignment.parent is None or
+                        assignment.parent.type != "expression_statement"):
+                    assignments_are_plain_locals = False
+                    break
+            if not assignments_are_plain_locals:
+                continue
+
+            condition_local_ids = []
+            for iff in _find(decision, ("if_statement",)):
+                condition = iff.child_by_field_name("condition")
+                if condition is None:
+                    continue
+                condition_local_ids.extend(
+                    ident for ident in _find(condition, ("identifier",))
+                    if _txt(data, ident) == local
+                )
+            if not condition_local_ids:
+                continue
+
+            reloads = []
+            allowed_local_spans = {
+                (ident.start_byte, ident.end_byte) for ident in condition_local_ids
+            }
+            stores_are_local = True
+            for expression in _find(decision, ("expression_statement",)):
+                assignment = _plain_assignment(data, expression)
+                if assignment is None or assignment[0] not in locals_:
+                    stores_are_local = False
+                    break
+                rhs = _unparen(assignment[1])
+                if (assignment[0] == local and rhs is not None and
+                        rhs.type == "identifier" and
+                        _txt(data, rhs) == global_name):
+                    reloads.append(expression)
+                    allowed_local_spans.update(
+                        (ident.start_byte, ident.end_byte)
+                        for ident in _find(expression, ("identifier",))
+                        if _txt(data, ident) == local
+                    )
+            if not stores_are_local or len(reloads) != 1:
+                continue
+            if any(
+                    (ident.start_byte, ident.end_byte) not in allowed_local_spans
+                    for ident in _find(decision, ("identifier",))
+                    if _txt(data, ident) == local):
+                continue
+
+            line = _line(data, capture_statement.start_byte)
+            if not (_guided_site(line) or
+                    _guided_site(_line(data, decision.start_byte))):
+                continue
+
+            edits = [
+                (reloads[0].start_byte - decision.start_byte,
+                 reloads[0].end_byte - decision.start_byte, b""),
+            ]
+            edits.extend(
+                (ident.start_byte - decision.start_byte,
+                 ident.end_byte - decision.start_byte, global_name)
+                for ident in condition_local_ids
+            )
+            decision_text = _txt(data, decision)
+            for start, end, replacement in sorted(edits, reverse=True):
+                decision_text = splice(decision_text, start, end, replacement)
+            gap = data[capture_statement.end_byte:decision.start_byte]
+            replacement = decision_text + gap + _txt(data, capture_statement)
+            base_label = (
+                f"deferred-global-capture {local.decode()}={global_name.decode()} "
+                f"L{line}"
+            )
+            rewritten = splice(
+                data, capture_statement.start_byte, decision.end_byte,
+                replacement,
+            )
+            yield base_label, rewritten.decode()
+
+            # An exact-length draft cannot enter a temporarily short beam
+            # state.  Emit the common coordinated width repair atomically:
+            # widen a later s16 local whose sole definition captures a signed
+            # s16 extern.  The value set is unchanged, but old cc1's pseudo and
+            # sign-extension shape is not.  Think3escape needed Degree's
+            # ``degree2`` widened together with the deferred ``degree`` capture.
+            for declaration in _find(body, ("declaration",)):
+                if declaration.start_byte <= decision.end_byte:
+                    continue
+                type_node = declaration.child_by_field_name("type")
+                if type_node is None:
+                    continue
+                old_type = b" ".join(_txt(data, type_node).strip().split()).decode()
+                if TYPES.get(old_type) != (16, True):
+                    continue
+                declarators = []
+                for child in declaration.named_children:
+                    declarator = (child.child_by_field_name("declarator")
+                                  if child.type == "init_declarator" else child)
+                    if declarator is not None and declarator.type == "identifier":
+                        declarators.append((declarator, child))
+                if len(declarators) != 1 or declarators[0][1].type == "init_declarator":
+                    continue
+                widened = _txt(data, declarators[0][0])
+                if (widened not in locals_ or widened in (local, global_name) or
+                        re.search(rb"&\s*" + re.escape(widened) + rb"\b", body_text) or
+                        any(_txt(data, ident) == widened
+                            for update in _find(body, ("update_expression",))
+                            for ident in _find(update, ("identifier",)))):
+                    continue
+                definitions = []
+                for expression in _find(body, ("expression_statement",)):
+                    assignment = _plain_assignment(data, expression)
+                    if assignment is not None and assignment[0] == widened:
+                        definitions.append(assignment[1])
+                writes = []
+                for assignment in _find(body, ("assignment_expression",)):
+                    lhs = assignment.child_by_field_name("left")
+                    if (lhs is not None and lhs.type == "identifier" and
+                            _txt(data, lhs) == widened):
+                        writes.append(assignment)
+                if len(definitions) != 1 or len(writes) != 1:
+                    continue
+                source = _unparen(definitions[0])
+                if (source is None or source.type != "identifier" or
+                        extern_types.get(_txt(data, source)) != (16, True)):
+                    continue
+                typed = splice(data, type_node.start_byte, type_node.end_byte, b"s32")
+                combined = splice(
+                    typed, capture_statement.start_byte, decision.end_byte,
+                    replacement,
+                )
+                yield (
+                    base_label + f" + widen {widened.decode()}",
+                    combined.decode(),
+                )
+
+
 def rule_loop_boundary_shift(text, name, span):
     """Move the following statement inside an existing one-shot loop.
 
@@ -7119,6 +7334,7 @@ AGGRESSIVE_RULES = [
     ("ptr-base-split", "name an extern array base before indexed address/call", rule_ptr_base_split),
     ("deref-address-split", "name a casted dereference address before its scalar load", rule_deref_address_split),
     ("working-copy-seed-merge", "move a working-copy identity from seed to update/writeback", rule_working_copy_seed_merge),
+    ("deferred-global-capture", "test a scalar global directly, then capture once at the join", rule_deferred_global_capture),
     ("plus-group", "enumerate 3-term + grouping/constant placement (fold lever)", rule_plus_group),
     ("add-prefix-temp", "name a signed 2-term seam in a narrowed 3-term sum", rule_add_prefix_temp),
     ("flag-arm-assign", "move local 0/1 definitions between pre-zero and two-arm forms", rule_flag_arm_assign),

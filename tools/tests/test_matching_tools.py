@@ -1567,6 +1567,83 @@ void F(void) {
         self.assertEqual(len(out), 1)
         self.assertIn("persistent = seed();", out[0][1])
 
+    def test_deferred_global_capture_moves_reload_to_join(self):
+        source = """extern short Degree;
+void F(void) {
+    int result;
+    int degree;
+    degree = Degree;
+    if (degree > 0) {
+        result = 1;
+    } else {
+        if (degree < 0) {
+            result = -1;
+        }
+        degree = Degree;
+    }
+    use(degree, result);
+}
+"""
+        autorules.GUIDED_LINES = {5, 6}
+        out = self.candidates(autorules.rule_deferred_global_capture, source)
+        self.assertEqual(len(out), 1)
+        candidate = out[0][1]
+        self.assertIn("if (Degree > 0)", candidate)
+        self.assertIn("if (Degree < 0)", candidate)
+        self.assertEqual(candidate.count("degree = Degree;"), 1)
+        self.assertLess(candidate.index("if (Degree > 0)"),
+                        candidate.index("degree = Degree;"))
+
+    def test_deferred_global_capture_rejects_call_in_decision(self):
+        source = """extern short Degree;
+void F(void) {
+    int degree;
+    degree = Degree;
+    if (degree > 0) {
+        mutate();
+    } else {
+        degree = Degree;
+    }
+    use(degree);
+}
+"""
+        autorules.GUIDED_LINES = {4, 5}
+        self.assertEqual(
+            self.candidates(autorules.rule_deferred_global_capture, source),
+            [],
+        )
+
+    def test_deferred_global_capture_pairs_later_s16_widening(self):
+        source = """extern short Degree;
+void F(void) {
+    int result;
+    int degree;
+    degree = Degree;
+    if (degree > 0) {
+        result = 1;
+    } else {
+        if (degree < 0) {
+            result = -1;
+        }
+        degree = Degree;
+    }
+    {
+        short degree2;
+        degree2 = Degree;
+        use(degree2);
+    }
+    use(degree, result);
+}
+"""
+        autorules.GUIDED_LINES = {5, 6}
+        out = self.candidates(autorules.rule_deferred_global_capture, source)
+        self.assertEqual(len(out), 2)
+        combined = [candidate for label, candidate in out
+                    if "+ widen degree2" in label]
+        self.assertEqual(len(combined), 1)
+        self.assertIn("s32 degree2;", combined[0])
+        self.assertIn("if (Degree > 0)", combined[0])
+
     def test_redundant_field_donor_repeats_pure_aggregate_assignment(self):
         source = """typedef struct { int a, b, c, d; } T;
 void F(void) {
