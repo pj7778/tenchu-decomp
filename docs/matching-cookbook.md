@@ -3000,6 +3000,18 @@ The residual's source line normally belongs to the final return, so the rule
 uses that label line to admit the distant goto without opening a global CFG
 search.
 
+The second return can also be a value-producing call already assigned in a
+terminal branch. In `Think3hitaway`, the target's status-7 edge needed
+`return SuccessionAttack(...)`, not `result = SuccessionAttack(...)` followed
+by the common return: the direct form left the result in `$v0` and started the
+s16 conversion in the jump delay slot, closing a 14-byte schedule residual.
+Direct-returning the sibling `AttackFunc` arm had previously regressed, so try
+the edge named by the target's value flow rather than assuming all call arms
+are interchangeable. Guided `terminal-call-return` enumerates these edges only
+when a call assignment is terminal through every enclosing arm, the top-level
+conditional is immediately followed by `return result`, and the unaddressed
+local/function return widths agree.
+
 ### cse2 ignores loop notes; evict a merged `&local` arg by reassigning a pointer
 
 `cse1` ends its basic block at `NOTE_INSN_LOOP_END` but `cse2` does NOT, so a

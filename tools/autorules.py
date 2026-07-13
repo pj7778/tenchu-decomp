@@ -4744,6 +4744,99 @@ def rule_shared_result_return(text, name, span):
     )
 
 
+def rule_terminal_call_return(text, name, span):
+    """Return one terminal branch call directly instead of joining a result.
+
+    ``if (...) { result = call(); } ... return result;`` and ``return call();``
+    are equivalent on that branch when the top-level conditional is immediately
+    followed by the final return.  The split source return can leave the call
+    result in ``$v0`` and begin a narrow conversion in the jump delay slot;
+    Think3hitaway's status-7 arm went from a 14-byte schedule residual to exact.
+
+    Restrict this to one plain unaddressed integer local, equal local/function
+    return widths, a direct call RHS, and an assignment terminal through every
+    enclosing compound/else up to the adjacent top-level conditional.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None or body.parent is None or \
+            body.parent.type != "function_definition":
+        return
+    direct = [child for child in body.named_children
+              if child.type != "comment"]
+    if len(direct) < 2 or direct[-1].type != "return_statement" or \
+            direct[-2].type != "if_statement":
+        return
+    conditional, final = direct[-2], direct[-1]
+    values = [child for child in final.named_children
+              if child.type != "comment"]
+    value = _unparen(values[0]) if len(values) == 1 else None
+    if value is None or value.type != "identifier":
+        return
+    local = _txt(data, value)
+
+    function_type = body.parent.child_by_field_name("type")
+    function_type_name = (_txt(data, function_type).decode().strip()
+                          if function_type is not None else "")
+    declarations = []
+    for declaration in _find(body, ("declaration",)):
+        declarator = declaration.child_by_field_name("declarator")
+        ident = _descend_ident(declarator) if declarator is not None else None
+        if ident is not None and _txt(data, ident) == local:
+            declarations.append((declaration, declarator))
+    if len(declarations) != 1 or function_type_name not in TYPES:
+        return
+    declaration, declarator = declarations[0]
+    type_node = declaration.child_by_field_name("type")
+    type_name = (_txt(data, type_node).decode().strip()
+                 if type_node is not None else "")
+    if (type_name not in TYPES or declarator.type != "identifier" or
+            TYPES[type_name][0] != TYPES[function_type_name][0] or
+            re.search(rb"\b(?:const|volatile|static|register|extern)\b",
+                      _txt(data, declaration)) or
+            re.search(rb"[,=*\[]", _txt(data, declaration)) or
+            re.search(rb"&\s*\(?\s*" + re.escape(local) + rb"\b",
+                      _txt(data, body))):
+        return
+
+    def terminal_to_top(statement):
+        node = statement
+        while node != conditional:
+            parent = node.parent
+            if parent is None:
+                return False
+            if parent.type in ("compound_statement", "else_clause"):
+                children = [child for child in parent.named_children
+                            if child.type != "comment"]
+                if not children or children[-1] != node:
+                    return False
+            elif parent.type == "if_statement":
+                if node not in (parent.child_by_field_name("consequence"),
+                                parent.child_by_field_name("alternative")):
+                    return False
+            else:
+                return False
+            node = parent
+        return True
+
+    for statement in _find(conditional, ("expression_statement",)):
+        assignment = _plain_assignment(data, statement)
+        if assignment is None or assignment[0] != local or \
+                not terminal_to_top(statement):
+            continue
+        rhs = _unparen(assignment[1])
+        if rhs is None or rhs.type != "call_expression":
+            continue
+        lines = (_line(data, statement.start_byte), _line(data, final.start_byte))
+        if not any(_guided_site(line) for line in lines):
+            continue
+        yield (
+            f"terminal-call-return {local.decode()} L{lines[0]}",
+            splice(data, statement.start_byte, statement.end_byte,
+                   b"return " + _txt(data, rhs).strip() + b";").decode(),
+        )
+
+
 def rule_switch_cse_evict(text, name, span):
     """Dead-overwrite an entry index local before re-reading it in a switch.
 
@@ -7568,6 +7661,7 @@ AGGRESSIVE_RULES = [
     ("shared-writeback-compound", "inline a shared field writeback into compound-update arms", rule_shared_writeback_compound),
     ("shared-terminal-tail", "duplicate an adjacent assignment+return into both if/else arms", rule_shared_terminal_tail),
     ("shared-result-return", "funnel two value returns through one result pseudo", rule_shared_result_return),
+    ("terminal-call-return", "return a terminal branch call before the shared result join", rule_terminal_call_return),
     ("shared-return-split", "replace a goto to a return label with a second literal return", rule_shared_return_split),
     ("terminal-arm-flip", "negate and swap adjacent arms ending at one terminal tail", rule_terminal_arm_flip),
     ("if-else-invert", "invert a compound if/else to swap physical body layout", rule_if_else_invert),

@@ -97,7 +97,7 @@ CATEGORY_RULES = {
     ],
     "jump/cross-jump": ["literal-indirect-inline", "shared-result-return", "shared-writeback-compound", "terminal-arm-flip", "terminal-guard-flip", "shared-terminal-tail", "case-fence", "sparse-eq-switch", "mul-affine-shape", "and-nest", "if-else-invert", "shared-tail-assign"],
     "schedule/delay": [
-        "deferred-global-capture", "shared-result-return", "type-width", "empty-loop-boundary", "loop-fence",
+        "terminal-call-return", "deferred-global-capture", "shared-result-return", "type-width", "empty-loop-boundary", "loop-fence",
         "nested-loop-fence", "paired-loop-fence", "loop-range", "cmp-swap", "cmp-polarity", "shift-stage", "ptr-base-split", "deref-address-split",
         "split-chain", "or-inplace", "vector-copy-adjust", "flag-arm-assign", "guard-flag-assign", "shared-writeback-compound", "shared-tail-assign", "shared-terminal-tail",
         "guard-exit-copy",

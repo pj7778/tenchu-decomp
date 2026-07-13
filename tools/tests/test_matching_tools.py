@@ -2803,6 +2803,41 @@ s16 F(int fast) {
             self.assertEqual(
                 self.candidates(autorules.rule_shared_result_return, source), [])
 
+    def test_terminal_call_return_splits_one_terminal_branch(self):
+        source = """typedef short s16;
+typedef unsigned short u16;
+s16 F(int status) {
+    u16 result;
+    if (status == 7) {
+        clear();
+        result = succession();
+    } else if (status != 0) {
+        result = indirect();
+    } else {
+        result = fallback();
+    }
+    return result;
+}
+"""
+        autorules.GUIDED_LINES = {13}
+        out = self.candidates(autorules.rule_terminal_call_return, source)
+        self.assertEqual(len(out), 3)
+        candidate = next(text for label, text in out if "L7" in label)
+        self.assertIn("clear();\n        return succession();", candidate)
+        self.assertIn("result = indirect();", candidate)
+
+    def test_terminal_call_return_rejects_work_after_assignment(self):
+        source = """int F(int status) {
+    int result;
+    if (status) { result = helper(); observe(); }
+    else { result = fallback(); }
+    return result;
+}
+"""
+        out = self.candidates(autorules.rule_terminal_call_return, source)
+        self.assertEqual(len(out), 1)
+        self.assertNotIn("return helper();", out[0][1])
+
     def test_shift16_mul_respelled_for_declared_short(self):
         source = """typedef unsigned short u16;
 typedef unsigned int u32;
