@@ -31,7 +31,230 @@
  *     extern struct tag_TItem items[30];
  * END PSX.SYM */
 
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupTelop", SetupTelop);
+#else
+
+typedef struct
+{
+    s16 x, y, w, h;
+} RECT;
+
+typedef struct
+{
+    u8 pad[3];
+    u8 len;
+} TelopTag;
+
+typedef struct
+{
+    TelopTag tag;
+    u8 r0, g0, b0, code;
+    s16 x0, y0;
+    u8 u0, v0;
+    u16 clut;
+    s16 x1, y1;
+    u8 u1, v1;
+    u16 tpage;
+    s16 x2, y2;
+    u8 u2, v2;
+    u16 pad1;
+    s16 x3, y3;
+    u8 u3, v3;
+    u16 pad2;
+} TelopPoly;
+
+extern TelopPoly TelopP;
+extern u16 D_8008F078[];
+
+extern int ClearImage(RECT *rect, u8 r, u8 g, u8 b);
+extern int DrawSync(int mode);
+extern s16 *Krom2RawAdd(u32 code);
+extern int LoadImage(RECT *rect, u_long *pixels);
+extern void *memset(void *dst, int value, u32 size);
+extern u16 GetTPage(s32 tp, s32 abr, s32 x, s32 y);
+
+void SetupTelop(u8 *telop, short line)
+{
+    s16 bitmap[16][16];
+    RECT rect;
+    s16 n;
+    s16 u;
+    s16 v;
+    s16 col;
+    s16 *font;
+    s16 *pixel;
+    s32 pixel_offset;
+    s16 bits;
+    u16 raw_bits;
+    s16 north;
+    s16 fill_white;
+    s16 outline_white;
+    s32 scaled_y;
+    s32 line_y;
+    s32 signed_v;
+    s32 final_u;
+    s32 final_v;
+    s32 final_v2;
+
+    TelopP.u1 = 0;
+    TelopP.u0 = 0;
+    if ((*telop & 0x80) != 0 && (telop[2] & 0x80) != 0)
+    {
+        scaled_y = ((s32)line << 0x10) >> 0xc;
+        rect.x = 0x300;
+        rect.y = 0x1f0 - scaled_y;
+        rect.w = 0x100;
+        rect.h = 0xf;
+        line_y = scaled_y;
+        ClearImage(&rect, 0, 0, 0);
+        DrawSync(0);
+        rect.w = 0x10;
+        rect.h = 0xf;
+
+        do
+        {
+            if (*telop == 0)
+            {
+                TelopP.u1 = 0;
+                TelopP.u0 = 0;
+                return;
+            }
+        } while (0);
+
+        n = 0;
+        while (1)
+        {
+            if (n >= 0x20)
+            {
+                break;
+            }
+
+            do
+            {
+                do
+                {
+                    do
+                    {
+                        do
+                        {
+                            do
+                            {
+                                if (telop[n] == 0x81 && telop[n + 1] == 0x99)
+                                {
+                                    font = D_8008F078;
+                                }
+                                else
+                                {
+                                    font = Krom2RawAdd((telop[n] << 8) | telop[n + 1]);
+                                }
+                            } while (0);
+                        } while (0);
+                    } while (0);
+                } while (0);
+            } while (0);
+
+            if (font != (s16 *)-1)
+            {
+                fill_white = 0x7fff;
+                v = 0;
+                do
+                {
+                    raw_bits = font[v];
+                    bits = raw_bits >> 8;
+                    bits |= raw_bits << 8;
+                    col = 0;
+                    do
+                    {
+                        do
+                        {
+                            pixel_offset = (15 - col) * 2 + v * 0x20;
+                        } while (0);
+                        final_u = fill_white;
+                        pixel = (s16 *)((u8 *)bitmap + pixel_offset);
+                        if ((bits >> col) & 1)
+                        {
+                            *pixel = final_u;
+                        }
+                        else
+                        {
+                            *pixel = 0;
+                        }
+                        col++;
+                    } while (col < 16);
+                    do
+                    {
+                        do
+                        {
+                            v++;
+                        } while (0);
+                    } while (0);
+                } while (v < 15);
+
+                outline_white = 0x7fff;
+                u = 1;
+                v = 1;
+                do
+                {
+                    if (bitmap[v][u] == 0)
+                    {
+                        north = bitmap[v - 1][u];
+                        if ((north == outline_white && bitmap[v][u - 1] == outline_white) ||
+                            (bitmap[v][u - 1] == outline_white && bitmap[v + 1][u] == outline_white) ||
+                            (bitmap[v + 1][u] == outline_white && bitmap[v][u + 1] == outline_white) ||
+                            (bitmap[v][u + 1] == outline_white && north == outline_white))
+                        {
+                            bitmap[v][u] = 0x1ce7;
+                        }
+                    }
+                    do
+                    {
+                        u++;
+                    } while (0);
+                    signed_v = v;
+                    if (u >= 15)
+                    {
+                        u = 1;
+                        v = signed_v + 1;
+                    }
+                    else
+                    {
+                        v = signed_v;
+                    }
+                } while (v < 14);
+
+                LoadImage(&rect, (u_long *)bitmap);
+                DrawSync(0);
+                rect.x += rect.w;
+            }
+
+            n += 2;
+            if (telop[n] == 0)
+            {
+                break;
+            }
+        }
+
+        memset(&TelopP, 0xff, sizeof(TelopP));
+        final_v = 0xf0 - line_y;
+        final_v2 = (u8)rect.h + final_v;
+        final_u = (u16)rect.x - 0x301;
+        TelopP.tag.len = 9;
+        TelopP.code = 0x2c;
+        TelopP.u2 = 0;
+        TelopP.u0 = 0;
+        TelopP.v1 = final_v;
+        TelopP.v0 = final_v;
+        TelopP.u3 = final_u;
+        TelopP.u1 = final_u;
+        TelopP.v3 = final_v2;
+        TelopP.v2 = final_v2;
+        TelopP.tpage = GetTPage(2, 0, 0x300,
+                               0x1f0 - (s16)line_y);
+    }
+}
+
+#endif
 
 // triage: HARD — 269 insns, 4 loop, frame 0x230, 6 callees, ~0.04 to BriefingAndInventorySelectionScreen
 // likely-relevant cookbook sections:
