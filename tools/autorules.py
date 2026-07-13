@@ -3993,6 +3993,288 @@ def rule_split_chain(text, name, span):
                splice(data, stmt.start_byte, stmt.end_byte, two).decode())
 
 
+def rule_dead_host_split(text, name, span):
+    """Split signed ``lhs = (A +/- B) / K`` through a dead signed-s32 local.
+
+    A same-type automatic local whose last source occurrence is before this
+    statement can safely hold the promoted numerator::
+
+        direction = (target_y - y) / 2;
+        magnitude = target_y - y;
+        direction = magnitude / 2;
+
+    The extra C assignment can disappear while still joining the host's global
+    allocno to the numerator and donating its local hard-register preference.
+    ControlHumanoid needed this in combination with nested loop weighting.
+
+    This is guided-only and deliberately narrower than general temporary
+    invention: both locals are unaddressed, nonvolatile function-scope signed
+    32-bit scalars of the same type; the host has an earlier use and no later
+    source occurrence; and both the numerator and divisor are provably signed.
+    Gotos, potentially capturing macro-like calls, and repeating-loop ancestors
+    are rejected; one-shot weighting loops are safe because they execute once.
+    """
+    if not GUIDED_LINES:
+        return
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    if _find(body, ("goto_statement",)):
+        return
+    for label in _find(body, ("labeled_statement",)):
+        if _find(label, ("do_statement", "for_statement", "while_statement")):
+            return
+
+    root = body
+    while root.parent is not None:
+        root = root.parent
+    declared_functions = set()
+    for declarator in _find(root, ("function_declarator",)):
+        ident = _descend_ident(declarator.child_by_field_name("declarator"))
+        if ident is not None:
+            declared_functions.add(_txt(data, ident))
+    macro_names = set(re.findall(
+        rb"(?m)^\s*#\s*define\s+([A-Za-z_]\w*)", data
+    ))
+    call_sites = sorted(_find(body, ("call_expression",)),
+                        key=lambda node: node.start_byte)
+
+    scalar_types = {}
+    declaration_ends = {}
+    for declaration in [child for child in body.named_children
+                        if child.type == "declaration"]:
+        raw = _txt(data, declaration)
+        type_node = declaration.child_by_field_name("type")
+        if (type_node is None or
+                re.search(rb"\b(?:const|volatile|static|extern|_Thread_local)\b",
+                          raw)):
+            continue
+        type_text = b" ".join(_txt(data, type_node).strip().split()).decode()
+        if TYPES.get(type_text) != (32, True):
+            continue
+        for child in declaration.named_children:
+            declarator = (child.child_by_field_name("declarator")
+                          if child.type == "init_declarator" else child)
+            if declarator is None or declarator.type != "identifier":
+                continue
+            ident = _txt(data, declarator)
+            scalar_types[ident] = type_text
+            declaration_ends[ident] = declarator.end_byte
+
+    if len(scalar_types) < 2:
+        return
+
+    value_types = dict(scalar_types)
+    function = body.parent
+    declarator = (function.child_by_field_name("declarator")
+                  if function is not None else None)
+    if declarator is not None:
+        for parameter in _find(declarator, ("parameter_declaration",)):
+            type_node = parameter.child_by_field_name("type")
+            ident = _descend_ident(parameter.child_by_field_name("declarator"))
+            if type_node is None or ident is None:
+                continue
+            type_text = b" ".join(_txt(data, type_node).strip().split()).decode()
+            if TYPES.get(type_text) == (32, True):
+                value_types[_txt(data, ident)] = type_text
+
+    shadowed = set()
+    value_shadowed = set()
+    for declaration in _find(body, ("declaration",)):
+        if declaration.parent == body:
+            continue
+        for ident in _find(declaration, ("identifier",)):
+            token = _txt(data, ident)
+            if token in scalar_types:
+                shadowed.add(token)
+            if token in value_types:
+                value_shadowed.add(token)
+
+    identifiers = sorted(_find(body, ("identifier",)),
+                         key=lambda node: node.start_byte)
+    addressed = set()
+    for ident in identifiers:
+        node = ident
+        parent = node.parent
+        while parent is not None and parent.type == "parenthesized_expression":
+            node = parent
+            parent = node.parent
+        if parent is None or parent.type != "pointer_expression":
+            continue
+        operator = parent.child_by_field_name("operator")
+        if operator is not None and _txt(data, operator) == b"&":
+            addressed.add(_txt(data, ident))
+
+    def signed_s32_expression(node):
+        """Whether this narrow syntax has signed-32 C arithmetic type."""
+        node = _unparen(node)
+        if node is None:
+            return False
+        if node.type == "identifier":
+            token = _txt(data, node)
+            return token in value_types and token not in value_shadowed
+        if node.type == "number_literal":
+            literal = _txt(data, node).strip()
+            if re.search(rb"[uU]", literal):
+                return False
+            try:
+                value = int(re.sub(rb"[lL]+$", b"", literal), 0)
+            except ValueError:
+                return False
+            return 0 <= value <= 0x7fffffff
+        if node.type == "unary_expression":
+            operator = node.child_by_field_name("operator")
+            argument = node.child_by_field_name("argument")
+            return (operator is not None and _txt(data, operator) in (b"+", b"-")
+                    and signed_s32_expression(argument))
+        if node.type == "cast_expression":
+            type_node = node.child_by_field_name("type")
+            if type_node is None:
+                return False
+            type_text = b" ".join(_txt(data, type_node).strip().split()).decode()
+            return TYPES.get(type_text) == (32, True)
+        return False
+
+    def signed_cast_value(node):
+        """Value under an explicit signed-s32 cast, including typedef syntax.
+
+        Tree-sitter has no typedef table, so ``(s32)(expr)`` can be parsed as a
+        call to ``s32`` rather than as ``cast_expression``. Recognize that exact
+        one-argument shape as a cast only when the token names a signed-32 type.
+        """
+        node = _unparen(node)
+        if node is None:
+            return None
+        if node.type == "cast_expression":
+            type_node = node.child_by_field_name("type")
+            if type_node is None:
+                return None
+            type_text = b" ".join(_txt(data, type_node).strip().split()).decode()
+            if TYPES.get(type_text) != (32, True):
+                return None
+            return _unparen(node.child_by_field_name("value"))
+        if node.type != "call_expression":
+            return None
+        function = _unparen(node.child_by_field_name("function"))
+        arguments = node.child_by_field_name("arguments")
+        if function is None or function.type != "identifier" or arguments is None:
+            return None
+        type_text = _txt(data, function).decode()
+        values = [child for child in arguments.named_children
+                  if child.type != "comment"]
+        if TYPES.get(type_text) != (32, True) or len(values) != 1:
+            return None
+        return _unparen(values[0])
+
+    def has_potential_macro_capture_after(statement):
+        """A later local/unknown macro may expand to a read of the host."""
+        if any(ident.start_byte >= statement.end_byte and
+               _txt(data, ident) in macro_names for ident in identifiers):
+            return True
+        for call in call_sites:
+            if call.start_byte < statement.end_byte:
+                continue
+            function = _unparen(call.child_by_field_name("function"))
+            if function is None or function.type != "identifier":
+                return True
+            token = _txt(data, function)
+            if token in macro_names or token not in declared_functions:
+                return True
+        return False
+
+    for statement in _find(body, ("expression_statement",)):
+        assignment = _plain_assignment(data, statement)
+        if assignment is None:
+            continue
+        ancestor = statement.parent
+        unsafe_loop = False
+        while ancestor is not None and ancestor != body:
+            if ancestor.type in ("for_statement", "while_statement"):
+                unsafe_loop = True
+                break
+            if (ancestor.type == "do_statement" and
+                    _one_shot_loop(data, ancestor) is None):
+                unsafe_loop = True
+                break
+            ancestor = ancestor.parent
+        if unsafe_loop:
+            continue
+        if has_potential_macro_capture_after(statement):
+            continue
+        lhs, rhs = assignment
+        line = _line(data, statement.start_byte)
+        if (lhs not in scalar_types or lhs in addressed or lhs in shadowed or
+                not _guided_site(line)):
+            continue
+        outer = _unparen(rhs)
+        if outer is None or outer.type != "binary_expression":
+            continue
+        operator = outer.child_by_field_name("operator")
+        numerator = _unparen(outer.child_by_field_name("left"))
+        right = _unparen(outer.child_by_field_name("right"))
+        if (operator is None or _txt(data, operator) != b"/" or
+                numerator is None or
+                right is None or right.type != "number_literal"):
+            continue
+        cast_inner = signed_cast_value(numerator)
+        explicitly_signed = cast_inner is not None
+        inner = cast_inner if explicitly_signed else numerator
+        if inner is None or inner.type != "binary_expression":
+            continue
+        inner_operator = inner.child_by_field_name("operator")
+        if inner_operator is None or _txt(data, inner_operator) not in (b"+", b"-"):
+            continue
+        if (not explicitly_signed and
+                not (signed_s32_expression(inner.child_by_field_name("left")) and
+                     signed_s32_expression(inner.child_by_field_name("right")))):
+            continue
+        literal = _txt(data, right).strip()
+        if re.search(rb"[uU]", literal):
+            continue
+        try:
+            divisor = int(re.sub(rb"[lL]+$", b"", literal), 0)
+        except ValueError:
+            continue
+        if divisor <= 0 or divisor > 0x7fffffff:
+            continue
+        if _find(outer, ("assignment_expression", "update_expression")):
+            continue
+        calls = _find(outer, ("call_expression",))
+        if any(not (explicitly_signed and
+                    call.start_byte == numerator.start_byte and
+                    call.end_byte == numerator.end_byte) for call in calls):
+            continue
+        rhs_names = {_txt(data, ident) for ident in _find(rhs, ("identifier",))}
+        indent = _indent_at(data, statement.start_byte)
+        candidates = []
+        for host, host_type in sorted(scalar_types.items()):
+            if (host == lhs or host_type != scalar_types[lhs] or
+                    host in addressed or host in shadowed or host in rhs_names or
+                    (GUIDED_VARIABLES and host not in GUIDED_VARIABLES)):
+                continue
+            earlier = any(
+                declaration_ends[host] < ident.start_byte < statement.start_byte and
+                _txt(data, ident) == host for ident in identifiers
+            )
+            later = any(
+                ident.start_byte >= statement.end_byte and _txt(data, ident) == host
+                for ident in identifiers
+            )
+            if earlier and not later:
+                candidates.append(host)
+        for host in candidates[:4]:
+            replacement = (
+                host + b" = " + _txt(data, numerator).strip() + b";\n" + indent +
+                lhs + b" = " + host + b" / " + literal + b";"
+            )
+            yield (
+                f"dead-host-split {host.decode()} L{line}",
+                splice(data, statement.start_byte, statement.end_byte,
+                       replacement).decode(),
+            )
+
+
 def rule_shift_stage(text, name, span):
     """Split one constant right shift into every equivalent two-stage shift.
 
@@ -5057,6 +5339,7 @@ AGGRESSIVE_RULES = [
     ("eq-literal-swap", "swap ==/!= literal operand order (v0/v1 lever)", rule_eq_literal_swap),
     ("shift16-mul", "casted short x<<16 -> x*0x10000 (raw sll lever)", rule_shift16_mul),
     ("shift-stage", "split x>>N into every two-stage constant shift", rule_shift_stage),
+    ("dead-host-split", "split signed (A+/-B)/K through a dead signed-s32 local", rule_dead_host_split),
     ("mul-affine-shape", "toggle x*M+C with (x+C/M)*M", rule_mul_affine_shape),
     ("ptr-base-split", "name an extern array base before indexed address/call", rule_ptr_base_split),
     ("plus-group", "enumerate 3-term + grouping/constant placement (fold lever)", rule_plus_group),

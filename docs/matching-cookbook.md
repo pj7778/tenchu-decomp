@@ -3053,6 +3053,37 @@ paired rule lets scoring see the combination without requiring a regressing
 intermediate beam state. Single `loop-fence` also accepts a plain expression
 statement, covering LoadSI's exact `msg = 0` fence.
 
+Loop weighting and expression splitting can be one allocation operation rather
+than two independent cleanups. ControlHumanoid first needed three weights on a
+final `direction = (target_y - y) / 2` to put `direction` in `$v1`; splitting the
+same expression through the now-dead, same-type `magnitude` local then donated
+the numerator's `$a0` preference and reduced the exact-length residual from 42
+to 17 bytes:
+
+```c
+magnitude = target_y - y;
+direction = magnitude / 2;
+```
+
+The inserted assignment still vanished. In this accepted case the pre-split
+RTL recorded `REG_EQUAL (div:SI ...)`, and both candidate and target used the
+signed bias-plus-`sra` sequence for division by two; the field expression's
+signed division was therefore established independently of the rewrite.
+
+Guided `dead-host-split` mechanically tries a deliberately safer subset of this
+composition. Destination and host must be unaddressed, nonvolatile,
+function-scope signed-32 scalars of the same type; the host must have an earlier
+use and no later source occurrence; and `(A +/- B) / literal` must have a
+provably signed numerator (signed-32 locals/parameters or an explicit signed
+cast) and divisor. It rejects a function containing `goto`, a labeled loop, a
+repeating-loop ancestor, or any later call-like token that is not a declared C
+function and could therefore be a local-capturing macro. Existing one-shot
+weighting loops are allowed. These conservative guards mean the rule need not
+fire retroactively on ControlHumanoid's raw field expression and earlier gotos;
+they keep future automatic probes semantics-preserving. Do not reuse a merely
+*apparently* dead local by hand when control-flow re-entry, unsigned conversion,
+macro capture, address escape, or a later iteration can observe the new value.
+
 When one value needs more than one unit of loop weight, `nested-loop-fence`
 tries two and three nested one-shot loops as one candidate. This avoids making
 a beam discover a useful depth through a neutral or regressing single wrapper.

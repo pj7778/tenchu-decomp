@@ -1119,6 +1119,179 @@ void F(void) {
         self.assertEqual(len(depth_two), 1)
         self.assertEqual(depth_two[0].count("} while (0);"), 2)
 
+    def test_dead_host_split_reuses_last_dead_scalar_inside_nested_fence(self):
+        source = """typedef int s32;
+void use(s32 value);
+void F(s32 *position) {
+    s32 direction;
+    s32 magnitude;
+    magnitude = position[0];
+    use(magnitude);
+    do {
+        do {
+            do {
+                direction = (s32)(position[1] - position[2]) / 2;
+            } while (0);
+        } while (0);
+    } while (0);
+    use(direction);
+}
+"""
+        autorules.GUIDED_LINES = {11}
+        autorules.GUIDED_VARIABLES = {b"direction", b"magnitude"}
+        out = self.candidates(autorules.rule_dead_host_split, source)
+        self.assertEqual(len(out), 1)
+        self.assertTrue(out[0][0].startswith("dead-host-split magnitude L11"))
+        self.assertIn(
+            "magnitude = (s32)(position[1] - position[2]);\n"
+            "                direction = magnitude / 2;",
+            out[0][1],
+        )
+
+    def test_dead_host_split_accepts_signed_s32_parameters(self):
+        source = """typedef int s32;
+void use(s32 value);
+void F(s32 left, s32 right) {
+    s32 direction;
+    s32 magnitude;
+    magnitude = 1;
+    use(magnitude);
+    direction = (left - right) / 2;
+    use(direction);
+}
+"""
+        autorules.GUIDED_LINES = {8}
+        autorules.GUIDED_VARIABLES = {b"direction", b"magnitude"}
+        out = self.candidates(autorules.rule_dead_host_split, source)
+        self.assertEqual(len(out), 1)
+        self.assertIn("magnitude = left - right;", out[0][1])
+
+    def test_dead_host_split_rejects_a_host_read_later(self):
+        source = """typedef int s32;
+void use(s32 value);
+void F(s32 *position) {
+    s32 direction;
+    s32 magnitude;
+    magnitude = position[0];
+    direction = (s32)(position[1] - position[2]) / 2;
+    use(direction);
+    use(magnitude);
+}
+"""
+        autorules.GUIDED_LINES = {7}
+        autorules.GUIDED_VARIABLES = {b"direction", b"magnitude"}
+        self.assertEqual(
+            self.candidates(autorules.rule_dead_host_split, source), [])
+
+    def test_dead_host_split_requires_same_32_bit_type(self):
+        source = """typedef int s32;
+typedef short s16;
+void F(s32 *position) {
+    s32 direction;
+    s16 magnitude;
+    magnitude = position[0];
+    direction = (s32)(position[1] - position[2]) / 2;
+}
+"""
+        autorules.GUIDED_LINES = {7}
+        autorules.GUIDED_VARIABLES = {b"direction", b"magnitude"}
+        self.assertEqual(
+            self.candidates(autorules.rule_dead_host_split, source), [])
+
+    def test_dead_host_split_rejects_a_repeating_loop(self):
+        source = """typedef int s32;
+void use(s32 value);
+void F(s32 *position) {
+    s32 direction;
+    s32 magnitude;
+    magnitude = position[0];
+    while (position[3]) {
+        use(magnitude);
+        direction = (s32)(position[1] - position[2]) / 2;
+    }
+    use(direction);
+}
+"""
+        autorules.GUIDED_LINES = {9}
+        autorules.GUIDED_VARIABLES = {b"direction", b"magnitude"}
+        self.assertEqual(
+            self.candidates(autorules.rule_dead_host_split, source), [])
+
+    def test_dead_host_split_rejects_unsigned_numerator_arithmetic(self):
+        source = """typedef int s32;
+typedef unsigned int u32;
+void use(s32 value);
+void F(u32 left, u32 right) {
+    s32 direction;
+    s32 magnitude;
+    magnitude = 1;
+    use(magnitude);
+    direction = (left - right) / 2;
+    use(direction);
+}
+"""
+        autorules.GUIDED_LINES = {9}
+        autorules.GUIDED_VARIABLES = {b"direction", b"magnitude"}
+        self.assertEqual(
+            self.candidates(autorules.rule_dead_host_split, source), [])
+
+    def test_dead_host_split_rejects_backward_goto_reentry(self):
+        source = """typedef int s32;
+void use(s32 value);
+void F(s32 left, s32 right) {
+    s32 direction;
+    s32 magnitude;
+    magnitude = 1;
+retry:
+    use(magnitude);
+    direction = (left - right) / 2;
+    if (direction) goto retry;
+    use(direction);
+}
+"""
+        autorules.GUIDED_LINES = {9}
+        autorules.GUIDED_VARIABLES = {b"direction", b"magnitude"}
+        self.assertEqual(
+            self.candidates(autorules.rule_dead_host_split, source), [])
+
+    def test_dead_host_split_rejects_later_capturing_macro(self):
+        source = """typedef int s32;
+void use(s32 value);
+#define OBSERVE_MAGNITUDE() use(magnitude)
+void F(s32 left, s32 right) {
+    s32 direction;
+    s32 magnitude;
+    magnitude = 1;
+    use(magnitude);
+    direction = (left - right) / 2;
+    OBSERVE_MAGNITUDE();
+    use(direction);
+}
+"""
+        autorules.GUIDED_LINES = {9}
+        autorules.GUIDED_VARIABLES = {b"direction", b"magnitude"}
+        self.assertEqual(
+            self.candidates(autorules.rule_dead_host_split, source), [])
+
+    def test_dead_host_split_rejects_later_object_macro_capture(self):
+        source = """typedef int s32;
+void use(s32 value);
+#define OBSERVE_MAGNITUDE use(magnitude)
+void F(s32 left, s32 right) {
+    s32 direction;
+    s32 magnitude;
+    magnitude = 1;
+    use(magnitude);
+    direction = (left - right) / 2;
+    OBSERVE_MAGNITUDE;
+    use(direction);
+}
+"""
+        autorules.GUIDED_LINES = {9}
+        autorules.GUIDED_VARIABLES = {b"direction", b"magnitude"}
+        self.assertEqual(
+            self.candidates(autorules.rule_dead_host_split, source), [])
+
     def test_loop_fence_rejects_if_with_switch_break(self):
         source = """int F(int a) {
     switch (a) {
