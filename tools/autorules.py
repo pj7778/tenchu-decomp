@@ -434,6 +434,68 @@ def _lone_if(node):
     return None
 
 
+def rule_stack_decl_swap(text, name, span):
+    """Swap adjacent same-type address-taken object declarations.
+
+    In ``leLayoutEnemy``, old cc1 assigns the two separately declared VECTOR
+    locals' stack slots in declaration order.  When otherwise interchangeable
+    scratch objects occupy the target's slots in the opposite order, swapping
+    only their declarations is a bounded source lever.
+
+    Keep the transform deliberately narrow: both declarations must be plain,
+    uninitialized objects of the exact same typedef type, direct children of
+    one block, with no comment between them, and both names must be used with
+    unary ``&``.  Candidate scoring decides which order is useful.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+
+    addressed = set()
+    for pointer in _find(body, ("pointer_expression",)):
+        operator = pointer.child_by_field_name("operator")
+        argument = pointer.child_by_field_name("argument")
+        if (operator is not None and _txt(data, operator) == b"&" and
+                argument is not None and argument.type == "identifier"):
+            addressed.add(_txt(data, argument))
+
+    def plain_object(declaration):
+        if declaration.type != "declaration":
+            return None
+        type_node = declaration.child_by_field_name("type")
+        declarator = declaration.child_by_field_name("declarator")
+        if (type_node is None or type_node.type != "type_identifier" or
+                declarator is None or declarator.type != "identifier"):
+            return None
+        named = [child for child in declaration.named_children
+                 if child.type != "comment"]
+        if len(named) != 2 or named[0] != type_node or named[1] != declarator:
+            return None
+        return _txt(data, type_node), _txt(data, declarator)
+
+    for block in _find(body, ("compound_statement",)):
+        statements = [child for child in block.named_children
+                      if child.type != "comment"]
+        for first, second in zip(statements, statements[1:]):
+            first_object = plain_object(first)
+            second_object = plain_object(second)
+            if (first_object is None or second_object is None or
+                    first_object[0] != second_object[0] or
+                    first_object[1] not in addressed or
+                    second_object[1] not in addressed or
+                    data[first.end_byte:second.start_byte].strip()):
+                continue
+            gap = data[first.end_byte:second.start_byte]
+            replacement = (_txt(data, second) + gap + _txt(data, first))
+            yield (
+                f"stack-decl-swap {first_object[1].decode()}/"
+                f"{second_object[1].decode()} L{_line(data, first.start_byte)}",
+                splice(data, first.start_byte, second.end_byte,
+                       replacement).decode(),
+            )
+
+
 def rule_and_nest(text, name, span):
     """`if (A && B) S`  <->  `if (A) { if (B) S }` — cc1 collapses a redundant
     `&&` chain (dropping a branch the binary keeps), so NESTing recovers it;
@@ -3984,6 +4046,7 @@ def rule_adjacent_field_store_swap(text, name, span):
 RULES = [
     ("type-width", "flip a local's integer type across width/signedness", rule_type_width),
     ("param-width", "flip a scalar parameter's integer type across width/signedness", rule_param_width),
+    ("stack-decl-swap", "swap adjacent same-type address-taken object declarations", rule_stack_decl_swap),
     ("extern-array", "extern T NAME; -> extern T NAME[]; + NAME->NAME[0] (-G8 split)", rule_extern_array),
     ("and-nest", "split/merge if(a && b) <-> nested ifs (no else)", rule_and_nest),
     ("temp-inline", "inline a single-use local temp into its use", rule_temp_inline),

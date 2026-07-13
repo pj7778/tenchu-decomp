@@ -1700,12 +1700,15 @@ matter. Do not fight it with named temps or casts.
 
 ## Stack objects
 
-**Two same-type address-taken stack objects get their slots by REFERENCE order, not
-declaration order.** When a memset scratch VECTOR and its struct-copy destination
-(passed to a call) land in swapped stack slots vs the target, swapping the
-DECLARATIONS does nothing — swap which one is memset'd and which is the call argument.
-`leLayoutEnemy`: making `pos` the memset scratch and `tmp` the SetBleeds argument put
-`pos@sp+24`/`tmp@sp+40` to match, cutting the diff in half.
+**Declaration order can control separately-declared same-type address-taken stack
+objects' slots; do not assume reference order controls them.** `leLayoutEnemy`
+provides a one-change A/B: keeping all references fixed while swapping only
+`VECTOR tmp; VECTOR pos;` to `VECTOR pos; VECTOR tmp;` swapped every
+`sp+24`/`sp+40` access and caused 26 byte differences. The matching order declares
+`tmp` first (the later `SetBleeds` argument at `sp+24`) and `pos` second (the earlier
+memset scratch at `sp+40`), so reference order does not determine these slots here.
+`autorules`' ordinary `stack-decl-swap` candidate enumerates this exact bounded lever
+for adjacent, uninitialized, same-typedef objects whose addresses are both taken.
 
 **cc1 pads EACH separately-declared aggregate stack local up to a multiple of 8
 bytes.** Four adjacent aggregates that were really contiguous fields of one original

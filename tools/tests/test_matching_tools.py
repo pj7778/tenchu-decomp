@@ -331,6 +331,51 @@ class AutoRulesAdvancedTests(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertIn("turn > direction", out[0][1])
 
+    def test_stack_decl_swap_reorders_address_taken_objects(self):
+        source = """typedef struct { int x; } VECTOR;
+void F(void) {
+    VECTOR tmp;
+    VECTOR pos;
+    use(&pos);
+    use(&tmp);
+}
+"""
+        out = self.candidates(autorules.rule_stack_decl_swap, source)
+        self.assertEqual(len(out), 1)
+        self.assertIn("stack-decl-swap tmp/pos L3", out[0][0])
+        self.assertLess(out[0][1].index("VECTOR pos;"),
+                        out[0][1].index("VECTOR tmp;"))
+
+    def test_stack_decl_swap_rejects_unsafe_declarations(self):
+        initializer = """typedef struct { int x; } VECTOR;
+void F(void) {
+    VECTOR tmp = {0};
+    VECTOR pos;
+    use(&tmp);
+    use(&pos);
+}
+"""
+        missing_address = """typedef struct { int x; } VECTOR;
+void F(void) {
+    VECTOR tmp;
+    VECTOR pos;
+    use(tmp);
+    use(&pos);
+}
+"""
+        separated = """typedef struct { int x; } VECTOR;
+void F(void) {
+    VECTOR tmp;
+    /* stack roles */
+    VECTOR pos;
+    use(&tmp);
+    use(&pos);
+}
+"""
+        for source in (initializer, missing_address, separated):
+            self.assertEqual(
+                self.candidates(autorules.rule_stack_decl_swap, source), [])
+
     def test_eq_literal_swap_reverses_commutative_operands(self):
         source = """int Global;
 int F(void) {
