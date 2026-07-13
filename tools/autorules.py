@@ -1966,6 +1966,64 @@ def rule_flag_arm_assign(text, name, span):
             )
 
 
+def rule_shared_tail_assign(text, name, span):
+    """Duplicate one shared assignment into both immediately preceding arms.
+
+    ``if (...) { ... } else { ... } flag = 1`` and the arm-local spelling are
+    semantically equivalent, but the latter gives sched/jump2 two independent
+    producers.  That can retain a shared store at the target arm and can move a
+    constant definition across the join without adding code.  Keep the rewrite
+    deliberately local: both arms must be compounds, the shared statement must
+    be a plain assignment, and no comment or other token may separate the if
+    from that assignment.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    for block in _find(body, ("compound_statement",)):
+        statements = [c for c in block.named_children if c.type != "comment"]
+        for iff, tail in zip(statements, statements[1:]):
+            if iff.type != "if_statement" or _plain_assignment(data, tail) is None:
+                continue
+            yes = iff.child_by_field_name("consequence")
+            no = iff.child_by_field_name("alternative")
+            if no is not None and no.type == "else_clause":
+                arms = [c for c in no.named_children if c.type != "comment"]
+                if len(arms) != 1:
+                    continue
+                no = arms[0]
+            if (yes is None or no is None or
+                    yes.type != "compound_statement" or
+                    no.type != "compound_statement" or
+                    b"\n" not in _txt(data, yes) or
+                    b"\n" not in _txt(data, no) or
+                    data[iff.end_byte:tail.start_byte].strip()):
+                continue
+            line = _line(data, tail.start_byte)
+            if not (_guided_site(line) or _guided_site(_line(data, iff.start_byte))):
+                continue
+
+            indent = _indent_at(data, iff.start_byte)
+            body_indent = indent + b"    "
+            tail_text = _txt(data, tail).strip()
+
+            def append_to_arm(arm):
+                raw = _txt(data, arm)
+                close = raw.rfind(b"}")
+                close_line = raw.rfind(b"\n", 0, close) + 1
+                return (raw[:close_line] + body_indent + tail_text + b"\n" +
+                        raw[close_line:])
+
+            repl = (data[iff.start_byte:yes.start_byte] + append_to_arm(yes) +
+                    data[yes.end_byte:no.start_byte] + append_to_arm(no))
+            lhs, _rhs = _plain_assignment(data, tail)
+            yield (
+                f"shared-tail-assign {lhs.decode()} L{line}",
+                splice(data, iff.start_byte, tail.end_byte, repl).decode(),
+            )
+
+
 def rule_switch_cse_evict(text, name, span):
     """Dead-overwrite an entry index local before re-reading it in a switch.
 
@@ -3105,6 +3163,7 @@ AGGRESSIVE_RULES = [
     ("plus-group", "enumerate 3-term + grouping/constant placement (fold lever)", rule_plus_group),
     ("add-prefix-temp", "name a signed 2-term seam in a narrowed 3-term sum", rule_add_prefix_temp),
     ("flag-arm-assign", "move local 0/1 definitions after each arm's comparisons", rule_flag_arm_assign),
+    ("shared-tail-assign", "duplicate one shared assignment into both preceding arms", rule_shared_tail_assign),
     ("if-else-invert", "invert a compound if/else to swap physical body layout", rule_if_else_invert),
     ("adjacent-field-store-swap", "swap adjacent literal stores to distinct fields", rule_adjacent_field_store_swap),
     ("switch-cse-evict", "dead-overwrite an entry index before a fresh switch load", rule_switch_cse_evict),

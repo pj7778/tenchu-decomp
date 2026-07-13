@@ -541,6 +541,48 @@ int F(VECTOR *position) {
         self.assertEqual(self.candidates(autorules.rule_flag_arm_assign, used), [])
         self.assertEqual(self.candidates(autorules.rule_flag_arm_assign, exits), [])
 
+    def test_shared_tail_assignment_duplicates_into_both_arms(self):
+        source = """int F(int select) {
+    int value;
+    int flag;
+    if (select) {
+        value = 4;
+    } else {
+        value = 5;
+    }
+    flag = 1;
+    return value + flag;
+}
+"""
+        out = self.candidates(autorules.rule_shared_tail_assign, source)
+        self.assertEqual(len(out), 1)
+        candidate = out[0][1]
+        self.assertEqual(candidate.count("flag = 1;"), 2)
+        self.assertIn("value = 4;\n        flag = 1;", candidate)
+        self.assertIn("value = 5;\n        flag = 1;", candidate)
+        self.assertLess(candidate.rindex("flag = 1;"), candidate.index("return value"))
+
+    def test_shared_tail_assignment_requires_compound_else_and_adjacency(self):
+        unbraced = """int F(int select) {
+    int value;
+    int flag;
+    if (select) { value = 4; } else value = 5;
+    flag = 1;
+    return value + flag;
+}
+"""
+        separated = """int F(int select) {
+    int value;
+    int flag;
+    if (select) { value = 4; } else { value = 5; }
+    /* keep this join visible */
+    flag = 1;
+    return value + flag;
+}
+"""
+        self.assertEqual(self.candidates(autorules.rule_shared_tail_assign, unbraced), [])
+        self.assertEqual(self.candidates(autorules.rule_shared_tail_assign, separated), [])
+
     def test_shift16_mul_respelled_for_declared_short(self):
         source = """typedef unsigned short u16;
 typedef unsigned int u32;

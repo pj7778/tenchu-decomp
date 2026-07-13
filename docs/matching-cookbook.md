@@ -3358,6 +3358,38 @@ call/null-check cleanup and `mode++; return;` tails. ProcItemDokudango needed th
 cleanup at both disposal origins and the advance tail at three mode exits; the
 final binary contains one shared copy at the target's internal address.
 
+**A direct terminal global tail can replace a named value local and preserve
+every constant island.** ActENGAGE's target has many blocks shaped like
+`li v0,K; j shared_store`, including two separate item cases that both load
+`0xf02`. A named `short next_motion` became a `reg/v` pseudo that conflicted
+with `$v0` across the intervening comparisons: it allocated to `$a0`, and
+jump2 also collapsed the two identical `0xf02` blocks. Write the semantically
+complete terminal sequence at each successful edge instead:
+
+```c
+motID = 0xf02;
+D_80097F0E = 1;
+return;
+```
+
+Leave the desired last physical edge (ActENGAGE's `motID = 0x602`) as the
+fallthrough anchor. Each literal store first gets its own HImode producer;
+global allocation puts those short producers in `$v0`, then jump2 merges only
+the common `sh motID; li 1; sh D_80097F0E; return` suffix onto the anchor.
+Referenced switch labels stop the backward merge before the constant loads, so
+even equal case values retain separate `li/j` islands. This is both a
+cross-jump lever and a way to avoid an impossible named-local `$v0` allocation.
+
+The same principle fixes late scheduling joins. A shared `D_80097F0E = 1`
+after a motion-selection if/switch made ActENGAGE emit `sh zero,motID` before
+`li v0,1`; writing that flag assignment in each terminal selection arm let
+jump2 retain one D-store while sched2 put the load before the zero store, as in
+the target. Guided `shared-tail-assign` now enumerates the narrow adjacent
+if/else form: two compound arms followed immediately by one plain assignment.
+Larger switch-wide terminal-tail expansion remains a deliberate CFG rewrite;
+verify the final fallthrough anchor in `.jump2` rather than assuming which copy
+jump2 will choose.
+
 **The shared-return lever fires only on INDEPENDENTLY-WRITTEN identical returns, not an
 explicit goto to one.** Two separately-written identical `return EXPR;` statements let
 jump2's cross-jump merge them into ONE shared call site placed EARLY; routing both

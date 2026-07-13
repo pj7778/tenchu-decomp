@@ -79,7 +79,7 @@ CATEGORY_RULES = {
     "regalloc": [
         "type-width", "cmp-polarity", "loop-fence", "nested-loop-fence", "paired-loop-fence", "loop-range", "split-chain", "shift-stage", "ptr-base-split",
         "or-inplace", "add-prefix-temp", "flag-arm-assign",
-        "identical-arm-fence", "subscript-postinc", "switch-cse-evict",
+        "shared-tail-assign", "identical-arm-fence", "subscript-postinc", "switch-cse-evict",
         "call-arg-pair", "eq-literal-swap", "adjacent-field-store-swap", "assignment-chain",
     ],
     "cse/coalescing": [
@@ -87,10 +87,10 @@ CATEGORY_RULES = {
         "vector-copy-adjust", "subscript-postinc", "switch-cse-evict", "assignment-chain",
         "pointee-volatile",
     ],
-    "jump/cross-jump": ["case-fence", "sparse-eq-switch", "mul-affine-shape", "and-nest", "if-else-invert"],
+    "jump/cross-jump": ["case-fence", "sparse-eq-switch", "mul-affine-shape", "and-nest", "if-else-invert", "shared-tail-assign"],
     "schedule/delay": [
         "type-width", "loop-fence", "nested-loop-fence", "paired-loop-fence", "loop-range", "cmp-swap", "cmp-polarity", "shift-stage", "ptr-base-split",
-        "split-chain", "or-inplace", "vector-copy-adjust", "flag-arm-assign",
+        "split-chain", "or-inplace", "vector-copy-adjust", "flag-arm-assign", "shared-tail-assign",
         "loop-boundary-shift", "identical-arm-fence", "subscript-postinc",
         "call-arg-pair", "eq-literal-swap", "pointee-volatile",
         "adjacent-field-store-swap", "assignment-chain",
