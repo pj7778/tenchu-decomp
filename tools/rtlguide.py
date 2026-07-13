@@ -77,7 +77,7 @@ CATEGORY_PASSES = {
 }
 CATEGORY_RULES = {
     "regalloc": [
-        "allocation-donor-fence", "disjoint-local-alias", "type-width", "cmp-polarity",
+        "literal-indirect-inline", "allocation-donor-fence", "disjoint-local-alias", "type-width", "cmp-polarity",
         "empty-loop-boundary", "loop-fence", "nested-loop-fence",
         "paired-loop-fence", "loop-range", "split-chain", "shift-stage", "ptr-base-split",
         "or-inplace", "add-prefix-temp", "flag-arm-assign", "guard-flag-assign",
@@ -89,13 +89,13 @@ CATEGORY_RULES = {
         "array-alias-remat", "member-scalar-alias",
     ],
     "cse/coalescing": [
-        "type-width", "empty-loop-boundary", "loop-fence",
+        "literal-indirect-inline", "type-width", "empty-loop-boundary", "loop-fence",
         "nested-loop-fence", "paired-loop-fence", "loop-range", "temp-inline", "shift-stage", "ptr-base-split",
         "vector-copy-adjust", "redundant-field-donor", "subscript-postinc",
         "switch-cse-evict", "assignment-chain",
         "pointee-volatile", "array-alias-remat", "member-scalar-alias",
     ],
-    "jump/cross-jump": ["terminal-arm-flip", "terminal-guard-flip", "shared-terminal-tail", "case-fence", "sparse-eq-switch", "mul-affine-shape", "and-nest", "if-else-invert", "shared-tail-assign"],
+    "jump/cross-jump": ["literal-indirect-inline", "terminal-arm-flip", "terminal-guard-flip", "shared-terminal-tail", "case-fence", "sparse-eq-switch", "mul-affine-shape", "and-nest", "if-else-invert", "shared-tail-assign"],
     "schedule/delay": [
         "type-width", "empty-loop-boundary", "loop-fence",
         "nested-loop-fence", "paired-loop-fence", "loop-range", "cmp-swap", "cmp-polarity", "shift-stage", "ptr-base-split",

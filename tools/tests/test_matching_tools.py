@@ -567,6 +567,51 @@ int F(void) {
         self.assertEqual(len(out), 1)
         self.assertIn("0x906 != Global", out[0][1])
 
+    def test_literal_indirect_inline_changes_both_temp_families_atomically(self):
+        source = """typedef unsigned char u8;
+typedef struct Item Item;
+struct Item { u8 mode; void (*proc)(Item *); };
+void F(Item *item) {
+    u8 ff;
+    ff = 0xff;
+    if (item->mode == ff) use();
+    {
+        void (*proc)(Item *);
+        proc = item->proc;
+        if (proc != 0) {
+            item->mode = ff;
+            proc(item);
+        }
+    }
+}
+"""
+        out = self.candidates(autorules.rule_literal_indirect_inline, source)
+        self.assertEqual(len(out), 1)
+        self.assertIn("literal-indirect-inline ff/proc", out[0][0])
+        candidate = out[0][1]
+        self.assertNotIn("u8 ff;", candidate)
+        self.assertNotIn("        void (*proc)", candidate)
+        self.assertIn("if (item->mode == 0xff)", candidate)
+        self.assertIn("if (item->proc != 0)", candidate)
+        self.assertIn("item->proc(item);", candidate)
+
+    def test_literal_indirect_inline_requires_literal_and_call_pair(self):
+        literal_only = """typedef unsigned char u8;
+void F(void) { u8 ff; ff = 0xff; use(ff); use(ff); }
+"""
+        proc_only = """typedef struct Item Item;
+struct Item { void (*proc)(Item *); };
+void F(Item *item) {
+    void (*proc)(Item *);
+    proc = item->proc;
+    if (proc) proc(item);
+}
+"""
+        self.assertEqual(
+            self.candidates(autorules.rule_literal_indirect_inline, literal_only), [])
+        self.assertEqual(
+            self.candidates(autorules.rule_literal_indirect_inline, proc_only), [])
+
     def test_if_else_invert_swaps_compound_arms_once(self):
         source = """int F(int result) {
     if (result != 0) {

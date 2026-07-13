@@ -898,6 +898,181 @@ def rule_late_pointer_direct(text, name, span):
         )
 
 
+def rule_literal_indirect_inline(text, name, span):
+    """Atomically inline a byte literal and indirect-call field temporaries.
+
+    Old cc1 can allocate these two source identities as one coupled system:
+    changing only the constant rematerialization or only the indirect target
+    changes length/cross-jumping and scores worse. Recognize a single-assignment
+    ``u8 local = LITERAL`` shape (split declaration is allowed) plus every
+    block-local ``void (*proc)(...) = base->field`` used only by a null test and
+    direct call. Remove both temp families in one candidate.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+
+    def delete_span(node):
+        start = data.rfind(b"\n", 0, node.start_byte) + 1
+        end = node.end_byte
+        if data[end:end + 1] == b"\n":
+            end += 1
+        return start, end
+
+    all_identifiers = _find(body, ("identifier",))
+    all_assignments = _find(body, ("assignment_expression",))
+    constant_sites = []
+    for declaration in _find(body, ("declaration",)):
+        match = re.fullmatch(
+            rb"\s*(?:u8|unsigned\s+char)\s+([A-Za-z_]\w*)\s*;\s*",
+            _txt(data, declaration),
+        )
+        if not match:
+            continue
+        local = match.group(1)
+        writes = []
+        for assignment in all_assignments:
+            left = _unparen(assignment.child_by_field_name("left"))
+            if (left is not None and left.type == "identifier" and
+                    _txt(data, left) == local):
+                writes.append(assignment)
+        if len(writes) != 1:
+            continue
+        assignment = writes[0]
+        right = _unparen(assignment.child_by_field_name("right"))
+        statement = assignment.parent
+        if (right is None or right.type != "number_literal" or
+                statement is None or statement.type != "expression_statement"):
+            continue
+        try:
+            value = int(_txt(data, right), 0)
+        except ValueError:
+            continue
+        if not 0 <= value <= 0xff:
+            continue
+        uses = [identifier for identifier in all_identifiers
+                if _txt(data, identifier) == local and
+                not (declaration.start_byte <= identifier.start_byte <
+                     declaration.end_byte) and
+                not (assignment.start_byte <= identifier.start_byte <
+                     assignment.end_byte)]
+        if len(uses) < 2 or any(use.start_byte < assignment.end_byte for use in uses):
+            continue
+        def unsafe_constant_use(use):
+            node = use.parent
+            while node is not None and node is not body:
+                if node.type in {"sizeof_expression", "alignof_expression",
+                                 "update_expression"}:
+                    return True
+                if node.type == "pointer_expression":
+                    operator = node.child_by_field_name("operator")
+                    if operator is not None and _txt(data, operator) == b"&":
+                        return True
+                node = node.parent
+            return False
+        if any(unsafe_constant_use(use) for use in uses):
+            continue
+        constant_sites.append((
+            local, _txt(data, right), declaration, statement, uses,
+        ))
+
+    proc_sites = []
+    for declaration in _find(body, ("declaration",)):
+        match = re.search(rb"\(\s*\*\s*([A-Za-z_]\w*)\s*\)",
+                          _txt(data, declaration))
+        if not match or _txt(data, declaration).count(b";") != 1:
+            continue
+        local = match.group(1)
+        scope = declaration.parent
+        if scope is None or scope.type != "compound_statement":
+            continue
+        writes = []
+        for assignment in _find(scope, ("assignment_expression",)):
+            left = _unparen(assignment.child_by_field_name("left"))
+            if (left is not None and left.type == "identifier" and
+                    _txt(data, left) == local):
+                writes.append(assignment)
+        if len(writes) != 1:
+            continue
+        assignment = writes[0]
+        source = _unparen(assignment.child_by_field_name("right"))
+        statement = assignment.parent
+        if (source is None or source.type != "field_expression" or
+                statement is None or statement.type != "expression_statement" or
+                assignment.start_byte < declaration.end_byte or
+                _find(source, ("call_expression", "update_expression",
+                               "assignment_expression"))):
+            continue
+        uses = [identifier for identifier in _find(scope, ("identifier",))
+                if _txt(data, identifier) == local and
+                not (declaration.start_byte <= identifier.start_byte <
+                     declaration.end_byte) and
+                not (assignment.start_byte <= identifier.start_byte <
+                     assignment.end_byte)]
+        if not uses:
+            continue
+        saw_call = False
+        saw_test = False
+        valid = True
+        for use in uses:
+            parent = use.parent
+            if (parent is not None and parent.type == "call_expression" and
+                    parent.child_by_field_name("function") == use):
+                saw_call = True
+                continue
+            if parent is not None and parent.type == "binary_expression":
+                operator = parent.child_by_field_name("operator")
+                left = _unparen(parent.child_by_field_name("left"))
+                right = _unparen(parent.child_by_field_name("right"))
+                other = right if left == use else left if right == use else None
+                if (operator is not None and _txt(data, operator) in {b"==", b"!="} and
+                        other is not None and other.type == "number_literal" and
+                        int(_txt(data, other), 0) == 0):
+                    saw_test = True
+                    continue
+            valid = False
+            break
+        if valid and saw_call and saw_test:
+            proc_sites.append((
+                local, _txt(data, source), declaration, statement, uses,
+            ))
+
+    if not constant_sites or not proc_sites:
+        return
+    changed_lines = []
+    edits = []
+    for local, literal, declaration, statement, uses in constant_sites:
+        changed_lines.extend((_line(data, declaration.start_byte),
+                              _line(data, statement.start_byte)))
+        changed_lines.extend(_line(data, use.start_byte) for use in uses)
+        edits.extend((use.start_byte, use.end_byte, literal) for use in uses)
+        edits.append((*delete_span(statement), b""))
+        edits.append((*delete_span(declaration), b""))
+    for local, source, declaration, statement, uses in proc_sites:
+        changed_lines.extend((_line(data, declaration.start_byte),
+                              _line(data, statement.start_byte)))
+        changed_lines.extend(_line(data, use.start_byte) for use in uses)
+        edits.extend((use.start_byte, use.end_byte, source) for use in uses)
+        edits.append((*delete_span(statement), b""))
+        edits.append((*delete_span(declaration), b""))
+    if not any(_guided_site(line) for line in changed_lines):
+        return
+    rewritten = data
+    last_start = len(data) + 1
+    for start, end, replacement in sorted(edits, reverse=True):
+        if end > last_start:
+            return
+        rewritten = splice(rewritten, start, end, replacement)
+        last_start = start
+    constants = ",".join(site[0].decode() for site in constant_sites)
+    procs = ",".join(site[0].decode() for site in proc_sites)
+    yield (
+        f"literal-indirect-inline {constants}/{procs}",
+        rewritten.decode(),
+    )
+
+
 def rule_call_arg_pair_inline(text, name, span):
     """Inline two adjacent same-call results into one consumer call.
 
@@ -6206,6 +6381,7 @@ RULES = [
     ("temp-inline", "inline a single-use local temp into its use", rule_temp_inline),
     ("call-result-split", "split a reused direct-call result into single-definition locals", rule_call_result_split),
     ("late-pointer-direct", "inline a repeated pointer-global assignment in its late region", rule_late_pointer_direct),
+    ("literal-indirect-inline", "atomically inline a byte literal and indirect-call field temps", rule_literal_indirect_inline),
     ("call-arg-pair", "inline adjacent same-call temps into one consumer call", rule_call_arg_pair_inline),
     ("abs-ge", "rewrite (x<0)?-x:x -> (x>=0)?x:-x (the abssi2 fold)", rule_abs_ge),
     ("builtin-abs", "abs call/sign-fix -> __builtin_abs under cc1 -fno-builtin", rule_builtin_abs),

@@ -645,6 +645,16 @@ plain C is the matched file.
     entry test to the dispose store `item->mode = ff` crosses NO call. Checking
     `item->proc` INLINE (`if (item->proc)` with no `ppu` temp) is what allocates
     `$v0` for both the null test and the `jalr` (ProcItemGun/ProcItemKawarimi).
+  - **These two levers can be atomic, not independently scoreable.** At
+    ProcItemDokudango's exact-length four-byte residual, replacing only the
+    function-wide `u8 ff` with literal `0xff`, or only the block-local `proc`
+    variables with direct `item->proc` tests/calls, grew the function to 2,472
+    bytes and split an earlier shared cleanup. Applying both together kept the
+    indirect target in `$v0`, rematerialized the late literals in `$v1`, and
+    let jump2 recover the exact cleanup. A single-axis permuter cannot discover
+    this valley-crossing change. `literal-indirect-inline` now recognizes the
+    bounded `u8` constant plus null-tested function-pointer-field pattern and
+    submits the complete pair as one candidate.
 - **De-Morgan layout lever — `||` vs `&&` place the bodies differently.** cc1
   always emits the THEN body physically first, so `if (a != 0 || b != 0) {BIG}
   else {SMALL}` and `if (a == 0 && b == 0) {SMALL} else {BIG}` (logically
