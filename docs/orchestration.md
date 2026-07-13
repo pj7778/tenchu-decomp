@@ -32,6 +32,15 @@ game bytes, whole-image byte-identical (sha256 `0690a5c1…3558`). Live count:
    tier + a strong twin. **`LoadCard` and `FUN_800593a0` are under-sized in
    `functions.tsv`** — carve them with `--size 0x168` / `--size 0x27C` or their
    `.c` can never match (see `tools/coverage.py`).
+   **Select only from the live `triage.py` output on current master.** Old session
+   summaries, `reference/psxsym-unnamed.tsv`, and a filename/comment saying
+   `NON_MATCHING` are not match-status inventories. Before dispatch, run
+   `tools/triage.py <Name>` and check the current source still has an active
+   `INCLUDE_ASM`; the worker's first action is an authoritative `matchdiff`/build
+   preflight. If the function is already exact pure C, recycle the slot immediately
+   instead of creating a duplicate checkpoint. This avoided repeated work on
+   `ProcItemFire` and `FUN_8003562c`, both of which old target notes still described
+   as unmatched after master already contained exact implementations.
 2. Spawn ONE `general-purpose` agent, `model: "sonnet"`, `isolation:
    "worktree"`, `run_in_background: true`, with a prompt naming the 5 functions,
    their matched twins, the proven shared structs, and the early-stop rules
