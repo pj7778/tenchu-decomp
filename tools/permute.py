@@ -333,6 +333,7 @@ MASPSX_EXTRA = {
     "FUN_8003562c": ["--expand-div"],
     "SwimCheck": ["--expand-div"],
     "ProcItemArrow": ["--expand-div"],
+    "SetupBG": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash

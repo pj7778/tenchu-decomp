@@ -31,7 +31,168 @@
  *     stack sp+32     short size
  * END PSX.SYM */
 
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupBG", SetupBG);
+#else
+
+/* Complete semantic draft. Retail still differs in allocator spill shape:
+ * 0x58 candidate frame / 1076 bytes versus 0x60 / 1072 bytes. */
+
+typedef struct GsCELL
+{
+    u8 u;
+    u8 v;
+    u16 cba;
+    u16 flag;
+    u16 tpage;
+} GsCELL;
+
+typedef struct GsMAP
+{
+    u8 cellw;
+    u8 cellh;
+    u16 ncellw;
+    u16 ncellh;
+    GsCELL *base;
+    u16 *index;
+} GsMAP;
+
+typedef struct GsBG
+{
+    u32 attribute;
+    s16 x;
+    s16 y;
+    s16 w;
+    s16 h;
+    s16 scrollx;
+    s16 scrolly;
+    u8 r;
+    u8 g;
+    u8 b;
+    GsMAP *map;
+    s16 mx;
+    s16 my;
+    s16 scalex;
+    s16 scaley;
+    s32 rotate;
+} GsBG;
+
+typedef struct BackGround
+{
+    GsBG hundle;
+    GsMAP map;
+    GsCELL *cell;
+    u32 *work;
+    u16 *index;
+    u16 sz;
+    s16 id;
+    s16 attribute;
+} BackGround;
+
+extern char D_8001109C[];
+extern void SystemOut(u8 *message);
+extern void *valloc(u32 size);
+extern u16 GetClut(s16 x, s16 y);
+extern u16 GetTPage(s32 tp, s32 abr, s16 x, s16 y);
+extern void GsInitFixBg16(GsBG *bg, u32 *work);
+
+BackGround *SetupBG(GsIMAGE *image, short w, short h)
+{
+    BackGround *bg;
+    GsCELL *cell;
+    short x;
+    short y;
+    short sy;
+    short n;
+    short pmode;
+    short size;
+    int nx;
+    u32 *work;
+
+    if (image == 0)
+        SystemOut((u8 *)D_8001109C);
+
+    bg = (BackGround *)valloc(sizeof(BackGround));
+    bg->id = -1;
+    bg->attribute = 0;
+    memset(bg, 0, sizeof(GsBG));
+
+    bg->hundle.w = w;
+    bg->hundle.h = h;
+    bg->hundle.r = bg->hundle.g = bg->hundle.b = 0x80;
+    bg->hundle.map = &bg->map;
+    bg->hundle.mx = w >> 1;
+    bg->hundle.my = h >> 1;
+    bg->hundle.scalex = bg->hundle.scaley = 0x1000;
+
+    bg->map.cellw = bg->map.cellh = 0x10;
+    bg->map.ncellw = w / bg->map.cellw;
+    bg->map.ncellh = h / bg->map.cellh;
+
+    pmode = image->pmode & 3;
+    bg->hundle.attribute = pmode << 24;
+
+    size = (short)(bg->map.ncellw * bg->map.ncellh);
+    bg->index = (u16 *)valloc(size << 1);
+    bg->map.index = bg->index;
+    n = 0;
+    if (0 < size)
+    {
+        do
+        {
+            bg->index[n] = 0xffff;
+            n++;
+        } while (n < size);
+    }
+
+    nx = ((u16)image->pw << (2 - pmode)) / bg->map.cellw;
+    sy = (short)((u16)image->ph / bg->map.cellh);
+    cell = (GsCELL *)valloc((short)nx * sy * sizeof(GsCELL));
+    bg->cell = cell;
+    bg->map.base = cell;
+
+    y = 0;
+    size = (1 << (8 - pmode)) - 1;
+    if (0 < sy)
+    {
+        do
+        {
+            x = 0;
+            if (0 < (short)nx)
+            {
+                do
+                {
+                    s16 py;
+                    s16 px;
+
+                    cell = bg->cell + y * (short)nx + x;
+                    py = image->py + y * bg->map.cellh;
+                    px = image->px;
+                    cell->v = py;
+                    cell->u = ((px << (2 - pmode)) + x * bg->map.cellw) & size;
+                    cell->cba = GetClut(image->cx, image->cy);
+                    cell->flag = 0;
+                    cell->tpage = GetTPage(
+                        pmode,
+                        0,
+                        px + x * (bg->map.cellw >> (2 - pmode)),
+                        py);
+                    x++;
+                } while (x < (short)nx);
+            }
+            y++;
+        } while (y < sy);
+    }
+
+    work = (u32 *)valloc(
+        (((bg->map.ncellw + 1) * (bg->map.ncellh + 2) * 12 + 10) << 16) >> 14);
+    bg->work = work;
+    GsInitFixBg16(&bg->hundle, work);
+    bg->sz = 0;
+    return bg;
+}
+
+#endif
 
 // triage: HARD — 268 insns, mul/div, 3 loop, 6 callees, ~0.04 to GetVectorRotation
 // likely-relevant cookbook sections:
