@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -43,117 +44,225 @@
  *     extern struct tag_TItem items[30];
  * END PSX.SYM */
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/CreateStage", CreateStage);
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/CreateStage", initialise_stage_and_character__override__prt_8003a3dc_e0d8bb81);
+typedef struct
+{
+    u8 uid;
+    u8 pad[3];
+    char *name;
+    char *path;
+    s32 px;
+    s32 py;
+    s32 pz;
+    s32 pr;
+} StageConfigEntry;
 
-// triage: HARD — 249 insns, mul/div, 1 loop, 31 callees, ~0.09 to AddMisc
-// likely-relevant cookbook sections:
-//   - Loops: 1 back-edge(s) — for/while/do vs goto shape
-//   - Expressions: mult/div — magic-multiply constants, fold
-//   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py
+typedef struct
+{
+    s32 vpx;
+    s32 vpy;
+    s32 vpz;
+    s32 vrx;
+    s32 vry;
+    s32 vrz;
+    s32 rz;
+    GsCOORDINATE2 *super;
+} GsRVIEW2;
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// /* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
-//
-// void CreateStage(int StageNo,int CharType)
-//
-// {
-//   ulong *pt;
-//   GsIMAGE *pGVar1;
-//   BackGround *bg;
-//   Humanoid *human;
-//   int iVar2;
-//   Humanoid *pHVar3;
-//   int iVar4;
-//   short stage;
-//   short mode;
-//   undefined1 auStack_78 [72];
-//   undefined *local_30 [4];
-//
-//   if ((uint)StageNo < 0xb) {
-//     SetDepthQ(0xffff810c,0x2f282e0);
-//     _DepthPoint = 0x4e2;
-//     while (pHVar3 = HumanGroup[0], mode = (short)CharType, 0 < Humans) {
-//       DestroyTraceLine(HumanGroup[0]->trace);
-//       KillHumanoid(pHVar3);
-//     }
-//     ImagePath = StageConfig[StageNo].path;
-//     stage = (short)((uint)((StageNo + 1) * 0x10000) >> 0x10);
-//     StageID = StageNo;
-//     SetupSoundEffect(mode,stage);
-//     DoBriefingAndInventorySelection();
-//     local_30[0] = PTR_s_title_e_tim_80012090;
-//     local_30[1] = PTR_s_title_f_tim_80012094;
-//     local_30[2] = PTR_s_title_i_tim_80012098;
-//     local_30[3] = PTR_s_title_j_tim_8001209c;
-//     pt = PathFileRead(ImagePath,local_30[(byte)PersistentState._94_1_]);
-//     pGVar1 = GetImage(0x2d);
-//     FUN_8004eaf0(pGVar1,auStack_78,0x34,0x43);
-//     bg = (BackGround *)FUN_8004f4f8(pt);
-//     vfree((undefined *)pt);
-//     FUN_80038ce0();
-//     StartDrawing();
-//     GsSortPoly(auStack_78,OTablePt,0);
-//     DrawBG(bg);
-//     SkipFrame = 2;
-//     EndDrawing(0);
-//     StartDrawing();
-//     SkipFrame = 2;
-//     EndDrawing(0);
-//     DisposeBG(bg);
-//     SetupAppearance(mode,stage);
-//     PathFileRead(ImagePath,(uchar *)"STAGE.CON");
-//     LoadConstruction();
-//     FUN_80057698();
-//     InitializeImage();
-//     ResetInfoview(StageNo);
-//     human = (Humanoid *)BreedLife((int)mode,0,0,0,0);
-//     SetupThinkFunction(human,0x1111);
-//     (human->model->locate).coord.t[0] = StageConfig[StageNo].px;
-//     (human->model->locate).coord.t[1] = StageConfig[StageNo].py;
-//     (human->model->locate).coord.t[2] = StageConfig[StageNo].pz;
-//     (human->model->rotate).vx = 0;
-//     (human->model->rotate).vy = (short)StageConfig[StageNo].pr;
-//     (human->model->rotate).vz = 0;
-//     pHVar3 = human;
-//     iVar2 = 0;
-//     CamState.Owner = human;
-//     do {
-//       iVar4 = iVar2 + 1;
-//       pHVar3->item[0] = (&PersistentState.field_0x7)[iVar2];
-//       pHVar3 = (Humanoid *)((int)(human->pad).stream + iVar2 + -0x17);
-//       iVar2 = iVar4;
-//     } while (iVar4 < 0x14);
-//     FUN_8003d528((int)mode,StageNo);
-//     if ((byte)PersistentState._6_1_ < 3) {
-//       SystemFlag = SystemFlag & 0xfffffff7;
-//     }
-//     else {
-//       iVar2 = rand();
-//       PersistentState._6_1_ =
-//            (char)iVar2 +
-//            ((char)((ulonglong)((longlong)iVar2 * 0x55555556) >> 0x20) - (char)(iVar2 >> 0x1f)) * -3;
-//       SystemFlag = SystemFlag | 8;
-//     }
-//     FUN_8003cc78(PersistentState._6_1_);
-//     leLayoutEnemy(1);
-//     ViewInfo.vpx = StageConfig[StageNo].px;
-//     ViewInfo.vry = StageConfig[StageNo].py;
-//     ViewInfo.vpz = StageConfig[StageNo].pz;
-//     ViewInfo.vpy = ViewInfo.vry + -10000;
-//     ViewInfo.vrx = ViewInfo.vpx;
-//     ViewInfo.vrz = ViewInfo.vpz;
-//     StartDrawing();
-//     CVAsetup();
-//     SetupStageSequence();
-//     PadProc();
-//     EndDrawing(0);
-//   }
-//   else {
-//     AdtMessageBox("illigal stage id %d",StageNo);
-//   }
-//   return;
-// }
+typedef struct
+{
+    VECTOR TargetVector;
+    Humanoid *Owner;
+} TCameraStatus;
+
+typedef struct BackGround BackGround;
+
+typedef struct
+{
+    char *path[4];
+} TitlePathBlock;
+
+typedef struct
+{
+    u_long tag;
+    u_char r0, g0, b0, code;
+    short x0, y0;
+    u_char u0, v0;
+    u_short clut;
+    short x1, y1;
+    u_char u1, v1;
+    u_short tpage;
+    short x2, y2;
+    u_char u2, v2;
+    u_short pad1;
+    short x3, y3;
+    u_char u3, v3;
+    u_short pad2;
+} POLY_FT4;
+
+typedef struct
+{
+    u8 unused[32];
+    TitlePathBlock title;
+} CreateStageTitleScratch;
+
+extern s16 Humans;
+extern Humanoid *HumanGroup[32];
+extern s32 StageID;
+extern u8 *ImagePath;
+extern GsOT *OTablePt;
+extern s16 SkipFrame;
+extern volatile s32 SystemFlag;
+extern GsRVIEW2 ViewInfo;
+extern s32 DepthPoint;
+extern StageConfigEntry StageConfig[];
+extern TitlePathBlock TITLE_SPRITES_PTRS;
+extern u8 CHOSEN_LANGUAGE;
+extern volatile u8 STAGE_LAYOUT_NUMBER;
+extern TCameraStatus CamState;
+extern char D_8001204C[];
+extern char D_800120A0[];
+
+extern void SetDepthQ(s32 dqa, s32 dqb);
+extern void DestroyTraceLine(TraceLine *trace);
+extern void KillHumanoid(Humanoid *human);
+extern void SetupSoundEffect(s16 character, s16 stage);
+extern void DoBriefingAndInventorySelection(void);
+extern GsIMAGE *GetImage(s32 id);
+extern void SetupImageToPolyFT4(GsIMAGE *image, POLY_FT4 *poly, s16 x, s16 y);
+extern BackGround *FUN_8004f4f8(u_long *data);
+extern void vfree(void *ptr);
+extern void FUN_80038ce0(void);
+extern void StartDrawing(void);
+extern void GsSortPoly(POLY_FT4 *poly, GsOT *ot, s32 pri);
+extern short DrawBG(BackGround *bg);
+extern void EndDrawing(s32 mode);
+extern void DisposeBG(BackGround *bg);
+extern void SetupAppearance(s16 character, s16 stage);
+extern short LoadConstruction(u32 *data);
+extern void initialise_font(void);
+extern void InitializeImage(void);
+extern void ResetInfoview(s32 stage);
+extern Humanoid *BreedLife(s16 type, s32 x, s32 y, s32 z, s32 r);
+extern void SetupThinkFunction(Humanoid *human, s16 type);
+extern void create_ninken_character_(s16 type, s32 stage);
+extern void load_layout(s32 layout);
+extern void leLayoutEnemy(s32 mode);
+extern void CVAsetup(void);
+extern void SetupStageSequence(void);
+
+void CreateStage(int StageNo, int CharType)
+{
+    Humanoid *target;
+    POLY_FT4 poly;
+    CreateStageTitleScratch scratch;
+    StageConfigEntry *base;
+    StageConfigEntry *stage;
+    short mode;
+    short stageNo;
+    u_long *data;
+    GsIMAGE *image;
+    BackGround *bg;
+    Humanoid *human;
+    int i;
+    s32 px;
+    s32 py;
+    s32 pz;
+
+    if ((u32)StageNo >= 11)
+    {
+        AdtMessageBox(D_8001204C, StageNo);
+        return;
+    }
+
+    SetDepthQ(-0x7EF4, 0x2F282E0);
+    DepthPoint = 0x4E2;
+
+    while (1)
+    {
+        if (Humans <= 0)
+            break;
+        target = HumanGroup[0];
+        DestroyTraceLine(target->trace);
+        KillHumanoid(target);
+    }
+
+    mode = (short)CharType;
+    base = StageConfig;
+    stage = &base[StageNo];
+    stageNo = (short)(StageNo + 1);
+    ImagePath = (u8 *)stage->path;
+    StageID = StageNo;
+    SetupSoundEffect(mode, stageNo);
+    DoBriefingAndInventorySelection();
+
+    scratch.title = TITLE_SPRITES_PTRS;
+    data = PathFileRead((char *)ImagePath,
+                        scratch.title.path[CHOSEN_LANGUAGE]);
+    image = GetImage(0x2D);
+    SetupImageToPolyFT4(image, &poly, 0x34, 0x43);
+    bg = FUN_8004f4f8(data);
+    vfree(data);
+
+    FUN_80038ce0();
+    StartDrawing();
+    GsSortPoly(&poly, OTablePt, 0);
+    DrawBG(bg);
+    SkipFrame = 2;
+    EndDrawing(0);
+    StartDrawing();
+    SkipFrame = 2;
+    EndDrawing(0);
+    DisposeBG(bg);
+
+    SetupAppearance(mode, stageNo);
+    LoadConstruction((u32 *)PathFileRead((char *)ImagePath, D_800120A0));
+    initialise_font();
+    InitializeImage();
+    ResetInfoview(StageNo);
+
+    human = BreedLife(mode, 0, 0, 0, 0);
+    SetupThinkFunction(human, 0x1111);
+    human->model->locate.coord.t[0] = stage->px;
+    human->model->locate.coord.t[1] = stage->py;
+    human->model->locate.coord.t[2] = stage->pz;
+    human->model->rotate.vx = 0;
+    human->model->rotate.vy = (short)stage->pr;
+    human->model->rotate.vz = 0;
+    CamState.Owner = human;
+
+    for (i = 0; i < 20; i++)
+        human->item[i] = ((PersistentState *)0x80010000)->counts[i];
+
+    create_ninken_character_(CharType, StageNo);
+    if (((PersistentState *)0x80010000)->layout >= 3)
+    {
+        ((PersistentState *)0x80010000)->layout = rand() % 3;
+        SystemFlag |= 8;
+    }
+    else
+    {
+        SystemFlag &= ~8;
+    }
+    load_layout(STAGE_LAYOUT_NUMBER);
+    leLayoutEnemy(1);
+
+    px = StageConfig[StageNo].px;
+    py = StageConfig[StageNo].py;
+    pz = StageConfig[StageNo].pz;
+    ViewInfo.vpx = px;
+    do {
+      ViewInfo.vpy = py - 10000;
+    } while (0);
+    do {
+      ViewInfo.vpz = pz;
+    } while (0);
+    ViewInfo.vrx = px;
+    ViewInfo.vry = py;
+    ViewInfo.vrz = pz;
+
+    StartDrawing();
+    CVAsetup();
+    SetupStageSequence();
+    PadProc();
+    EndDrawing(0);
+}

@@ -282,6 +282,7 @@ GP_EXTERNS = {
     "AddEnemy": ["D_80097D44"],
     "FUN_8005b17c": ["D_80097D38", "D_80097D24", "D_80097D3C", "D_80097D40", "D_80097D28", "D_80097D2C"],
     "LoadConstruction": ["D_80097A70", "D_80097A74", "StageID"],
+    "CreateStage": ["StageID"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
