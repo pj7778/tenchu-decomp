@@ -6836,13 +6836,62 @@ def rule_identical_arm_fence(text, name, span):
     sched/CSE without assigning loop-depth weight to the statement's operands.
     Conditions come only from nonvolatile locals either used by the statement
     already or unconditionally defined in the three preceding statements; no
-    new uninitialised discriminator is invented.
+    new uninitialised discriminator is invented.  For a 16-bit-returning
+    function, also emit an atomic variant that widens a directly-returned
+    function-scope 16-bit carrier.  Think3firstattack needed both edits at once:
+    either edit alone changed length by two instructions, so an exact-length
+    guided beam could not retain the intermediate state.
     """
     data = text.encode()
     body = _func_body(data, name, _byte_span(text, span))
     if body is None:
         return
     locals_ = _nonvolatile_local_names(data, body)
+    body_text = _txt(data, body)
+
+    # Bounded atomic companion for a narrow result carrier.  Keep only plain,
+    # unshadowed function-scope integer locals returned directly by name, and
+    # only when the function itself still performs the final 16-bit conversion.
+    # This deliberately mirrors one useful type-width edge rather than taking a
+    # Cartesian product with every local/type permutation.
+    returned_names = set()
+    for returned in _find(body, ("return_statement",)):
+        values = [child for child in returned.named_children
+                  if child.type != "comment"]
+        value = _unparen(values[0]) if len(values) == 1 else None
+        if value is not None and value.type == "identifier":
+            returned_names.add(_txt(data, value))
+    function = body.parent
+    function_type = (function.child_by_field_name("type")
+                     if function is not None and
+                     function.type == "function_definition" else None)
+    function_type_name = (_txt(data, function_type).decode().strip()
+                          if function_type is not None else "")
+    safe_function_locals = _nonvolatile_function_local_names(data, body)
+    return_wideners = []
+    if (function_type_name in TYPES and
+            TYPES[function_type_name][0] == 16):
+        for declaration in [child for child in body.named_children
+                            if child.type == "declaration"]:
+            type_node = declaration.child_by_field_name("type")
+            declarator = declaration.child_by_field_name("declarator")
+            ident = (_descend_ident(declarator)
+                     if declarator is not None else None)
+            type_name = (_txt(data, type_node).decode().strip()
+                         if type_node is not None else "")
+            local = _txt(data, ident) if ident is not None else None
+            if (local is None or local not in returned_names or
+                    local not in safe_function_locals or
+                    declarator.type != "identifier" or
+                    type_name not in TYPES or TYPES[type_name][0] != 16 or
+                    re.search(rb"\b(?:const|volatile|static|register|extern)\b",
+                              _txt(data, declaration)) or
+                    re.search(rb"[,=*\[]", _txt(data, declaration)) or
+                    re.search(rb"&\s*\(?\s*" + re.escape(local) + rb"\b",
+                              body_text)):
+                continue
+            wider = CANON[(32, TYPES[type_name][1])].encode()
+            return_wideners.append((local, type_node, wider))
     for block in _find(body, ("compound_statement",)):
         statements = [c for c in block.named_children if c.type != "comment"]
         for index, statement in enumerate(statements):
@@ -6878,6 +6927,19 @@ def rule_identical_arm_fence(text, name, span):
                     splice(data, statement.start_byte, statement.end_byte,
                            repl).decode(),
                 )
+                for return_local, type_node, wider in return_wideners:
+                    rewritten = data
+                    edits = [
+                        (statement.start_byte, statement.end_byte, repl),
+                        (type_node.start_byte, type_node.end_byte, wider),
+                    ]
+                    for start, end, replacement in sorted(edits, reverse=True):
+                        rewritten = splice(rewritten, start, end, replacement)
+                    yield (
+                        f"identical-arm-fence {discriminator.decode()} L{line} "
+                        f"+ widen {return_local.decode()}",
+                        rewritten.decode(),
+                    )
 
 
 def _nonvolatile_parameter_names(data, body):

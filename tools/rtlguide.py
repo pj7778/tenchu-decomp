@@ -112,7 +112,7 @@ CATEGORY_RULES = {
         "shift16-mul", "plus-group", "add-prefix-temp", "split-chain", "deref-address-split",
     ],
     "structure/length": [
-        "shared-result-return", "type-width", "and-nest", "temp-inline", "case-fence",
+        "shared-result-return", "type-width", "identical-arm-fence", "and-nest", "temp-inline", "case-fence",
         "vector-copy-adjust", "builtin-abs", "subscript-postinc",
         "call-arg-pair", "shared-writeback-compound", "terminal-guard-flip", "shared-terminal-tail", "if-else-invert", "empty-loop-boundary",
     ],

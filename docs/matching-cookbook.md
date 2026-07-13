@@ -3904,6 +3904,17 @@ before local-alloc, so the def is gone before it can bias anything.
   erases all three. Guided `identical-arm-fence` already enumerates each local
   site independently; inspect `.cse` and `.greg` between accepted candidates
   instead of assuming every byte-neutral fence is merely a weight donor.
+  Think3firstattack adds a scheduling-dependency form: duplicating
+  `degree = Degree` under `if (masked)` made the mask calculation a predecessor
+  dependency, so sched2 could no longer hoist the Degree load or fill the
+  target's load/sign-branch delay nops. The exact source also widened the final
+  `result` carrier from `s16` to `s32`, deferring its one conversion to the
+  shared return tail. Each edit alone made the function two instructions too
+  long, while the pair was exact; ordinary exact-length beam pruning therefore
+  could not discover it as two sequential states. `identical-arm-fence` now
+  emits the bounded atomic pair only for a plain unshadowed function-scope
+  16-bit local returned directly by a 16-bit function. Historical replay moved
+  the 28-byte exact-length park directly to 0; no permuter was needed.
 - **The discriminator of an eliminated identical-arm fence is still allocator
   input.** jump2 removes both the conditional and duplicate body, but global
   allocation has already seen the discriminator's live values. ActSTATE's

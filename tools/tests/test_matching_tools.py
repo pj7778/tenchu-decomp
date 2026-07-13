@@ -1974,6 +1974,31 @@ void F(s32 left, s32 right) {
         self.assertEqual(candidates[0].count("value = input + 1;"), 2)
         self.assertIn("if (id != 0)", candidates[0])
 
+    def test_identical_arm_fence_atomically_widens_narrow_return_carrier(self):
+        source = """typedef short s16;
+typedef int s32;
+extern s32 Degree;
+s16 F(int input) {
+    s16 result;
+    s32 masked;
+    s32 degree;
+    result = input;
+    masked = result & 0xa000;
+    degree = Degree;
+    if (degree < 0) degree = -degree;
+    return result;
+}
+"""
+        autorules.GUIDED_LINES = {10}
+        out = self.candidates(autorules.rule_identical_arm_fence, source)
+        paired = [text for label, text in out
+                  if label.startswith("identical-arm-fence masked L10 ") and
+                  label.endswith("+ widen result")]
+        self.assertEqual(len(paired), 1)
+        self.assertIn("s32 result;", paired[0])
+        self.assertEqual(paired[0].count("degree = Degree;"), 2)
+        self.assertIn("if (masked != 0)", paired[0])
+
     def test_identical_arm_condition_reuses_nearby_pure_probe(self):
         source = """typedef struct { int count; int attribute; } State;
 State *Motion;
