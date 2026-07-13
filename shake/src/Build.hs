@@ -207,6 +207,9 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     extra "FUN_8002fd9c" = ["--expand-div"]
     extra "ArrangeLocalMatrix" = ["--expand-div"]
     extra "FUN_80033bc0" = ["--expand-div"]
+    extra "ActDEAD" = ["--expand-div"]
+    extra "ActSTICKON" = ["--expand-div"]
+    extra "SetSmokeS" = ["--expand-div"]
     extra _ = []
     -- Think1sleep.c is a fragment of the original think TU, which defines these.
     syms "Think1sleep" = ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"]
@@ -432,6 +435,8 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "AttackControl" = ["Me_MOTION_C", "dtL", "dtR", "motID", "D_80097F0E", "dtPAD", "dtM"]
     syms "Think1target" = ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"]
     syms "FUN_8005adbc" = ["D_80097D20", "D_80097D24", "D_80097D28"]
+    syms "ActDEAD" = ["Me_MOTION_C", "dtM", "dtV", "motID", "dtL", "D_80097F0E", "D_8009770C"]
+    syms "ActSTICKON" = ["dtM", "Me_MOTION_C", "dtR", "dtCMD", "motID", "D_80097F0E", "MotionUpdateMode", "dtPAD", "dtV", "D_80097EF0", "dtL"]
     syms _ = []
 
 as :: FilePath

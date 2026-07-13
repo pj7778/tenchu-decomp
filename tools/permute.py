@@ -316,6 +316,8 @@ GP_EXTERNS = {
     "AttackControl": ["Me_MOTION_C", "dtL", "dtR", "motID", "D_80097F0E", "dtPAD", "dtM"],
     "Think1target": ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"],
     "FUN_8005adbc": ["D_80097D20", "D_80097D24", "D_80097D28"],
+    "ActDEAD": ["Me_MOTION_C", "dtM", "dtV", "motID", "dtL", "D_80097F0E", "D_8009770C"],
+    "ActSTICKON": ["dtM", "Me_MOTION_C", "dtR", "dtCMD", "motID", "D_80097F0E", "MotionUpdateMode", "dtPAD", "dtV", "D_80097EF0", "dtL"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
@@ -378,6 +380,9 @@ MASPSX_EXTRA = {
     "FUN_8002fd9c": ["--expand-div"],
     "ArrangeLocalMatrix": ["--expand-div"],
     "FUN_80033bc0": ["--expand-div"],
+    "ActDEAD": ["--expand-div"],
+    "ActSTICKON": ["--expand-div"],
+    "SetSmokeS": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash

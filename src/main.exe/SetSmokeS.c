@@ -27,12 +27,15 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — the behavioral draft is 452 bytes versus the
- * 496-byte target (44 bytes short). It has the EffectSlot round-robin search,
- * fallback slot, smoke fields, random scale/rotation, and variable-divisor
- * brightness calculation, but the source/local shape still needs tuning to
- * reproduce the target's register pressure and scheduling. The default build
- * continues to use the byte-identical assembly stub.
+ * STATUS: NON_MATCHING — the behavioral draft is 488 bytes versus the
+ * 496-byte target (8 bytes short) and scores 82.93% fuzzy. The former 44-byte
+ * deficit was mostly a tooling error: this function's unsigned variable
+ * division has only ASPSX's break-7 guard, which maspsxflags previously failed
+ * to recognize. It has the EffectSlot round-robin search, fallback slot, smoke
+ * fields, random scale/rotation, and brightness calculation; the remaining
+ * source/local shape still needs tuning for the final two instructions and
+ * register scheduling. The default build continues to use the byte-identical
+ * assembly stub.
  */
 extern void DrawSmoke(TEffectSlot *ef);
 
