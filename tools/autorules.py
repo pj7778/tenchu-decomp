@@ -2164,6 +2164,192 @@ def rule_member_scalar_alias(text, name, span):
         )
 
 
+def rule_disjoint_local_alias(text, name, span):
+    """Give a dead-until-overwrite scalar local an earlier shared identity.
+
+    If uninitialized ``later`` is untouched before its next plain assignment,
+    then changing ``early = E; use(early); ... later = L;`` to
+    ``later = early = E; use(later); ... later = L;`` preserves all observable
+    values on defined paths.  Old cc1 can nevertheless join the two disjoint
+    live ranges and change their global-allocation donor/preferences.
+    Think1target needed this independently for its x and z coordinate pairs.
+
+    Keep the search deliberately narrow: both names must be same-spelled-type,
+    nonvolatile function-scope integer scalars; the alias must be uninitialized
+    and untouched before this site; neither name may have its address taken or
+    be shadowed; the source cannot be inside a loop; the alias's first later
+    occurrence must be its overwrite; and the substituted read must be in the
+    source assignment's compound block.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+
+    def declared_names(declaration):
+        names = set()
+        for child in declaration.named_children:
+            if child.type == "init_declarator":
+                ident = _descend_ident(child.child_by_field_name("declarator"))
+            elif child.type in ("identifier", "pointer_declarator",
+                                "array_declarator"):
+                ident = _descend_ident(child)
+            else:
+                ident = None
+            if ident is not None:
+                names.add(_txt(data, ident))
+        return names
+
+    locals_ = _nonvolatile_local_names(data, body)
+    types = {}
+    declaration_ends = {}
+    uninitialized = set()
+    for declaration in [child for child in body.named_children
+                        if child.type == "declaration"]:
+        type_node = declaration.child_by_field_name("type")
+        if (type_node is None or
+                re.search(rb"\b(?:static|extern|_Thread_local)\b",
+                          _txt(data, declaration))):
+            continue
+        type_text = _txt(data, type_node).strip()
+        if type_text.decode(errors="ignore") not in TYPES:
+            continue
+        for child in declaration.named_children:
+            declarator = (child.child_by_field_name("declarator")
+                          if child.type == "init_declarator" else child)
+            if declarator is None or declarator.type != "identifier":
+                continue
+            ident = _txt(data, declarator)
+            if ident in locals_:
+                types[ident] = type_text
+                declaration_ends[ident] = declarator.end_byte
+                if child.type == "identifier":
+                    uninitialized.add(ident)
+
+    # The candidate names above are direct children of the function body.  A
+    # same-spelled declaration in a nested scope would make the byte-oriented
+    # identifier scan ambiguous, so exclude that name instead of attempting a
+    # partial C name resolver here.
+    shadowed = set()
+    for declaration in _find(body, ("declaration",)):
+        if declaration.parent != body:
+            shadowed.update(declared_names(declaration) & set(types))
+
+    identifiers = sorted(_find(body, ("identifier",)),
+                         key=lambda node: node.start_byte)
+    addressed = set()
+    for ident in identifiers:
+        node = ident
+        parent = node.parent
+        while parent is not None and parent.type == "parenthesized_expression":
+            node = parent
+            parent = node.parent
+        if parent is None or parent.type != "pointer_expression":
+            continue
+        operator = parent.child_by_field_name("operator")
+        if operator is not None and _txt(data, operator) == b"&":
+            addressed.add(_txt(data, ident))
+
+    def plain_write(ident):
+        parent = ident.parent
+        if parent is None or parent.type != "assignment_expression":
+            return False
+        operator = parent.child_by_field_name("operator")
+        lhs = parent.child_by_field_name("left")
+        return (operator is not None and _txt(data, operator) == b"=" and
+                lhs is not None and lhs.start_byte == ident.start_byte and
+                lhs.end_byte == ident.end_byte)
+
+    def value_read(ident):
+        parent = ident.parent
+        if parent is None:
+            return False
+        if parent.type in ("update_expression",):
+            return False
+        if parent.type == "pointer_expression":
+            operator = parent.child_by_field_name("operator")
+            if operator is not None and _txt(data, operator) == b"&":
+                return False
+        if parent.type == "assignment_expression":
+            lhs = parent.child_by_field_name("left")
+            if (lhs is not None and lhs.start_byte <= ident.start_byte and
+                    ident.end_byte <= lhs.end_byte):
+                return False
+        return True
+
+    def in_source_block(ident, block):
+        node = ident.parent
+        while node is not None and node != block:
+            if node.type == "compound_statement":
+                return False
+            node = node.parent
+        return node == block
+
+    def inside_loop(statement):
+        node = statement.parent
+        while node is not None and node != body:
+            if node.type in ("do_statement", "for_statement",
+                             "while_statement"):
+                return True
+            node = node.parent
+        return False
+
+    for statement in _find(body, ("expression_statement",)):
+        assignment = _plain_assignment(data, statement)
+        if assignment is None:
+            continue
+        early, rhs = assignment
+        line = _line(data, statement.start_byte)
+        if (early not in types or early in addressed or early in shadowed or
+                inside_loop(statement) or
+                not (_guided_site(line) or early in GUIDED_VARIABLES)):
+            continue
+        block = statement.parent
+        if block is None or block.type != "compound_statement":
+            continue
+
+        for later, type_text in sorted(types.items()):
+            if (later == early or type_text != types[early] or
+                    later not in uninitialized or
+                    later in addressed or later in shadowed or
+                    (GUIDED_VARIABLES and
+                     later not in GUIDED_VARIABLES and
+                     early not in GUIDED_VARIABLES)):
+                continue
+            if (declaration_ends[later] >= statement.start_byte or
+                    any(declaration_ends[later] < ident.start_byte <
+                        statement.start_byte and _txt(data, ident) == later
+                        for ident in identifiers)):
+                continue
+            if any(_txt(data, ident) == later
+                   for ident in _find(rhs, ("identifier",))):
+                continue
+            occurrences = [ident for ident in identifiers
+                           if ident.start_byte >= statement.end_byte and
+                           _txt(data, ident) == later]
+            if not occurrences or not plain_write(occurrences[0]):
+                continue
+            overwrite = occurrences[0]
+            reads = [
+                ident for ident in identifiers
+                if statement.end_byte <= ident.start_byte < overwrite.start_byte
+                and ident.end_byte <= block.end_byte
+                and _txt(data, ident) == early and value_read(ident)
+                and in_source_block(ident, block)
+            ]
+            for read in reads[:4]:
+                replacement = (later + b" = " + early + b" = " +
+                               _txt(data, rhs).strip() + b";")
+                changed = splice(data, read.start_byte, read.end_byte, later)
+                changed = splice(changed, statement.start_byte,
+                                 statement.end_byte, replacement)
+                yield (
+                    f"disjoint-local-alias {later.decode()}={early.decode()} "
+                    f"L{line}/L{_line(data, read.start_byte)}",
+                    changed.decode(),
+                )
+
+
 def rule_assignment_chain(text, name, span):
     """Merge/split same-literal stores to distinct fields of one aggregate.
 
@@ -3756,8 +3942,54 @@ def _inside_conditional_arm(statement, body):
     return False
 
 
+def _read_by_enclosing_if(data, statement, body, name):
+    """Whether an enclosing arm has already evaluated local ``name``.
+
+    Such a local is a safe identical-arm discriminator even when it is not a
+    parameter: reaching either arm proves that its condition already read the
+    value.  This is narrower than attempting general definite-assignment
+    analysis and covers the allocation-donor shape used by Think1target.
+    """
+    def definitely_read(condition, ident):
+        node = ident
+        while node != condition:
+            parent = node.parent
+            if parent is None:
+                return False
+            if parent.type in ("sizeof_expression", "alignof_expression",
+                               "conditional_expression"):
+                return False
+            if parent.type == "pointer_expression":
+                operator = parent.child_by_field_name("operator")
+                if operator is not None and _txt(data, operator) == b"&":
+                    return False
+            if parent.type == "assignment_expression":
+                lhs = parent.child_by_field_name("left")
+                if (lhs is not None and lhs.start_byte <= ident.start_byte and
+                        ident.end_byte <= lhs.end_byte):
+                    return False
+            if parent.type == "binary_expression":
+                operator = parent.child_by_field_name("operator")
+                if operator is not None and _txt(data, operator) in (b"&&", b"||"):
+                    return False
+            node = parent
+        return True
+
+    node = statement.parent
+    while node is not None and node != body:
+        if node.type == "if_statement":
+            condition = node.child_by_field_name("condition")
+            if condition is not None and any(
+                    _txt(data, ident) == name and
+                    definitely_read(condition, ident)
+                    for ident in _find(condition, ("identifier",))):
+                return True
+        node = node.parent
+    return False
+
+
 def rule_allocation_donor_fence(text, name, span):
-    """Add one RTL reference to a misplaced parameter at an earlier CFG site.
+    """Add one RTL reference to a misplaced value at an earlier CFG site.
 
     A final register-only residual can identify the right local but point at a
     source line too late to influence global allocation.  Duplicating an
@@ -3766,11 +3998,14 @@ def rule_allocation_donor_fence(text, name, span):
     duplicate store.  FUN_80033bc0 needed precisely this extra weighted `pos`
     reference to exchange its $s5/$s6 homes.
 
-    This guided-only variant is intentionally narrow.  Donors must be
-    initialized, nonvolatile function parameters named by rtlguide's register
-    substitutions, and sites must be standalone assignments already inside a
-    conditional arm.  It therefore searches useful off-residual sites without
-    inventing reads of automatic locals or flooding the normal rule sweep.
+    This guided-only variant is intentionally narrow.  Donors are nonvolatile
+    values named by rtlguide's register substitutions.
+    Function parameters are initialized by definition.  An automatic local is
+    accepted only when an enclosing if condition already reads it, which proves
+    the value is available on both arms without requiring broad data-flow
+    guesses.  Sites must be standalone assignments already inside a conditional
+    arm, so the rule searches useful off-residual sites without flooding the
+    normal rule sweep.
     """
     if not GUIDED_VARIABLES:
         return
@@ -3778,7 +4013,9 @@ def rule_allocation_donor_fence(text, name, span):
     body = _func_body(data, name, _byte_span(text, span))
     if body is None:
         return
-    donors = sorted(_nonvolatile_parameter_names(data, body) & GUIDED_VARIABLES)
+    parameters = _nonvolatile_parameter_names(data, body)
+    locals_ = _nonvolatile_local_names(data, body)
+    donors = sorted((parameters | locals_) & GUIDED_VARIABLES)
     if not donors:
         return
     for statement in _find(body, ("expression_statement",)):
@@ -3793,7 +4030,10 @@ def rule_allocation_donor_fence(text, name, span):
         line = _line(data, statement.start_byte)
         indent = _indent_at(data, statement.start_byte)
         original = _txt(data, statement).strip().replace(b"\n", b"\n    ")
-        for donor in donors[:4]:
+        safe_donors = [donor for donor in donors
+                       if donor in parameters or
+                       _read_by_enclosing_if(data, statement, body, donor)]
+        for donor in safe_donors[:4]:
             repl = (
                 b"if (" + donor + b" != 0)\n" + indent + b"{\n" +
                 indent + b"    " + original + b"\n" + indent + b"}\n" +
@@ -4069,7 +4309,7 @@ RULES = [
 ]
 
 AGGRESSIVE_RULES = [
-    ("allocation-donor-fence", "add a guided parameter ref in zero-code identical arms", rule_allocation_donor_fence),
+    ("allocation-donor-fence", "add a guided initialized-value ref in zero-code identical arms", rule_allocation_donor_fence),
     ("cmp-polarity", "swap two local comparison operands (regalloc ref-order lever)", rule_cmp_polarity),
     ("eq-literal-swap", "swap ==/!= literal operand order (v0/v1 lever)", rule_eq_literal_swap),
     ("shift16-mul", "casted short x<<16 -> x*0x10000 (raw sll lever)", rule_shift16_mul),
@@ -4087,6 +4327,7 @@ AGGRESSIVE_RULES = [
     ("switch-cse-evict", "dead-overwrite an entry index before a fresh switch load", rule_switch_cse_evict),
     ("pointee-volatile", "toggle volatile on a local integer pointer's pointee", rule_pointee_volatile),
     ("member-scalar-alias", "toggle long field read through s32 lvalue (MEM_IN_STRUCT lever)", rule_member_scalar_alias),
+    ("disjoint-local-alias", "join a dead-until-overwrite scalar to an earlier live range", rule_disjoint_local_alias),
     ("loop-fence", "wrap an if/loop in a zero-code one-shot do loop", rule_loop_fence),
     ("nested-loop-fence", "atomically add two or three loop weights at one site", rule_nested_loop_fence),
     ("paired-loop-fence", "wrap adjacent groups in two atomic one-shot loops", rule_paired_loop_fence),

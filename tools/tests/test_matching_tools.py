@@ -478,6 +478,107 @@ int F(void) {
         self.assertIn("p->x = 0x10;\n    p->y = 0x10;", forward[0])
         self.assertIn("p->y = 0x10;\n    p->x = 0x10;", reverse[0])
 
+    def test_disjoint_local_alias_joins_dead_until_overwrite_scalar(self):
+        source = """typedef int s32;
+int F(int input) {
+    s32 xx;
+    s32 vx;
+    s32 distance;
+    xx = input + 1;
+    distance = xx * xx;
+    vx = input - 1;
+    return vx + distance;
+}
+"""
+        autorules.GUIDED_VARIABLES = {b"xx", b"vx"}
+        out = self.candidates(autorules.rule_disjoint_local_alias, source)
+        mixed = [text for label, text in out
+                 if label.startswith("disjoint-local-alias vx=xx") and
+                 "distance = vx * xx;" in text]
+        self.assertEqual(len(mixed), 1)
+        self.assertIn("vx = xx = input + 1;", mixed[0])
+
+    def test_disjoint_local_alias_rejects_prior_alias_read(self):
+        source = """typedef int s32;
+int F(int input) {
+    s32 xx;
+    s32 vx;
+    xx = input + 1;
+    input += vx;
+    vx = input - 1;
+    return xx + vx;
+}
+"""
+        autorules.GUIDED_VARIABLES = {b"xx", b"vx"}
+        self.assertEqual(
+            self.candidates(autorules.rule_disjoint_local_alias, source), [])
+
+    def test_disjoint_local_alias_rejects_shadowed_source(self):
+        source = """typedef int s32;
+int F(int input) {
+    s32 xx;
+    s32 vx;
+    s32 distance;
+    xx = input + 1;
+    {
+        s32 xx;
+        distance = xx;
+    }
+    vx = input - 1;
+    return vx + distance;
+}
+"""
+        autorules.GUIDED_VARIABLES = {b"xx", b"vx"}
+        self.assertEqual(
+            self.candidates(autorules.rule_disjoint_local_alias, source), [])
+
+    def test_disjoint_local_alias_rejects_initialized_alias(self):
+        source = """typedef int s32;
+int F(int input) {
+    s32 xx;
+    s32 vx = 5;
+    xx = input + 1;
+    input += xx;
+    vx = input - 1;
+    return xx + vx;
+}
+"""
+        autorules.GUIDED_VARIABLES = {b"xx", b"vx"}
+        self.assertEqual(
+            self.candidates(autorules.rule_disjoint_local_alias, source), [])
+
+    def test_disjoint_local_alias_rejects_static_alias(self):
+        source = """typedef int s32;
+int F(int input) {
+    s32 xx;
+    static s32 vx;
+    xx = input + 1;
+    input += xx;
+    vx = input - 1;
+    return xx + vx;
+}
+"""
+        autorules.GUIDED_VARIABLES = {b"xx", b"vx"}
+        self.assertEqual(
+            self.candidates(autorules.rule_disjoint_local_alias, source), [])
+
+    def test_disjoint_local_alias_rejects_loop_carried_alias(self):
+        source = """typedef int s32;
+int F(int input) {
+    s32 xx;
+    s32 vx;
+    while (input) {
+        xx = input + 1;
+        input += xx;
+        vx = input - 1;
+    }
+    return vx;
+}
+"""
+        autorules.GUIDED_VARIABLES = {b"xx", b"vx"}
+        self.assertEqual(
+            self.candidates(autorules.rule_disjoint_local_alias, source), [])
+
     def test_member_scalar_alias_toggles_plain_long_field_read(self):
         source = """typedef int s32;
 void F(Node *param) {
@@ -866,6 +967,53 @@ void F(Node *pos, int spread) {
     int donor;
     if (input) {
         input = donor;
+    }
+}
+"""
+        autorules.GUIDED_VARIABLES = {b"donor"}
+        self.assertEqual(
+            self.candidates(autorules.rule_allocation_donor_fence, source), [])
+
+    def test_allocation_donor_fence_uses_local_read_by_enclosing_guard(self):
+        source = """void F(int input) {
+    int distance;
+    int absolute;
+    distance = input;
+    if (distance < 4001) {
+        absolute = input < 0 ? -input : input;
+    }
+}
+"""
+        # Reaching the body proves distance was initialized and read, so it is
+        # safe to add as a zero-code discriminator even off the residual line.
+        autorules.GUIDED_LINES = {99}
+        autorules.GUIDED_VARIABLES = {b"distance"}
+        out = self.candidates(autorules.rule_allocation_donor_fence, source)
+        candidates = [text for label, text in out
+                      if label.startswith(
+                          "allocation-donor-fence distance L6")]
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].count(
+            "absolute = input < 0 ? -input : input;"), 2)
+        self.assertIn("if (distance != 0)", candidates[0])
+
+    def test_allocation_donor_fence_rejects_unevaluated_guard_local(self):
+        source = """void F(int input) {
+    int donor;
+    if (0 && donor) {
+        input = 1;
+    }
+}
+"""
+        autorules.GUIDED_VARIABLES = {b"donor"}
+        self.assertEqual(
+            self.candidates(autorules.rule_allocation_donor_fence, source), [])
+
+    def test_allocation_donor_fence_rejects_address_only_guard_local(self):
+        source = """void F(int input) {
+    int donor;
+    if (&donor) {
+        input = 1;
     }
 }
 """

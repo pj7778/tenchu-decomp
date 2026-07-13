@@ -3059,7 +3059,10 @@ before local-alloc, so the def is gone before it can bias anything.
   register-held values first (`prm.type = ty; prm.user = own;`) before
   memory-chain stores frees their registers for later constants — in
   ProcItemKusuri that one swap released `$s0` for the division magic and
-  collapsed a whole extra callee-saved register out of the prologue.
+  collapsed a whole extra callee-saved register out of the prologue. It also
+  decides the final call delay-slot candidate: Think1target's independent
+  target-pointer store had to precede its Attrib update, moving the `sw` out of
+  `SetNowMotion`'s delay slot and leaving `li $a2,1` there (24→0 bytes).
 - **A chained assignment is a reverse-store and shared-constant lever.** C
   evaluates `a = b = c = K` right-to-left, so distinct fields store in
   `c,b,a` order and share the assignment-value lifetime; three standalone
@@ -3402,8 +3405,32 @@ before local-alloc, so the def is gone before it can bias anything.
   conditional arms even when they are away from the final diff line. Replaying
   that rule on the 11-byte baseline tried four bounded `pos` sites and found an
   independent exact fence around the earlier EffectSlot-cursor reset (11→0).
-  Restrict this lever to initialised nonvolatile parameters: an automatic local
-  may be indeterminate at the artificial test.
+  Absent source-level proof of initialization, restrict this lever to
+  nonvolatile parameters: an arbitrary automatic local may be indeterminate at
+  the artificial test.
+- **An automatic local already read by an enclosing guard is also a safe
+  ALLOCATION DONOR.** Reaching either arm proves the guard value was initialized
+  and evaluated, so it can discriminate byte-identical assignments without an
+  invented indeterminate read. In Think1target, `distance` narrowly lost the
+  global-allocation race to the z coordinate (7692 vs 7714); duplicating the
+  guarded absolute-value assignment under `if (distance)` raised it to 8000,
+  swapped the two saved-register homes, and reduced the exact-length residual
+  from 35 to 24 bytes. Guided `allocation-donor-fence` now searches this bounded
+  enclosing-guard case as well as initialized parameters, including donor sites
+  away from the residual's mapped line.
+- **A dead-until-overwrite local can donate a disjoint source identity without
+  runtime work.** If uninitialized `later` is untouched before `later = L`, then
+  `early = E; use(early); ... later = L` can be written as
+  `later = early = E; use(later); ... later = L`. The extra automatic-local
+  assignment is unobservable on defined paths, while old cc1 can join the two
+  live ranges and inherit the later local's allocation preferences.
+  Think1target's x alias moved an exact-length residual from 63 to 38 bytes; the
+  corresponding z alias exposed the final 7714/7692 priority tie at 35 bytes.
+  Guided `disjoint-local-alias` enumerates only same-type function-scope integer
+  locals whose address is never taken, which are not shadowed or loop-carried,
+  whose alias is uninitialized and untouched before the site, whose first later
+  occurrence is a plain overwrite, and whose substituted read is in the
+  current compound block.
 - **An identical-arm discriminator can also be a PREFERENCE DONOR.** Declare it
   at function scope, initialise it for the artificial `if`, then overwrite it
   with the real value immediately before a call that wants a particular
