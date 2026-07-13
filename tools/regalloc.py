@@ -97,6 +97,17 @@ def preferred_allocnos(analysis, hard_register):
     return rows
 
 
+def conflicts_with_hard_register(analysis, pseudo, hard_register):
+    """Whether global allocation forbids ``pseudo`` from ``hard_register``.
+
+    A hard-register conflict is categorically different from a low allocation
+    priority: adding loop-depth weight can change which allocno is considered
+    first, but it can never make an allocno legal in a register in its conflict
+    set.  Callers can use this as an early-stop oracle before trying fences.
+    """
+    return hard_register in analysis["conflicts"].get(pseudo, [])
+
+
 def preprocess(name):
     """Preprocess src/main.exe/<name>.c the way the build does; returns text.
     Diagnoses the DRAFT of a NON_MATCHING partial."""

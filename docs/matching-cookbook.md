@@ -517,6 +517,17 @@ plain C is the matched file.
   of separately carved case text islands. LoadConstruction's target order
   `0,5,2,3,11,4` cut its draft's structural block count substantially even
   though the table's numeric destinations remained value-indexed.
+- **Identical-valued case bodies can still be distinct physical islands.** Do
+  not factor equal case results through a temporary until the target proves
+  they were merged. ActCHASE's item switch contains two separate `motID =
+  0xf02` islands: writing a shared `selected_motion` collapsed them, while
+  direct global assignments in target body order (`2,1,3,6,5,7`) preserved
+  both. Its terminating sound/default cases also had to `goto` labels placed
+  after the normal cases' shared `D_80097F0E = 1; return;` tail. This recipe—
+  order value-producing cases by physical address, keep direct stores, and
+  route terminating cases around the shared tail—restored the exact jump
+  inventory. It is a structural recognition rule; use body addresses and
+  control-flow counts as the oracle rather than blindly permuting case values.
 - **Three sparse literal equalities may need `switch`, even without a jump
   table.** gcc 2.8.1's `expand_case` builds a value-sorted comparison tree but
   keeps case bodies in source order. FUN_8005b17c's `0x20`, `0x2000`, and
@@ -2048,6 +2059,38 @@ exclusive branches converge through the same hard register and identical store/c
 tail, first try one reused variable plus literal duplicated tails and let cross-jump
 perform the factoring. `rtlguide` classifies the resulting register-only residual;
 do not manually factor the source before testing this identity clue.
+
+### A target-register hard conflict means weighting is the wrong lever
+
+Before adding one-shot-loop depth to a register-only residual, inspect the
+allocno's `.greg` conflict set. If the desired hard register is listed, no
+priority change can put that pseudo there: change its lifetime, identity, or
+coalescing. `rtlguide` now prints `HARD-CONFLICT` for candidate allocnos in this
+state instead of merely suggesting allocation priorities.
+
+ActCHASE supplied two exact, reusable forms:
+
+- The target loads `MotionUpdateMode` into `$v1`, branches on it, then writes
+  loop index zero back to `$v1` in the delay slot. Separate mode and `i`
+  pseudos made `i` hard-conflict with `$v1`. Spelling the non-overlapping roles
+  as one HImode chain—`i = MotionUpdateMode; if (i != 0) { i = 0; ... }`—made
+  the delay-slot overwrite legal and simultaneously moved the compared human
+  pointer to the target `$a0`.
+- An artificial `next_motion` local spanning several predecessor arms
+  hard-conflicted with `$v0`, which still held each pad comparison. Writing
+  `motID = 0x501` / `motID = 0xb00` directly in the respective arms let
+  cross-jump recover the same single physical store tail while the dead
+  comparison register was reused for the literal. This is the direct-store
+  complement of the shared-variable rule above: when a target branch delay
+  overwrites its own condition register and all arms converge on one store,
+  try duplicated direct lvalue assignments and let the compiler factor them.
+
+Also distinguish an input value from its arithmetic result when the target
+does. `current = rotation->vy; result = current + turn; rotation->vy = result;`
+keeps the loaded old value and the new result in separate pseudos; mutating
+`current` in place forces both roles into one hard register. ActCHASE required
+this in both rotation blocks before the remaining residual became a true
+allocation-only problem.
 
 The same rule applies inside one large state machine: split logically distinct
 lifetimes even when Ghidra gave them one SSA name. A scan's current `candidate`

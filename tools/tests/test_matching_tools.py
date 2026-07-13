@@ -1576,6 +1576,8 @@ class RegallocParserTests(unittest.TestCase):
         self.assertEqual(result["disp"][80], 3)
         self.assertEqual(result["preferences"][80], [2])
         self.assertEqual(result["conflicts"][80], [80, 2, 3])
+        self.assertTrue(regalloc.conflicts_with_hard_register(result, 80, 2))
+        self.assertFalse(regalloc.conflicts_with_hard_register(result, 80, 4))
         self.assertEqual(regalloc.parse_hard_register("$v0"), 2)
         self.assertEqual(regalloc.preferred_allocnos(result, 2), [{
             "pseudo": 80,

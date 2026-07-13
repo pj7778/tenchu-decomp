@@ -1144,12 +1144,19 @@ def diagnose(name, build=True, rtl=True):
         sub["variables"] = guide["variables_by_register"].get(sub["ours"], [])
         if alloc and sub["ours"] in REGNUM:
             hard = REGNUM[sub["ours"]]
+            target_hard = REGNUM.get(sub["target"])
             pseudos = []
             for pseudo, home in sorted(alloc["disp"].items()):
                 if home == hard:
                     item = dict(
                         pseudo=pseudo,
                         preferences=[regalloc.rn(x) for x in alloc["preferences"].get(pseudo, [])],
+                        target_hard_conflict=(
+                            target_hard is not None and
+                            regalloc.conflicts_with_hard_register(
+                                alloc, pseudo, target_hard
+                            )
+                        ),
                     )
                     if pseudo in alloc["usage"]:
                         item.update(alloc["usage"][pseudo])
@@ -1230,6 +1237,7 @@ def print_report(g, max_hunks=12):
 
     if g["register_substitutions"]:
         print("\n  register goals (candidate -> target):")
+        saw_target_hard_conflict = False
         for sub in g["register_substitutions"][:12]:
             vars_ = ",".join(sub.get("variables", [])) or "?"
             prefs = sorted({p for x in sub.get("pseudos", []) for p in x["preferences"]})
@@ -1238,8 +1246,21 @@ def print_report(g, max_hunks=12):
                                  if "priority" in x}, reverse=True)
             if priorities:
                 ptext += "; alloc priorities " + ",".join(map(str, priorities[:4]))
+            blocked = sorted(
+                x["pseudo"] for x in sub.get("pseudos", [])
+                if x.get("target_hard_conflict")
+            )
+            if blocked:
+                saw_target_hard_conflict = True
+                ptext += "; target hard-conflicts " + ",".join(
+                    "p" + str(pseudo) for pseudo in blocked[:6]
+                )
             print(f"    ${sub['ours']} -> ${sub['target']} x{sub['count']}: "
                   f"locals {vars_}{ptext}")
+        if saw_target_hard_conflict:
+            print("    HARD-CONFLICT: loop-depth/priority weighting cannot put the "
+                  "listed allocno in its target register; change its live range, "
+                  "source identity, or coalescing first.")
 
     interesting = ["rtl", "cse", "combine", "lreg", "greg", "sched2", "jump2", "dbr"]
     present = [x for x in interesting if x in g.get("pass_stats", {})]
