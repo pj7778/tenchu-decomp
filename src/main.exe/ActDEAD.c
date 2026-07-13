@@ -1,30 +1,55 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void ActDEAD(void);
+ *     MOTION.C:2046, 89 src lines, frame 64 bytes, saved-reg mask 0x800f0000 (DEMO build -- see below)
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate.
+ * A ZERO-locals record is unverified, not a claim that the function has none:
+ * vfree lists zero locals yet its byte-matched source needs seven.
+ * The frame size and saved-reg mask above are the DEMO's: retail often needs
+ * FEWER callee-saved registers (measured: Think1random exact; Think1chase's
+ * 0x800f0000 = s0-s3+ra vs retail's s0,s1,ra). Treat them as an upper bound
+ * and a hint at how many values stay live, never as a spec. The asm wins.
+ * Locals:
+ *     reg   $s0       struct VECTOR * pp
+ *     stack sp+16     struct VECTOR p
+ *     stack sp+32     struct SVECTOR v
+ *     reg   $s2       short bldo
+ *     reg   $s3       short blds
+ *     reg   $s0       short blood
+ * END PSX.SYM */
+
 /*
- * handle_char_state_dead_ (0x800268bc) — TODO one-line description.
+ * ActDEAD (0x800268bc) — TODO one-line description.
  *
  * STATUS: NON_MATCHING — split (jump-table) function scaffolded by
  * tools/split-scaffold.py. The #ifndef NON_MATCHING branch is the stub
  * (INCLUDE_ASM pieces + the jump-table pool as one static const array so
- * the .rodata carve has bytes); build the draft with `NON_MATCHING=handle_char_state_dead_
+ * the .rodata carve has bytes); build the draft with `NON_MATCHING=ActDEAD
  * ./Build`. On a full match, delete the guards and the _jtbl array.
  */
 
 #ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/handle_char_state_dead_", handle_char_state_dead_);
+INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", ActDEAD);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/handle_char_state_dead_", switchD_80026d70__switchD);
+INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__switchD);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/handle_char_state_dead_", switchD_80026d70__caseD_0);
+INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__caseD_0);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/handle_char_state_dead_", switchD_80026d70__caseD_1);
+INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__caseD_1);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/handle_char_state_dead_", switchD_80026d70__caseD_2);
+INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__caseD_2);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/handle_char_state_dead_", switchD_80026d70__caseD_3);
+INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__caseD_3);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/handle_char_state_dead_", switchD_80026d70__caseD_5);
+INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__caseD_5);
 
 /* jump-table pool @ 0x80011610 (5 words; tables at 0x80011610) — stub-only, one array because the object has one .rodata section; the draft's compiled switch emits its own. */
 static const u32 handle_char_state_dead__jtbl[5] = {

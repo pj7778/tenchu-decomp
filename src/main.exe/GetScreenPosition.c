@@ -30,7 +30,7 @@
  * translation vector (fixed PS1 scratchpad RAM at 0x1F800000, same
  * `MATRIX *m` idiom as PrepareGetScreenPositionS.c's t[0..2] @ 0x14/0x18/0x1c), writes
  * (x,y,z) - ViewInfo.(vpx,vpy,vpz) into a scratchpad SVECTOR @ 0x1F800020
- * (same idiom as the twin FUN_80039610.c's sv @ 0x1F800080), installs the
+ * (same idiom as the twin GetScreenPositionS.c's sv @ 0x1F800080), installs the
  * (all-zero) translation and the global world-space rotation matrix
  * GsWSMATRIX, then calls RotTransPers (GTE perspective-transform library
  * wrapper, 0x80078704 > 0x80060000, precompiled) with that SVECTOR, the
@@ -41,7 +41,7 @@
  *
  * ViewInfo.vpx/vpy/vpz: item.h-style proven TViewInfo fields (s32, matching
  * Ghidra's own independently-built GsRVIEW2 — see ReqItemDefault.c/
- * FUN_80039610.c). SetTransMatrix/SetRotMatrix each take a single MATRIX*
+ * GetScreenPositionS.c). SetTransMatrix/SetRotMatrix each take a single MATRIX*
  * (PrepareGetScreenPositionS.c proves both signatures); the OTHER a-registers still
  * holding values at those call sites are leftover from the adjacent
  * sv->vy/vz stores, not real arguments — m2c over-counts both calls'
@@ -53,7 +53,7 @@
  *    for it, same rule as the twin.
  *  - Raw scratchpad addresses are plain integer-literal pointer casts,
  *    never a shared "Scratchpad + offset" symbol (PrepareGetScreenPositionS.c/
- *    FUN_80039610.c precedent).
+ *    GetScreenPositionS.c precedent).
  */
 
 typedef struct

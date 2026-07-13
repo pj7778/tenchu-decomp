@@ -119,7 +119,7 @@ extern s16 CVAupdate(void);
 extern void PadShockAR(s32 port, s32 low, s32 high, s32 time);
 extern void PadShock(s32 port, s32 power, s32 time);
 extern void PadProc(void);
-extern void PlayMusicFromID(s32 id);
+extern void PlayMusicFormID(s32 id);
 extern s32 CdaGetCurrentLength(void);
 extern s16 CVArun(void);
 extern void SetCameraMode(s32 mode);
@@ -199,7 +199,7 @@ run_sequence:
 
     if (sound > 0)
     {
-        PlayMusicFromID(sound);
+        PlayMusicFormID(sound);
         while (CdaStatus.status != 0)
         {
             if (CdaGetCurrentLength() > 0)
@@ -306,7 +306,7 @@ run_sequence:
 //         PadShock(0,0,0);
 //         PadProc();
 //         if (0 < (short)uVar2) {
-//           PlayMusicFromID();
+//           PlayMusicFormID();
 //           do {
 //             if (CdaStatus.status == '\0') break;
 //             iVar6 = CdaGetCurrentLength();

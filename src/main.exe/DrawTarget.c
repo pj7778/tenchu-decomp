@@ -28,7 +28,7 @@
 /*
  * DrawTarget (0x80039544, 0xcc bytes) — same camera-relative-transform +
  * perspective-project shape as the twin GetScreenPosition.c (same TU: see
- * FUN_80039610.c/PrepareGetScreenPositionS.c for the scratchpad MATRIX/SVECTOR idiom),
+ * GetScreenPositionS.c/PrepareGetScreenPositionS.c for the scratchpad MATRIX/SVECTOR idiom),
  * but instead of writing OTZ into a caller-supplied output pointer, it reads
  * RotTransPers's packed screen (x,y) back off its own stack scratch and
  * tail-calls DrawTargetS(x, y, otz - 5, arg3) — a line-draw/sort helper

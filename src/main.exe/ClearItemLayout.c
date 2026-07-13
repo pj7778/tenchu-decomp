@@ -19,7 +19,7 @@
  * comes back true). Force-disposes every live slot in the item pool: for
  * each of the 30 slots with proc != 0, run its proc with mode=0xff, delete
  * the conflict, complain if mode didn't clear, then clear owner/proc — the
- * identical dispose sequence as ReqItemDrop/ProcItemManebue/FUN_8004a42c.
+ * identical dispose sequence as ReqItemDrop/ProcItemManebue/GetFreeItemSlot.
  *
  * Matching notes (see docs/matching-cookbook.md):
  *  - A hand-rolled `label: ...; goto label;` loop, NOT a `for`/`while`: the

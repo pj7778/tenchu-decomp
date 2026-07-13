@@ -120,7 +120,7 @@ extern s32 AdtSelect(char *title, debug_menu_choice *menu, s32 mode);
 extern s32 GetPad(s32 n);
 extern void InitializeInfoView(void);
 extern void LayoutEnemyOption(void);
-extern void DebugMenuItemSet(void);
+extern void AddItem2(void);
 extern void ClearItemLayout(void);
 extern void FileOption(void);
 extern void PlayerOption(void);
@@ -168,7 +168,7 @@ static inline void ItemLayoutMenu(void)
     switch (n)
     {
     case 0:
-        DebugMenuItemSet();
+        AddItem2();
         break;
     case 1:
         if (AdtSelect(D_80012558, (debug_menu_choice *)(mi + 0x28), 1) == 1)

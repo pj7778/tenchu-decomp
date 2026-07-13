@@ -137,7 +137,7 @@ extern char D_80097C8C[];
 extern void UpdateEvent(s16 n, s16 id);
 extern void SetCameraMode(s32 mode);
 extern void FntPrint(char *format, ...);
-extern void PlayMusicFromID(s32 id);
+extern void PlayMusicFormID(s32 id);
 extern s16 CVAsequence(s16 sid);
 extern ScoreStats *init_score_stats(ScoreStats *stats);
 extern ScoreResult *calculate_score(ScoreStats *stats, s16 stage);
@@ -322,7 +322,7 @@ active_events:
 
         case 8:
             flag = 1;
-            PlayMusicFromID((s16)ev->status);
+            PlayMusicFormID((s16)ev->status);
             break;
         }
 

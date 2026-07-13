@@ -39,7 +39,7 @@
  * Distance/Degree/SR/Attrib/Me_THINK_C). Deliberately does NOT include
  * main.exe.h: this file reads Attrib as u16 (`lhu`/`sh`), conflicting with
  * main.exe.h's `s16 Attrib` — same per-file respelling as
- * think_setting_go_towards_player.c/turn_towards_player_.c.
+ * Think2contact.c/turn_towards_player_.c.
  *
  * Forwards to turn_towards_player_(0, 0) for the base turn signal, clears SR
  * when close and not already in the "-2" state, flags Attrib bit 0x10 when
@@ -84,7 +84,7 @@
  * asm's `result = call();` copy right after the `jal` is a bare `addu`, no
  * immediate sll/sra pair — the caller-side extern-return-type-is-an-
  * extension-position lever (Think1trace/BIS's GetRealPad; same as
- * think_setting_go_towards_player.c's identical local declaration).
+ * Think2contact.c's identical local declaration).
  *
  * RESIDUAL (28 bytes / 7 instructions, all inside the `wclass == 3` block):
  * the target computes `masked = result & ~0x5FFF` into a register SEPARATE

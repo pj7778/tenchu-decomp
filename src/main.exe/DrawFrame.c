@@ -112,7 +112,7 @@
  *    lever: statement splitting, not a permuter/RTL escalation).
  *  - This TU divides by a runtime value (`size*300/otz`): needs
  *    `--expand-div` (Build.hs maspsxGpExterns' `extra` list + permute.py's
- *    MASPSX_EXTRA), same as FUN_8003a148/FUN_8003a2a8.
+ *    MASPSX_EXTRA), same as FUN_8003a148/DrawSpriteXYZ.
  */
 extern GsSPRITE sprFrame[4];
 extern GsOT *OTablePt;

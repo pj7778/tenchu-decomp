@@ -118,7 +118,7 @@ s16 SaveCard(s32 target, u8 *name, void *mem, s32 size, s16 write_data)
     return result;
 }
 
-// triage: HARD — 239 insns, 6 loop, frame 0x2110, 7 callees, ~0.09 to DebugMenuItemSet
+// triage: HARD — 239 insns, 6 loop, frame 0x2110, 7 callees, ~0.09 to AddItem2
 // likely-relevant cookbook sections:
 //   - Loops: 6 back-edge(s) — for/while/do vs goto shape
 //   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py

@@ -34,14 +34,14 @@
 
 /*
  * Think1trace (0x8002bfec, 0xd8 bytes) — think-handler (same "think" TU as
- * Think1sleep.c/Think2confirm.c/think_setting_go_towards_player.c). Two
+ * Think1sleep.c/Think2confirm.c/Think2contact.c). Two
  * modes selected by actcnt: while actcnt == 0, count frames in actscnt and
  * (for the first 0x3C frames) steer towards the player by comparing the
  * character's turn rate against Degree; once actscnt reaches 0x3C, flip into
  * actcnt == 1 tracking mode, whose branch here just clears actscnt each call
  * and (when Attrib bit 3 is set) forwards to ControlTraceLine.
  *
- * Like think_setting_go_towards_player.c, this file's own compile reads
+ * Like Think2contact.c, this file's own compile reads
  * Attrib as u16 (`lhu`) and does not include main.exe.h (whose `extern s16
  * Attrib;` would conflict) — the handful of externs used here are
  * re-declared locally instead.

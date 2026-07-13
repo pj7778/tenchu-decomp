@@ -34,7 +34,7 @@
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/InitEffect", InitEffect);
 
-// triage: MEDIUM — 226 insns, 2 loop, 6 callees, ~0.07 to DebugMenuItemSet
+// triage: MEDIUM — 226 insns, 2 loop, 6 callees, ~0.07 to AddItem2
 // likely-relevant cookbook sections:
 //   - Loops: 2 back-edge(s) — for/while/do vs goto shape
 //   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py

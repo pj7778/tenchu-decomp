@@ -62,7 +62,7 @@ extern u32 SystemFlag; /* gp-relative — defined by this TU */
 
 extern s32 AdtSelect(char *title, debug_menu_choice *menu, s32 mode);
 extern void StageEndScreen(void);
-extern void debug_menu_select_stage(PersistentState *ps);
+extern void SelectStage(PersistentState *ps);
 extern void FUN_8004f6c0(s32 arg);
 extern void init_score_stats(ScoreStats *out);
 extern ScoreResult *calculate_score(ScoreStats *stats, s32 stage);
@@ -84,7 +84,7 @@ void debug_menu_stage_option(void)
         StageEndScreen();
         return;
     case 1:
-        debug_menu_select_stage(PSTATE);
+        SelectStage(PSTATE);
         FUN_8004f6c0(0x11);
         return;
     case 2:

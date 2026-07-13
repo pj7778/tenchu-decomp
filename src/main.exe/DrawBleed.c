@@ -50,7 +50,7 @@
  * idiom) and, if visible (`otz > 0x24`), fills the shared `plyBleed` POLY_F4
  * quad (a diagonal streak from `(x,y)` to `(x+sz,y+sz)`, `sz` a distance-
  * scaled length) and GsSortPoly's it into the OT with the same
- * `[0, 0x4e1]` OTZ-derived priority clamp as FUN_8003a2a8/FUN_8003a148.
+ * `[0, 0x4e1]` OTZ-derived priority clamp as DrawSpriteXYZ/FUN_8003a148.
  *
  * Matching notes (docs/matching-cookbook.md):
  *  - `param = &ef->param.bleed;` (BleedType* at ef+4, matching PSX.SYM's
@@ -82,7 +82,7 @@
  *    target computes the `(u16)x<<16` pattern only ONCE (one `lhu`) and
  *    keeps it alive in a register across the whole draw body (div, all the
  *    POLY_F4 field stores) to the clamp at the very end. Unlike
- *    FUN_8003a2a8/FUN_8003a148 (which each re-read `scr.vz` fresh for
+ *    DrawSpriteXYZ/FUN_8003a148 (which each re-read `scr.vz` fresh for
  *    their own clamp — verified by their own asm), DrawBleed's target has
  *    NO second load at all: an independent re-read of `scr.vz` here costs
  *    an extra `lhu` (4 bytes) the target doesn't spend. Same shift-reuse
@@ -97,12 +97,12 @@
  *    expression as `x1`/`y2` (repeat the expression; the target's `sh`
  *    for x3/y3 reuses the still-live registers, not a fresh reload of
  *    `plyBleed.x1`/`.y2`).
- *  - The `[0, 0x4e1]` clamp is FUN_8003a2a8's exact `goto zero;` shape
+ *  - The `[0, 0x4e1]` clamp is DrawSpriteXYZ's exact `goto zero;` shape
  *    (the trivial `pri=0` body must be the branch TARGET, not the
  *    fall-through — see that file's header for the reorg mechanics).
  *  - This TU divides by a runtime value (`900 / otz`): needs
  *    `--expand-div` (Build.hs maspsxGpExterns' `extra` list + permute.py's
- *    MASPSX_EXTRA), same as DrawSprite/FUN_8003a2a8/FUN_8003a148.
+ *    MASPSX_EXTRA), same as DrawSprite/DrawSpriteXYZ/FUN_8003a148.
  *
  * RESIDUAL (47 bytes, same class as DrawHinoko's own parked residual): the
  * target's SCHEDULER hoists `ViewInfo`'s `%hi` materialization (`lui

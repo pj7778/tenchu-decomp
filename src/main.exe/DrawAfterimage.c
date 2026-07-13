@@ -108,7 +108,7 @@
  *  - `((afi->n - i) * 127) / afi->n` divides by a runtime value: needs
  *    `--expand-div` (Build.hs maspsxGpExterns' `extra` list + permute.py's
  *    MASPSX_EXTRA).
- *  - The `[0, 0x4e1]` clamp on `afi->sz >> 2` is FUN_8003a2a8's exact
+ *  - The `[0, 0x4e1]` clamp on `afi->sz >> 2` is DrawSpriteXYZ's exact
  *    `goto zero;` shape (the trivial `pri=0` body must be the branch
  *    TARGET, not the fall-through) — and the shift needs `otz = afi->sz;
  *    otz = otz >> 2;` as TWO statements (matching DrawFrame's identical

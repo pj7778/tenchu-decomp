@@ -31,7 +31,6 @@
  *
  * Globals it touches, as the original declared them:
  *     extern struct TEnemyLayout enemy[30];
- *     extern struct Sprite3D *sprSmoke;
  * END PSX.SYM */
 
 /*

@@ -42,7 +42,7 @@
 
 extern void SsSetMono(void);
 extern void SsSetStereo(void);
-extern void debug_menu_select_stage(PersistentState *ps);
+extern void SelectStage(PersistentState *ps);
 
 typedef struct
 {
@@ -93,7 +93,7 @@ s32 InitPersistentState(void)
         } else {
             SsSetMono();
         }
-        debug_menu_select_stage(ps);
+        SelectStage(ps);
         ((u8 *)ps)[0x5f] = 0;
         result = 0;
     }

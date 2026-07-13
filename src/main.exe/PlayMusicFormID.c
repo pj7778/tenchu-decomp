@@ -1,6 +1,26 @@
 #include "common.h"
 #include "main.exe.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void PlayMusicFormID(int id);
+ *     IMAGES.C:524, 12 src lines, frame 24 bytes, saved-reg mask 0x80000000 (DEMO build -- see below)
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate.
+ * A ZERO-locals record is unverified, not a claim that the function has none:
+ * vfree lists zero locals yet its byte-matched source needs seven.
+ * The frame size and saved-reg mask above are the DEMO's: retail often needs
+ * FEWER callee-saved registers (measured: Think1random exact; Think1chase's
+ * 0x800f0000 = s0-s3+ra vs retail's s0,s1,ra). Treat them as an upper bound
+ * and a hint at how many values stay live, never as a spec. The asm wins.
+ * Locals:
+ *     param $a0       int id
+ * END PSX.SYM */
+
 /*
  * STATUS: NON_MATCHING — our draft is 180 bytes (45 insns) vs target's 176
  * (44 insns): one genuine extra instruction plus the register/operand-order
@@ -8,7 +28,7 @@
  * asmdiff.py here, not matchdiff.py, which overshoots its window into the
  * next not-yet-split function and reports a misleadingly huge byte count).
  *
- * PlayMusicFromID (0x8004f5dc, 0xb0 bytes) — dispatches a combined
+ * PlayMusicFormID (0x8004f5dc, 0xb0 bytes) — dispatches a combined
  * voice/music id: ids below 100 are voice clips (PlayVoice(id) directly);
  * ids >= 100 are music, remapped by `id - 100` through a sentinel-terminated
  * (0xFF) remap table `MusicIDTable[]` — same linear-search-with-sentinel shape
@@ -59,9 +79,9 @@ extern void PlayVoice(s32 id);
 extern void _PlayMusic(s32 id, s32 one, u8 *table, u8 flag);
 
 #ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PlayMusicFromID", PlayMusicFromID);
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PlayMusicFormID", PlayMusicFormID);
 #else
-void PlayMusicFromID(s32 param_1)
+void PlayMusicFormID(s32 param_1)
 {
     s32 MusicNo;
     u8 *p;

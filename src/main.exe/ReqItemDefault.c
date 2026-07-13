@@ -67,7 +67,7 @@
 
 /* Camera status (Ghidra: TCameraStatus, at CamState) — redefined locally
  * like every other TU that touches it (PauseProc/PlayerOption/
- * LayoutEnemyOption/DebugMenuItemSet/DoInfoViewProc); only Owner/Mode used
+ * LayoutEnemyOption/AddItem2/DoInfoViewProc); only Owner/Mode used
  * here. */
 typedef struct
 {

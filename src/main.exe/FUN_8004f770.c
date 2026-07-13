@@ -7,7 +7,7 @@
  * read here) looking for one whose ID matches `arg1`, returning a pointer to
  * the matching record or NULL; the table is terminated by an ID byte of
  * 0xFF. Sound TU (address-contiguous with FUN_8004f68c/FUN_8004fbf4/
- * PlayMusicFromID/SetupSoundEffect/Sound), no direct `jal` callers found —
+ * PlayMusicFormID/SetupSoundEffect/Sound), no direct `jal` callers found —
  * reached indirectly or from an unsplit caller.
  *
  * A `while (cond) {...}` whose initial value isn't a provable constant keeps

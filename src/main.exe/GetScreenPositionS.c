@@ -5,14 +5,27 @@
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
  * docs/psx-sym.md. Do not hand-edit.
  *
+ * void GetScreenPositionS(long x, long y, long z, struct SVECTOR *scr);
+ *     EFFECT.C:588, 11 src lines, frame 24 bytes, saved-reg mask 0x80010000 (DEMO build -- see below)
  *
- * Globals it touches, as the original declared them:
- *     extern struct GsRVIEW2 ViewInfo;
- *     extern struct tag_TItem items[30];
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate.
+ * A ZERO-locals record is unverified, not a claim that the function has none:
+ * vfree lists zero locals yet its byte-matched source needs seven.
+ * The frame size and saved-reg mask above are the DEMO's: retail often needs
+ * FEWER callee-saved registers (measured: Think1random exact; Think1chase's
+ * 0x800f0000 = s0-s3+ra vs retail's s0,s1,ra). Treat them as an upper bound
+ * and a hint at how many values stay live, never as a spec. The asm wins.
+ * Locals:
+ *     param $a0       long x
+ *     param $a1       long y
+ *     param $a2       long z
+ *     param $a3       struct SVECTOR * scr
  * END PSX.SYM */
 
 /*
- * FUN_80039610 (0x80039610, 0x74 bytes) — camera-relative coordinate
+ * GetScreenPositionS (0x80039610, 0x74 bytes) — camera-relative coordinate
  * transform helper: writes (x,y,z) - ViewInfo.(vpx,vpy,vpz) as a scratchpad
  * SVECTOR (fixed PS1 scratchpad RAM at 0x1F800000 — same region
  * PrepareGetScreenPositionS.c's MATRIX uses, Ghidra names it "Scratchpad"), then calls
@@ -57,7 +70,7 @@ typedef struct
 extern TViewInfo ViewInfo;
 extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 
-void FUN_80039610(s32 arg0, s32 arg1, s32 arg2, s32 *arg3)
+void GetScreenPositionS(s32 arg0, s32 arg1, s32 arg2, s32 *arg3)
 {
     SVECTOR *sv = (SVECTOR *)0x1F800080;
 

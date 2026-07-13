@@ -58,7 +58,6 @@
  * Globals it touches, as the original declared them:
  *     extern struct WorldType WorldMap[8][8][8];
  *     extern unsigned long *GlobalAreaMap;
- *     extern struct Sprite3D *sprSmoke;
  *     extern unsigned char *ImagePath;
  *     extern struct ObjectSlotManager ModelSlot;
  *     extern int StageID;

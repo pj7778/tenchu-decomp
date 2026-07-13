@@ -8,15 +8,26 @@
 8001f6b8	handle_char_state_attacking_SEVEN_	AttackFire	symmatch+callmatch	LOW positional, callees CONFIRM
 8001fb98	handle_char_state_posing_	ActACTION	symmatch	MED/MOTION.C
 80026074	handle_char_state_using_item_	ActITEM	symmatch	HIGH/MOTION.C
+800268bc	handle_char_state_dead_	ActDEAD	symmatch+semantic	source order after ActITEM/ActDAMAGE; death-state behavior
 80027688	FUN_80027688	AttackPQD	xbuild	LOOSE
 80027818	FUN_80027818	ItemControl	xbuild	LOOSE
 8002d638	think_setting_weapon_logic1_	Think3area	symmatch	HIGH/THINK_3.C
+8002fa54	think_setting_go_towards_player	Think2contact	symmatch+semantic	adjacent to Think2confirm; matching contact-facing behavior
 8003250c	FUN_8003250c	DrawTargetS	symmatch	HIGH/EFFECT.C
 80032610	FUN_80032610	UpdateTexScroll	callmatch	4 shared callees
 800339d0	FUN_800339d0	SetSmokeS	symmatch	MED/EFFECT.C
+80038d10	FUN_80038d10	DrawXG4	xbuild+adjacency	identical wrapper; position in AddXG4/SetPolyXG4 family
+80038d80	FUN_80038d80	SetPolyXG4	xbuild	instruction-identical
+80038db4	FUN_80038db4	DrawXF4	xbuild+adjacency	identical wrapper; position in AddXF4/SetPolyXF4 family
+80039610	FUN_80039610	GetScreenPositionS	signature+semantic	four arguments; adjacent projection helper
 80039684	FUN_80039684	PrepareGetScreenPositionS	xbuild	LOOSE
+8003a2a8	FUN_8003a2a8	DrawSpriteXYZ	callmatch+signature	100% callees; five arguments and matching projection/draw behavior
 80049f94	FUN_80049f94	TurnAroundAllItems	symmatch	HIGH/ITEM.C
+8004a42c	FUN_8004a42c	GetFreeItemSlot	callmatch+semantic	100% callees; exact item-pool allocator behavior
+8004afdc	DebugMenuItemSet	AddItem2	callmatch+semantic	100% unique callees; matching INFOVIEW role and size
 8004eaf0	load_sprite_info_perhaps	SetupImageToPolyFT4	symmatch	HIGH/IMAGES.C
+8004f5dc	PlayMusicFromID	PlayMusicFormID	callmatch+signature	100% callees; original source typo preserved
+8005c404	debug_menu_select_stage	SelectStage	symmatch+semantic	matching language/player/stage-selection menus
 8005d0d4	FUN_8005d0d4	drawF3	xbuild	STRICT
 8005d1fc	FUN_8005d1fc	drawFT3	xbuild	STRICT
 8005d354	FUN_8005d354	drawF4	xbuild	STRICT

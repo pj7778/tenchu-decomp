@@ -9,6 +9,9 @@
  *
  * Globals it touches, as the original declared them:
  *     extern struct tag_EffectSlot EffectSlot[200];
+ *
+ * PSX.SYM suggests this may be `SetPadState` (LOW confidence, EFFECT.C) — NOT
+ * adopted. Corroborate with `tools/callmatch.py --verify` before renaming.
  * END PSX.SYM */
 
 /*

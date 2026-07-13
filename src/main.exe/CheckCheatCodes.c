@@ -90,7 +90,7 @@ void CheckCheatCodes(s16 *rec, int n)
     }
 }
 
-// triage: EASY — 91 insns, 1 loop, 3 callees, ~0.16 to DebugMenuItemSet
+// triage: EASY — 91 insns, 1 loop, 3 callees, ~0.16 to AddItem2
 // likely-relevant cookbook sections:
 //   - Loops: 1 back-edge(s) — for/while/do vs goto shape
 

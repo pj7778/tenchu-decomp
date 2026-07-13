@@ -2,8 +2,16 @@
 #include <psxsdk/libgs.h>
 #include "game_types.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * short Think2contact(void);
+ *     THINK_2.C:21, frame 16 bytes, saved-reg mask 0x00000000 (DEMO build -- see below)
+ * END PSX.SYM */
+
 /*
- * think_setting_go_towards_player (0x8002fa54, 0x68 bytes) — a think-handler
+ * Think2contact (0x8002fa54, 0x68 bytes) — a think-handler
  * (installed into a think_settingN slot elsewhere; despite the name it's a
  * per-frame handler like Think1sleep/Think2confirm, not an installer): if
  * currently in the "0x400" attrib state and the field76_0xb0 hint is unset,
@@ -23,7 +31,7 @@ extern int turn_towards_player_(int x_diff, int z_diff);
 extern u16 Attrib;
 extern s16 Degree;
 
-s16 think_setting_go_towards_player(void)
+s16 Think2contact(void)
 {
     if ((Attrib & 0x400) && (Me_THINK_C->field76_0xb0 == 0))
     {

@@ -26,7 +26,7 @@
  * gp-relative Distance/Degree/SR/Attrib/Me_THINK_C). Deliberately does NOT
  * include main.exe.h: this file reads Attrib as u16 (`lhu`), conflicting
  * with main.exe.h's `s16 Attrib` — same per-file respelling as
- * think_setting_go_towards_player.c/turn_towards_player_.c.
+ * Think2contact.c/turn_towards_player_.c.
  *
  * Clears SR when close (< 0x4074) and not already in the "-2" state. Picks a
  * turn direction from Degree's sign (-0x8000 if positive, 0x2000 if

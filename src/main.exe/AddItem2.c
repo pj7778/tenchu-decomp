@@ -6,14 +6,29 @@
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
  * docs/psx-sym.md. Do not hand-edit.
  *
+ * static void AddItem2(void);
+ *     INFOVIEW.C:958, 27 src lines, frame 240 bytes, saved-reg mask 0x80070000 (DEMO build -- see below)
  *
- * Globals it touches, as the original declared them:
- *     extern struct TCameraStatus CamState;
- *     extern unsigned long *GlobalAreaMap;
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate.
+ * A ZERO-locals record is unverified, not a claim that the function has none:
+ * vfree lists zero locals yet its byte-matched source needs seven.
+ * The frame size and saved-reg mask above are the DEMO's: retail often needs
+ * FEWER callee-saved registers (measured: Think1random exact; Think1chase's
+ * 0x800f0000 = s0-s3+ra vs retail's s0,s1,ra). Treat them as an upper bound
+ * and a hint at how many values stay live, never as a spec. The asm wins.
+ * Locals:
+ *     stack sp+24     struct PARAM_ITEM_STAY param
+ *     reg   $s2       long x
+ *     reg   $s0       long y
+ *     reg   $s1       long z
+ *     stack sp+24     struct TAdtSelect [25] ItemName
+ *     stack sp+48     struct SVECTOR vec
  * END PSX.SYM */
 
 /*
- * DebugMenuItemSet (0x8004afdc) — debug menu's "give item" action, called
+ * AddItem2 (0x8004afdc) — debug menu's "give item" action, called
  * from DoInfoViewProc's ItemLayoutMenu case 0 (see DoInfoViewProc.c, same
  * original TU: CamState/TCameraStatus and the MENU_ITEM_TBL/AdtSelect idiom
  * are duplicated here as this TU's own file-scope declarations, same as
@@ -88,7 +103,7 @@ extern void *GlobalAreaMap;
 extern s32 rsin(s32 a);
 extern s32 rcos(s32 a);
 
-void DebugMenuItemSet(void)
+void AddItem2(void)
 {
     s32 n;
     s32 sx, cx;

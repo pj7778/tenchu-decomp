@@ -1,10 +1,32 @@
 #include "common.h"
 #include "main.exe.h"
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/debug_menu_select_stage", debug_menu_select_stage);
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/debug_menu_select_stage", debug_menu_select_stage__override__prt_8005c4d8_8cf8befb);
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ * void SelectStage(void);
+ *     INFOVIEW.C:675, 15 src lines, frame 1016 bytes, saved-reg mask 0x80070000 (DEMO build -- see below)
+ *
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate.
+ * A ZERO-locals record is unverified, not a claim that the function has none:
+ * vfree lists zero locals yet its byte-matched source needs seven.
+ * The frame size and saved-reg mask above are the DEMO's: retail often needs
+ * FEWER callee-saved registers (measured: Think1random exact; Think1chase's
+ * 0x800f0000 = s0-s3+ra vs retail's s0,s1,ra). Treat them as an upper bound
+ * and a hint at how many values stay live, never as a spec. The asm wins.
+ * Locals:
+ *     stack sp+16     struct TAdtSelect [10] StageSelect
+ *     stack sp+96     unsigned char [9][100] name
+ *     reg   $s0       int i
+ * END PSX.SYM */
 
-// triage: MEDIUM — 105 insns, 2 loop, frame 0x528, 2 callees, ~0.12 to DebugMenuItemSet
+INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SelectStage", SelectStage);
+INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SelectStage", debug_menu_select_stage__override__prt_8005c4d8_8cf8befb);
+
+// triage: MEDIUM — 105 insns, 2 loop, frame 0x528, 2 callees, ~0.12 to AddItem2
 // likely-relevant cookbook sections:
 //   - Loops: 2 back-edge(s) — for/while/do vs goto shape
 //   - Stack objects: 0x528 frame — buffer casts / spills

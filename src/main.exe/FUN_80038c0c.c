@@ -8,9 +8,9 @@
  * slot, advances the work base by 0xC0, fills in the three caller-supplied
  * RGB-ish bytes at +0xC/+0xD/+0xE, then adds both primitives (+8 first, then
  * +0) to the order table via AddPrim(ot, prim) — same call as AddXF4.c/
- * AddXG4.c/FUN_80038d10.c/FUN_80038db4.c just below/above it in this TU. No
+ * AddXG4.c/DrawXG4.c/DrawXF4.c just below/above it in this TU. No
  * proven struct name exists for the primitive layout (same "no proven view"
- * shape as FUN_80038d80.c's sibling), so plain offset casts off the
+ * shape as SetPolyXG4.c's sibling), so plain offset casts off the
  * GsGetWorkBase pointer, matching Ghidra/m2c literally.
  *
  * Matching notes (see docs/matching-cookbook.md):

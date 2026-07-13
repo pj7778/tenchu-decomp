@@ -35,7 +35,7 @@
 
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetFlyWire", SetFlyWire);
 
-// triage: MEDIUM — 246 insns, mul/div, 1 loop, 3 callees, ~0.06 to DebugMenuItemSet
+// triage: MEDIUM — 246 insns, mul/div, 1 loop, 3 callees, ~0.06 to AddItem2
 // likely-relevant cookbook sections:
 //   - Loops: 1 back-edge(s) — for/while/do vs goto shape
 //   - Expressions: mult/div — magic-multiply constants, fold

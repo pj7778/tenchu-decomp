@@ -53,7 +53,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8004c350", FUN_8
 //     sprFrame[iVar3].b = uVar1;
 //     sprFrame[iVar3].g = uVar1;
 //     sprFrame[iVar3].r = uVar1;
-//     FUN_8003a2a8(sprFrame + iVar3,*(undefined4 *)(param_1 + 4),*(undefined4 *)(param_1 + 8),
+//     DrawSpriteXYZ(sprFrame + iVar3,*(undefined4 *)(param_1 + 4),*(undefined4 *)(param_1 + 8),
 //                  *(undefined4 *)(param_1 + 0xc),*(undefined4 *)(param_1 + 0x18));
 //     if ((GameClock & 0xfU) == 0) {
 //       memset((uchar *)&local_30,'\0',0x10);

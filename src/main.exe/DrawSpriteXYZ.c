@@ -5,15 +5,31 @@
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
  * docs/psx-sym.md. Do not hand-edit.
  *
+ * void DrawSpriteXYZ(struct GsSPRITE *sprt, long x, long y, long z, long scale);
+ *     EFFECT.C:204, 11 src lines, frame 32 bytes, saved-reg mask 0x80010000 (DEMO build -- see below)
  *
- * Globals it touches, as the original declared them:
- *     extern struct GsOT *OTablePt;
+ * Original parameters and locals (the demo build's register allocation may
+ * differ from retail, but the COUNT and TYPES drive cc1's codegen and carry
+ * over). A repeated name is a nested-block scope, not a duplicate.
+ * A ZERO-locals record is unverified, not a claim that the function has none:
+ * vfree lists zero locals yet its byte-matched source needs seven.
+ * The frame size and saved-reg mask above are the DEMO's: retail often needs
+ * FEWER callee-saved registers (measured: Think1random exact; Think1chase's
+ * 0x800f0000 = s0-s3+ra vs retail's s0,s1,ra). Treat them as an upper bound
+ * and a hint at how many values stay live, never as a spec. The asm wins.
+ * Locals:
+ *     param $a0       struct GsSPRITE * sprt
+ *     param $a1       long x
+ *     param $a2       long y
+ *     param $a3       long z
+ *     param stack+16  long scale
+ *     stack sp+16     struct SVECTOR scr
  * END PSX.SYM */
 
 /*
  * MATCH.
  *
- * FUN_8003a2a8 (0x8003a2a8, 0xf8 bytes) — shared "project a 3D point and
+ * DrawSpriteXYZ (0x8003a2a8, 0xf8 bytes) — shared "project a 3D point and
  * sort-draw a sprite there" epilogue: calls GetScreenPosition (camera-relative
  * transform + RotTransPers) to get a screen (x,y) and OTZ depth, bails if
  * the point is behind/too close (`otz <= 0x24`), else derives a uniform
@@ -57,7 +73,7 @@ extern GsOT *OTablePt;
 extern void GetScreenPosition(s32 x, s32 y, s32 z, s32 *out);
 extern void GsSortSprite(GsSPRITE *sp, GsOT *ot, int pri);
 
-void FUN_8003a2a8(GsSPRITE *sp, s32 x, s32 y, s32 z, s32 size)
+void DrawSpriteXYZ(GsSPRITE *sp, s32 x, s32 y, s32 z, s32 size)
 {
     SVECTOR scr;
     s16 sc;

@@ -31,7 +31,7 @@
  *    can hoist (into the dispatch delay slot for case 0, into the collision
  *    store run for case 1). A plain `extern SVECTOR D_…;` is -G8-small and
  *    collapses to a fused one-register `la` — one instruction long (the
- *    cookbook's DebugMenuItemSet smoke-vector rule, same D_80097Bxx table).
+ *    cookbook's AddItem2 smoke-vector rule, same D_80097Bxx table).
  *  - Case 1's block declares `SVECTOR dir;` then `s32 ry; s32 rx;` — slot
  *    order dir@sp+0x30, ry@0x38, rx@0x3C after the function-scope vec@0x18 +
  *    target@0x20 (scope-entry allocation order).

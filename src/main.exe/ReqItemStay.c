@@ -28,7 +28,7 @@
 
 /*
  * ReqItemStay (0x8004a2ec) — spawn a stationary/placed item (e.g. from
- * DebugMenuItemSet/LoadConstruction/RestoreItemLayout: level-authored item
+ * AddItem2/LoadConstruction/RestoreItemLayout: level-authored item
  * placements, not a runtime drop). Builds a PARAM_ITEM_USE on the stack from
  * the PARAM_ITEM_STAY input (type + locate only; no end/toss vector) and
  * forwards to ReqItemDrop, which does the actual pool allocation. Confirms

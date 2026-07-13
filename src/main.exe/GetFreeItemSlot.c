@@ -6,13 +6,12 @@
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
  * docs/psx-sym.md. Do not hand-edit.
  *
- *
- * Globals it touches, as the original declared them:
- *     extern struct tag_TItem items[30];
+ * struct tag_TItem * GetFreeItemSlot(void);
+ *     ITEM.C:577, 20 src lines, frame 24 bytes, saved-reg mask 0x80010000 (DEMO build -- see below)
  * END PSX.SYM */
 
 /*
- * FUN_8004a42c (0x8004a42c) — allocate a free slot from items[] via the same
+ * GetFreeItemSlot (0x8004a42c) — allocate a free slot from items[] via the same
  * round-robin counter as ReqItemDrop (COUNTER_FOR_ITEM_ARRAY_): if the slot
  * the counter lands on is free (proc == 0) it's returned immediately;
  * otherwise the counter advances and retries up to 0x1d times, and if the
@@ -37,7 +36,7 @@
  */
 extern s32 COUNTER_FOR_ITEM_ARRAY_;
 
-tag_TItem *FUN_8004a42c(void)
+tag_TItem *GetFreeItemSlot(void)
 {
     tag_TItem *it;
     s32 i;

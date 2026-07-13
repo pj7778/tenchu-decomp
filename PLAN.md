@@ -98,13 +98,13 @@ output for an earlier, lost build. It is now parsed, dumped and mined — see
   names, the 31-file translation-unit map, 304 `static` declarations, 567 typed
   globals. All under `reference/psxsym-*`; `tools/matcher-prompt.py` injects the
   per-function facts into every agent launch.
-- **34 function names and 156 data symbols adopted**, all byte-identical. Six replaced
+- **45 function names and 156 data symbols adopted**, all byte-identical. Eleven replaced
   guesses with originals (`handle_char_state_using_item_` → `ActITEM`). 121 of the data
   symbols were already sitting unused in our own Ghidra export — `import_symbols.py`
   could only *rename*, never *define*, until now.
 - **Recorded, not dropped**: `reference/psxsym-candidates.tsv` (suggestions too weak to
-  adopt), `psxsym-unplaced.tsv` (61 demo functions with no retail home),
-  `psxsym-unnamed.tsv` (136 retail placeholders with no candidate),
+  adopt), `psxsym-unplaced.tsv` (46 demo functions with no retail home),
+  `psxsym-unnamed.tsv` (78 retail placeholders with no candidate),
   `psxsym-data-candidates.tsv`.
 
 Best remaining leads, roughly in value order:

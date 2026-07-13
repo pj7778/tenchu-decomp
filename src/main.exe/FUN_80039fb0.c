@@ -14,7 +14,7 @@
  * MATCH.
  *
  * FUN_80039fb0 (0x80039fb0, 0x198 bytes) — same "project a 3D point and
- * sort-draw a sprite there" tail as FUN_8003a2a8/FUN_8003a148, but drawing
+ * sort-draw a sprite there" tail as DrawSpriteXYZ/FUN_8003a148, but drawing
  * TWO sprites (`sp2`, then `sp1`) at the SAME projected point: one call to
  * GetScreenPosition computes the shared (x,y,otz), then each sprite gets its own
  * scale/rotate/position/colour and its own GsSortSprite (`sp2`'s colour is
@@ -24,10 +24,10 @@
  * field write's ordering in the raw `.s` already matches Ghidra's dump
  * exactly (param_2/sp2 first, then param_1/sp1, for every field).
  *
- * Matching notes (see FUN_8003a2a8.c for the shared idioms in full):
+ * Matching notes (see DrawSpriteXYZ.c for the shared idioms in full):
  *  - This TU divides by a runtime value (`size*300/otz`): needs
  *    `--expand-div` (Build.hs maspsxGpExterns' `extra` list + permute.py's
- *    MASPSX_EXTRA), same as FUN_8003a2a8/FUN_8003a148.
+ *    MASPSX_EXTRA), same as DrawSpriteXYZ/FUN_8003a148.
  *  - The clamp expression (`(s32)((u16)out.vz << 16) >> 0x12`) is written
  *    out TWICE, once per GsSortSprite call — each occurrence independently
  *    re-reads the struct field `out.vz` (a fresh `lhu` in the target both
@@ -35,7 +35,7 @@
  *    calls: the target's asm repeats the whole `lhu`+shift+clamp sequence
  *    verbatim for the second sort. Each needs its own `goto zero;`/`done:`
  *    labels (a plain `if/else` here is the WRONG polarity — see
- *    FUN_8003a2a8's writeup for why the trivial `pri=0` body must be the
+ *    DrawSpriteXYZ's writeup for why the trivial `pri=0` body must be the
  *    branch TARGET, not the fallthrough).
  *  - `color / 2` for `sp1`'s r/g/b is plain signed-integer division by a
  *    CONSTANT power of two — the round-toward-zero correction

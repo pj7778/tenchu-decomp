@@ -290,7 +290,7 @@ typedef struct
     VECTOR end;                  /* 0x18 */
 } PARAM_ITEM_USE;                /* 0x28 */
 
-/* A stationary/placed item's spawn params (DebugMenuItemSet's ReqItemStay;
+/* A stationary/placed item's spawn params (AddItem2's ReqItemStay;
  * Ghidra models .type as `enum TItemType`, but every proven sibling (
  * tag_TItem.type, PARAM_ITEM_USE.type) uses plain s32 instead — same here). */
 typedef struct

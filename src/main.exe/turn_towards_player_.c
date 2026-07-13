@@ -2,6 +2,15 @@
 #include <psxsdk/libgs.h>
 #include "game_types.h"
 
+/* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
+ * debug symbols. Regenerate with `tools/symnote.py --write`; see
+ * docs/psx-sym.md. Do not hand-edit.
+ *
+ *
+ * PSX.SYM suggests this may be `GotoPosition` (LOW confidence, THINK.C) — NOT
+ * adopted. Corroborate with `tools/callmatch.py --verify` before renaming.
+ * END PSX.SYM */
+
 /*
  * turn_towards_player_ (0x8002b990, 0x1E0 bytes) — the shared "which way to
  * turn, and is it safe to step" helper called by nearly every AI think
@@ -13,7 +22,7 @@
  * Deliberately does NOT include main.exe.h: this file needs `Attrib` and
  * `Degree` read as u16 (`lhu`), conflicting with main.exe.h's `s16 Attrib`
  * (used by Think1sleep.c/Think2confirm.c) — same per-file respelling as
- * think_setting_go_towards_player.c.
+ * Think2contact.c.
  *
  * Matching notes (all byte-proven):
  *  - `dir` is u16: raw GetDirection()/Degree bits, given an explicit `(s16)`

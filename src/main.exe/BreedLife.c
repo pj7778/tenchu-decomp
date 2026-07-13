@@ -122,7 +122,7 @@
  *    stores that don't need it, matching Ghidra's own `puVar7 =
  *    GlobalAreaMap;` position — read early, consumed only much later at the
  *    `GetAreaMapLevel` call.
- *  - `GetAreaMapLevel`'s real prototype (DebugMenuItemSet.c) takes 5 args
+ *  - `GetAreaMapLevel`'s real prototype (AddItem2.c) takes 5 args
  *    (map,x,y,z,mode); Ghidra's rendering here drops the trailing `z,1`
  *    (the m2c/Ghidra call-arg-undercount family) — the raw `.s` sets up
  *    a3=z and a stack mode=1 that are never otherwise touched, so the real

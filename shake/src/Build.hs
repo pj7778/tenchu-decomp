@@ -156,7 +156,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     extra "think_setting_small_rotation_small_steps_" = ["--expand-div"]
     extra "UpdateTexScroll" = ["--expand-div"]
     extra "DrawSprite" = ["--expand-div"]
-    extra "FUN_8003a2a8" = ["--expand-div"]
+    extra "DrawSpriteXYZ" = ["--expand-div"]
     extra "ComputeAreaLevel" = ["--expand-div"]
     extra "PadProc" = ["--expand-div"]
     extra "IsVisible" = ["--expand-div"]
@@ -262,8 +262,8 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     -- ReqItemDrop.c is part of the original item TU, which defines its
     -- round-robin counter (the item TU's .sdata block starts at 0x80097ac8).
     syms "ReqItemDrop" = ["COUNTER_FOR_ITEM_ARRAY_"]
-    -- FUN_8004a42c.c is also part of the original item TU (same counter).
-    syms "FUN_8004a42c" = ["COUNTER_FOR_ITEM_ARRAY_"]
+    -- GetFreeItemSlot.c is also part of the original item TU (same counter).
+    syms "GetFreeItemSlot" = ["COUNTER_FOR_ITEM_ARRAY_"]
     -- GetAreaMapLevel.c is part of the original area-map TU, which defines
     -- these small globals (.sdata around 0x80097ec0).
     syms "GetAreaMapLevel" = ["FieldIndex", "FieldArea", "D_80097EC0", "FieldAttrib"]
@@ -315,7 +315,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "FUN_80027304" = ["Me_MOTION_C", "dtL"]
     syms "init_score_stats" = ["StageBosses", "StageEnemies", "Findenemies", "Murders", "Criticals", "FriendHits"]
     syms "is_character_state_present_on_stage_" = ["Humans"]
-    syms "think_setting_go_towards_player" = ["Attrib", "Me_THINK_C", "Degree"]
+    syms "Think2contact" = ["Attrib", "Me_THINK_C", "Degree"]
     syms "update_something_for_each_visible_enemy_" = ["VISIBLE_ENEMIES_"]
     syms "turn_towards_player_" = ["Me_THINK_C", "Degree", "Attrib", "D_80097F10"]
     syms "Think1trace" = ["Me_THINK_C", "Degree", "Attrib"]

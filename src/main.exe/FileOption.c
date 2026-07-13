@@ -138,7 +138,7 @@ extern void SetupStageSequence(void);
 extern void CVAsetup(void);
 extern void debug_menu_file_animation_test(void);
 extern void sprintf(char *s, char *fmt, ...);
-extern void PlayMusicFromID(s32 id);
+extern void PlayMusicFormID(s32 id);
 extern void load_layout(s32 no);
 extern void leLayoutEnemy(s32 n);
 
@@ -280,7 +280,7 @@ void FileOption(void)
             s += 5;
         }
         ((debug_menu_choice *)((u8 *)q + (i << 3)))->choice_name = 0;
-        PlayMusicFromID(AdtSelect(D_8001423C, (debug_menu_choice *)buf, 0));
+        PlayMusicFormID(AdtSelect(D_8001423C, (debug_menu_choice *)buf, 0));
         break;
     case 0xA:
         EngageLevel = 3;
