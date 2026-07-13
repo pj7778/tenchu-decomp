@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -18,181 +19,245 @@
  * END PSX.SYM */
 
 /*
- * ActNORMAL (0x8001f7e4) — TODO one-line description.
+ * ActNORMAL (0x8001f7e4) — updates idle/turning motion and dispatches command,
+ * jump, movement, and selected-item actions.
  *
- * STATUS: NON_MATCHING — split (jump-table) function scaffolded by
- * tools/split-scaffold.py. The #ifndef NON_MATCHING branch is the stub
- * (INCLUDE_ASM pieces + the jump-table pool as one static const array so
- * the .rodata carve has bytes); build the draft with `NON_MATCHING=ActNORMAL
- * ./Build`. On a full match, delete the guards and the _jtbl array.
+ * STATUS: MATCHING
  */
 
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActNORMAL", ActNORMAL);
+extern MotionManager *dtM;
+extern Humanoid *Me_MOTION_C;
+extern s16 dtPAD;
+extern Humanoid *StagePlayer;
+extern s16 motID;
+extern s16 D_80097F0E;
+extern SVECTOR *dtR;
+extern s16 dtCMD;
+extern s16 CURRENTLY_SELECTED_ITEM_KIND_0_;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActNORMAL", switchD_8001fad4__switchD);
+extern int rand(void);
+extern s16 Sound(Humanoid *human, s16 id);
+extern void JumpControl(void);
+extern s16 SoundEx(VECTOR *locate, s16 id);
+extern void ReqItemDefault(Humanoid *human, s32 item);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActNORMAL", switchD_8001fad4__caseD_2);
+void ActNORMAL(void)
+{
+    int rotation_value;
+    short mid;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActNORMAL", switchD_8001fad4__caseD_1);
+    mid = dtM->mid;
+    switch (mid)
+    {
+    case 0:
+        if ((dtPAD & 1) && StagePlayer != Me_MOTION_C)
+        {
+            if (dtPAD & 0x4000)
+            {
+                motID = 0x102;
+                D_80097F0E = 1;
+                return;
+            }
+            if (dtPAD & 0x2000)
+            {
+                motID = 0x101;
+                D_80097F0E = 1;
+                return;
+            }
+            if (dtPAD & 0x8000)
+            {
+                motID = 0x106;
+                D_80097F0E = 1;
+                return;
+            }
+            if (dtPAD & 0x1000)
+            {
+                motID = 0x100;
+                D_80097F0E = 1;
+            }
+            return;
+        }
+        if (dtPAD & 0x2000)
+        {
+            motID = 1;
+            D_80097F0E = 0;
+            goto common_action;
+        }
+        if (dtPAD & 0x8000)
+        {
+            motID = 2;
+            D_80097F0E = 0;
+            goto common_action;
+        }
+        if (dtM->count == 0 && rand() % 100 == 0)
+        {
+            int random;
+            short random_motion;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActNORMAL", switchD_8001fad4__caseD_3);
+            D_80097F0E = 1;
+            random = rand();
+            random_motion = 0x105;
+            if (random & 1)
+                random_motion = 0x104;
+            motID = random_motion;
+        }
+        goto common_action;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActNORMAL", switchD_8001fad4__caseD_6);
+    case 1:
+        if (dtM->count == 1)
+            Sound(Me_MOTION_C, 0x10);
+        if (dtPAD & 0x2000)
+        {
+            dtR->vy += (u16)Me_MOTION_C->turn;
+        }
+        else
+        {
+            motID = 0;
+            D_80097F0E = 1;
+        }
+        break;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActNORMAL", switchD_8001fad4__caseD_5);
+    case 2:
+        if (dtM->count == 1)
+            Sound(Me_MOTION_C, 0x10);
+        rotation_value = (s16)dtPAD & 0x8000U;
+        if (rotation_value == 0)
+        {
+            motID = 0;
+            D_80097F0E = 1;
+        }
+        else
+        {
+            dtR->vy -= (u16)Me_MOTION_C->turn;
+        }
+        break;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActNORMAL", switchD_8001fad4__caseD_7);
+    default:
+        goto common_action;
+    }
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActNORMAL", switchD_8001fad4__caseD_0);
+common_action:
+    if (Me_MOTION_C->attribute & 0x40)
+    {
+        motID = 0x501;
+        D_80097F0E = 1;
+        return;
+    }
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActNORMAL", switchD_8001fad4__caseD_4);
+    {
+        int command;
 
-/* jump-table pool @ 0x800112d8 (12 words; tables at 0x800112d8) — stub-only, one array because the object has one .rodata section; the draft's compiled switch emits its own. */
-static const u32 ActNORMAL_jtbl[12] = {
-    0x8001FB0C, 0x8001FAE4, 0x8001FADC, 0x8001FAEC,
-    0x8001FB28, 0x8001FAFC, 0x8001FAF4, 0x8001FB04,
-    0x8001FB28, 0x8001FB28, 0x8001FB28, 0x8001FB0C,
-};
+        command = dtCMD;
+        if (command == 0)
+            goto command_0;
+        if (command == 2)
+            goto command_2;
+        if (command < 3)
+        {
+            if (command == 1)
+                goto command_1;
+            return;
+        }
+        if (command == 3)
+            goto command_3;
+        if (command == 4)
+            goto command_4;
+        return;
 
-#else /* NON_MATCHING */
-/* Draft — turn this into matching C, then delete the #ifndef/#else/
-   #endif guards and the _jtbl array(s) above.  Reference: */
-// 
-// void ActNORMAL(void)
-// 
-// {
-//   ushort uVar1;
-//   short sVar2;
-//   int iVar3;
-//   uint uVar4;
-//   
-//   sVar2 = dtM->mid;
-//   if (sVar2 == 1) {
-//     if (dtM->count == 1) {
-//       Sound(Me_MOTION_C,0x10);
-//     }
-//     if ((dtPAD & 0x2000) != 0) {
-//       sVar2 = dtR->vy + Me_MOTION_C->turn;
-// LAB_8001f9e4:
-//       dtR->vy = sVar2;
-//       goto LAB_8001f9e8;
-//     }
-//   }
-//   else {
-//     if (sVar2 < 2) {
-//       if (sVar2 == 0) {
-//         if (((dtPAD & 1) != 0) && (StagePlayer != Me_MOTION_C)) {
-//           sVar2 = 0x102;
-//           if (((dtPAD & 0x4000) == 0) &&
-//              (((sVar2 = 0x101, (dtPAD & 0x2000) == 0 && (sVar2 = 0x106, (dtPAD & 0x8000) == 0)) &&
-//               (sVar2 = 0x100, (dtPAD & 0x1000) == 0)))) {
-//             return;
-//           }
-//           motID = sVar2;
-//           DAT_80097f0e = 1;
-//           return;
-//         }
-//         sVar2 = 1;
-//         if (((dtPAD & 0x2000) == 0) && (sVar2 = 2, (dtPAD & 0x8000) == 0)) {
-//           if ((dtM->count == 0) && (iVar3 = rand(), iVar3 == (iVar3 / 100) * 100)) {
-//             DAT_80097f0e = 1;
-//             uVar4 = rand();
-//             motID = 0x105;
-//             if ((uVar4 & 1) != 0) {
-//               motID = 0x104;
-//             }
-//           }
-//         }
-//         else {
-//           DAT_80097f0e = 0;
-//           motID = sVar2;
-//         }
-//       }
-//       goto LAB_8001f9e8;
-//     }
-//     if (sVar2 != 2) goto LAB_8001f9e8;
-//     if (dtM->count == 1) {
-//       Sound(Me_MOTION_C,0x10);
-//     }
-//     if (((int)(short)dtPAD & 0x8000U) != 0) {
-//       sVar2 = dtR->vy - Me_MOTION_C->turn;
-//       goto LAB_8001f9e4;
-//     }
-//   }
-//   motID = 0;
-//   DAT_80097f0e = 1;
-// LAB_8001f9e8:
-//   sVar2 = 0x501;
-//   if ((Me_MOTION_C->attribute & 0x40U) == 0) {
-//     if (dtCMD == 0) {
-//       uVar1 = (Me_MOTION_C->pad).trig;
-//       if ((uVar1 & 0x40) != 0) {
-//         JumpControl();
-//         return;
-//       }
-//       if ((uVar1 & 0x10) == 0) {
-//         sVar2 = 0xb00;
-//         if (((((dtPAD & 0x20) == 0) && (sVar2 = 0x200, (dtPAD & 0x1000) == 0)) &&
-//             (sVar2 = 0x201, (dtPAD & 0x4000) == 0)) && (sVar2 = 0x80e, (uVar1 & 0x80) == 0)) {
-//           return;
-//         }
-//       }
-//       else {
-//         switch((int)((DAT_80097b1e + 1) * 0x10000) >> 0x10) {
-//         case 0:
-//         case 0xb:
-//           SoundEx(Me_MOTION_C->locate,0xc);
-//           return;
-//         case 1:
-//           sVar2 = 0x400;
-//           break;
-//         case 2:
-//           sVar2 = 0xe00;
-//           break;
-//         case 3:
-//           sVar2 = 0xf00;
-//           break;
-//         default:
-//           ReqItemDefault(Me_MOTION_C,(int)(short)DAT_80097b1e);
-//           return;
-//         case 5:
-//           sVar2 = 0xf02;
-//           break;
-//         case 6:
-//           sVar2 = 0xf02;
-//           break;
-//         case 7:
-//           sVar2 = 0xf03;
-//         }
-//       }
-//     }
-//     else if (dtCMD == 2) {
-//       sVar2 = 0x203;
-//     }
-//     else {
-//       if (dtCMD < 3) {
-//         if (dtCMD != 1) {
-//           return;
-//         }
-//         motID = 0x202;
-//         DAT_80097f0e = dtCMD;
-//         return;
-//       }
-//       if (dtCMD == 3) {
-//         sVar2 = 0x205;
-//       }
-//       else {
-//         sVar2 = 0x204;
-//         if (dtCMD != 4) {
-//           return;
-//         }
-//       }
-//     }
-//   }
-//   DAT_80097f0e = 1;
-//   motID = sVar2;
-//   return;
-// }
+command_1:
+        motID = 0x202;
+        D_80097F0E = command;
+        return;
 
-#endif /* NON_MATCHING */
+command_2:
+        motID = 0x203;
+        D_80097F0E = 1;
+        return;
+
+command_3:
+        motID = 0x205;
+        D_80097F0E = 1;
+        return;
+
+command_0:
+    {
+        u16 trig;
+
+        trig = Me_MOTION_C->pad.trig;
+        if (trig & 0x40)
+        {
+            JumpControl();
+            return;
+        }
+        if (trig & 0x10)
+        {
+            switch ((short)(CURRENTLY_SELECTED_ITEM_KIND_0_ + 1))
+            {
+            case 2:
+                motID = 0xe00;
+                break;
+            case 1:
+                motID = 0x400;
+                break;
+            case 3:
+                motID = 0xf00;
+                break;
+            case 6:
+                motID = 0xf02;
+                break;
+            case 5:
+                motID = 0xf02;
+                break;
+            case 7:
+                motID = 0xf03;
+                break;
+            case 0:
+            case 11:
+                goto item_sound;
+            default:
+                goto item_default;
+            }
+            D_80097F0E = 1;
+            return;
+
+item_sound:
+            SoundEx(Me_MOTION_C->locate, 0xc);
+            return;
+
+item_default:
+            ReqItemDefault(Me_MOTION_C,
+                           CURRENTLY_SELECTED_ITEM_KIND_0_);
+            return;
+        }
+        if (dtPAD & 0x20)
+        {
+            motID = 0xb00;
+            D_80097F0E = 1;
+            return;
+        }
+        if (dtPAD & 0x1000)
+        {
+            motID = 0x200;
+            D_80097F0E = 1;
+            return;
+        }
+        if (dtPAD & 0x4000)
+        {
+            motID = 0x201;
+            D_80097F0E = 1;
+            return;
+        }
+        if (trig & 0x80)
+        {
+            motID = 0x80e;
+            D_80097F0E = 1;
+        }
+        return;
+    }
+
+command_4:
+        motID = 0x204;
+        D_80097F0E = 1;
+        return;
+    }
+}
