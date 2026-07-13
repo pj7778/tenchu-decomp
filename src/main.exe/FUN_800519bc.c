@@ -12,7 +12,307 @@
  *     extern short SkipFrame;
  * END PSX.SYM */
 
+/* STATUS: NON_MATCHING — complete pure-C reconstruction, exact 1448-byte
+ * length. The guarded draft differs in 493 linked bytes; the remaining
+ * residual is register allocation/scheduling around the demo-asset table and
+ * strip-width/tpage values. */
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_800519bc", FUN_800519bc);
+#else
+
+typedef struct BackGround BackGround;
+
+typedef struct
+{
+    u16 xbase;             /* +0x00 */
+    u8 pad_02[6];          /* +0x02 */
+    s32 scroll;            /* +0x08 */
+    volatile u16 old_pad;  /* +0x0c */
+    u8 pad_0e[2];          /* +0x0e */
+    BackGround *background;/* +0x10 */
+    s32 tpage_base;        /* +0x14 */
+} DemoScreenStack;
+
+typedef struct
+{
+    char *background;
+    char *foreground;
+    u16 music;
+    u16 pad;
+} DemoScreenAssets;
+
+typedef struct
+{
+    s32 StartPos;
+    s32 CurPos;
+    s32 EndPos;
+    s16 mode;
+    s16 CheckCount;
+    u8 status;
+    u8 voll;
+    u8 volr;
+    u8 flag;
+    u8 command;
+} TCdaStatus;
+
+#define PSTATE ((PersistentState *)0x80010000)
+
+extern u8 CHOSEN_CHARACTER;
+extern u8 STAGE_LAYOUT_NUMBER;
+extern u8 D_80010048;
+extern char D_800137A0[];
+extern DemoScreenAssets D_8008EA90[][11];
+extern s16 D_8008ECA0[][11];
+extern s16 D_8008ECF8[][11];
+extern GsOT *OTablePt;
+extern TCdaStatus CdaStatus;
+extern s16 SkipFrame;
+
+extern BackGround *FUN_8004f4f8(u_long *tim);
+extern void vfree(void *ptr);
+extern void InitSprite(GsIMAGE *image, GsSPRITE *sprite);
+extern void FUN_80038ce0(void);
+extern u16 GetRealPad(s32 port);
+extern void FadeOutDirect(s16 time, s16 attrib, u8 r, u8 g, u8 b);
+extern void FUN_8004f6c0(s32 arg0);
+extern void StartDrawing(void);
+extern void _PlayMusic(s32 music, s32 mode);
+extern s32 CdaGetCurrentLength(void);
+extern u16 GetTPage(s32 tp, s32 abr, s16 x, s16 y);
+extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, s32 depth);
+extern void DrawBG(BackGround *bg);
+extern void FUN_80038c0c(u8 *ot, s32 r, s32 g, s32 b);
+extern void EndDrawing(s16 sync);
+extern void DisposeBG(BackGround *bg);
+
+static inline void TimToDemoSprite(u_long *file, GsIMAGE *image,
+                                   GsSPRITE *sprite)
+{
+    GetTIMInfo(file, image);
+    InitSprite(image, sprite);
+}
+
+void FUN_800519bc(void)
+{
+    GsIMAGE strip_image;
+    GsSPRITE sprite;
+    GsIMAGE image;
+    DemoScreenStack stack;
+    u_long *file;
+    u8 *prefix;
+    u16 pad;
+    s16 fade;
+    s16 counter;
+    s16 position;
+    s16 sequence;
+    s32 fade_step;
+    s32 adjusted;
+    s16 strip_width;
+    s32 intensity;
+    s32 brightness;
+    s16 i;
+
+    prefix = (u8 *)D_800137A0;
+    do
+    {
+        sequence = 0;
+    } while (0);
+    fade = 0xfe;
+    stack.scroll = -0xa000;
+    stack.old_pad = 0;
+    stack.xbase = -0xa0;
+    fade_step = -8;
+
+    file = PathFileRead(prefix,
+                        D_8008EA90[PSTATE->language][PSTATE->stage].background);
+    stack.background = FUN_8004f4f8(file);
+    vfree(file);
+
+    file = PathFileRead(prefix,
+                        D_8008EA90[PSTATE->language][PSTATE->stage].foreground);
+    TimToDemoSprite(file, &image, &sprite);
+    sprite.x = -0xa0;
+    sprite.y = -0x78;
+    sprite.r = 0x80;
+    sprite.g = 0x80;
+    sprite.b = 0x80;
+    sprite.attribute |= 0x50000000;
+    sprite.mx = sprite.w >> 1;
+    sprite.my = sprite.h >> 1;
+    sprite.mx = 0;
+    sprite.my = 0;
+    GetTIMInfo(file, &strip_image);
+    LoadTIMAndFree(file);
+    strip_width = strip_image.pw;
+    sprite.w = 0x10;
+    sprite.y = -0x68;
+    FUN_80038ce0();
+    stack.tpage_base = (u16)strip_image.px << 16;
+
+    while (1)
+    {
+        pad = GetRealPad(0);
+        if ((pad & (pad ^ stack.old_pad) & 0x820) != 0)
+        {
+            fade_step = 8;
+        }
+        stack.old_pad = pad;
+
+        if ((pad & 0x900) == 0x900)
+        {
+            for (i = 0; i < 0x14; i++)
+            {
+                PSTATE->stock[i + CHOSEN_CHARACTER * 0x20] =
+                    PSTATE->backup[i];
+            }
+            FadeOutDirect(0x20, 2, 8, 8, 8);
+            FUN_80038ce0();
+            STAGE_LAYOUT_NUMBER = 0xff;
+            D_80010048 &= 0xfe;
+            FUN_8004f6c0(0x10);
+        }
+
+        if (fade >= 0xff)
+        {
+            break;
+        }
+
+        StartDrawing();
+        switch (sequence)
+        {
+        case 0:
+            if (fade == 0)
+            {
+                s16 music;
+
+                music = D_8008EA90[PSTATE->language][PSTATE->stage].music;
+                if (PSTATE->chr == 1 && PSTATE->language == 3 &&
+                    (u32)(PSTATE->stage - 6) < 2)
+                {
+                    music++;
+                }
+                _PlayMusic(music, 0);
+                sequence = 1;
+            }
+            break;
+
+        case 1:
+            if (CdaGetCurrentLength() > 0)
+            {
+                sequence = 2;
+                counter = 0;
+            }
+            break;
+
+        case 2:
+            if (D_8008ECA0[PSTATE->language][PSTATE->stage] < counter++)
+            {
+                sequence = 3;
+            }
+            break;
+
+        case 3:
+            counter = strip_width - 4;
+            do
+            {
+                if (counter >= 0)
+                {
+                    do
+                    {
+                        sprite.u = counter << 2;
+                        do
+                        {
+                            sprite.tpage = GetTPage(0, 0,
+                                (stack.tpage_base >> 16) + counter, 0x100);
+                        } while (0);
+                        position = stack.xbase -
+                            (strip_width - counter) * 8;
+                        sprite.x = position;
+                        if (position < -0xa0)
+                        {
+                            goto brightness_zero;
+                        }
+                        if (position >= -0x78)
+                        {
+                            goto brightness_normal;
+                        }
+                        brightness = position * 3 + 0x1e0;
+                        goto brightness_common;
+
+brightness_normal:
+                        if (position <= 0xa0)
+                        {
+                            goto brightness_within;
+                        }
+
+brightness_zero:
+                        sprite.r = 0;
+                        sprite.g = 0;
+                        sprite.b = 0;
+                        goto brightness_done;
+
+brightness_within:
+                        if (position < 0x79)
+                        {
+                            goto brightness_center;
+                        }
+                        brightness = (0xa0 - position) * 3;
+                        goto brightness_common;
+
+brightness_center:
+                        brightness = 0x80;
+brightness_common:
+                        sprite.r = brightness;
+                        sprite.g = brightness;
+                        sprite.b = brightness;
+brightness_done:
+                        sprite.x -= 8;
+                        GsSortSprite(&sprite, OTablePt, 1);
+                        counter -= 4;
+                        sprite.x += 8;
+                    } while (counter >= 0);
+                }
+            } while (0);
+
+            if ((CdaStatus.status & 0x60) == 0)
+            {
+                fade_step = 8;
+            }
+            adjusted = stack.scroll;
+            adjusted += D_8008ECF8[PSTATE->language][PSTATE->stage];
+            stack.scroll = adjusted;
+            if (adjusted < 0)
+            {
+                adjusted += 0xff;
+            }
+            stack.xbase = (u32)adjusted >> 8;
+            break;
+        }
+
+        DrawBG(stack.background);
+        fade += fade_step;
+        if (fade < 0)
+        {
+            fade = 0;
+        }
+        else if (fade > 0xff)
+        {
+            fade = 0xff;
+        }
+        intensity = fade & 0xff;
+        if (fade != 0)
+        {
+            FUN_80038c0c(*(u8 **)((u8 *)OTablePt + 4),
+                          intensity, intensity, intensity);
+        }
+        SkipFrame = 2;
+        EndDrawing(0);
+    }
+
+    DisposeBG(stack.background);
+}
+
+#endif
 
 // triage: HARD — 362 insns, 2 loop, 19 callees, ~0.11 to BriefingAndInventorySelectionScreen
 // likely-relevant cookbook sections:
