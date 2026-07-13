@@ -94,7 +94,7 @@ CATEGORY_RULES = {
         "switch-cse-evict", "assignment-chain",
         "pointee-volatile", "array-alias-remat", "member-scalar-alias",
     ],
-    "jump/cross-jump": ["terminal-guard-flip", "shared-terminal-tail", "case-fence", "sparse-eq-switch", "mul-affine-shape", "and-nest", "if-else-invert", "shared-tail-assign"],
+    "jump/cross-jump": ["terminal-arm-flip", "terminal-guard-flip", "shared-terminal-tail", "case-fence", "sparse-eq-switch", "mul-affine-shape", "and-nest", "if-else-invert", "shared-tail-assign"],
     "schedule/delay": [
         "type-width", "empty-loop-boundary", "loop-fence",
         "nested-loop-fence", "paired-loop-fence", "loop-range", "cmp-swap", "cmp-polarity", "shift-stage", "ptr-base-split",
@@ -152,6 +152,12 @@ SIGNATURE_HINTS = {
         "try terminal-guard-flip first for an adjacent equality return/goto, "
         "then if-else-invert or one explicit shared return label once; park "
         "if RTL-guided body-layout trials are flat"
+    ),
+    "terminal-arm-layout-flip": (
+        "target and candidate have the same instruction multiset and physical "
+        "control-flow counts, but one aligned conditional has the opposite "
+        "polarity; try terminal-arm-flip for adjacent compound goto/return "
+        "arms, then if-else-invert for an explicit else"
     ),
     "builtin-abs-inline": (
         "candidate calls abs but target has bgez/negu inline; spell the site "
@@ -752,6 +758,31 @@ def known_residual_signatures(hunks, target_stream=None, ours_stream=None):
     """
     found = []
     if target_stream is not None and ours_stream is not None:
+        inverse = {
+            "beq": "bne", "bne": "beq", "beqz": "bnez", "bnez": "beqz",
+            "bgez": "bltz", "bltz": "bgez", "bgtz": "blez", "blez": "bgtz",
+        }
+        target_by_address = dict(target_stream)
+        ours_by_address = dict(ours_stream)
+        inverse_sites = []
+        for address in sorted(set(target_by_address) & set(ours_by_address)):
+            target_insn = target_by_address[address]
+            ours_insn = ours_by_address[address]
+            if (inverse.get(mnemonic(target_insn)) == mnemonic(ours_insn) and
+                    registers(target_insn) == registers(ours_insn)):
+                inverse_sites.append((target_insn, ours_insn))
+        target_remaining = Counter(insn for _address, insn in target_stream)
+        ours_remaining = Counter(insn for _address, insn in ours_stream)
+        for target_insn, ours_insn in inverse_sites:
+            target_remaining[target_insn] -= 1
+            ours_remaining[ours_insn] -= 1
+        target_remaining += Counter()
+        ours_remaining += Counter()
+        if (len(inverse_sites) == 1 and
+                len(target_stream) == len(ours_stream) and
+                control_flow_counts(target_stream) == control_flow_counts(ours_stream) and
+                target_remaining == ours_remaining):
+            found.append("terminal-arm-layout-flip")
         if _copy_then_adjust(target_stream, ours_stream):
             found.append("copy-then-inplace-adjust")
         if _post_comparison_flag(target_stream, ours_stream):
@@ -944,6 +975,11 @@ def assembly_guide(name):
     if "guard-return-island-layout" in signatures:
         rules = ["terminal-guard-flip"] + [
             rule for rule in rules if rule != "terminal-guard-flip"
+        ]
+    if "terminal-arm-layout-flip" in signatures:
+        rules = ["terminal-arm-flip", "if-else-invert"] + [
+            rule for rule in rules
+            if rule not in {"terminal-arm-flip", "if-else-invert"}
         ]
     if "dbr-duplicated-literal-producer" in signatures:
         rules = ["loop-range"] + [

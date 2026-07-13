@@ -5831,6 +5831,121 @@ def rule_if_else_invert(text, name, span):
                splice(data, iff.start_byte, iff.end_byte, repl).decode())
 
 
+def rule_terminal_arm_flip(text, name, span):
+    """Swap two adjacent terminal arms by negating their guard.
+
+    A decompiler commonly renders a two-way terminal dispatch without an
+    explicit ``else``::
+
+        if (condition) { arm_a; goto tail; }
+        { arm_b; goto tail; }
+
+    The equivalent ``if (!condition) { arm_b; goto tail; } { arm_a; goto
+    tail; }`` exposes the opposite physical fallthrough arm to jump2 while
+    retaining both branch-local scopes and call sites.  The second arm may be
+    a compound or a short sequence of plain expressions followed by its exit;
+    the latter is wrapped in a new block. Keep this guided rule deliberately
+    narrow: both arms must end in returns, or in gotos to the same label, and
+    no comment may sit between them.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+
+    def terminal(block):
+        children = [child for child in block.named_children
+                    if child.type != "comment"]
+        if not children:
+            return None
+        last = children[-1]
+        if last.type == "return_statement":
+            return "return", None
+        if last.type != "goto_statement":
+            return None
+        match = re.fullmatch(
+            rb"\s*goto\s+([A-Za-z_]\w*)\s*;\s*", _txt(data, last)
+        )
+        return ("goto", match.group(1)) if match else None
+
+    for block in _find(body, ("compound_statement", "case_statement")):
+        statements = [child for child in block.named_children
+                      if child.type != "comment"]
+        for index, iff in enumerate(statements[:-1]):
+            if (iff.type != "if_statement" or
+                    iff.child_by_field_name("alternative") is not None):
+                continue
+            consequence = iff.child_by_field_name("consequence")
+            condition = iff.child_by_field_name("condition")
+            if (consequence is None or consequence.type != "compound_statement" or
+                    condition is None or _find(condition, ("comment",))):
+                continue
+            first_terminal = terminal(consequence)
+            following = statements[index + 1]
+            following_end = following
+            if following.type == "compound_statement":
+                second_terminal = terminal(following)
+                following_text = _txt(data, following)
+            else:
+                arm_statements = []
+                second_terminal = None
+                for candidate in statements[index + 1:index + 5]:
+                    if candidate.type not in {
+                            "expression_statement", "goto_statement",
+                            "return_statement"}:
+                        break
+                    if (arm_statements and
+                            data[arm_statements[-1].end_byte:
+                                 candidate.start_byte].strip()):
+                        break
+                    arm_statements.append(candidate)
+                    if candidate.type in {"goto_statement", "return_statement"}:
+                        following_end = candidate
+                        if candidate.type == "return_statement":
+                            second_terminal = "return", None
+                        else:
+                            match = re.fullmatch(
+                                rb"\s*goto\s+([A-Za-z_]\w*)\s*;\s*",
+                                _txt(data, candidate),
+                            )
+                            second_terminal = (("goto", match.group(1))
+                                               if match else None)
+                        break
+                if second_terminal is None:
+                    continue
+                indent = _indent_at(data, iff.start_byte)
+                rendered = (b"\n" + indent + b"    ").join(
+                    _txt(data, statement).strip()
+                    for statement in arm_statements
+                )
+                following_text = (
+                    b"{\n" + indent + b"    " + rendered +
+                    b"\n" + indent + b"}"
+                )
+            if (first_terminal is None or first_terminal != second_terminal or
+                    data[iff.end_byte:following.start_byte].strip()):
+                continue
+            line = _line(data, iff.start_byte)
+            following_line = _line(data, following.start_byte)
+            if not (_guided_site(line) or _guided_site(following_line)):
+                continue
+            inner = (_paren_inner(condition)
+                     if condition.type == "parenthesized_expression"
+                     else condition)
+            if inner is None:
+                continue
+            between = data[iff.end_byte:following.start_byte]
+            replacement = (
+                b"if (!(" + _txt(data, inner).strip() + b")) " +
+                following_text + between + _txt(data, consequence)
+            )
+            yield (
+                f"terminal-arm-flip L{line}",
+                splice(data, iff.start_byte, following_end.end_byte,
+                       replacement).decode(),
+            )
+
+
 def rule_terminal_guard_flip(text, name, span):
     """Flip an adjacent equality guard between ``return`` and ``goto``.
 
@@ -6023,6 +6138,7 @@ AGGRESSIVE_RULES = [
     ("shared-tail-assign", "duplicate one shared assignment into both preceding arms", rule_shared_tail_assign),
     ("shared-terminal-tail", "duplicate an adjacent assignment+return into both if/else arms", rule_shared_terminal_tail),
     ("shared-return-split", "replace a goto to a return label with a second literal return", rule_shared_return_split),
+    ("terminal-arm-flip", "negate and swap adjacent arms ending at one terminal tail", rule_terminal_arm_flip),
     ("if-else-invert", "invert a compound if/else to swap physical body layout", rule_if_else_invert),
     ("terminal-guard-flip", "flip an adjacent ==/!= return/goto terminal guard", rule_terminal_guard_flip),
     ("adjacent-field-store-swap", "swap adjacent literal stores to distinct fields", rule_adjacent_field_store_swap),

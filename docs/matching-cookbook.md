@@ -3920,6 +3920,26 @@ predecessor. DefaultActionHumanoid's call tails and DamageControl's duplicated
 MoveHumanoid arms are the worked cases. Inspect call fingerprints through
 `.rtl`→`.jump2`; do not infer source factoring from the final call count.
 
+ActSWIM adds the physical-layout version of the same rule. Its two movement
+arms both called `MoveHumanoid` and jump2 reduced fourteen expanded source
+calls to the target's eleven physical calls, but the two `$a0` producers still
+had to remain different: one arm used a block-local `Humanoid *human`, while
+the other read the global directly. Once size, call count, and CFG were exact,
+the last residual was only the choice of fallthrough arm. Keep the source
+calls duplicated and invert which terminal arm is written first; do not factor
+the argument or call merely because the final assembly contains one `jal`.
+
+**Now mechanized (guided):** `terminal-arm-flip` recognizes an `if` compound
+followed by either another compound or a short plain statement sequence when
+both arms end in `return`, or both `goto` the same label. It negates the guard,
+swaps the arms, and wraps a plain second arm in a block, preserving block-local
+declarations and the terminal CFG. `rtlguide` reports
+`terminal-arm-layout-flip` when target and candidate have equal length, equal
+physical control-flow counts, and the same instruction multiset except for one
+aligned inverse conditional; it then tries this rule before the broader
+explicit-`else` inversion. On ActSWIM's 98.93% checkpoint this generated the
+exact pure-C branch layout directly; no permuter run was needed.
+
 **A named `goto` label pins cross-jump's choice of primary copy.** When several
 unconditional exits share a tail (e.g. every reject does `x = -1; goto ret;`), route them
 all through ONE named label placed exactly where the target's copy lives — cross-jump

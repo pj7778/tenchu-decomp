@@ -542,6 +542,84 @@ int F(void) {
         self.assertIn("if (!(result != 0)) {\n        copy();", out[0][1])
         self.assertIn("else {\n        fail();", out[0][1])
 
+    def test_terminal_arm_flip_swaps_adjacent_goto_arms(self):
+        source = """void F(int pressed) {
+    if (pressed == 0) {
+        Human *human;
+        human = Me;
+        Move(human);
+        goto common;
+    }
+    {
+        Move(Me);
+        goto common;
+    }
+common:
+    use();
+}
+"""
+        autorules.GUIDED_LINES = {2}
+        out = self.candidates(autorules.rule_terminal_arm_flip, source)
+        self.assertEqual(len(out), 1)
+        self.assertIn("terminal-arm-flip L2", out[0][0])
+        self.assertIn(
+            "if (!(pressed == 0)) {\n        Move(Me);\n"
+            "        goto common;\n    }\n    {\n        Human *human;",
+            out[0][1],
+        )
+
+    def test_terminal_arm_flip_wraps_a_plain_terminal_sequence(self):
+        source = """void F(int pressed) {
+    if (pressed == 0) {
+        Human *human;
+        human = Me;
+        Move(human);
+        goto common;
+    }
+    Move(Me);
+    goto common;
+common:
+    use();
+}
+"""
+        autorules.GUIDED_LINES = {2}
+        out = self.candidates(autorules.rule_terminal_arm_flip, source)
+        self.assertEqual(len(out), 1)
+        self.assertIn(
+            "if (!(pressed == 0)) {\n        Move(Me);\n"
+            "        goto common;\n    }\n    {\n        Human *human;",
+            out[0][1],
+        )
+
+    def test_terminal_arm_flip_rejects_unproven_or_interrupted_arms(self):
+        nonterminal = """void F(int x) {
+    if (x) { a(); goto common; }
+    { b(); }
+common:
+    use();
+}
+"""
+        different_labels = """void F(int x) {
+    if (x) { a(); goto left; }
+    { b(); goto right; }
+left:
+right:
+    use();
+}
+"""
+        with_comment = """void F(int x) {
+    if (x) { a(); goto common; }
+    /* keep this physical anchor */
+    { b(); goto common; }
+common:
+    use();
+}
+"""
+        autorules.GUIDED_LINES = {2}
+        for source in (nonterminal, different_labels, with_comment):
+            self.assertEqual(
+                self.candidates(autorules.rule_terminal_arm_flip, source), [])
+
     def test_terminal_guard_flip_reverses_return_goto_layout(self):
         source = """void F(int command) {
     if (command != 0x14) {
@@ -3287,6 +3365,30 @@ class RtlGuideTests(unittest.TestCase):
         self.assertIn("guard-return-island-layout",
                       guide["known_residual_signatures"])
         self.assertEqual(guide["rules"][0], "terminal-guard-flip")
+
+    def test_terminal_arm_layout_signature_prioritizes_arm_flip(self):
+        target = [
+            (0x1000, "beqz v0,0x1010"),
+            (0x1004, "li a1,60"),
+            (0x1008, "lw a0,4(gp)"),
+            (0x100c, "j 0x1040"),
+        ]
+        ours = [
+            (0x1000, "bnez v0,0x1020"),
+            (0x1004, "lw a0,4(gp)"),
+            (0x1008, "j 0x1040"),
+            (0x100c, "li a1,60"),
+        ]
+        self.assertEqual(
+            rtlguide.known_residual_signatures([], target, ours),
+            ["terminal-arm-layout-flip"],
+        )
+        with mock.patch.object(
+                rtlguide, "_candidate_asm",
+                return_value=(0x1000, 16, 16, target, ours)):
+            guide = rtlguide.assembly_guide("F")
+        self.assertEqual(guide["rules"][:2],
+                         ["terminal-arm-flip", "if-else-invert"])
 
     def test_known_builtin_abs_signature(self):
         target = [
