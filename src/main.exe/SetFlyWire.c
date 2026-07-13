@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "effect.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -33,7 +34,176 @@
  *     extern struct tag_EffectSlot EffectSlot[200];
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetFlyWire", SetFlyWire);
+extern s32 SquareRoot0(s32 value);
+extern long abs(long value);
+extern void DrawFlyWire(TEffectSlot *ef);
+
+int SetFlyWire(VECTOR *start, VECTOR *end)
+{
+    TEffectSlot *base;
+    TEffectSlot *slot;
+    TEffectSlot *ef;
+    FlyWireType *param;
+    int idx;
+    int i;
+    int dist;
+    int result;
+
+    idx = CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_;
+    i = 0;
+    base = EffectSlot;
+    slot = base + idx;
+loop:
+    idx = idx + 1;
+    slot = slot + 1;
+    if (199 < idx)
+    {
+        slot = base;
+        idx = 0;
+    }
+    i = i + 1;
+    if (slot->proc == 0)
+    {
+        CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_ = idx + 1;
+        if (199 < idx + 1)
+        {
+            CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_ = 0;
+        }
+        ef = slot;
+        goto found;
+    }
+    if (199 < i)
+    {
+        ef = &dmy;
+        goto found;
+    }
+    goto loop;
+
+found:
+    param = &ef->param.flywire;
+    param->start = *start;
+    param->end = *end;
+    param->count = 0;
+    param->mode = 0;
+
+    {
+        VECTOR *v1;
+        long dz;
+        long dy;
+        long dx;
+        int big;
+        long v;
+        long root;
+        long scaled;
+        long range;
+        long base_x;
+        long base_y;
+        long base_z;
+        long value_x;
+        long value_y;
+        long value_z;
+
+        v1 = &param->end;
+        dx = param->start.vx - v1->vx;
+        dy = param->start.vy - v1->vy;
+        dz = param->start.vz - v1->vz;
+
+        big = 0;
+        if (abs(dx) > 0x1000 || abs(dy) > 0x1000 || abs(dz) > 0x1000)
+        {
+            big = 1;
+        }
+        if (big)
+        {
+            v = dx;
+            if (dx < 0)
+            {
+                v = dx + 0xff;
+            }
+            dx = v >> 8;
+            do {
+              v = dy;
+            } while (0);
+            if (dy < 0)
+            {
+                v = dy + 0xff;
+            }
+            dy = v >> 8;
+            v = dz;
+            if (dz < 0)
+            {
+                v = dz + 0xff;
+            }
+            dz = v >> 8;
+            root = SquareRoot0(dx * dx + dy * dy + dz * dz) << 8;
+        }
+        else
+        {
+            root = SquareRoot0(dx * dx + dy * dy + dz * dz);
+        }
+        dist = root;
+
+        param->NCenter.vx = (param->start.vx + param->end.vx) / 2;
+        param->NCenter.vy = (param->start.vy + param->end.vy) / 2;
+        param->NCenter.vz = (param->start.vz + param->end.vz) / 2;
+        param->time = dist / 1000;
+
+        scaled = dist;
+        if (dist < 0)
+        {
+            scaled = dist + 0xf;
+        }
+        do {
+            dist = scaled >> 4;
+        } while (0);
+
+        base_x = param->NCenter.vx;
+        range = dist * 2;
+        if (range > 0)
+        {
+            value_x = base_x + (rand() % range - dist);
+        }
+        else
+        {
+            value_x = base_x - dist;
+        }
+        param->center.vx = value_x;
+
+        base_y = param->NCenter.vy;
+        if (dist > 0)
+        {
+            value_y = base_y + (rand() % dist - dist);
+        }
+        else
+        {
+            value_y = base_y - dist;
+        }
+        param->center.vy = value_y;
+
+        base_z = param->NCenter.vz;
+        range = dist * 2;
+        if (range > 0)
+        {
+            value_z = base_z + (rand() % range - dist);
+        }
+        else
+        {
+            value_z = base_z - dist;
+        }
+        param->center.vz = value_z;
+    }
+
+    if (param->time > 0)
+    {
+        ef->proc = (void (*)())DrawFlyWire;
+        result = param->time + 5;
+    }
+    else
+    {
+        result = 0;
+    }
+    return result;
+}
 
 // triage: MEDIUM — 246 insns, mul/div, 1 loop, 3 callees, ~0.06 to AddItem2
 // likely-relevant cookbook sections:
@@ -193,4 +363,160 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetFlyWire", SetFlyW
 //     DAT_80097a3c = 0;
 //   }
 //   goto LAB_80036fa4;
+// }
+
+// m2c (mipsel-gcc-c reference — cleaner control flow + register
+// temps straight from the asm; Ghidra above has the real types):
+//
+// s32 SquareRoot0(s32);                               /* extern */
+// s32 abs(s32, s32, ? **, s32);                       /* extern */
+// s32 rand(s32, ?, s32);                              /* extern */
+// extern s32 CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_;
+// extern ? DrawFlyWire;
+// extern ? *EffectSlot;
+// extern ? *dmy;
+//
+// s32 SetFlyWire(void *arg0, void *arg1) {
+//     ? **temp_v0_2;
+//     ? **var_a2;
+//     ? **var_s3;
+//     ? **var_s4;
+//     s32 temp_a0;
+//     s32 temp_a1;
+//     s32 temp_s0;
+//     s32 temp_s0_2;
+//     s32 temp_s0_3;
+//     s32 temp_s0_4;
+//     s32 temp_s0_5;
+//     s32 temp_s1;
+//     s32 temp_s1_2;
+//     s32 temp_s1_3;
+//     s32 temp_s2;
+//     s32 temp_s2_2;
+//     s32 temp_s2_3;
+//     s32 temp_s2_4;
+//     s32 temp_v0;
+//     s32 var_a2_2;
+//     s32 var_a3;
+//     s32 var_s5;
+//     s32 var_v0;
+//     s32 var_v0_2;
+//     s32 var_v0_3;
+//     s32 var_v0_4;
+//     s32 var_v0_5;
+//     s32 var_v0_6;
+//     s32 var_v1;
+//     s32 var_v1_2;
+//     u32 temp_v1;
+//     void *temp_v0_3;
+//
+//     var_a3 = 0;
+//     var_a2 = (CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_ * 0x4C) + &EffectSlot;
+//     var_v1 = CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_ + 1;
+// loop_1:
+//     var_a2 += 0x4C;
+//     if (var_v1 >= 0xC8) {
+//         var_a2 = &EffectSlot;
+//         var_v1 = 0;
+//     }
+//     var_a3 += 1;
+//     if (*var_a2 == NULL) {
+//         temp_v0 = var_v1 + 1;
+//         CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_ = temp_v0;
+//         var_s4 = var_a2;
+//         if (temp_v0 >= 0xC8) {
+//             CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_ = 0;
+//             var_s3 = var_s4 + 4;
+//         } else {
+//             goto block_8;
+//         }
+//     } else {
+//         var_v1 += 1;
+//         if (var_a3 >= 0xC8) {
+//             var_s4 = &dmy;
+// block_8:
+//             var_s3 = var_s4 + 4;
+//         } else {
+//             goto loop_1;
+//         }
+//     }
+//     var_s5 = 0;
+//     var_s4->unk4 = (s32) arg0->unk0;
+//     var_s4->unk8 = (s32) arg0->unk4;
+//     var_s4->unkC = (s32) arg0->unk8;
+//     var_s4->unk10 = (s32) arg0->unkC;
+//     var_s4->unk14 = (s32) arg1->unk0;
+//     var_s4->unk18 = (s32) arg1->unk4;
+//     var_s4->unk1C = (s32) arg1->unk8;
+//     var_s4->unk20 = (s32) arg1->unkC;
+//     var_s3->unk40 = 0;
+//     var_s3->unk44 = 0;
+//     temp_a1 = var_s3->unk4;
+//     temp_s2 = var_s4->unk4 - var_s4->unk14;
+//     temp_v0_2 = var_s4 + 0x14;
+//     temp_s0 = temp_a1 - temp_v0_2->unk4;
+//     temp_s1 = var_s3->unk8 - temp_v0_2->unk8;
+//     if ((abs(temp_s2, temp_a1, var_a2, var_a3) >= 0x1001) || (abs(temp_s0) >= 0x1001) || (abs(temp_s1) >= 0x1001)) {
+//         var_s5 = 1;
+//     }
+//     if (var_s5 != 0) {
+//         var_v0 = temp_s2;
+//         if (temp_s2 < 0) {
+//             var_v0 = temp_s2 + 0xFF;
+//         }
+//         temp_s2_2 = var_v0 >> 8;
+//         var_v0_2 = temp_s0;
+//         if (temp_s0 < 0) {
+//             var_v0_2 = temp_s0 + 0xFF;
+//         }
+//         temp_s0_2 = var_v0_2 >> 8;
+//         var_v0_3 = temp_s1;
+//         if (temp_s1 < 0) {
+//             var_v0_3 = temp_s1 + 0xFF;
+//         }
+//         temp_s1_2 = var_v0_3 >> 8;
+//         var_v0_4 = SquareRoot0((temp_s2_2 * temp_s2_2) + (temp_s0_2 * temp_s0_2) + (temp_s1_2 * temp_s1_2)) << 8;
+//     } else {
+//         var_v0_4 = SquareRoot0((temp_s2 * temp_s2) + (temp_s0 * temp_s0) + (temp_s1 * temp_s1));
+//     }
+//     var_a2_2 = var_v0_4;
+//     temp_v0_3 = var_s3->unk0 + var_s3->unk10;
+//     var_s3->unk30 = (s32) ((s32) (temp_v0_3 + ((u32) temp_v0_3 >> 0x1F)) >> 1);
+//     temp_v1 = var_s3->unk4 + var_s3->unk14;
+//     temp_a0 = var_s3->unk18;
+//     var_s3->unk34 = (s32) ((s32) (temp_v1 + (temp_v1 >> 0x1F)) >> 1);
+//     var_s3->unk38 = (s32) ((s32) (var_s3->unk8 + temp_a0) / 2);
+//     var_s3->unk42 = (s16) (var_v0_4 / 1000);
+//     if (var_v0_4 < 0) {
+//         var_a2_2 = var_v0_4 + 0xF;
+//     }
+//     temp_s1_3 = var_a2_2 >> 4;
+//     temp_s2_3 = var_s3->unk30;
+//     temp_s0_3 = temp_s1_3 * 2;
+//     if (temp_s0_3 > 0) {
+//         var_v0_5 = temp_s2_3 + ((rand(temp_a0, 0x10624DD3, var_a2_2) % temp_s0_3) - temp_s1_3);
+//     } else {
+//         var_v0_5 = temp_s2_3 - temp_s1_3;
+//     }
+//     temp_s0_4 = var_s3->unk34;
+//     var_s3->unk20 = var_v0_5;
+//     if (temp_s1_3 > 0) {
+//         var_v0_6 = temp_s0_4 + ((rand() % temp_s1_3) - temp_s1_3);
+//     } else {
+//         var_v0_6 = temp_s0_4 - temp_s1_3;
+//     }
+//     temp_s2_4 = var_s3->unk38;
+//     temp_s0_5 = temp_s1_3 * 2;
+//     var_s3->unk24 = var_v0_6;
+//     if (temp_s0_5 > 0) {
+//         var_v1_2 = temp_s2_4 + ((rand() % temp_s0_5) - temp_s1_3);
+//     } else {
+//         var_v1_2 = temp_s2_4 - temp_s1_3;
+//     }
+//     var_s3->unk28 = var_v1_2;
+//     if (var_s3->unk42 > 0) {
+//         var_s4->unk0 = &DrawFlyWire;
+//         return var_s3->unk42 + 5;
+//     }
+//     return 0;
 // }

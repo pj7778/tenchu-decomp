@@ -309,6 +309,7 @@ GP_EXTERNS = {
     "DrawShadow": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_", "D_80097F34"],
     "register_character_death": ["D_800979DE", "FRAMES_UNTIL_END_OF_ALERT"],
     "Think3attack": ["Me_THINK_C", "SR", "Distance", "Degree", "EngageLevel"],
+    "SetFlyWire": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
@@ -367,6 +368,7 @@ MASPSX_EXTRA = {
     "SweepMotion": ["--expand-div"],
     "Think3attack": ["--expand-div"],
     "DrawSplash": ["--expand-div"],
+    "SetFlyWire": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash

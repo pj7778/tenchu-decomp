@@ -203,6 +203,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     extra "SweepMotion" = ["--expand-div"]
     extra "Think3attack" = ["--expand-div"]
     extra "DrawSplash" = ["--expand-div"]
+    extra "SetFlyWire" = ["--expand-div"]
     extra _ = []
     -- Think1sleep.c is a fragment of the original think TU, which defines these.
     syms "Think1sleep" = ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"]
@@ -421,6 +422,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "DrawShadow" = ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_", "D_80097F34"]
     syms "register_character_death" = ["D_800979DE", "FRAMES_UNTIL_END_OF_ALERT"]
     syms "Think3attack" = ["Me_THINK_C", "SR", "Distance", "Degree", "EngageLevel"]
+    syms "SetFlyWire" = ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"]
     syms _ = []
 
 as :: FilePath
