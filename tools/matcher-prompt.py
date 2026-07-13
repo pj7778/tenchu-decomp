@@ -29,6 +29,15 @@ DEMO_TSV = "reference/demo-psxexe.functions.tsv"
 # ---- evolving guidance: the load-bearing lessons every agent should get at
 # launch (deeper detail is in the cookbook, which the agent reads). Edit here. --
 GUIDANCE = [
+    "If this function still has a FUN_ or hand-written descriptive name and "
+    "the original demo name becomes genuinely converged, report/adopt it "
+    "instead of leaving the custom label: first prove the demo name is unused "
+    "in the current retail inventory, callmatch --verify is non-ambiguous (or "
+    "a byte-matched callback setter supplies identity), and prototype, constants, "
+    "behavior, and surrounding source allocation agree. Keep the exact-C match "
+    "and the rename as separate commits. A candidates.tsv row alone is never "
+    "enough.",
+
     "`./Build check` is the ONLY gate. matchdiff's window can be shorter than "
     "the function (and for a split function covers only piece 1 — use asmdiff). "
     "Removing the INCLUDE_ASM is not evidence of a match; never report MATCH "

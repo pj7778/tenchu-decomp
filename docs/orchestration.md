@@ -158,6 +158,14 @@ operating rules:
 - **Ambiguous ⇒ keep the placeholder, record the candidate.** `reference/psxsym-candidates.tsv`
   and `reference/psxsym-data-candidates.tsv` hold every suggestion we did not adopt;
   `matcher-prompt.py` surfaces them to whoever touches the function next.
+- **Converged and unused ⇒ adopt the original name.** Do not leave a `FUN_…` or
+  hand-written descriptive name in place once independent evidence agrees: the
+  demo name is not already assigned in retail, `callmatch --verify` is
+  non-ambiguous (or a byte-matched callback setter supplies the cross-build
+  identity), and the prototype, constants, behavior, and surrounding source
+  allocation fit. Check both the current splat inventory and symbols table for
+  collisions, then use `import_symbols.py --renames`; keep the function match
+  and rename in separate commits so the naming proof remains reviewable.
 - **A cross-build callback assignment can be decisive naming evidence.** If a
   byte-matched producer installs retail function X in the same field/lifecycle
   where its demo counterpart installs original name Y, X's behavior matches that
