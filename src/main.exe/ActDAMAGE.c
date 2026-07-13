@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -29,239 +30,266 @@
  * END PSX.SYM */
 
 /*
- * ActDAMAGE (0x800262b0) — TODO one-line description.
+ * ActDAMAGE (0x800262b0) — advances damage-reaction motions, emits impact
+ * feedback, handles the fatal transition, and selects the recovery motion.
  *
- * STATUS: NON_MATCHING — split (jump-table) function scaffolded by
- * tools/split-scaffold.py. The #ifndef NON_MATCHING branch is the stub
- * (INCLUDE_ASM pieces + the jump-table pool as one static const array so
- * the .rodata carve has bytes); build the draft with `NON_MATCHING=ActDAMAGE
- * ./Build`. On a full match, delete the guards and the _jtbl array.
+ * Matching notes (1,548 bytes / 387 instructions):
+ *  - The dispatch is a narrowed `(short)(dtM->mid - 0x1005)` jump table;
+ *    its source case order is the same as the physical body order.
+ *  - Cases 0 and 1 repeat the signed-short model-part loop and the SetBlood
+ *    tail.  jump2 merges only the latter onto case 1, leaving the shared
+ *    continuation physically between the later case bodies as in retail.
+ *  - The fatal path's block-local human/player/velocity aliases preload the
+ *    three pointers after PlayMotion without extending one across a call.
+ *  - `done` is a short, not enum bool.  Its HImode lifetime produces the
+ *    target's v0/s0 join copies and prevents Sound's literal 1 from reusing
+ *    s0.  The weapon-kind reject assigns it on both paths; jump/reorg then
+ *    places the merged assignment in the comparison branch's delay slot.
+ *  - The final attribute value is named before the flag store so its load
+ *    overlaps the literal producer, avoiding a load-delay nop and giving the
+ *    target's a0/v0/v1 allocation.
  */
+extern MotionManager *dtM;
+extern SVECTOR *dtV;
+extern VECTOR *dtL;
+extern Humanoid *Me_MOTION_C;
+extern Humanoid *StagePlayer;
+extern s16 motID;
+extern s16 D_80097F0E;
 
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDAMAGE", ActDAMAGE);
+extern s16 Sound(Humanoid *human, s16 id);
+extern void FUN_80033bc0(VECTOR *pos, u16 spread, s16 divisor, s16 count);
+extern void PadShockAR(s32 port, s32 power, s32 attack, s32 release);
+extern s16 PlayMotion(MotionManager *motion, s16 mode);
+extern void SetBlood(VECTOR *pos, s16 n, s16 time);
+extern void TurnAroundAllItems(Humanoid *human);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDAMAGE", switchD_800262f8__switchD);
+void ActDAMAGE(void)
+{
+    short done;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDAMAGE", switchD_800262f8__caseD_0);
+    done = false;
+    switch ((short)(dtM->mid - 0x1005))
+    {
+    case 0:
+    {
+        if (dtM->count == 1)
+        {
+            ModelArchiveType *model;
+            s16 last;
+            s16 i;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDAMAGE", switchD_800262f8__caseD_1);
+            model = Me_MOTION_C->model;
+            if (0xc < model->n)
+                last = 0xc;
+            else
+                last = model->n - 1;
+            i = 7;
+            while (i <= last)
+            {
+                u16 *attribute;
+                int attr;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDAMAGE", switchD_800262f8__caseD_2);
+                attribute = (u16 *)&model->object[i++]->attribute;
+                attr = *attribute;
+                attr = attr & ~1;
+                *attribute = attr;
+            }
+            *(u16 *)&model->object[0]->attribute &= 0xfffe;
+        }
+        else if (dtM->count == 0 && dtM->loop != 0)
+        {
+            dtM->loop = -1;
+        }
+        else
+        {
+            dtV->vy = (dtM->count - dtM->motion->time) * 6;
+        }
+        if ((*(u16 *)&Me_MOTION_C->attribute & 0x800) ||
+            Me_MOTION_C->map.height < 0)
+        {
+            motID = 0x1007;
+            D_80097F0E = 0;
+        }
+        if (dtM->count & 4)
+            SetBlood(dtL, 1, 0x3c);
+        goto check_done;
+    }
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDAMAGE", switchD_800262f8__caseD_4);
+    case 1:
+    {
+        if (dtM->count == 1)
+        {
+            ModelArchiveType *model;
+            s16 last;
+            s16 i;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDAMAGE", switchD_800262f8__caseD_5);
+            model = Me_MOTION_C->model;
+            if (0xc < model->n)
+                last = 0xc;
+            else
+                last = model->n - 1;
+            i = 7;
+            while (i <= last)
+            {
+                u16 *attribute;
+                int attr;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDAMAGE", switchD_800262f8__caseD_8);
+                attribute = (u16 *)&model->object[i++]->attribute;
+                attr = *attribute;
+                attr = attr & ~1;
+                *attribute = attr;
+            }
+            *(u16 *)&model->object[0]->attribute &= 0xfffe;
+        }
+        else if (dtM->count == 0 && dtM->loop != 0)
+        {
+            dtM->loop = -1;
+        }
+        else
+        {
+            dtV->vy = (dtM->count - dtM->motion->time) * 6;
+        }
+        if ((*(u16 *)&Me_MOTION_C->attribute & 0x800) ||
+            Me_MOTION_C->map.height < 0)
+        {
+            motID = 0x1008;
+            D_80097F0E = 0;
+        }
+        if (dtM->count & 4)
+            SetBlood(dtL, 1, 0x3c);
+        goto check_done;
+    }
 
-/* jump-table pool @ 0x800115f0 (8 words; tables at 0x800115f0) — stub-only, one array because the object has one .rodata section; the draft's compiled switch emits its own. */
-static const u32 ActDAMAGE_jtbl[8] = {
-    0x80026300, 0x80026440, 0x800265B0, 0x800265B0,
-    0x8002666C, 0x80026758, 0x80026758, 0x80026758,
-};
+    case 2:
+    case 3:
+        if (dtM->count == 1)
+        {
+            Sound(Me_MOTION_C, 0x1d);
+            FUN_80033bc0(dtL, 500, 0x1e, 0x1e);
+            if (StagePlayer == Me_MOTION_C)
+                PadShockAR(0, 0xff, 0, 0x1e);
+        }
+        if (dtM->count == 0 && dtM->loop != 0)
+        {
+            motID = 0x1009;
+            D_80097F0E = 1;
+            goto check_done;
+        }
+        dtV->vx = dtV->vx - (dtV->vx >> 2);
+        dtV->vz = dtV->vz - (dtV->vz >> 2);
+        goto check_done;
 
-#else /* NON_MATCHING */
-/* Draft — turn this into matching C, then delete the #ifndef/#else/
-   #endif guards and the _jtbl array(s) above.  Reference: */
-// 
-// void ActDAMAGE(void)
-// 
-// {
-//   short *psVar1;
-//   bool bVar2;
-//   bool bVar3;
-//   short sVar4;
-//   OrnamentType **ppOVar5;
-//   Humanoid *pHVar6;
-//   Humanoid *pHVar7;
-//   SVECTOR *pSVar8;
-//   MotionManager *mmp;
-//   short sVar9;
-//   int iVar10;
-//   int iVar11;
-//   ModelArchiveType *pMVar12;
-//   short in_a3;
-//   
-//   mmp = dtM;
-//   pHVar6 = Me_MOTION_C;
-//   bVar3 = false;
-//   bVar2 = bVar3;
-//   switch((int)(((ushort)dtM->mid - 0x1005) * 0x10000) >> 0x10) {
-//   case 0:
-//     if (dtM->count == 1) {
-//       pMVar12 = Me_MOTION_C->model;
-//       sVar9 = pMVar12->n + -1;
-//       if (0xc < pMVar12->n) {
-//         sVar9 = 0xc;
-//       }
-//       iVar11 = 7;
-//       if (6 < sVar9) {
-//         do {
-//           iVar10 = iVar11 << 0x10;
-//           iVar11 = iVar11 + 1;
-//           iVar10 = *(int *)((iVar10 >> 0xe) + (int)pMVar12->object);
-//           *(ushort *)(iVar10 + 0x5a) = *(ushort *)(iVar10 + 0x5a) & 0xfffe;
-//           in_a3 = sVar9;
-//         } while (iVar11 * 0x10000 >> 0x10 <= (int)sVar9);
-//       }
-//       (*pMVar12->object)->attribute = (*pMVar12->object)->attribute & 0xfffe;
-//     }
-//     else if ((dtM->count == 0) && (dtM->loop != 0)) {
-//       dtM->loop = -1;
-//     }
-//     else {
-//       dtV->vy = (dtM->count - dtM->motion->time) * 6;
-//     }
-//     sVar9 = 0x1007;
-//     if ((Me_MOTION_C->attribute & 0x800U) != 0) goto LAB_80026578;
-//     iVar11 = (Me_MOTION_C->map).height;
-//     sVar9 = 0x1007;
-// joined_r0x80026570:
-//     if (iVar11 < 0) goto LAB_80026578;
-//     break;
-//   case 1:
-//     if (dtM->count == 1) {
-//       pMVar12 = Me_MOTION_C->model;
-//       sVar9 = pMVar12->n + -1;
-//       if (0xc < pMVar12->n) {
-//         sVar9 = 0xc;
-//       }
-//       iVar11 = 7;
-//       if (6 < sVar9) {
-//         do {
-//           iVar10 = iVar11 << 0x10;
-//           iVar11 = iVar11 + 1;
-//           iVar10 = *(int *)((iVar10 >> 0xe) + (int)pMVar12->object);
-//           *(ushort *)(iVar10 + 0x5a) = *(ushort *)(iVar10 + 0x5a) & 0xfffe;
-//           in_a3 = sVar9;
-//         } while (iVar11 * 0x10000 >> 0x10 <= (int)sVar9);
-//       }
-//       (*pMVar12->object)->attribute = (*pMVar12->object)->attribute & 0xfffe;
-//     }
-//     else if ((dtM->count == 0) && (dtM->loop != 0)) {
-//       dtM->loop = -1;
-//     }
-//     else {
-//       dtV->vy = (dtM->count - dtM->motion->time) * 6;
-//     }
-//     sVar9 = 0x1008;
-//     if ((Me_MOTION_C->attribute & 0x800U) == 0) {
-//       iVar11 = (Me_MOTION_C->map).height;
-//       sVar9 = 0x1008;
-//       goto joined_r0x80026570;
-//     }
-// LAB_80026578:
-//     DAT_80097f0e = 0;
-//     motID = sVar9;
-//     break;
-//   case 2:
-//   case 3:
-//     if (dtM->count == 1) {
-//       Sound(Me_MOTION_C,0x1d);
-//       FUN_80033bc0(dtL,500,0x1e,0x1e);
-//       if (StagePlayer == Me_MOTION_C) {
-//         PadShockAR(0,0xff,0,0x1e);
-//       }
-//     }
-//     pSVar8 = dtV;
-//     if ((dtM->count != 0) || (sVar9 = 0x1009, dtM->loop == 0)) {
-//       psVar1 = &dtV->vz;
-//       dtV->vx = dtV->vx - (dtV->vx >> 2);
-//       pSVar8->vz = *psVar1 - (*psVar1 >> 2);
-//       goto LAB_80026858;
-//     }
-//     goto LAB_80026744;
-//   case 4:
-//     if (Me_MOTION_C->life == 0) {
-//       dtM->loop = 0;
-//       mmp->count = 0;
-//       PlayMotion(mmp,1);
-//       pHVar7 = Me_MOTION_C;
-//       pHVar6 = StagePlayer;
-//       dtM->loop = -2;
-//       pHVar7->status = 0x11;
-//       pSVar8 = dtV;
-//       pHVar7->attribute = pHVar7->attribute & 0xffef;
-//       pSVar8->vz = 0;
-//       pSVar8->vy = 0;
-//       pSVar8->vx = 0;
-//       if (pHVar7 == pHVar6) {
-//         return;
-//       }
-//       DeleteConflict(*pHVar7->model->object);
-//       TurnAroundAllItems(Me_MOTION_C);
-//       return;
-//     }
-//     sVar9 = dtM->loop + -1;
-//     dtM->loop = sVar9;
-//     bVar2 = false;
-//     if ((int)pHVar6->life - (int)pHVar6->lifemax < (int)sVar9) goto LAB_80026858;
-//     sVar9 = 0x100c;
-// LAB_80026744:
-//     DAT_80097f0e = 1;
-//     bVar2 = false;
-//     motID = sVar9;
-//     goto LAB_80026858;
-//   case 5:
-//   case 6:
-//   case 7:
-//     bVar2 = false;
-//     if ((dtM->count == 0) && (bVar2 = false, dtM->loop != 0)) {
-//       bVar2 = true;
-//     }
-//     goto LAB_80026858;
-//   default:
-//     sVar9 = dtV->vx;
-//     if (sVar9 != 0) {
-//       if (sVar9 < 1) {
-//         sVar4 = 4;
-//       }
-//       else {
-//         sVar4 = -4;
-//       }
-//       dtV->vx = sVar9 + sVar4;
-//     }
-//     sVar9 = dtV->vz;
-//     if (sVar9 != 0) {
-//       if (sVar9 < 1) {
-//         sVar4 = 4;
-//       }
-//       else {
-//         sVar4 = -4;
-//       }
-//       dtV->vz = sVar9 + sVar4;
-//     }
-//     pHVar6 = Me_MOTION_C;
-//     bVar2 = false;
-//     if ((((dtM->count == 0) && (bVar2 = bVar3, dtM->loop != 0)) &&
-//         (bVar2 = true, Me_MOTION_C->wpatk == 0x2a)) &&
-//        (Me_MOTION_C->weapon[3] != (OrnamentType *)0x0)) {
-//       ppOVar5 = Me_MOTION_C->weapon;
-//       Me_MOTION_C->weapon[2] = Me_MOTION_C->weapon[0];
-//       pHVar6->weapon[0] = ppOVar5[3];
-//       pHVar6->weapon[3] = (OrnamentType *)0x0;
-//       Sound(pHVar6,1);
-//     }
-//     goto LAB_80026858;
-//   }
-//   if ((dtM->count & 4U) != 0) {
-//     SetBlood(dtL,(SVECTOR *)&DAT_00000001,0x3c,in_a3);
-//     bVar2 = false;
-//   }
-// LAB_80026858:
-//   if (bVar2) {
-//     if ((Me_MOTION_C->attribute & 0x40U) == 0) {
-//       motID = 0x80e;
-//       DAT_80097f0e = 1;
-//     }
-//     else {
-//       motID = 0x501;
-//       DAT_80097f0e = 1;
-//       Me_MOTION_C->attribute = Me_MOTION_C->attribute & 0xfffcU | 2;
-//     }
-//   }
-//   return;
-// }
+    case 4:
+        if (Me_MOTION_C->life == 0)
+        {
+            Humanoid *human;
+            Humanoid *player;
+            SVECTOR *velocity;
 
-#endif /* NON_MATCHING */
+            dtM->loop = 0;
+            dtM->count = 0;
+            PlayMotion(dtM, 1);
+            human = Me_MOTION_C;
+            player = StagePlayer;
+            dtM->loop = -2;
+            human->status = 0x11;
+            velocity = dtV;
+            *(u16 *)&human->attribute &= 0xffef;
+            velocity->vz = 0;
+            velocity->vy = 0;
+            velocity->vx = 0;
+            if (human == player)
+                return;
+            DeleteConflict(human->model->object[0]);
+            TurnAroundAllItems(Me_MOTION_C);
+            return;
+        }
+        dtM->loop--;
+        if (Me_MOTION_C->life - (s16)Me_MOTION_C->lifemax >= dtM->loop)
+        {
+            motID = 0x100c;
+            D_80097F0E = 1;
+        }
+        goto check_done;
+
+    case 5:
+    case 6:
+    case 7:
+        if (dtM->count == 0 && dtM->loop != 0)
+            done = true;
+        goto check_done;
+
+    default:
+    {
+        SVECTOR *velocity;
+        register int value;
+
+        velocity = dtV;
+        value = velocity->vx;
+        if (value != 0)
+        {
+            if (value > 0)
+                value -= 4;
+            else
+                value += 4;
+            velocity->vx = value;
+        }
+        velocity = dtV;
+        value = velocity->vz;
+        if (value != 0)
+        {
+            if (value > 0)
+                value -= 4;
+            else
+                value += 4;
+            velocity->vz = value;
+        }
+        if (dtM->count == 0 && dtM->loop != 0)
+        {
+            OrnamentType **weapon;
+            short weapon_kind;
+
+            weapon_kind = (s16)Me_MOTION_C->weapon_kind;
+            if (weapon_kind != 0x2a)
+            {
+                done = true;
+                goto check_done;
+            }
+            done = true;
+            weapon = Me_MOTION_C->weapon;
+            if (weapon[3] != NULL)
+            {
+                weapon[2] = weapon[0];
+                weapon[0] = weapon[3];
+                weapon[3] = NULL;
+                Sound(Me_MOTION_C, 1);
+            }
+        }
+        goto check_done;
+    }
+    }
+
+check_done:
+    if (done)
+    {
+        register Humanoid *human;
+
+        human = Me_MOTION_C;
+        if (*(u16 *)&human->attribute & 0x40)
+        {
+            u16 attribute;
+
+            motID = 0x501;
+            attribute = *(u16 *)&human->attribute;
+            D_80097F0E = 1;
+            attribute = (attribute & 0xfffc) | 2;
+            *(u16 *)&human->attribute = attribute;
+        }
+        else
+        {
+            motID = 0x80e;
+            D_80097F0E = 1;
+        }
+    }
+}
