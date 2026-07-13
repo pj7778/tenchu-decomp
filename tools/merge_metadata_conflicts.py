@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -108,8 +109,10 @@ def resolve_text(path: str, text: str) -> tuple[str, int]:
 
 def atomic_write(path: str, text: str) -> None:
     directory = os.path.dirname(os.path.abspath(path))
+    mode = stat.S_IMODE(os.stat(path, follow_symlinks=False).st_mode)
     descriptor, staged = tempfile.mkstemp(prefix=".metadata-merge-", dir=directory)
     try:
+        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "w") as stream:
             stream.write(text)
             stream.flush()

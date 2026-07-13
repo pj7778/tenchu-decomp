@@ -3068,6 +3068,19 @@ class MetadataConflictMergeTests(unittest.TestCase):
     MIDDLE = "=" * 7
     END = ">" * 7 + " worker"
 
+    def test_atomic_write_preserves_executable_mode(self):
+        with tempfile.NamedTemporaryFile("w", delete=False) as fh:
+            path = fh.name
+            fh.write("old\n")
+        try:
+            os.chmod(path, 0o755)
+            merge_metadata_conflicts.atomic_write(path, "new\n")
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o755)
+            with open(path) as fh:
+                self.assertEqual(fh.read(), "new\n")
+        finally:
+            os.unlink(path)
+
     def test_build_metadata_conflict_is_ordered_union(self):
         source = f'''  where
 {self.START}
