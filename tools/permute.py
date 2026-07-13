@@ -312,6 +312,7 @@ GP_EXTERNS = {
     "SetFlyWire": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
     "FUN_80035f44": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
     "InitEffect": ["D_80097F34", "LOCAL_COORDINATES_", "D_80097F3C", "D_80097F28", "D_80097F30", "D_80097F32"],
+    "FUN_80033bc0": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs
@@ -373,6 +374,7 @@ MASPSX_EXTRA = {
     "SetFlyWire": ["--expand-div"],
     "FUN_8002fd9c": ["--expand-div"],
     "ArrangeLocalMatrix": ["--expand-div"],
+    "FUN_80033bc0": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash

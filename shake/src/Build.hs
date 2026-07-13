@@ -206,6 +206,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     extra "SetFlyWire" = ["--expand-div"]
     extra "FUN_8002fd9c" = ["--expand-div"]
     extra "ArrangeLocalMatrix" = ["--expand-div"]
+    extra "FUN_80033bc0" = ["--expand-div"]
     extra _ = []
     -- Think1sleep.c is a fragment of the original think TU, which defines these.
     syms "Think1sleep" = ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"]
@@ -427,6 +428,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "SetFlyWire" = ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"]
     syms "FUN_80035f44" = ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"]
     syms "InitEffect" = ["D_80097F34", "LOCAL_COORDINATES_", "D_80097F3C", "D_80097F28", "D_80097F30", "D_80097F32"]
+    syms "FUN_80033bc0" = ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"]
     syms _ = []
 
 as :: FilePath
