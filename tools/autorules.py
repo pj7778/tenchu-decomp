@@ -1404,6 +1404,30 @@ def _nonvolatile_local_names(data, body):
     return names - volatile
 
 
+def _nonvolatile_function_local_names(data, body):
+    """Unshadowed, nonvolatile locals declared directly in `body`."""
+    safe = _nonvolatile_local_names(data, body)
+    direct = set()
+    shadowed = set()
+    for declaration in _find(body, ("declaration",)):
+        found = set()
+        for child in declaration.named_children:
+            if child.type == "init_declarator":
+                ident = _descend_ident(child.child_by_field_name("declarator"))
+            elif child.type in ("identifier", "pointer_declarator",
+                                "array_declarator"):
+                ident = _descend_ident(child)
+            else:
+                ident = None
+            if ident is not None:
+                found.add(_txt(data, ident))
+        if declaration.parent == body:
+            direct.update(found)
+        else:
+            shadowed.update(found)
+    return (direct & safe) - shadowed
+
+
 def _plain_assignment(data, statement):
     """Return (lhs identifier bytes, rhs node) for a whole `x = rhs;` stmt."""
     if statement.type != "expression_statement":
@@ -2618,6 +2642,264 @@ def rule_assignment_chain(text, name, span):
                 f"assignment-chain split-{tag} {len(paths)} L{line}",
                 splice(data, statement.start_byte, statement.end_byte,
                        replacement).decode(),
+            )
+
+
+def rule_field_capture_rhs(text, name, span):
+    """Fuse/split a saved field value through the overwriting assignment's RHS.
+
+    ``saved = p->field; p->field = saved + expr;`` and
+    ``p->field = expr + (saved = p->field);`` have the same value effects when
+    the field is nonvolatile and ``expr`` has no side effects.  Their RTL
+    dependency trees differ, which can decide whether old cc1 schedules the
+    independent expression before or after the field load.  Keep this guided
+    and bounded to adjacent statements, one plain automatic saved local, one
+    exact field path, and addition with a pure other operand.
+    """
+    global GUIDED_LINES
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+    locals_ = _nonvolatile_function_local_names(data, body)
+    safe_objects = locals_ | _nonvolatile_parameter_names(data, body)
+    effects = ("call_expression", "assignment_expression", "update_expression")
+
+    def whole_assignment(statement):
+        if statement.type != "expression_statement":
+            return None
+        expressions = [child for child in statement.named_children
+                       if child.type != "comment"]
+        if len(expressions) != 1 or expressions[0].type != "assignment_expression":
+            return None
+        assignment = expressions[0]
+        operator = assignment.child_by_field_name("operator")
+        lhs = assignment.child_by_field_name("left")
+        rhs = assignment.child_by_field_name("right")
+        if (operator is None or _txt(data, operator) != b"=" or
+                lhs is None or rhs is None):
+            return None
+        return lhs, rhs
+
+    def bare_local(node):
+        node = _unparen(node)
+        if node is None or node.type != "identifier":
+            return None
+        ident = _txt(data, node)
+        return ident if ident in locals_ else None
+
+    def pure_other(node, saved):
+        if _find(node, effects + ("pointer_expression", "subscript_expression")):
+            return False
+        fields = _find(node, ("field_expression",))
+        if any((path := _field_path(data, field)) is None or
+               path[0] not in safe_objects for field in fields):
+            return False
+        identifiers = [_txt(data, ident)
+                       for ident in _find(node, ("identifier",))]
+        return saved not in identifiers and all(ident in safe_objects
+                                                for ident in identifiers)
+
+    # Split capture followed by overwrite -> one dependency-shaped assignment.
+    for block in _find(body, ("compound_statement",)):
+        statements = [child for child in block.named_children
+                      if child.type != "comment"]
+        for first, second in zip(statements, statements[1:]):
+            if data[first.end_byte:second.start_byte].strip():
+                continue
+            first_assignment = whole_assignment(first)
+            second_assignment = whole_assignment(second)
+            if first_assignment is None or second_assignment is None:
+                continue
+            saved_lhs, field_read = first_assignment
+            field_write, expression = second_assignment
+            saved = bare_local(saved_lhs)
+            read_path = _field_path(data, field_read)
+            write_path = _field_path(data, field_write)
+            binary = _unparen(expression)
+            if (saved is None or read_path is None or
+                    read_path[0] not in safe_objects or
+                    write_path != read_path or
+                    binary is None or binary.type != "binary_expression" or
+                    _binary_operator(data, binary) != b"+"):
+                continue
+            left = binary.child_by_field_name("left")
+            right = binary.child_by_field_name("right")
+            if left is None or right is None:
+                continue
+            if bare_local(left) == saved and pure_other(right, saved):
+                other = right
+            elif bare_local(right) == saved and pure_other(left, saved):
+                other = left
+            else:
+                continue
+            lines = (_line(data, first.start_byte),
+                     _line(data, second.start_byte))
+            if not any(_guided_site(line) for line in lines):
+                continue
+            field = read_path[1]
+            other_text = b"(" + _txt(data, other).strip() + b")"
+            capture = b"(" + saved + b" = " + field + b")"
+            for tag, addends in (
+                    ("expr-first", (other_text, capture)),
+                    ("capture-first", (capture, other_text))):
+                replacement = field + b" = " + b" + ".join(addends) + b";"
+                yield (
+                    f"field-capture-rhs fuse-{tag} {saved.decode()} "
+                    f"L{lines[0]}-{lines[1]}",
+                    splice(data, first.start_byte, second.end_byte,
+                           replacement).decode(),
+                )
+
+    # One dependency-shaped assignment -> the conventional adjacent capture.
+    for statement in _find(body, ("expression_statement",)):
+        outer = whole_assignment(statement)
+        if outer is None:
+            continue
+        field_write, expression = outer
+        write_path = _field_path(data, field_write)
+        binary = _unparen(expression)
+        if (write_path is None or write_path[0] not in safe_objects or
+                binary is None or
+                binary.type != "binary_expression" or
+                _binary_operator(data, binary) != b"+"):
+            continue
+        left = binary.child_by_field_name("left")
+        right = binary.child_by_field_name("right")
+        if left is None or right is None:
+            continue
+
+        capture = None
+        other = None
+        for possible_capture, possible_other in ((left, right), (right, left)):
+            inner = _unparen(possible_capture)
+            if inner is None or inner.type != "assignment_expression":
+                continue
+            operator = inner.child_by_field_name("operator")
+            saved_lhs = inner.child_by_field_name("left")
+            field_read = inner.child_by_field_name("right")
+            saved = bare_local(saved_lhs)
+            if (operator is None or _txt(data, operator) != b"=" or
+                    saved is None or _field_path(data, field_read) != write_path or
+                    not pure_other(possible_other, saved)):
+                continue
+            capture = (saved, field_read)
+            other = possible_other
+            break
+        if capture is None:
+            continue
+        line = _line(data, statement.start_byte)
+        if not _guided_site(line):
+            continue
+        saved, field_read = capture
+        field = write_path[1]
+        indent = _indent_at(data, statement.start_byte)
+        other_text = _txt(data, other).strip()
+        for tag, addends in (
+                ("saved-first", (saved, other_text)),
+                ("expr-first", (other_text, saved))):
+            replacement = (saved + b" = " + _txt(data, field_read).strip() +
+                           b";\n" + indent + field + b" = " +
+                           b" + ".join(addends) + b";")
+            yield (
+                f"field-capture-rhs split-{tag} {saved.decode()} L{line}",
+                splice(data, statement.start_byte, statement.end_byte,
+                       replacement).decode(),
+            )
+
+    # Private helper macros can contain the same source shape while the
+    # function body contains only their invocations.  Parse each invoked
+    # function-like macro's continuation body as a synthetic function, reuse
+    # the guarded transform above, then map its one edit back to the original
+    # preprocessor argument.  Flatten an inserted newline so the surrounding
+    # macro continuation remains valid.
+    root = _TS.parse(data).root_node
+    outer_locals = safe_objects
+
+    def one_edit(original, changed):
+        prefix = 0
+        limit = min(len(original), len(changed))
+        while prefix < limit and original[prefix] == changed[prefix]:
+            prefix += 1
+        suffix = 0
+        while (suffix < len(original) - prefix and
+               suffix < len(changed) - prefix and
+               original[-suffix - 1] == changed[-suffix - 1]):
+            suffix += 1
+        old_end = len(original) - suffix
+        new_end = len(changed) - suffix
+        return prefix, old_end, changed[prefix:new_end]
+
+    for macro in _find(root, ("preproc_function_def",)):
+        macro_name_node = macro.child_by_field_name("name")
+        macro_params = macro.child_by_field_name("parameters")
+        macro_value = macro.child_by_field_name("value")
+        if macro_name_node is None or macro_params is None or macro_value is None:
+            continue
+        macro_name = _txt(data, macro_name_node)
+        undef_ranges = []
+        for directive in _find(root, ("preproc_call",)):
+            if re.fullmatch(rb"#undef\s+" + re.escape(macro_name) + rb"\s*",
+                            _txt(data, directive)):
+                undef_ranges.append((directive.start_byte, directive.end_byte))
+        references = list(re.finditer(rb"\b" + re.escape(macro_name) + rb"\b",
+                                      data))
+        if any(not (macro_name_node.start_byte <= ref.start() <
+                    macro_name_node.end_byte or
+                    body.start_byte <= ref.start() < body.end_byte or
+                    any(start <= ref.start() < end
+                        for start, end in undef_ranges))
+               for ref in references):
+            continue
+        use_lines = []
+        for call in _find(body, ("call_expression",)):
+            function = _unparen(call.child_by_field_name("function"))
+            if (function is not None and function.type == "identifier" and
+                    _txt(data, function) == macro_name):
+                use_lines.append(_line(data, call.start_byte))
+        if not use_lines:
+            continue
+        if GUIDED_LINES and not any(_guided_site(line) for line in use_lines):
+            continue
+        raw_value = _txt(data, macro_value)
+        if not raw_value.startswith(b"{"):
+            continue
+        # Keep byte offsets stable: replace only the continuation backslash,
+        # not its newline, before parsing the body as ordinary C.
+        logical_value = re.sub(rb"\\(?=\r?\n)", b" ", raw_value)
+        # The macro may capture a local declared by its caller (StageEndScreen's
+        # base_u). Seed those names as dummy ints in the synthetic outer block;
+        # tree-sitter needs only lexical locality here, not their real types.
+        # Never seed a macro formal: its invocation argument could be a global,
+        # volatile access, or effectful expression that this rule cannot prove.
+        formal_names = {_txt(data, ident)
+                        for ident in _find(macro_params, ("identifier",))}
+        captured_outer = outer_locals - formal_names
+        declarations = b"".join(b"int " + local + b";"
+                                for local in sorted(captured_outer))
+        wrapper = b"void __autorule_macro(void) "
+        synthetic = (wrapper + logical_value[:1] + declarations +
+                     logical_value[1:])
+        mapping_bias = len(wrapper) + len(declarations)
+        synthetic_text = synthetic.decode()
+        saved_guided = GUIDED_LINES
+        try:
+            GUIDED_LINES = set()
+            nested = list(rule_field_capture_rhs(
+                synthetic_text, "__autorule_macro", (0, len(synthetic_text))))
+        finally:
+            GUIDED_LINES = saved_guided
+        for label, changed_text in nested:
+            start, end, replacement = one_edit(synthetic,
+                                                changed_text.encode())
+            if start < mapping_bias or end < mapping_bias:
+                continue
+            source_start = macro_value.start_byte + start - mapping_bias
+            source_end = macro_value.start_byte + end - mapping_bias
+            replacement = replacement.replace(b"\r\n", b" ").replace(b"\n", b" ")
+            yield (
+                f"field-capture-rhs macro-{macro_name.decode()} {label}",
+                splice(data, source_start, source_end, replacement).decode(),
             )
 
 
@@ -4770,6 +5052,7 @@ RULES = [
 
 AGGRESSIVE_RULES = [
     ("allocation-donor-fence", "add a guided initialized-value ref in zero-code identical arms", rule_allocation_donor_fence),
+    ("field-capture-rhs", "fuse/split an adjacent saved field through the overwrite RHS", rule_field_capture_rhs),
     ("cmp-polarity", "swap two local comparison operands (regalloc ref-order lever)", rule_cmp_polarity),
     ("eq-literal-swap", "swap ==/!= literal operand order (v0/v1 lever)", rule_eq_literal_swap),
     ("shift16-mul", "casted short x<<16 -> x*0x10000 (raw sll lever)", rule_shift16_mul),

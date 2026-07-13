@@ -547,6 +547,128 @@ int F(void) {
         self.assertIn("p->x = 0x10;\n    p->y = 0x10;", forward[0])
         self.assertIn("p->y = 0x10;\n    p->x = 0x10;", reverse[0])
 
+    def test_field_capture_rhs_fuses_both_dependency_orders(self):
+        source = """void F(Sprite *sprite, int remainder) {
+    int base_u;
+    base_u = sprite->u;
+    sprite->u = base_u + remainder * sprite->w;
+}
+"""
+        autorules.GUIDED_LINES = {3}
+        out = self.candidates(autorules.rule_field_capture_rhs, source)
+        expr_first = [text for label, text in out if "fuse-expr-first" in label]
+        capture_first = [text for label, text in out
+                         if "fuse-capture-first" in label]
+        self.assertEqual((len(expr_first), len(capture_first)), (1, 1))
+        self.assertIn(
+            "sprite->u = (remainder * sprite->w) + (base_u = sprite->u);",
+            expr_first[0],
+        )
+        self.assertIn(
+            "sprite->u = (base_u = sprite->u) + (remainder * sprite->w);",
+            capture_first[0],
+        )
+
+    def test_field_capture_rhs_splits_fused_form(self):
+        source = """void F(Sprite *sprite, int remainder) {
+    int base_u;
+    sprite->u = remainder * sprite->w + (base_u = sprite->u);
+}
+"""
+        autorules.GUIDED_LINES = {3}
+        out = self.candidates(autorules.rule_field_capture_rhs, source)
+        saved_first = [text for label, text in out if "split-saved-first" in label]
+        expr_first = [text for label, text in out if "split-expr-first" in label]
+        self.assertEqual((len(saved_first), len(expr_first)), (1, 1))
+        self.assertIn(
+            "base_u = sprite->u;\n    sprite->u = base_u + remainder * sprite->w;",
+            saved_first[0],
+        )
+
+    def test_field_capture_rhs_rejects_effectful_other_operand(self):
+        source = """void F(Sprite *sprite) {
+    int base_u;
+    base_u = sprite->u;
+    sprite->u = base_u + next_value();
+}
+"""
+        autorules.GUIDED_LINES = {3}
+        self.assertEqual(
+            self.candidates(autorules.rule_field_capture_rhs, source), [])
+
+    def test_field_capture_rhs_rejects_volatile_pointee_and_other_read(self):
+        volatile_target = """void F(volatile Sprite *sprite, int remainder) {
+    int base_u;
+    base_u = sprite->u;
+    sprite->u = base_u + remainder;
+}
+"""
+        volatile_other = """void F(Sprite *sprite, volatile Sprite *other) {
+    int base_u;
+    base_u = sprite->u;
+    sprite->u = base_u + other->w;
+}
+"""
+        global_target = """Sprite *sprite;
+void F(int remainder) {
+    int base_u;
+    base_u = sprite->u;
+    sprite->u = base_u + remainder;
+}
+"""
+        autorules.GUIDED_LINES = {3}
+        for source in (volatile_target, volatile_other, global_target):
+            self.assertEqual(
+                self.candidates(autorules.rule_field_capture_rhs, source), [])
+
+    def test_field_capture_rhs_maps_an_invoked_macro_capture(self):
+        source = """#define DRAW() { \\
+    base_u = sprite->u; \\
+    sprite->u = base_u + remainder * sprite->w; \\
+}
+void F(Sprite *sprite, int remainder) {
+    int base_u;
+    DRAW();
+}
+#undef DRAW
+"""
+        autorules.GUIDED_LINES = {7}
+        out = self.candidates(autorules.rule_field_capture_rhs, source)
+        fused = [(label, text) for label, text in out
+                 if "macro-DRAW" in label and "fuse-expr-first" in label]
+        self.assertEqual(len(fused), 1)
+        self.assertIn(
+            "sprite->u = (remainder * sprite->w) + (base_u = sprite->u);",
+            fused[0][1],
+        )
+
+    def test_field_capture_rhs_rejects_uninvoked_macro(self):
+        source = """#define DRAW() { \\
+    base_u = sprite->u; \\
+    sprite->u = base_u + remainder * sprite->w; \\
+}
+void F(Sprite *sprite, int remainder) {
+    int base_u;
+    use(base_u, sprite, remainder);
+}
+"""
+        self.assertEqual(
+            self.candidates(autorules.rule_field_capture_rhs, source), [])
+
+    def test_field_capture_rhs_rejects_unmapped_macro_formal(self):
+        source = """#define DRAW(sprite_) { \\
+    base_u = sprite_->u; \\
+    sprite_->u = base_u + remainder; \\
+}
+void F(Sprite *sprite, int remainder) {
+    int base_u;
+    DRAW(sprite);
+}
+"""
+        autorules.GUIDED_LINES = {7}
+        self.assertEqual(
+            self.candidates(autorules.rule_field_capture_rhs, source), [])
+
     def test_disjoint_local_alias_joins_dead_until_overwrite_scalar(self):
         source = """typedef int s32;
 int F(int input) {

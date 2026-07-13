@@ -3162,6 +3162,21 @@ before local-alloc, so the def is gone before it can bias anything.
   `assignment-chain` now mechanically merges two-to-four adjacent same-literal
   stores to distinct fields of one nonvolatile local aggregate, and splits an
   existing chain into forward/reverse explicit orders.
+- **Capture an overwritten field inside the new value's RHS when RTL wants the
+  independent arithmetic before the old-field load.** The conventional
+  `saved = p->u; p->u = saved + expr;` makes the capture a separate producer;
+  `p->u = expr + (saved = p->u);` puts it in the store's dependency tree and
+  lets old cc1 build/schedule `expr` first while preserving the old `u` for a
+  later restore. StageEndScreen needed this shape in every decimal-rendering
+  loop. Guided `field-capture-rhs` tries both fused addend orders and both
+  conventional split orders, but only for adjacent statements, one exact
+  field path rooted in a proven nonvolatile automatic object/parameter, an
+  automatic saved local, and an other operand containing only proven automatic
+  scalar/member reads (no calls, updates, assignments, raw dereferences, or
+  subscripts). It also parses private helper-macro bodies used only by the
+  target function, mapping captured names only from those safe outer objects
+  and rejecting macro formals. Do not use the shape to move volatile reads or
+  effectful work: C does not specify the evaluation order of `+` operands.
 - **A comparison literal can be named before an earlier guard so its `li`
   fills that guard's delay slot.** If the target materializes a constant before
   the comparison that logically owns it, assign a local before the preceding
@@ -3461,6 +3476,15 @@ before local-alloc, so the def is gone before it can bias anything.
   setup, before the final return) re-weights the whole interior at once
   (GetAreaMapLevel: flipped four s-registers in one move; GetRealPad's old
   wrapper was the same mechanism).
+  The same applies to a **macro's outer `do/while(0)` safety wrapper**: it is
+  still a real loop-note range after preprocessing, even when the macro body
+  already contains the only runtime loop. In StageEndScreen, changing the
+  private decimal-drawing macros' outer wrapper to a plain compound block
+  removed accidental weight and scheduler barriers across every expansion.
+  Compare preprocessed RTL before adding nested fences to compensate for a
+  wrapper the likely original macro never had. Only make this substitution
+  when every invocation is a standalone statement and the body has no
+  `break`/`continue` whose target would change.
 - **A whole-block `if (X) {block} else {block}` with BYTE-IDENTICAL arms is a
   scheduling lever** (permuter-found; no statement reorder reaches it).
   Duplicating an interleaved multi-load sequence into both arms shifts cc1's
