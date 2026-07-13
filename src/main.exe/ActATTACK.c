@@ -160,7 +160,7 @@ extern TCameraStatus CamState;
 extern s16 GetAttackDBID(Humanoid *human, s16 mid);
 extern s16 GetDirection(s32 dx, s32 dz, s32 roty);
 extern s16 GetMotionID(MotionManager *mmp, s16 mid);
-extern void AttackFire(s16 frame);
+extern void handle_char_state_attacking_SEVEN_(s16 frame);
 extern void AttackBowControl(s16 n);
 extern s16 AttackContinuousCheck(BattleType *battle);
 extern void bow_shoot_logic(s16 kind, VECTOR *start);
@@ -330,7 +330,7 @@ LAB_80021edc:
       break;
     }
     case 0xe9:
-      AttackFire(0xd);
+      handle_char_state_attacking_SEVEN_(0xd);
       break;
     case 0xaa:
     case 0x1a4:
@@ -386,7 +386,7 @@ LAB_80021edc:
       }
     }
     else if (sVar8 == 0x29) {
-      AttackFire(0xd);
+      handle_char_state_attacking_SEVEN_(0xd);
     }
     else if (sVar8 == 0x35) {
       AttackBowControl(1);
@@ -410,7 +410,7 @@ LAB_80021edc:
   }
   case 4:
     if ((s16)Me_MOTION_C->weapon_kind == 0x29) {
-      AttackFire(0xd);
+      handle_char_state_attacking_SEVEN_(0xd);
     }
     else if ((s16)Me_MOTION_C->weapon_kind == 0x35) {
       AttackBowControl(1);
@@ -433,7 +433,7 @@ LAB_80021edc:
     break;
   case 5:
     if ((s16)Me_MOTION_C->weapon_kind == 0x29) {
-      AttackFire(0xd);
+      handle_char_state_attacking_SEVEN_(0xd);
     }
     break;
   case 6: {

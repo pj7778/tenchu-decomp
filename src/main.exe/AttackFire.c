@@ -26,27 +26,38 @@
  * END PSX.SYM */
 
 /*
- * AttackFire (0x8001f6b8, 0x12c bytes) — an
- * animation-frame callback (param is the frame/trigger id) for the SEVEN
- * weapon's attack: only fires when the currently-armed motion trigger
- * (dtM->count) matches the caller's id, then plays a sound and spawns a
- * lightning-bolt item flying from the wielded weapon's tip
- * (Me_MOTION_C->model->object[0xd], the same item-TU Humanoid/ModelArchiveType
- * used by FUN_80027304/NowReturnNormal/dispose_weapon_data_of_char_) towards
- * the target, landing at the target's actual height
- * (Me_MOTION_C->target->locate.coord.t[1] — the Y translation of its world
- * matrix) rather than a computed offset.
+ * AttackFire (0x80027730, 0xe8 bytes) — the animation-frame callback for a
+ * fire/napalm-throwing attack: only fires while the currently-armed motion
+ * trigger (dtM->count) is within [sfrm, efrm], plays a sound on the
+ * FIRST matching frame (count == sfrm), then spawns a napalm item flying
+ * from the wielded weapon's tip (Me_MOTION_C->model->object[2]) towards a
+ * fixed-speed target point — near-twin of
+ * handle_char_state_attacking_SEVEN_.c (same item-TU Humanoid/
+ * ModelArchiveType, same dtM/dtR pair), but a frame RANGE instead of a
+ * single frame, a plain literal move speed instead of a randomized one, and
+ * the end point keeps `start`'s own Y (no target-height read).
  *
- * `dtM`/`dtR` are new globals (this is the first function to touch them):
- * only ONE s16 field (at byte offset 2) is proven for each, so both are
- * typed as minimal 2-field stand-ins reaching just that offset — nothing
- * cross-checks Ghidra's own guessed field names ("count" / "vy"), so they're
- * not asserted here (see the cookbook's "zero other usages -> it's a guess"
- * rule). Same original TU as Me_MOTION_C (gp-relative together, see gpsyms).
+ * Naming evidence is independent and high-confidence: the demo symbol has
+ * exactly two short parameters plus PARAM_ITEM_LAUNCH/SVECTOR stack locals,
+ * and its assembly launches the same fire/napalm item over a frame range.
+ * `callmatch --verify` also selected this function as the strictly better fit
+ * after exposing the old one-frame lightning callback's fingerprint collision.
  *
- * The move-speed magnitude `(rand() % 5) * 1000 + 4000` is a plain C
- * expression — the magic-multiply (mod 5) and shift/add (*1000) sequences
- * are automatic cc1 constant-folding, not hand-derived.
+ * `dtM`/`dtR` proven fields carried over unchanged from that twin (only
+ * dtM->count @ offset 2 and dtR's offset-2 s16 are proven; see its header
+ * for why they're minimal stand-ins, Ghidra's guessed names unverified).
+ *
+ * Matching notes (see docs/matching-cookbook.md):
+ *  - Unlike the SEVEN twin (which re-reads `start_pos->vx`/`->vz` through
+ *    the original pointer for `p.end.*`), THIS function's `p.end.*` must
+ *    read back the already-stored `p.start.vx`/`.vy`/`.vz` (a stack reload,
+ *    not the pointer) — confirmed by the raw asm, which reloads from the
+ *    `sp+0x18/0x1c/0x20` slots, not through `$v0`. Re-deriving from
+ *    `start_pos->` instead extends that pointer's live range across the
+ *    GetMoveSpeed call, forcing a callee-saved register and an extra
+ *    prologue/epilogue save/restore pair (8 bytes too long). Twins can
+ *    genuinely differ in which of two equal-value expressions the original
+ *    source used — don't assume the sibling's exact phrasing transfers.
  */
 
 typedef struct
@@ -66,26 +77,32 @@ extern dtR_type *dtR;
 extern Humanoid *Me_MOTION_C;
 extern void Sound(Humanoid *h, int id);
 extern void GetMoveSpeed(SVECTOR *out, s32 roty, s32 b, s32 width);
+extern void ReqItemUse(PARAM_ITEM_USE *p);
 
-void AttackFire(s16 frame)
+void AttackFire(s16 sfrm, s16 efrm)
 {
     VECTOR *start_pos;
     PARAM_ITEM_USE p;
     SVECTOR move;
+    s16 count;
 
-    if (dtM->count == frame)
+    count = dtM->count;
+    if (sfrm <= count && count <= efrm)
     {
-        Sound(Me_MOTION_C, 5);
-        p.type = ITEM_KIND_2_LIGHTNING_BOLT;
+        if (count == sfrm)
+        {
+            Sound(Me_MOTION_C, 0x28);
+        }
+        p.type = ITEM_KIND_2_KAEN;
         p.user = Me_MOTION_C;
-        start_pos = GetAbsolutePosition(Me_MOTION_C->model->object[0xD], 0, 0, -0x2BC);
+        start_pos = GetAbsolutePosition(Me_MOTION_C->model->object[2], 0, -100, -300);
         p.start.vx = start_pos->vx;
         p.start.vy = start_pos->vy;
         p.start.vz = start_pos->vz;
-        GetMoveSpeed(&move, dtR->unk2, (s16)((rand() % 5) * 1000 + 4000), 0);
-        p.end.vx = start_pos->vx + move.vx;
-        p.end.vy = Me_MOTION_C->target->locate.coord.t[1];
-        p.end.vz = start_pos->vz + move.vz;
+        GetMoveSpeed(&move, dtR->unk2, 100, 0);
+        p.end.vx = p.start.vx + move.vx;
+        p.end.vy = p.start.vy;
+        p.end.vz = p.start.vz + move.vz;
         ReqItemUse(&p);
     }
 }

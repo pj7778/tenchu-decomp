@@ -150,8 +150,9 @@ operating rules:
   callees are *contained in* the retail function's (containment, not equality — retail
   functions grow). It rejects many positional false positives, but similar callbacks
   can collide: the historical `AttackFire` adoption passed containment even though a
-  later demo-assembly audit identified retail `FUN_80027730` as the frame-range napalm
-  function and the currently named function as a one-frame lightning callback.
+  later demo-assembly audit identified retail `0x80027730` as the frame-range napalm
+  function and `0x8001f6b8` as a one-frame lightning callback. That allocation is now
+  corrected (`AttackFire` and `handle_char_state_attacking_SEVEN_`, respectively).
   `callmatch --verify` now reports `AMBIGUOUS` and fails the gate when another
   full-containment candidate has no more extra named calls and no worse size distance.
 - **Ambiguous ⇒ keep the placeholder, record the candidate.** `reference/psxsym-candidates.tsv`

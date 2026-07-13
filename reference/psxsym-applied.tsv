@@ -1,15 +1,18 @@
 # Function names recovered from the demo's PSX.SYM and adopted into the decomp.
-# Every row was applied with tools/import_symbols.py --renames and rebuilt
-# byte-identical (./Build check).  Re-check any time with:
+# Every row went through the reviewed rename workflow and was rebuilt
+# byte-identical (`tools/import_symbols.py --renames` handles ordinary one-way
+# adoptions; the AttackFire three-way correction was applied atomically).
+# Re-check any time with:
 #   tools/callmatch.py --verify reference/psxsym-applied.tsv
 #addr	previous_name	adopted_name	matcher	evidence
 80018278	FUN_80018278	UpdateCoordinate2	symmatch	HIGH/3DCTRL.C
 8001851c	FUN_8001851c	CreateCloneModel	symmatch	HIGH/3DCTRL.C
-8001f6b8	handle_char_state_attacking_SEVEN_	AttackFire	symmatch+callmatch	LOW positional, callees CONFIRM
 8001fb98	handle_char_state_posing_	ActACTION	symmatch	MED/MOTION.C
 80026074	handle_char_state_using_item_	ActITEM	symmatch	HIGH/MOTION.C
 800268bc	handle_char_state_dead_	ActDEAD	symmatch+semantic	source order after ActITEM/ActDAMAGE; death-state behavior
+800274e8	FUN_800274e8	AttackGunControl	prototype+semantic	two short args; gun item kind 19/weapon object 0xd; matching attack callback role
 80027688	FUN_80027688	AttackPQD	xbuild	LOOSE
+80027730	FUN_80027730	AttackFire	callmatch+prototype+semantic	two-frame range; PARAM_ITEM_LAUNCH/SVECTOR locals; fire/napalm request
 80027818	FUN_80027818	ItemControl	xbuild	LOOSE
 8002d638	think_setting_weapon_logic1_	Think3area	symmatch	HIGH/THINK_3.C
 8002fa54	think_setting_go_towards_player	Think2contact	symmatch+semantic	adjacent to Think2confirm; matching contact-facing behavior

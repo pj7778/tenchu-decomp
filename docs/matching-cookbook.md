@@ -78,7 +78,8 @@ Never classify unresolved names or compare callee fingerprints from the raw Ghid
 names alone: that snapshot is not rewritten when the repository adopts a name, so it
 silently turns known callees back into placeholders. Call containment is necessary,
 not sufficient; callbacks with the same small set of helpers still require prototype,
-constant, and semantic confirmation (the historical `AttackFire` collision).
+constant, and semantic confirmation (the historical, now-corrected `AttackFire`
+collision).
 `callmatch --verify` mechanically blocks a conservative subset of these as
 `AMBIGUOUS` when another full-containment candidate has no more extra named calls
 and is at least as close in size; do not override that gate with positional evidence.
@@ -1991,7 +1992,7 @@ near entry; `AdtMessageBox` wants the inline form.)
   load/store touching the extra bytes — is often a DEAD/UNUSED local.** cc1
   reserves stack for every declared automatic aggregate regardless of use; when
   the gap exactly equals a sibling function's struct size, declare that struct
-  as an unused local (FUN_800274e8: an unused `PARAM_ITEM_USE p;` = 40 bytes, a
+  as an unused local (AttackGunControl: an unused `PARAM_ITEM_USE p;` = 40 bytes, a
   refactoring leftover from wrapping bow_shoot_logic).
 - **Overlapping big frame buffers whose addresses rematerialize at every
   call are INLINED STATIC HELPERS, not locals** (DoInfoViewProc's debug
