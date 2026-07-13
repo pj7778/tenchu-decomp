@@ -271,6 +271,15 @@ expected, not contrary evidence. Require both the same named setter/parameter
 contract and a producer-consumer field/lifecycle fit before using this signal —
 a callback-address store by itself is not enough.
 
+The same producer/consumer proof can justify a **retail-only semantic pair**
+when no earlier-build name exists. `SetSnow` is called only by the already-named
+`ProcMiscSnowfall`, fills one particle's position/velocity/ground/sprite fields,
+and installs `DrawSnow`; that callback consumes precisely those fields, wraps
+the particle around the camera, projects the snow sprite, and ends it at ground
+level. The two names were unused and follow the surrounding `Set*` -> `Draw*`
+convention. Require an exclusive named caller, exact field/lifecycle agreement,
+and an unused conventional pair—mere thematic similarity is not enough.
+
 `callmatch --verify` now blocks this mechanically as `AMBIGUOUS`: after full
 containment it searches for another retail function that contains every demo
 callee, has no more extra named calls, and is at least as close in code size.

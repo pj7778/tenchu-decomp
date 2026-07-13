@@ -14,7 +14,7 @@
  *     extern struct GsOT *OTablePt;
  * END PSX.SYM */
 
-/* FUN_80039160's writes and this callback's reads prove a snow-particle
+/* SetSnow's writes and this callback's reads prove a snow-particle
  * view of EffectParam.  It shares BloodType's storage, but not its field
  * meanings: the trailing shorts are velocity and the byte at +0x1e is a
  * sprite selector. */
@@ -72,6 +72,11 @@ extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, s32 priority);
  *    byte index in $v1; cc1 assigns the address/index chain to $v1/$v0
  *    instead (6 bytes).
  *
+ * Naming: retail added this pair after the demo build. SetSnow is called only
+ * by ProcMiscSnowfall and installs this callback; this body advances exactly
+ * those snow-particle fields and draws the dedicated sprite. The unused
+ * SetSnow/DrawSnow pair follows every surrounding EffectSlot setter/callback.
+ *
  * `rtlguide` classifies these as local allocation plus one combine/scheduler
  * consequence; `.greg` already has the correct callee-saved coordinate map.
  * Flat or worse trials included coordinate-expression folding, statement and
@@ -83,9 +88,9 @@ extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, s32 priority);
  * Keep the checkpoint pure C; no inline assembly is needed or wanted.
  */
 #ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80034dbc", FUN_80034dbc);
+INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawSnow", DrawSnow);
 #else
-void FUN_80034dbc(TEffectSlot *effect)
+void DrawSnow(TEffectSlot *effect)
 {
     SnowParticleType *particle;
     EffectSprite3D *model;

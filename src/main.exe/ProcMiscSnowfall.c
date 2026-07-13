@@ -41,7 +41,7 @@
  * fuller CREATE once set up; only the two reads/one self-store survive).
  * Every 4th tick (`GameClock & 3`) while armed (msg > MM_RESUME), spawns
  * one snowflake: a small downward-biased jitter velocity and a position
- * randomized in a box around the camera, handed to FUN_80039160 (the
+ * randomized in a box around the camera, handed to SetSnow (the
  * EffectSlot particle pool).
  *
  * Matching notes (docs/matching-cookbook.md):
@@ -83,7 +83,7 @@
  *    - 3000)` (cookbook Expressions) to get the target's schedule (the
  *    field load interleaved with the rand()%N divide's latency) instead of
  *    a same-length but differently-scheduled sequence.
- *  - `vel`/`pos` (the copies actually passed to FUN_80039160) must be
+ *  - `vel`/`pos` (the copies actually passed to SetSnow) must be
  *    declared BEFORE `jitter`/`posRaw` (the raw computed locals) for the
  *    target's stack slot assignment (call args at the lower addresses).
  */
@@ -96,7 +96,7 @@ typedef struct
 
 extern long GameClock;
 extern TViewInfo ViewInfo;
-extern void FUN_80039160(long *arg0, u16 *arg1, s32 arg2, u8 arg3);
+extern void SetSnow(long *arg0, u16 *arg1, s32 arg2, u8 arg3);
 extern void *memset(void *s, int c, u32 n);
 
 void ProcMiscSnowfall(tag_TMisc *m, enum TMiscMessage msg)
@@ -154,7 +154,6 @@ do_resume:
         posRaw.vy = ViewInfo.vry + (rand() % 3000 - 6000);
         posRaw.vz = ViewInfo.vrz + (rand() % 6000 - 3000);
         pos = posRaw;
-        FUN_80039160((long *)&pos, (u16 *)&vel, 0x1000, 0);
+        SetSnow((long *)&pos, (u16 *)&vel, 0x1000, 0);
     }
 }
-

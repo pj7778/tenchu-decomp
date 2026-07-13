@@ -153,7 +153,7 @@ GP_EXTERNS = {
     "valloc": ["virtual_memory_pool"],
     "FUN_80018f00": ["AccessPower"],
     "GetAreaMapVector": ["FieldAttrib", "FieldArea", "FieldIndex"],
-    "FUN_80039160": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
+    "SetSnow": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
     "SetImpact": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
     "SetExplosion": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
     "Think1random": ["Me_THINK_C", "Attrib"],
@@ -398,7 +398,7 @@ MASPSX_EXTRA = {
     "ActSTICKON": ["--expand-div"],
     "SetSmokeS": ["--expand-div"],
     "FUN_80033f10": ["--expand-div"],
-    "FUN_80034dbc": ["--expand-div"],
+    "DrawSnow": ["--expand-div"],
     "DrawImpact": ["--expand-div"],
     "FUN_80036284": ["--expand-div"],
 }

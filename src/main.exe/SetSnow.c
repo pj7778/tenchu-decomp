@@ -15,18 +15,18 @@
 /*
  * MATCH.
  *
- * FUN_80039160 (0x80039160, 0x134 bytes) — EFFECT.C effect-pool allocator:
+ * SetSnow (0x80039160, 0x134 bytes) — EFFECT.C effect-pool allocator:
  * the same EffectSlot[200] round-robin search as SetSplash/SetFrame/
  * SetBleed/FUN_80038fdc/FUN_8003944c (see SetSplash.c for the shared idiom
  * writeup), filling the slot straight from its 4 caller-supplied parameters
  * (a raw "spawn exactly as told" setter, no randomization) and handing it
- * to FUN_80034dbc — a DIFFERENT draw callback from DrawBlood/DrawImpact,
+ * to DrawSnow — a DIFFERENT draw callback from DrawBlood/DrawImpact,
  * still unmatched itself. Called once, from ProcMiscSnowfall.c
- * (`FUN_80039160(&local_30, &local_40, 0x1000, 0);`) — a falling-snowflake
+ * (`SetSnow(&local_30, &local_40, 0x1000, 0);`) — a falling-snowflake
  * spawner, not blood.
  *
  * The fields line up with effect.h's BloodType byte-for-byte (same as
- * FUN_8003944c), but FUN_80034dbc's own Ghidra decompilation proves this
+ * FUN_8003944c), but DrawSnow's own Ghidra decompilation proves this
  * pool slot is really a GENERIC POSITION+VELOCITY particle for this caller,
  * not blood: it reads hint/px/py back as plain `long`s (a position, not a
  * pointer), adds time/vx/vy back as `short` DELTAS to them (velocity, not a
@@ -38,10 +38,15 @@
  * as FUN_8003944c) rather than inventing a renamed/new union view from an
  * unmatched sibling's Ghidra output.
  *
+ * The name is high-confidence semantic recovery rather than a transplanted
+ * demo symbol: ProcMiscSnowfall is the only caller, this function creates one
+ * snow particle, and it installs DrawSnow, whose producer/consumer fields and
+ * lifetime agree exactly. Both names were unused.
+ *
  * One field genuinely diverges in WIDTH, independent of the naming
  * question above: `arg3` (a single byte) is written at param+0x1e, which
  * BloodType calls `vz` (a `short`, proven correct elsewhere — FUN_8003944c
- * stores a real `u16` there). FUN_80034dbc's own decompilation reads
+ * stores a real `u16` there). DrawSnow's own decompilation reads
  * EXACTLY that byte back (`*(byte *)((int)param_1 + 0x22)` — param_1 is
  * EF-based there, so ef+0x22 == param+0x1e) as a table INDEX (a sprite/kind
  * selector), never as part of a 2-byte value — proving this caller's slot
@@ -51,16 +56,16 @@
  * raw `u8` offset store rather than through `.blood.vz`.
  *
  * No candidate name in reference/psxsym-candidates.tsv for either this
- * function or FUN_80034dbc; not in the demo's PSX.SYM at all (EFFECT.C
+ * function or DrawSnow; not in the demo's PSX.SYM at all (EFFECT.C
  * functions this deep were apparently a retail-only addition, or the demo
  * spawned snow through a different, simpler path — ProcMiscSnowfall.c
  * itself IS in the demo per its own header, so only this helper is new).
  */
 extern void *GlobalAreaMap;
-extern void FUN_80034dbc(TEffectSlot *ef);
+extern void DrawSnow(TEffectSlot *ef);
 extern long GetAreaMapLevel(void *area, long x, long y, long z, int mode);
 
-void FUN_80039160(long *arg0, u16 *arg1, s32 arg2, u8 arg3)
+void SetSnow(long *arg0, u16 *arg1, s32 arg2, u8 arg3)
 {
     int idx;
     int count;
@@ -112,5 +117,5 @@ found:
     pp->scale = pp->px - 8000;
     pp->vy = vy;
     pp->pz = GetAreaMapLevel(GlobalAreaMap, (long)ef->param.blood.hint, pp->scale, pp->py, 8);
-    ef->proc = (void (*)())FUN_80034dbc;
+    ef->proc = (void (*)())DrawSnow;
 }

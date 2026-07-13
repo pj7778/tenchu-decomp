@@ -1559,7 +1559,7 @@ def rule_mod_bias_temp(text, name, span):
     ``offset = delta % RANGE - BIAS; dst = base + offset`` expose the same
     arithmetic to C but not the same pseudo lifetimes to old cc1.  The latter
     preserved the modulo chain and changed the final ``addu`` allocation in
-    ``FUN_80034dbc``.  Try a short block-local temp at each site, plus one
+    ``DrawSnow``.  Try a short block-local temp at each site, plus one
     function-scope temp shared by repeated wraps of the same scalar type.
 
     The modulo input must be a uniquely declared, non-qualified automatic

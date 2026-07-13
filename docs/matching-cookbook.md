@@ -1068,7 +1068,7 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   `coord = view + (delta % 6000 - 3000)` and
   `offset = delta % 6000 - 3000; coord = view + offset;` preserve the same
   arithmetic, but the second spelling gives the remainder/bias chain its own
-  pseudo and can change only the final add's allocation. In `FUN_80034dbc`,
+  pseudo and can change only the final add's allocation. In `DrawSnow`,
   the split form cut a 128-byte cascade to 26 bytes without changing length;
   reusing one `u32 offset` across the three non-overlapping coordinate wraps
   kept the modulo type exact. `autorules` rule `mod-bias-temp` now tries both
