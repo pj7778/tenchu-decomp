@@ -107,7 +107,8 @@ as debug strings in the binary. So **every** name in the repo is
 reverse-engineered — there is no developer-symbol table to defer to. The naming
 rule is therefore simply: **Ghidra is the source of truth. Where it has a real
 name, `import_symbols.py` adopts it; where it still has `FUN_`, the repo keeps
-whatever it has** (often a hand-picked placeholder like `item_use_gun`, which is
+whatever it has** (often a hand-picked placeholder like the former
+`item_use_gun`, now inferred as `ReqItemGun`, which is
 as authoritative as any CamelCase name). To pull in names you have added in
 Ghidra since the last export, re-run `ExportSymbolsTypes.java` first — the
 committed `symbols.tsv` can lag the live project (it will show `FUN_` for

@@ -297,7 +297,7 @@ extern int ReqItemJirai(PARAM_ITEM_USE *p);
 extern int ReqItemShinsoku(PARAM_ITEM_USE *p);
 extern int ReqItemKusuri(PARAM_ITEM_USE *p);
 extern int ReqItemGosin(PARAM_ITEM_USE *p);
-extern void item_use_gun(PARAM_ITEM_USE *p);
+extern void ReqItemGun(PARAM_ITEM_USE *p);
 extern int ReqItemArrow(PARAM_ITEM_USE *p);
 extern int ReqItemHenshin(PARAM_ITEM_USE *p);
 extern int ReqItemKawarimi(PARAM_ITEM_USE *p);
@@ -968,7 +968,7 @@ int ReqItemUse(PARAM_ITEM_USE *p)
         break;
     }
     case 0x14: /* GUN */
-        item_use_gun(p);
+        ReqItemGun(p);
         break;
     case 0x15: /* ARROW */
         ReqItemArrow(p);

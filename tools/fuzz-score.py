@@ -132,7 +132,7 @@ def score_one(name, addr, size):
     # Raw byte equality in the function's slot is the authoritative match test.
     # Do NOT gate it on the instruction-count heuristic: our_insns() reads a
     # slack window and can over-read, which made a genuine byte-match (e.g.
-    # item_use_gun, later promoted to a plain matched .c) score <100 as a partial.
+    # ReqItemGun, later promoted to a plain matched .c) score <100 as a partial.
     if raw(ORIG, addr, size) == raw(OURS, addr, size):
         return 100.0, "exact"
     t = [stem(x) for x in tgt]

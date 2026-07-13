@@ -516,7 +516,7 @@ segments:
       - [0x358D0, c, ProcItemLightningBolt]
       - [0x35B58, c, ReqItemLightningBolt]
       - [0x35D28, c, ProcItemGun]
-      - [0x36054, c, item_use_gun]
+      - [0x36054, c, ReqItemGun]
       - [0x361C0, c, ProcItemNapalm]
       - [0x36848, c, ProcItemLaunch]
       - [0x36C3C, c, UpdateItemState]

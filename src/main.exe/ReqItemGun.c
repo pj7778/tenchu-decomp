@@ -3,7 +3,7 @@
 #include "item.h"
 
 /*
- * item_use_gun (0x80046854) — spawn a gun/firearm item. Same item TU, same
+ * ReqItemGun (0x80046854) — spawn a gun/firearm item. Same item TU, same
  * pool round-robin shape as ReqItemManebue/ReqItemKawarimi/etc, but:
  *  - returns void (no `return 1;`/`return 0;` — Ghidra's decompile shows a
  *    void-returning function; the epilogue never touches $v0)
@@ -20,7 +20,7 @@ extern void ProcItemGun(tag_TItem *item);
  * maspsxGpExterns for this file, unlike ActionHalt/FRAMES (absolute here). */
 extern s32 COUNTER_FOR_ITEM_ARRAY_;
 
-void item_use_gun(PARAM_ITEM_USE *p)
+void ReqItemGun(PARAM_ITEM_USE *p)
 {
     tag_TItem *it;
     VECTOR *st;
