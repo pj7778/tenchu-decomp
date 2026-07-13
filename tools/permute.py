@@ -315,6 +315,7 @@ GP_EXTERNS = {
     "FUN_80033bc0": ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"],
     "AttackControl": ["Me_MOTION_C", "dtL", "dtR", "motID", "D_80097F0E", "dtPAD", "dtM"],
     "Think1target": ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"],
+    "FUN_8005adbc": ["D_80097D20", "D_80097D24", "D_80097D28"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs

@@ -431,6 +431,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "FUN_80033bc0" = ["CURRENT_OFFSET_INTO_SOME_SELF_CALL_STRUCT_AREA_"]
     syms "AttackControl" = ["Me_MOTION_C", "dtL", "dtR", "motID", "D_80097F0E", "dtPAD", "dtM"]
     syms "Think1target" = ["Me_THINK_C", "SR", "Attrib", "FRAMES_UNTIL_END_OF_ALERT"]
+    syms "FUN_8005adbc" = ["D_80097D20", "D_80097D24", "D_80097D28"]
     syms _ = []
 
 as :: FilePath

@@ -10,109 +10,160 @@
  *     extern struct tag_TItem items[30];
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8005adbc", FUN_8005adbc);
+/*
+ * Save or restore the memory-card menu's VRAM window and allocate/free its
+ * help text and sprites.  The load path also sanitises the help text, skipping
+ * the second byte of high-bit characters and replacing control/backslash
+ * bytes with NUL separators.
+ *
+ * Matching notes:
+ *  - `rect` followed by `image` gives the target's complete sp+0x10..0x37
+ *    workspace and 0x50-byte frame.
+ *  - `i = 0` before vsize keeps the loop index live across that call in s0;
+ *    the do-while then reproduces both increments on high-bit characters.
+ *  - Literal returns are intentional.  A shared `result` local allocated in
+ *    a0, shortened the success tail, and added a final move.  Independent
+ *    `return 0`/`return 1` sites keep the result in v0 and make cc1 move the
+ *    final SetupSprite result to a0 before the two field stores.
+ */
 
-// triage: MEDIUM — 240 insns, 1 loop, 11 callees, ~0.05 to AddMisc
-// likely-relevant cookbook sections:
-//   - Loops: 1 back-edge(s) — for/while/do vs goto shape
-//   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py
+typedef struct
+{
+    s16 x;
+    s16 y;
+    s16 w;
+    s16 h;
+} RECT;
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// undefined4 FUN_8005adbc(short param_1)
-//
-// {
-//   byte bVar1;
-//   undefined4 uVar2;
-//   ulong uVar3;
-//   ulong *puVar4;
-//   int iVar5;
-//   RECT local_40;
-//   GsIMAGE GStack_38;
-//
-//   if (param_1 == 0) {
-//     uVar2 = 0;
-//     if (DAT_80097d20 == (u_long *)0x0) {
-//       DAT_80097d20 = (u_long *)valloc(0x8000);
-//       local_40.x = 0x3c0;
-//       local_40.y = 0x100;
-//       local_40.w = 0x40;
-//       local_40.h = 0x100;
-//       StoreImage(&local_40,DAT_80097d20);
-//       DrawSync(0);
-//       DAT_80097d24 = FileRead("K:\\WORK\\CDIMAGE\\DEMO\\start\\card_j.txt");
-//       FUN_8005b17c(0,0);
-//       iVar5 = 0;
-//       uVar3 = vsize((undefined *)DAT_80097d24);
-//       if (0 < (int)uVar3) {
-//         do {
-//           bVar1 = *(byte *)((int)DAT_80097d24 + iVar5);
-//           if ((bVar1 & 0x80) == 0) {
-//             if ((bVar1 < 0x20) || (bVar1 == 0x5c)) {
-//               *(byte *)((int)DAT_80097d24 + iVar5) = 0;
-//             }
-//           }
-//           else {
-//             iVar5 = iVar5 + 1;
-//           }
-//           iVar5 = iVar5 + 1;
-//         } while (iVar5 < (int)uVar3);
-//       }
-//       puVar4 = FileRead("K:\\WORK\\CDIMAGE\\DEMO\\start\\mcard.tim");
-//       GetTIMInfo(puVar4,&GStack_38);
-//       LoadTIMAndFree(puVar4);
-//       DAT_80097d28 = SetupSprite((Sprite3D *)0x0,&GStack_38);
-//       (DAT_80097d28->sprite).y = -0x3c;
-//       puVar4 = FileRead("K:\\WORK\\CDIMAGE\\DEMO\\start\\mbuttonj.tim");
-//       GetTIMInfo(puVar4,&GStack_38);
-//       LoadTIMAndFree(puVar4);
-//       DAT_800c2d58 = SetupSprite((Sprite3D *)0x0,&GStack_38);
-//       (DAT_800c2d58->sprite).h = (DAT_800c2d58->sprite).h >> 1;
-//       (DAT_800c2d58->sprite).my = GStack_38.ph >> 2;
-//       (DAT_800c2d58->sprite).y = 0x3c;
-//       DAT_800c2d5c = SetupSprite(DAT_800c2d58,(GsIMAGE *)0x0);
-//       (DAT_800c2d5c->sprite).v = (DAT_800c2d5c->sprite).v + (char)(GStack_38.ph >> 1);
-//       DAT_800c2d60 = SetupSprite(DAT_800c2d58,(GsIMAGE *)0x0);
-//       (DAT_800c2d60->sprite).w = ((DAT_800c2d58->sprite).w >> 1) - 0x14;
-//       (DAT_800c2d60->sprite).mx = ((DAT_800c2d60->sprite).w >> 1) + 10;
-//       (DAT_800c2d60->sprite).x = -0x14;
-//       (DAT_800c2d60->sprite).u = (DAT_800c2d60->sprite).u + '\x0f';
-//       (DAT_800c2d60->sprite).attribute = (DAT_800c2d60->sprite).attribute | 0x30000000;
-//       DAT_800c2d64 = SetupSprite(DAT_800c2d58,(GsIMAGE *)0x0);
-//       (DAT_800c2d64->sprite).w = ((DAT_800c2d58->sprite).w >> 1) - 10;
-//       (DAT_800c2d64->sprite).mx = (DAT_800c2d64->sprite).w >> 1;
-//       (DAT_800c2d64->sprite).x = 0x1c;
-//       (DAT_800c2d64->sprite).u =
-//            (DAT_800c2d64->sprite).u + (char)(GStack_38.pw >> 1) * '\x04' + '\n';
-//       (DAT_800c2d64->sprite).attribute = (DAT_800c2d64->sprite).attribute | 0x30000000;
-//       puVar4 = FileRead("K:\\WORK\\CDIMAGE\\DEMO\\start\\xtoselj.tim");
-//       GetTIMInfo(puVar4,&GStack_38);
-//       LoadTIMAndFree(puVar4);
-//       DAT_800c2d68 = SetupSprite((Sprite3D *)0x0,&GStack_38);
-//       uVar2 = 1;
-//       (DAT_800c2d68->sprite).x = 2;
-//       (DAT_800c2d68->sprite).y = 0x5a;
-//     }
-//   }
-//   else {
-//     local_40.x = 0x3c0;
-//     local_40.y = 0x100;
-//     local_40.w = 0x40;
-//     local_40.h = 0x100;
-//     LoadImage(&local_40,DAT_80097d20);
-//     DrawSync(0);
-//     vfree((undefined *)DAT_80097d20);
-//     DAT_80097d20 = (u_long *)0x0;
-//     vfree((undefined *)DAT_80097d24);
-//     vfree((undefined *)DAT_80097d28);
-//     vfree((undefined *)DAT_800c2d58);
-//     vfree((undefined *)DAT_800c2d5c);
-//     vfree((undefined *)DAT_800c2d60);
-//     vfree((undefined *)DAT_800c2d64);
-//     vfree((undefined *)DAT_800c2d68);
-//     uVar2 = 0;
-//   }
-//   return uVar2;
-// }
+typedef struct
+{
+    GsCOORDINATE2 locate;
+    SVECTOR rotate;
+    s16 id;
+    s16 attribute;
+    SVECTOR clip;
+    s32 scale;
+    GsSPRITE sprite;
+} Sprite3D;
+
+extern u_long *D_80097D20;
+extern u8 *D_80097D24;
+extern Sprite3D *D_80097D28;
+extern Sprite3D *D_800C2D58[];
+
+extern char D_80013C94[];
+extern char D_80013CBC[];
+extern char D_80013CE4[];
+extern char D_80013D0C[];
+
+extern void *valloc(u32 size);
+extern void vfree(void *p);
+extern s32 vsize(void *p);
+extern int StoreImage(RECT *rect, u_long *pixels);
+extern int LoadImage(RECT *rect, u_long *pixels);
+extern int DrawSync(s32 mode);
+extern u_long *FileRead(char *path);
+extern Sprite3D *SetupSprite(Sprite3D *original, GsIMAGE *image);
+extern s32 FUN_8005b17c(s32 page, s32 pad);
+
+s32 FUN_8005adbc(s16 mode)
+{
+    u8 c;
+    s32 size;
+    u_long *tim;
+    s32 i;
+    RECT rect;
+    GsIMAGE image;
+
+    if (mode != 0)
+    {
+        rect.x = 0x3c0;
+        rect.y = 0x100;
+        rect.w = 0x40;
+        rect.h = 0x100;
+        LoadImage(&rect, D_80097D20);
+        DrawSync(0);
+        vfree(D_80097D20);
+        D_80097D20 = 0;
+        vfree(D_80097D24);
+        vfree(D_80097D28);
+        vfree(D_800C2D58[0]);
+        vfree(D_800C2D58[1]);
+        vfree(D_800C2D58[2]);
+        vfree(D_800C2D58[3]);
+        vfree(D_800C2D58[4]);
+        return 0;
+    }
+
+    if (D_80097D20 == 0)
+    {
+        D_80097D20 = valloc(0x8000);
+        rect.x = 0x3c0;
+        rect.y = 0x100;
+        rect.w = 0x40;
+        rect.h = 0x100;
+        StoreImage(&rect, D_80097D20);
+        DrawSync(0);
+
+        D_80097D24 = (u8 *)FileRead(D_80013C94);
+        FUN_8005b17c(0, 0);
+        i = 0;
+        size = vsize(D_80097D24);
+        if (size > 0)
+        {
+            do
+            {
+                c = D_80097D24[i];
+                if ((c & 0x80) != 0)
+                {
+                    i++;
+                }
+                else if (c < 0x20 || c == 0x5c)
+                {
+                    D_80097D24[i] = 0;
+                }
+                i++;
+            } while (i < size);
+        }
+
+        tim = FileRead(D_80013CBC);
+        GetTIMInfo(tim, &image);
+        LoadTIMAndFree(tim);
+        D_80097D28 = SetupSprite(0, &image);
+        D_80097D28->sprite.y = -0x3c;
+
+        tim = FileRead(D_80013CE4);
+        GetTIMInfo(tim, &image);
+        LoadTIMAndFree(tim);
+        D_800C2D58[0] = SetupSprite(0, &image);
+        D_800C2D58[0]->sprite.h >>= 1;
+        D_800C2D58[0]->sprite.my = image.ph >> 2;
+        D_800C2D58[0]->sprite.y = 0x3c;
+
+        D_800C2D58[1] = SetupSprite(D_800C2D58[0], 0);
+        D_800C2D58[1]->sprite.v += image.ph >> 1;
+
+        D_800C2D58[2] = SetupSprite(D_800C2D58[0], 0);
+        D_800C2D58[2]->sprite.w = (D_800C2D58[0]->sprite.w >> 1) - 0x14;
+        D_800C2D58[2]->sprite.mx = (D_800C2D58[2]->sprite.w >> 1) + 10;
+        D_800C2D58[2]->sprite.x = -0x14;
+        D_800C2D58[2]->sprite.u += 0xf;
+        D_800C2D58[2]->sprite.attribute |= 0x30000000;
+
+        D_800C2D58[3] = SetupSprite(D_800C2D58[0], 0);
+        D_800C2D58[3]->sprite.w = (D_800C2D58[0]->sprite.w >> 1) - 10;
+        D_800C2D58[3]->sprite.mx = D_800C2D58[3]->sprite.w >> 1;
+        D_800C2D58[3]->sprite.x = 0x1c;
+        D_800C2D58[3]->sprite.u += ((image.pw >> 1) * 4) + 10;
+        D_800C2D58[3]->sprite.attribute |= 0x30000000;
+
+        tim = FileRead(D_80013D0C);
+        GetTIMInfo(tim, &image);
+        LoadTIMAndFree(tim);
+        D_800C2D58[4] = SetupSprite(0, &image);
+        D_800C2D58[4]->sprite.x = 2;
+        D_800C2D58[4]->sprite.y = 0x5a;
+        return 1;
+    }
+    return 0;
+}
