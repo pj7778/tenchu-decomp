@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -33,340 +34,487 @@
  * END PSX.SYM */
 
 /*
- * ActSTATE (0x8002375c) — TODO one-line description.
+ * ActSTATE (0x8002375c) — handles the humanoid state-motion family rooted at
+ * 0x801: weapon draw/sheath cleanup, falls and landing reactions, and the
+ * return to the normal standing motion.
  *
- * STATUS: NON_MATCHING — split (jump-table) function scaffolded by
- * tools/split-scaffold.py. The #ifndef NON_MATCHING branch is the stub
- * (INCLUDE_ASM pieces + the jump-table pool as one static const array so
- * the .rodata carve has bytes); build the draft with `NON_MATCHING=ActSTATE
- * ./Build`. On a full match, delete the guards and the _jtbl array.
+ * Matching notes (2,680 bytes / 670 instructions):
+ *  - The two terminal motion-selection paths use signed, full-width motion-id
+ *    temporaries.  Their SImode producers keep the source-level tails distinct
+ *    until jump2 folds only the duplicated final D_80097F0E store.
+ *  - The redundant count test after the non-special 0x501 selection preserves
+ *    the original block notes.  Both arms intentionally perform the same
+ *    store; the late jump passes eliminate the test while its earlier RTL
+ *    lifetime gives the target's register allocation.
+ *  - The random-fall arm uses a separate block-local humanoid pointer.  This
+ *    keeps the two motion-id producer islands distinct without emitted code.
  */
 
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActSTATE", ActSTATE);
+typedef struct
+{
+    Humanoid *human;
+    s16 loop;
+    s16 motid;
+} HumanAnimType;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActSTATE", switchD_8002379c__switchD);
+typedef struct
+{
+    ModelType *model;
+    SVECTOR vector1;
+    SVECTOR vector2;
+    s16 maxn;
+    s16 n;
+    s32 *p1;
+    s32 *p2;
+    s32 sz;
+    u8 poly[0x34];
+} AfterimageType;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActSTATE", switchD_8002379c__caseD_d);
+typedef struct
+{
+    VECTOR TargetVector;
+    Humanoid *Owner;
+    s32 Mode;
+    s16 DirectionRX;
+    s16 DirectionRY;
+    s32 OldMode;
+    u8 Valiation;
+} TCameraStatus;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActSTATE", switchD_8002379c__caseD_e);
+extern MotionManager *dtM;
+extern Humanoid *Me_MOTION_C;
+extern Humanoid *StagePlayer;
+extern s16 motID;
+extern SVECTOR *dtV;
+extern s16 dtPAD;
+extern SVECTOR *dtR;
+extern VECTOR *dtL;
+extern s16 MotionUpdateMode;
+extern s16 D_80097F0E;
+extern HumanAnimType CVAhuman[5];
+extern TCameraStatus CamState;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActSTATE", switchD_8002379c__caseD_2);
+extern s16 SetNowMotion(Humanoid *human, s16 mid, s16 move);
+extern void SetCameraMode(s32 mode);
+extern void EquipWeapon(Humanoid *human, s16 mode);
+extern void DisposeAfterimage(AfterimageType *afi);
+extern void FUN_80033bc0(VECTOR *pos, u16 spread, s16 divisor, s16 count);
+extern void PadShockAR(s32 port, s32 power, s32 attack, s32 release);
+extern s16 Sound(Humanoid *human, s16 id);
+extern int ReqLifeBar(Humanoid *human);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActSTATE", switchD_8002379c__caseD_3);
+void ActSTATE(void)
+{
+    short i;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActSTATE", switchD_8002379c__caseD_5);
+    switch ((short)(dtM->mid - 0x801))
+    {
+    case 0xd:
+        if (dtM->count != 1)
+        {
+            goto draw_not_one;
+        }
+        {
+            short cleanup_guard;
+            short kind;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActSTATE", switchD_8002379c__caseD_0);
+            kind = (short)Me_MOTION_C->weapon_kind;
+            switch (kind)
+            {
+            case 2:
+                DeleteConflict(Me_MOTION_C->model->object[8]);
+                DeleteConflict(Me_MOTION_C->model->object[0xb]);
+                cleanup_guard = 3;
+                break;
+            case 3:
+                DeleteConflict(Me_MOTION_C->model->object[2]);
+                cleanup_guard = 3;
+                break;
+            case 0:
+                cleanup_guard = 3;
+                break;
+            default:
+                DeleteConflict(Me_MOTION_C->model->object[0xd]);
+                DeleteConflict(Me_MOTION_C->model->object[0xe]);
+                cleanup_guard = 3;
+                break;
+            }
+            if ((cleanup_guard & 2) != 0)
+            {
+                if (Me_MOTION_C->illusion[0] != 0)
+                {
+                    DisposeAfterimage((AfterimageType *)Me_MOTION_C->illusion[0]);
+                    Me_MOTION_C->illusion[0] = 0;
+                }
+                if (Me_MOTION_C->illusion[1] != 0)
+                {
+                    DisposeAfterimage((AfterimageType *)Me_MOTION_C->illusion[1]);
+                    Me_MOTION_C->illusion[1] = 0;
+                }
+            }
+        }
+        dtM->mask = 0x7fff;
+        if (Me_MOTION_C->type < 7) { if (Me_MOTION_C->type > 3) {
+            if (Me_MOTION_C == StagePlayer)
+            {
+                SetCameraMode(0);
+            }
+            {
+                s32 special_motion_id;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActSTATE", switchD_8002379c__caseD_f);
+                if ((Me_MOTION_C->attribute & 0x40) != 0)
+                {
+                    special_motion_id = 0x501;
+                }
+                else
+                {
+                    goto zero_motion;
+                }
+                motID = special_motion_id;
+            }
+            goto special_positive_motion;
+        } }
+        if ((Me_MOTION_C->attribute & 0x40) == 0)
+        {
+            return;
+        }
+        motID = 0x501;
+        if (dtM->count != 0)
+        {
+            D_80097F0E = 1;
+        }
+        else
+        {
+            D_80097F0E = 1;
+        }
+        return;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActSTATE", switchD_8002379c__caseD_1);
+    draw_not_one:
+        if (dtM->count == dtM->motion->time / 2)
+        {
+            Sound(Me_MOTION_C, 0);
+            EquipWeapon(Me_MOTION_C, 1);
+            return;
+        }
+        if (dtM->count != 0)
+        {
+            return;
+        }
+        if (dtM->loop == 0)
+        {
+            return;
+        }
+        {
+            Humanoid *human;
+            Humanoid *player;
+            long chase_z;
 
-/* jump-table pool @ 0x80011510 (16 words; tables at 0x80011510) — stub-only, one array because the object has one .rodata section; the draft's compiled switch emits its own. */
-static const u32 ActSTATE_jtbl[16] = {
-    0x8002406C, 0x800241C4, 0x80023C70, 0x80023E6C,
-    0x80023E6C, 0x80023F1C, 0x800241C4, 0x800241C4,
-    0x800241C4, 0x800241C4, 0x800241C4, 0x800241C4,
-    0x800241C4, 0x800237A4, 0x80023A6C, 0x80024148,
-};
+            human = Me_MOTION_C;
+        if ((human->attribute & 3) == 0)
+        {
+            human->attribute |= 0x12;
+            player = StagePlayer;
+            human->chase[0] = player->locate->vx;
+            chase_z = player->locate->vz;
+            human->actscnt = 1;
+            human->chase[1] = chase_z;
+        }
+        }
+        motID = 0x501;
+        D_80097F0E = 1;
+        return;
 
-#else /* NON_MATCHING */
-/* Draft — turn this into matching C, then delete the #ifndef/#else/
-   #endif guards and the _jtbl array(s) above.  Reference: */
-// 
-// void ActSTATE(void)
-// 
-// {
-//   short *psVar1;
-//   Humanoid *pHVar2;
-//   Humanoid *pHVar3;
-//   SVECTOR *pSVar4;
-//   short sVar5;
-//   ushort uVar6;
-//   long lVar7;
-//   int iVar8;
-//   uint uVar9;
-//   int iVar10;
-//   ModelType *pMVar11;
-//   
-//   pHVar3 = Me_MOTION_C;
-//   pHVar2 = StagePlayer;
-//   switch((int)(((ushort)dtM->mid - 0x801) * 0x10000) >> 0x10) {
-//   case 0:
-//     iVar10 = (uint)(ushort)dtM->motion->time << 0x10;
-//     if ((int)dtM->count != (iVar10 >> 0x10) - (iVar10 >> 0x1f) >> 1) {
-//       if (dtM->count != 0) {
-//         return;
-//       }
-//       if (dtM->loop == 0) {
-//         return;
-//       }
-//     }
-//     motID = 0x600;
-//     DAT_80097f0e = 1;
-//     iVar10 = 0;
-//     if (MotionUpdateMode != 0) {
-//       iVar8 = 0;
-//       do {
-//         iVar10 = iVar10 + 1;
-//         if (*(Humanoid **)((int)&CVAhuman[0].human + (iVar8 >> 0xd)) == Me_MOTION_C)
-//         goto LAB_80024134;
-//         iVar8 = iVar10 * 0x10000;
-//       } while (iVar10 * 0x10000 >> 0x10 < 5);
-//     }
-//     SetNowMotion(Me_MOTION_C,0x600,1);
-//     DAT_80097f0e = 0xffff;
-// LAB_80024134:
-//     Sound(Me_MOTION_C,0x13);
-//     return;
-//   default:
-//     goto switchD_8002379c_caseD_1;
-//   case 2:
-//     if ((dtM->count < -0x36) && (200 < dtV->vy)) {
-//       dtM->count = -0x1e;
-//     }
-//     pSVar4 = dtV;
-//     if ((0 < dtV->vy) && (((Me_MOTION_C->pad).trig & 0x80) != 0)) {
-//       motID = 0x70f;
-//       DAT_80097f0e = 0;
-//     }
-//     if (((Me_MOTION_C->attribute & 0x800U) == 0) && (0 < (Me_MOTION_C->map).height)) {
-//       if (-0x2e < dtM->count) {
-//         return;
-//       }
-//       psVar1 = &dtV->vz;
-//       dtV->vx = dtV->vx >> 1;
-//       pSVar4->vz = *psVar1 >> 1;
-//       return;
-//     }
-//     if (dtM->count < -0x28) {
-//       if (Me_MOTION_C == StagePlayer) {
-//         SetCameraMode(CMODE_NORMAL);
-//       }
-//       if ((Me_MOTION_C->attribute & 0x40U) == 0) {
-//         motID = 0;
-//       }
-//       else {
-//         motID = 0x501;
-//       }
-//       DAT_80097f0e = 1;
-//       Sound(Me_MOTION_C,0x19);
-//       return;
-//     }
-//     sVar5 = 0x804;
-//     if ((-0x15 < dtM->count) && (sVar5 = 0x805, (Me_MOTION_C->type & 0xf0U) == 0x10)) {
-//       DAT_80097f0e = 0;
-//       uVar9 = rand();
-//       pHVar2 = Me_MOTION_C;
-//       motID = 0x1008;
-//       if ((uVar9 & 1) != 0) {
-//         motID = 0x1007;
-//       }
-//       uVar6 = Me_MOTION_C->life - 10;
-//       Me_MOTION_C->life = uVar6;
-//       if ((int)((uint)uVar6 << 0x10) < 0) {
-//         pHVar2->life = 0;
-//       }
-//       Sound(Me_MOTION_C,8);
-//       ReqLifeBar(Me_MOTION_C);
-//       return;
-//     }
-//     motID = sVar5;
-//     DAT_80097f0e = 0;
-//     return;
-//   case 3:
-//   case 4:
-//     if ((dtM->count == 1) && (Me_MOTION_C == StagePlayer)) {
-//       PadShockAR(0,0xff,10,0);
-//       SetCameraMode(CMODE_NORMAL);
-//     }
-//     if (((dtM->count < 5) && ((dtPAD & 0x20) != 0)) && (((Me_MOTION_C->pad).trig & 0x40) != 0)) {
-//       motID = 0xb09;
-//       DAT_80097f0e = 1;
-//       dtR->vy = dtR->vy + 0x800;
-//     }
-//   case 5:
-//     if (dtM->count == 1) {
-//       sVar5 = 0x1a;
-//       if (motID == 0x804) {
-//         sVar5 = 0x19;
-//       }
-//       Sound(Me_MOTION_C,sVar5);
-//       FUN_80033bc0(dtL,300,0xc,10);
-//       if (StagePlayer == Me_MOTION_C) {
-//         if (motID == 0x805) {
-//           iVar10 = 0;
-//           iVar8 = 0x1e;
-//         }
-//         else {
-//           iVar10 = 5;
-//           iVar8 = 0;
-//         }
-//         PadShockAR(0,0xff,iVar10,iVar8);
-//       }
-//     }
-//     pSVar4 = dtV;
-//     if ((dtM->count != 0) || (dtM->loop == 0)) {
-//       psVar1 = &dtV->vz;
-//       dtV->vx = dtV->vx - (dtV->vx >> 2);
-//       pSVar4->vz = *psVar1 - (*psVar1 >> 2);
-//       return;
-//     }
-//     if (motID == 0x806) {
-//       CamState.OldMode._1_1_ = 1;
-//     }
-//     if (Me_MOTION_C == StagePlayer) {
-//       SetCameraMode(CMODE_NORMAL);
-//     }
-//     if ((Me_MOTION_C->attribute & 0x40U) == 0) {
-// LAB_800241bc:
-//       motID = 0;
-//     }
-//     else {
-//       motID = 0x501;
-//     }
-//     break;
-//   case 0xd:
-//     iVar10 = (int)dtM->count;
-//     if (iVar10 != 1) {
-//       iVar8 = (uint)(ushort)dtM->motion->time << 0x10;
-//       if (iVar10 == (iVar8 >> 0x10) - (iVar8 >> 0x1f) >> 1) {
-//         Sound(Me_MOTION_C,0);
-//         EquipWeapon(Me_MOTION_C,1);
-//         return;
-//       }
-//       if (iVar10 != 0) {
-//         return;
-//       }
-//       if (dtM->loop == 0) {
-//         return;
-//       }
-//       if ((Me_MOTION_C->attribute & 3U) == 0) {
-//         Me_MOTION_C->attribute = Me_MOTION_C->attribute | 0x12;
-//         pHVar3->chase[0] = pHVar2->locate->vx;
-//         lVar7 = pHVar2->locate->vz;
-//         pHVar3->actscnt = '\x01';
-//         pHVar3->chase[1] = lVar7;
-//       }
-//       motID = 0x501;
-//       DAT_80097f0e = 1;
-//       return;
-//     }
-//     sVar5 = Me_MOTION_C->wpatk;
-//     if (sVar5 == 2) {
-//       DeleteConflict(Me_MOTION_C->model->object[8]);
-//       pMVar11 = Me_MOTION_C->model->object[0xb];
-// LAB_80023898:
-//       DeleteConflict(pMVar11);
-//     }
-//     else {
-//       if (2 < sVar5) {
-//         if (sVar5 != 3) goto LAB_80023858;
-//         pMVar11 = Me_MOTION_C->model->object[2];
-//         goto LAB_80023898;
-//       }
-//       if (sVar5 != 0) {
-// LAB_80023858:
-//         DeleteConflict(Me_MOTION_C->model->object[0xd]);
-//         pMVar11 = Me_MOTION_C->model->object[0xe];
-//         goto LAB_80023898;
-//       }
-//     }
-//     if ((AfterimageType *)Me_MOTION_C->illusion[0] != (AfterimageType *)0x0) {
-//       DisposeAfterimage((AfterimageType *)Me_MOTION_C->illusion[0]);
-//       Me_MOTION_C->illusion[0] = (undefined *)0x0;
-//     }
-//     if ((AfterimageType *)Me_MOTION_C->illusion[1] != (AfterimageType *)0x0) {
-//       DisposeAfterimage((AfterimageType *)Me_MOTION_C->illusion[1]);
-//       Me_MOTION_C->illusion[1] = (undefined *)0x0;
-//     }
-//     pHVar2 = Me_MOTION_C;
-//     dtM->mask = 0x7fff;
-//     sVar5 = pHVar2->type;
-//     if ((sVar5 < 7) && (3 < sVar5)) {
-//       if (pHVar2 == StagePlayer) {
-//         SetCameraMode(CMODE_NORMAL);
-//       }
-//       if ((Me_MOTION_C->attribute & 0x40U) == 0) goto LAB_800241bc;
-//       motID = 0x501;
-//     }
-//     else {
-//       if ((Me_MOTION_C->attribute & 0x40U) == 0) {
-//         return;
-//       }
-//       motID = 0x501;
-//     }
-//     break;
-//   case 0xe:
-//     iVar10 = (int)dtM->count;
-//     if (iVar10 != 1) {
-//       iVar8 = (uint)(ushort)dtM->motion->time << 0x10;
-//       if (iVar10 == (iVar8 >> 0x10) - (iVar8 >> 0x1f) >> 1) {
-//         Sound(Me_MOTION_C,1);
-//         EquipWeapon(Me_MOTION_C,0);
-//         return;
-//       }
-//       if (iVar10 != 0) {
-//         return;
-//       }
-//       if (dtM->loop == 0) {
-//         return;
-//       }
-//       motID = 0;
-//       DAT_80097f0e = 1;
-//       return;
-//     }
-//     sVar5 = Me_MOTION_C->wpatk;
-//     if (sVar5 == 2) {
-//       DeleteConflict(Me_MOTION_C->model->object[8]);
-//       pMVar11 = Me_MOTION_C->model->object[0xb];
-// LAB_80023b60:
-//       DeleteConflict(pMVar11);
-//     }
-//     else {
-//       if (2 < sVar5) {
-//         if (sVar5 != 3) goto LAB_80023b20;
-//         pMVar11 = Me_MOTION_C->model->object[2];
-//         goto LAB_80023b60;
-//       }
-//       if (sVar5 != 0) {
-// LAB_80023b20:
-//         DeleteConflict(Me_MOTION_C->model->object[0xd]);
-//         pMVar11 = Me_MOTION_C->model->object[0xe];
-//         goto LAB_80023b60;
-//       }
-//     }
-//     if ((AfterimageType *)Me_MOTION_C->illusion[0] != (AfterimageType *)0x0) {
-//       DisposeAfterimage((AfterimageType *)Me_MOTION_C->illusion[0]);
-//       Me_MOTION_C->illusion[0] = (undefined *)0x0;
-//     }
-//     if ((AfterimageType *)Me_MOTION_C->illusion[1] != (AfterimageType *)0x0) {
-//       DisposeAfterimage((AfterimageType *)Me_MOTION_C->illusion[1]);
-//       Me_MOTION_C->illusion[1] = (undefined *)0x0;
-//     }
-//     pHVar2 = Me_MOTION_C;
-//     dtM->mask = 0x7fff;
-//     if ((pHVar2->attribute & 0x40U) != 0) {
-//       return;
-//     }
-//     goto LAB_800241bc;
-//   case 0xf:
-//     if (dtM->count != 0) {
-//       return;
-//     }
-//     if (dtM->loop == 0) {
-//       return;
-//     }
-//     if (Me_MOTION_C == StagePlayer) {
-//       SetCameraMode(CMODE_NORMAL);
-//     }
-//     if ((Me_MOTION_C->attribute & 0x40U) == 0) goto LAB_800241bc;
-//     motID = 0x501;
-//   }
-//   DAT_80097f0e = 1;
-// switchD_8002379c_caseD_1:
-//   return;
-// }
+    case 0xe:
+        if (dtM->count != 1)
+        {
+            goto sheath_not_one;
+        }
+        {
+            short cleanup_guard;
+            short kind;
 
-#endif /* NON_MATCHING */
+            kind = (short)Me_MOTION_C->weapon_kind;
+            switch (kind)
+            {
+            case 2:
+                DeleteConflict(Me_MOTION_C->model->object[8]);
+                DeleteConflict(Me_MOTION_C->model->object[0xb]);
+                cleanup_guard = 3;
+                break;
+            case 3:
+                DeleteConflict(Me_MOTION_C->model->object[2]);
+                cleanup_guard = 3;
+                break;
+            case 0:
+                cleanup_guard = 3;
+                break;
+            default:
+                DeleteConflict(Me_MOTION_C->model->object[0xd]);
+                DeleteConflict(Me_MOTION_C->model->object[0xe]);
+                cleanup_guard = 3;
+                break;
+            }
+            if ((cleanup_guard & 2) != 0)
+            {
+                if (Me_MOTION_C->illusion[0] != 0)
+                {
+                    DisposeAfterimage((AfterimageType *)Me_MOTION_C->illusion[0]);
+                    Me_MOTION_C->illusion[0] = 0;
+                }
+                if (Me_MOTION_C->illusion[1] != 0)
+                {
+                    DisposeAfterimage((AfterimageType *)Me_MOTION_C->illusion[1]);
+                    Me_MOTION_C->illusion[1] = 0;
+                }
+            }
+        }
+        dtM->mask = 0x7fff;
+        if ((Me_MOTION_C->attribute & 0x40) != 0)
+        {
+            return;
+        }
+        goto zero_motion;
+
+    sheath_not_one:
+        if (dtM->count == dtM->motion->time / 2)
+        {
+            Sound(Me_MOTION_C, 1);
+            EquipWeapon(Me_MOTION_C, 0);
+            return;
+        }
+        if (dtM->count != 0)
+        {
+            return;
+        }
+        if (dtM->loop == 0)
+        {
+            return;
+        }
+        motID = 0;
+        D_80097F0E = 1;
+        return;
+
+    case 2:
+        if (dtM->count < -0x36 && dtV->vy > 200)
+        {
+            dtM->count = -0x1e;
+        }
+        if (dtV->vy > 0 && (Me_MOTION_C->pad.trig & 0x80) != 0)
+        {
+            motID = 0x70f;
+            D_80097F0E = 0;
+        }
+        {
+            Humanoid *human;
+
+            human = Me_MOTION_C;
+            if ((human->attribute & 0x800) == 0 && human->map.height > 0)
+            {
+                goto grounded_fall;
+            }
+            if (dtM->count < -0x28)
+            {
+                if (human == StagePlayer)
+                {
+                    SetCameraMode(0);
+                }
+                if ((Me_MOTION_C->attribute & 0x40) != 0)
+                {
+                    motID = 0x501;
+                    D_80097F0E = 1;
+                }
+                else
+                {
+                    motID = 0;
+                    D_80097F0E = 1;
+                }
+                Sound(Me_MOTION_C, 0x19);
+                return;
+            }
+            {
+                if (-0x15 < dtM->count)
+                {
+                    if ((human->type & 0xf0) == 0x10)
+                    {
+                        goto random_fall;
+                    }
+                    motID = 0x805;
+                }
+                else
+                {
+                    motID = 0x804;
+                }
+                D_80097F0E = 0;
+                return;
+
+            random_fall:
+                {
+                    Humanoid *fall_human;
+
+                    D_80097F0E = 0;
+                    motID = (rand() & 1) ? 0x1007 : 0x1008;
+                    fall_human = Me_MOTION_C;
+                    fall_human->life -= 10;
+                    if (fall_human->life < 0)
+                    {
+                        fall_human->life = 0;
+                    }
+                    Sound(Me_MOTION_C, 8);
+                    ReqLifeBar(Me_MOTION_C);
+                }
+                return;
+            }
+        }
+
+    grounded_fall:
+        if (dtM->count > -0x2e)
+        {
+            return;
+        }
+        dtV->vx >>= 1;
+        dtV->vz >>= 1;
+        return;
+
+    case 3:
+    case 4:
+        if (dtM->count == 1 && Me_MOTION_C == StagePlayer)
+        {
+            PadShockAR(0, 0xff, 10, 0);
+            SetCameraMode(0);
+        }
+        if (dtM->count < 5 && (dtPAD & 0x20) != 0 &&
+            (Me_MOTION_C->pad.trig & 0x40) != 0)
+        {
+            motID = 0xb09;
+            D_80097F0E = 1;
+            dtR->vy += 0x800;
+        }
+        /* fall through */
+    case 5:
+        if (dtM->count == 1)
+        {
+            Humanoid *human;
+            short sound;
+
+            sound = 0x1a;
+            human = Me_MOTION_C;
+            if (motID == 0x804)
+            {
+                sound = 0x19;
+            }
+            Sound(human, sound);
+            FUN_80033bc0(dtL, 300, 0xc, 10);
+            if (StagePlayer == Me_MOTION_C)
+            {
+                if (motID == 0x805)
+                {
+                    PadShockAR(0, 0xff, 0, 0x1e);
+                }
+                else
+                {
+                    PadShockAR(0, 0xff, 5, 0);
+                }
+            }
+        }
+        if (dtM->count != 0)
+        {
+            goto damp_fall;
+        }
+        if (dtM->loop == 0)
+        {
+            goto damp_fall;
+        }
+        if (motID == 0x806)
+        {
+            *((u8 *)&CamState.OldMode + 1) = 1;
+        }
+        if (Me_MOTION_C == StagePlayer)
+        {
+            ((s16 (*)(s32))SetCameraMode)(0);
+        }
+        {
+            s32 positive_motion_id;
+
+            if ((Me_MOTION_C->attribute & 0x40) != 0)
+            {
+                positive_motion_id = 0x501;
+            }
+            else
+            {
+                goto zero_motion;
+            }
+            motID = positive_motion_id;
+        }
+        goto positive_motion;
+
+    damp_fall:
+        dtV->vx -= dtV->vx >> 2;
+        dtV->vz -= dtV->vz >> 2;
+        return;
+
+    case 0:
+        if (dtM->count != dtM->motion->time / 2)
+        {
+            if (dtM->count != 0)
+            {
+                return;
+            }
+            if (dtM->loop == 0)
+            {
+                return;
+            }
+        }
+        motID = 0x600;
+        D_80097F0E = 1;
+        i = MotionUpdateMode;
+        if (i != 0)
+        {
+            i = 0;
+            do
+            {
+                if (CVAhuman[i].human == Me_MOTION_C)
+                {
+                    goto motion_ready;
+                }
+                i++;
+            } while (i < 5);
+        }
+        SetNowMotion(Me_MOTION_C, motID, D_80097F0E);
+        D_80097F0E = -1;
+    motion_ready:
+        Sound(Me_MOTION_C, 0x13);
+        return;
+
+    case 0xf:
+        if (dtM->count != 0)
+        {
+            return;
+        }
+        if (dtM->loop == 0)
+        {
+            return;
+        }
+        if (Me_MOTION_C == StagePlayer)
+        {
+            SetCameraMode(0);
+        }
+        if ((Me_MOTION_C->attribute & 0x40) != 0)
+        {
+            motID = 0x501;
+            break;
+        }
+    zero_motion:
+        motID = 0;
+        D_80097F0E = 1;
+        return;
+
+    default:
+    case 1:
+        return;
+    }
+special_positive_motion:
+    D_80097F0E = 1;
+    return;
+positive_motion:
+    D_80097F0E = 1;
+}
