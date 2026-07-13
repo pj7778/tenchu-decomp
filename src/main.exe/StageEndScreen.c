@@ -17,8 +17,8 @@
 /*
  * STATUS: NON_MATCHING — complete pure-C reconstruction with the exact target
  * length (6084 bytes / 1521 instructions), 0xf0-byte frame, 81 conditional
- * branches, 15 jumps, and 70 calls.  matchdiff reports 419 differing bytes
- * and fuzz-score reports 90.27%.  The decimal-rendering region now has the
+ * branches, 15 jumps, and 70 calls.  matchdiff reports 389 differing bytes
+ * and fuzz-score reports 91.26%.  The decimal-rendering region now has the
  * target's evaluation and scheduling shape; most residuals are register
  * allocation in the stage scan and digit loops plus setup/post-game load
  * scheduling, not hidden asm.
@@ -189,8 +189,8 @@ label_:                                                                    \
             dividend = (s16)value;                                         \
             quotient = dividend / 10;                                      \
             remainder = dividend % 10;                                     \
-            sprite->u = (s16)remainder * sprite->w +                       \
-                (base_u = sprite->u);                                      \
+            base_u = sprite->u;                                            \
+            sprite->u = base_u + (s16)remainder * sprite->w;               \
             GsSortSprite(sprite, OTablePt, 0);                              \
             sprite->x -= 12;                                               \
             value = quotient;                                              \
