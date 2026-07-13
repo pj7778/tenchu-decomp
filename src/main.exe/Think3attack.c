@@ -1,5 +1,7 @@
 #include "common.h"
-#include "main.exe.h"
+#include <psxsdk/libgs.h>
+#include "game_types.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -30,16 +32,179 @@
  *     extern struct Humanoid *StagePlayer;
  * END PSX.SYM */
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/Think3attack", Think3attack);
+/*
+ * Select the attack controls for an alerted humanoid.  The weapon class
+ * determines the turn and distance thresholds; close targets are attacked,
+ * distant targets are approached, and item use is considered while idle.
+ *
+ * The status-7 path deliberately has its own literal return.  GCC merges its
+ * short-return conversion with the final return, but the extra control-flow
+ * boundary keeps that conversion above the epilogue restores, as in retail.
+ */
 
-// triage: MEDIUM — 284 insns, mul/div, 5 callees, ~0.05 to bow_shoot_logic
-// likely-relevant cookbook sections:
-//   - Dispatch: if/switch ladder — reload vs CSE, signed vs unsigned
-//   - Expressions: mult/div — magic-multiply constants, fold
-//   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py
+extern Humanoid *Me_THINK_C;
+extern Humanoid *StagePlayer;
+extern s32 Distance;
+extern s16 Degree;
+extern s16 EngageLevel;
+extern s16 SR;
+extern s16 atkd[4];
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
+extern s16 SuccessionAttack(s32 dist, s16 degree);
+extern s16 SetCommand(PADtype *pad, s16 command);
+extern s16 SetNowMotion(Humanoid *human, s16 motion, s16 mode);
+extern s16 ItemUse(void);
+
+s16 Think3attack(void)
+{
+    s16 rng;
+    s16 pad;
+    s16 idx;
+
+    pad = 0;
+    idx = (s16)Me_THINK_C->weapon_kind >> 4;
+
+    if (Me_THINK_C->status == 7)
+    {
+        if (idx != 3)
+        {
+            pad = SuccessionAttack(3000, 1500);
+        }
+        else
+        {
+            pad = SuccessionAttack(20000, 500);
+        }
+        return pad;
+    }
+
+    if (SR != -2 &&
+        ((idx == 3 && Distance < 14000) || Distance < 10000))
+    {
+        SR = 0;
+    }
+
+    if ((s16)((4 - idx) * Me_THINK_C->turn) < Degree)
+    {
+        pad = 0x2000;
+    }
+    else if (Degree < -(s16)((4 - idx) * Me_THINK_C->turn))
+    {
+        pad = -0x8000;
+    }
+
+    if (idx != 3)
+    {
+        rng = atkd[idx] / 2;
+    }
+    else
+    {
+        rng = 4000;
+    }
+
+    if (Distance < rng)
+    {
+        if (__builtin_abs(Degree) < 1000 &&
+            Me_THINK_C->motion->count == 0)
+        {
+            if (Distance < 2000)
+            {
+                if (rand() % (EngageLevel + 1) != 0)
+                {
+                    pad |= 0x80;
+                    goto action_ready;
+                }
+                pad = 0xa0;
+                goto action_ready;
+            }
+            goto add_attack;
+        }
+        pad |= 0x4000;
+        goto action_ready;
+    }
+
+    if (Distance < atkd[idx])
+    {
+        if (idx == 3)
+        {
+            if (pad == 0 && rand() % (EngageLevel * 4) == 0)
+            {
+                pad = 0x80;
+            }
+            goto action_ready;
+        }
+
+        if (__builtin_abs(Degree) < 100)
+        {
+            if (atkd[idx] - 1000 < Distance)
+            {
+                pad = SetCommand(&Me_THINK_C->pad, 0x21);
+                goto action_ready;
+            }
+        }
+
+        if (Me_THINK_C->motion->count == 0)
+        {
+            if (__builtin_abs(Degree) < 1200)
+            {
+add_attack:
+                pad |= 0x80;
+                goto action_ready;
+            }
+        }
+
+        if (rng + 500 < Distance)
+        {
+            pad |= 0x1000;
+        }
+        goto action_ready;
+    }
+
+    if (Me_THINK_C->status != 5)
+    {
+        goto action_ready;
+    }
+
+    if (StagePlayer->status == 14)
+    {
+        s32 command;
+        s32 random;
+
+        random = rand();
+        command = 4;
+        if ((random & 1) != 0)
+        {
+            command = 3;
+        }
+        pad = SetCommand(&Me_THINK_C->pad, command);
+        goto action_ready;
+    }
+
+    if (Me_THINK_C->motion->count != 0)
+    {
+        goto use_item;
+    }
+    if (rand() % 3 != 0)
+    {
+        goto use_item;
+    }
+    pad = SetCommand(&Me_THINK_C->pad, 1);
+    goto action_ready;
+
+use_item:
+    ItemUse();
+
+action_ready:
+    if (Me_THINK_C->motion->count == 0 &&
+        rand() % 30 == 0 &&
+        Me_THINK_C->status == 5)
+    {
+        SetNowMotion(Me_THINK_C, 0x713, 1);
+    }
+
+    return pad;
+}
+
+// Ghidra decompilation (reference):
 //
 //
 // short Think3attack(void)
@@ -174,4 +339,176 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/Think3attack", Think
 //     SetNowMotion(Me_THINK_C,0x713,1);
 //   }
 //   return uVar2;
+// }
+
+// m2c (mipsel-gcc-c reference — cleaner control flow + register
+// temps straight from the asm; Ghidra above has the real types):
+//
+// ? ItemUse(s32, s16);                                /* extern */
+// s32 SetCommand(s32, s16);                           /* extern */
+// ? SetNowMotion(void *, ?, ?, s32);                  /* extern */
+// s32 SuccessionAttack(?, ?);                         /* extern */
+// s32 rand(s32, s32, s16, s16);                       /* extern */
+// extern s16 Degree;
+// extern s32 Distance;
+// extern s16 EngageLevel;
+// extern void *Me_THINK_C;
+// extern s16 SR;
+// extern void *StagePlayer;
+// extern ? atkd;
+//
+// s32 Think3attack(void) {
+//     ? var_a0;
+//     ? var_a1;
+//     s16 temp_lo;
+//     s16 temp_v1_2;
+//     s16 var_a1_2;
+//     s16 var_v0_3;
+//     s16 var_v0_4;
+//     s16 var_v0_6;
+//     s32 temp_a0;
+//     s32 temp_ret;
+//     s32 temp_ret_2;
+//     s32 temp_v0_2;
+//     s32 temp_v0_3;
+//     s32 temp_v1;
+//     s32 var_s0;
+//     s32 var_v0;
+//     s32 var_v0_2;
+//     s32 var_v0_5;
+//     s32 var_v1;
+//     u16 temp_v0;
+//     u32 var_a2;
+//     void *var_a0_2;
+//
+//     var_s0 = 0;
+//     temp_a0 = (s32) (Me_THINK_C->unk8E << 0x10) >> 0x14;
+//     if (Me_THINK_C->unk2 == 7) {
+//         var_a0 = 0xBB8;
+//         if (temp_a0 != 3) {
+//             var_a1 = 0x5DC;
+//         } else {
+//             var_a0 = 0x4E20;
+//             var_a1 = 0x1F4;
+//         }
+//         var_s0 = SuccessionAttack(var_a0, var_a1);
+//         goto block_59;
+//     }
+//     if (SR != -2) {
+//         if (((temp_a0 == 3) && (Distance < 0x36B0)) || (var_v1 = temp_a0 << 0x10, ((Distance < 0x2710) != 0))) {
+//             SR = 0;
+//             goto block_10;
+//         }
+//     } else {
+// block_10:
+//         var_v1 = temp_a0 << 0x10;
+//     }
+//     temp_lo = (4 - (var_v1 >> 0x10)) * Me_THINK_C->unk6;
+//     if (temp_lo < Degree) {
+//         var_s0 = 0x2000;
+//         goto block_15;
+//     }
+//     var_v0_2 = temp_a0 << 0x10;
+//     if (Degree < -temp_lo) {
+//         var_s0 = -0x8000;
+// block_15:
+//         var_v0_2 = temp_a0 << 0x10;
+//     }
+//     temp_v1 = var_v0_2 >> 0x10;
+//     if (temp_v1 != 3) {
+//         temp_v0 = *((temp_v1 * 2) + &atkd);
+//         var_a2 = (u32) ((s16) temp_v0 + ((u32) (temp_v0 << 0x10) >> 0x1F)) >> 1;
+//     } else {
+//         var_a2 = 0xFA0;
+//     }
+//     if (Distance < (s16) var_a2) {
+//         var_v0_3 = Degree;
+//         if (var_v0_3 < 0) {
+//             var_v0_3 = -var_v0_3;
+//         }
+//         if ((var_v0_3 < 0x3E8) && (Me_THINK_C->unk5C->unk2 == 0)) {
+//             if (Distance < 0x7D0) {
+//                 var_s0 |= 0x80;
+//                 if ((rand(Distance, temp_a0, (s16) var_a2, temp_lo) % (s32) (EngageLevel + 1)) == 0) {
+//                     var_s0 = 0xA0;
+//                 }
+//             } else {
+//                 goto block_42;
+//             }
+//         } else {
+//             var_s0 |= 0x4000;
+//         }
+//     } else {
+//         var_a1_2 = (s16) temp_a0;
+//         temp_v1_2 = *((var_a1_2 * 2) + &atkd);
+//         if (Distance < temp_v1_2) {
+//             if (var_a1_2 == 3) {
+//                 if (((var_s0 << 0x10) == 0) && ((rand(Distance, (s32) var_a1_2, (s16) var_a2, temp_lo) % (s32) (EngageLevel * 4)) == 0)) {
+//                     var_s0 = 0x80;
+//                 }
+//             } else {
+//                 var_v0_4 = Degree;
+//                 if (var_v0_4 < 0) {
+//                     var_v0_4 = -var_v0_4;
+//                 }
+//                 if (var_v0_4 < 0x64) {
+//                     var_a1_2 = 0x21;
+//                     if ((temp_v1_2 - 0x3E8) < Distance) {
+//                         goto block_53;
+//                     }
+//                 }
+//                 var_v0_5 = var_a2 << 0x10;
+//                 if (Me_THINK_C->unk5C->unk2 == 0) {
+//                     var_v0_6 = Degree;
+//                     if (var_v0_6 < 0) {
+//                         var_v0_6 = -var_v0_6;
+//                     }
+//                     var_v0_5 = var_a2 << 0x10;
+//                     if (var_v0_6 < 0x4B0) {
+// block_42:
+//                         var_s0 |= 0x80;
+//                     } else {
+//                         goto block_43;
+//                     }
+//                 } else {
+// block_43:
+//                     if (((var_v0_5 >> 0x10) + 0x1F4) < Distance) {
+//                         var_s0 |= 0x1000;
+//                     }
+//                 }
+//             }
+//         } else {
+//             var_a0_2 = Me_THINK_C;
+//             if (var_a0_2->unk2 == 5) {
+//                 if (StagePlayer->unk2 == 0xE) {
+//                     var_a1_2 = 4;
+//                     if (rand((s32) var_a0_2, (s32) var_a1_2, (s16) var_a2, temp_lo) & 1) {
+//                         var_a1_2 = 3;
+//                     }
+//                     goto block_53;
+//                 }
+//                 if ((var_a0_2->unk5C->unk2 == 0) && (temp_ret = rand((s32) var_a0_2, (s32) var_a1_2, (s16) var_a2, temp_lo), temp_v0_2 = temp_ret, var_a0_2 = (void *) (temp_ret / 3), var_a1_2 = 1, (temp_v0_2 == (((s32) var_a0_2 * 2) + var_a0_2)))) {
+// block_53:
+//                     var_s0 = SetCommand(Me_THINK_C + 0x10, var_a1_2);
+//                 } else {
+//                     ItemUse((s32) var_a0_2, var_a1_2);
+//                 }
+//             }
+//         }
+//     }
+//     var_v0 = var_s0 << 0x10;
+//     if (Me_THINK_C->unk5C->unk2 == 0) {
+//         temp_ret_2 = rand();
+//         temp_v0_3 = temp_ret_2;
+//         var_v0 = var_s0 << 0x10;
+//         if (temp_v0_3 == ((temp_ret_2 / 30) * 0x1E)) {
+//             var_v0 = var_s0 << 0x10;
+//             if (Me_THINK_C->unk2 == 5) {
+//                 SetNowMotion(Me_THINK_C, 0x713, 1, MULT_HI(temp_v0_3, 0x88888889));
+// block_59:
+//                 var_v0 = var_s0 << 0x10;
+//             }
+//         }
+//     }
+//     return var_v0 >> 0x10;
 // }
