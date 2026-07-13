@@ -18,7 +18,12 @@ set -euo pipefail
 
 here=$(git rev-parse --show-toplevel)
 # The first `git worktree list` entry is always the primary worktree.
-main=$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')
+# Do not `exit` awk after the first match: with `set -o pipefail`, closing a
+# long `git worktree list` pipe early makes git die with SIGPIPE and aborts this
+# script before it creates any links.
+main=$(git worktree list --porcelain | awk '
+  /^worktree / && !found { print $2; found = 1 }
+')
 
 if [ "$here" = "$main" ]; then
   echo "wt-init: already in the primary worktree ($here); nothing to do"

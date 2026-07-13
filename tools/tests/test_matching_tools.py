@@ -32,6 +32,68 @@ import stackplan
 import symnear
 
 
+class WorktreeInitTests(unittest.TestCase):
+    def test_long_worktree_list_does_not_trip_pipefail(self):
+        with tempfile.TemporaryDirectory() as td:
+            primary = os.path.join(td, "primary")
+            secondary = os.path.join(td, "secondary")
+            fakebin = os.path.join(td, "fakebin")
+            os.makedirs(os.path.join(primary, "disks"))
+            os.makedirs(os.path.join(primary, ".shake", "ghidra-export"))
+            os.makedirs(os.path.join(secondary, "disks"))
+            os.makedirs(fakebin)
+
+            disk = os.path.join(primary, "disks", "tenchu.bin")
+            export = os.path.join(
+                primary, ".shake", "ghidra-export", "functions.tsv"
+            )
+            open(disk, "w").close()
+            open(export, "w").close()
+
+            fake_git = os.path.join(fakebin, "git")
+            with open(fake_git, "w") as fh:
+                fh.write("""#!/bin/sh
+if [ "$1" = rev-parse ]; then
+    printf '%s\\n' "$FAKE_HERE"
+elif [ "$1" = worktree ] && [ "$2" = list ]; then
+    printf 'worktree %s\\n\\n' "$FAKE_MAIN"
+    i=0
+    while [ "$i" -lt 20000 ]; do
+        printf 'worktree /tmp/fake-worktree-%s\\n\\n' "$i"
+        i=$((i + 1))
+    done
+else
+    exit 2
+fi
+""")
+            os.chmod(fake_git, 0o755)
+
+            env = os.environ.copy()
+            env.update({
+                "PATH": fakebin + os.pathsep + env["PATH"],
+                "FAKE_HERE": secondary,
+                "FAKE_MAIN": primary,
+            })
+            script = os.path.join(TOOLS, "wt-init.sh")
+            result = subprocess.run(
+                ["bash", script], cwd=secondary, env=env,
+                text=True, capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("wt-init: ready", result.stdout)
+            self.assertEqual(
+                os.readlink(os.path.join(secondary, "disks", "tenchu.bin")),
+                disk,
+            )
+            self.assertEqual(
+                os.readlink(os.path.join(
+                    secondary, ".shake", "ghidra-export"
+                )),
+                os.path.join(primary, ".shake", "ghidra-export"),
+            )
+
+
 class FunctionInventoryTests(unittest.TestCase):
     def test_current_c_names_overlay_stale_boundaries(self):
         with tempfile.TemporaryDirectory() as td:
