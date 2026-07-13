@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -65,13 +66,18 @@
  * END PSX.SYM */
 
 /*
- * LoadConstruction (0x8003ab60) — TODO one-line description.
+ * LoadConstruction (0x8003ab60) — rebuild the stage's construction state:
+ * dispose the previous maps/models, load the shared and stage archives,
+ * dispatch the 32-byte construction records, and bucket their ornaments in
+ * WorldMap for rendering.
  *
- * STATUS: NON_MATCHING — split (jump-table) function scaffolded by
- * tools/split-scaffold.py. The #ifndef NON_MATCHING branch is the stub
- * (INCLUDE_ASM pieces + the jump-table pool as one static const array so
- * the .rodata carve has bytes); build the draft with `NON_MATCHING=LoadConstruction
- * ./Build`. On a full match, delete the guards and the _jtbl array.
+ * STATUS: NON_MATCHING — complete semantic C draft. It has the target's
+ * 0x1a0 frame and exact stack layout, including the filename buffer, both
+ * PARAM_ITEM_STAY records, and upper scalar locals. The draft is 2744 bytes,
+ * 20 bytes longer than the 2724-byte split target; remaining work is codegen
+ * alignment rather than missing behavior. Build it with
+ * `NON_MATCHING=LoadConstruction ./Build`. On a full match, delete the guards
+ * and the stub-only _jtbl array.
  */
 
 #ifndef NON_MATCHING
@@ -105,300 +111,367 @@ static const u32 LoadConstruction_jtbl[12] = {
 };
 
 #else /* NON_MATCHING */
-/* Draft — turn this into matching C, then delete the #ifndef/#else/
-   #endif guards and the _jtbl array(s) above.  Reference: */
-// 
-// /* WARNING: Unknown calling convention -- yet parameter storage is locked */
-// 
-// short LoadConstruction(void)
-// 
-// {
-//   short *psVar1;
-//   short *psVar2;
-//   short *psVar3;
-//   short *psVar4;
-//   short *psVar5;
-//   int *piVar6;
-//   int *piVar7;
-//   int *piVar8;
-//   int *piVar9;
-//   undefined *puVar10;
-//   OrnamentArchiveType *pOVar11;
-//   OrnamentArchiveType *pOVar12;
-//   short sVar13;
-//   ulong uVar14;
-//   ulong *puVar15;
-//   short *psVar16;
-//   int iVar17;
-//   uint uVar18;
-//   uint uVar19;
-//   short *in_a0;
-//   OrnamentType *pOVar20;
-//   int iVar21;
-//   uint uVar22;
-//   int iVar23;
-//   WorldType *pWVar24;
-//   int iVar25;
-//   uchar auStack_180 [256];
-//   SVECTOR SStack_80;
-//   PARAM_ITEM_STAY local_78;
-//   TItemType local_60;
-//   long local_5c;
-//   long local_58;
-//   long local_54;
-//   long local_50;
-//   int local_48;
-//   int local_44;
-//   ulong *local_40;
-//   short *local_3c;
-//   uint local_38;
-//   ulong *local_34;
-//   int local_30;
-//   
-//   local_44 = 0;
-//   if (in_a0 == (short *)0x0) {
-//                     /* WARNING: Subroutine does not return */
-//     SystemOut((uchar *)"NO CONSTRUCTION DATA");
-//   }
-//   local_3c = in_a0;
-//   memset((uchar *)WorldMap,'\0',0x800);
-//   iVar23 = 0;
-//   uVar14 = vsize((undefined *)in_a0);
-//   iVar25 = 0;
-//   local_38 = uVar14 >> 5;
-//   psVar16 = in_a0;
-//   if (local_38 != 0) {
-//     do {
-//       if (*psVar16 == 2) {
-//         iVar23 = iVar23 + 1;
-//       }
-//       iVar25 = iVar25 + 1;
-//       psVar16 = psVar16 + 0x10;
-//     } while (iVar25 < (int)local_38);
-//   }
-//   DisposeAreaMap(GlobalAreaMap);
-//   GlobalAreaMap = (ulong *)0x0;
-//   ResetAllMisc();
-//   ClearItemLayout();
-//   puVar10 = (undefined *)DAT_80097a70;
-//   if (DAT_80097a70 != (OrnamentArchiveType *)0x0) {
-//     iVar25 = 0;
-//     if (0 < *(short *)((int)DAT_80097a70 + 0x5c)) {
-//       do {
-//         iVar17 = iVar25 * 4;
-//         iVar25 = iVar25 + 1;
-//         DisposeOrnament(*(OrnamentType **)(iVar17 + *(int *)(puVar10 + 0x60)));
-//       } while (iVar25 < *(short *)(puVar10 + 0x5c));
-//     }
-//     vfree(*(undefined **)(puVar10 + 0x60));
-//     vfree(*(undefined **)(puVar10 + 100));
-//     vfree(puVar10);
-//   }
-//   puVar10 = (undefined *)DAT_80097a74;
-//   if (DAT_80097a74 != (OrnamentArchiveType *)0x0) {
-//     iVar25 = 0;
-//     if (0 < *(short *)((int)DAT_80097a74 + 0x5c)) {
-//       do {
-//         iVar17 = iVar25 * 4;
-//         iVar25 = iVar25 + 1;
-//         DisposeOrnament(*(OrnamentType **)(iVar17 + *(int *)(puVar10 + 0x60)));
-//       } while (iVar25 < *(short *)(puVar10 + 0x5c));
-//     }
-//     vfree(*(undefined **)(puVar10 + 0x60));
-//     vfree(*(undefined **)(puVar10 + 100));
-//     vfree(puVar10);
-//   }
-//   puVar15 = PathFileRead(ImagePath,(uchar *)s_TIM_TPD_80097a78);
-//   LoadTIMpackAndFree(puVar15);
-//   puVar15 = PathFileRead((uchar *)"K:\\WORK\\CDIMAGE\\IMAGE\\",(uchar *)"COMMON.TPD");
-//   LoadTIMpackAndFree(puVar15);
-//   local_40 = (ulong *)valloc(0x6b800);
-//   puVar15 = PathFileRead(ImagePath,(uchar *)"OBJECTS.MAD");
-//   DAT_80097a74 = LoadOrnamentArchive(puVar15,&World);
-//   if (0 < ModelSlot.max) {
-//     iVar25 = 0;
-//     if (0 < ModelSlot.n) {
-//       iVar17 = 0;
-//       do {
-//         pOVar20 = *(OrnamentType **)((int)&(ModelSlot.slot)->model + iVar17);
-//         if (((uint)pOVar20 & 0xff000000) == 0x80000000) {
-//           DisposeOrnament(pOVar20);
-//         }
-//         iVar25 = iVar25 + 1;
-//         iVar17 = iVar17 + 0xc;
-//       } while (iVar25 < ModelSlot.n);
-//     }
-//     vfree((undefined *)ModelSlot.slot);
-//   }
-//   ModelSlot.max = iVar23 + 500;
-//   ModelSlot.slot = (tag_ObjectSlotType *)valloc((iVar23 + 500) * 0xc);
-//   iVar23 = 0;
-//   ModelSlot.n = 0;
-//   psVar16 = local_3c;
-// LAB_8003ae28:
-//   if ((int)local_38 <= iVar23) {
-//     sprintf((char *)auStack_180,s_map_mad_80097a90);
-//     vfree((undefined *)local_40);
-//     iVar23 = 0;
-//     local_40 = PathFileRead(ImagePath,auStack_180);
-//     local_34 = local_40 + 2;
-//     DAT_80097a70 = LoadOrnamentArchive(local_40,&World);
-//     for (iVar25 = 0; pOVar11 = DAT_80097a70, iVar25 < DAT_80097a70->n; iVar25 = iVar25 + 1) {
-//       iVar17 = *(int *)(iVar23 + (int)DAT_80097a70->object);
-//       uVar14 = local_34[iVar25 * 4];
-//       *(int *)(iVar17 + 0x18) = *(int *)(iVar17 + 0x18) * 10;
-//       iVar17 = *(int *)(iVar23 + (int)pOVar11->object);
-//       *(int *)(iVar17 + 0x1c) = *(int *)(iVar17 + 0x1c) * 10;
-//       iVar17 = *(int *)(iVar23 + (int)pOVar11->object);
-//       *(int *)(iVar17 + 0x20) = *(int *)(iVar17 + 0x20) * 10;
-//       pOVar12 = DAT_80097a70;
-//       iVar17 = *(int *)(*(int *)(iVar23 + (int)pOVar11->object) + 0x18);
-//       local_30 = (short)uVar14 * -0xe;
-//       if (iVar17 < 0) {
-//         uVar18 = iVar17 / 16000 - 1;
-//       }
-//       else {
-//         uVar18 = iVar17 / 16000;
-//       }
-//       iVar17 = *(int *)(*(int *)(iVar23 + (int)DAT_80097a70->object) + 0x1c);
-//       if (iVar17 < 0) {
-//         uVar19 = iVar17 / 16000 - 1;
-//       }
-//       else {
-//         uVar19 = iVar17 / 16000;
-//       }
-//       iVar17 = *(int *)(*(int *)(iVar23 + (int)DAT_80097a70->object) + 0x20);
-//       if (iVar17 < 0) {
-//         uVar22 = iVar17 / 16000 - 1;
-//       }
-//       else {
-//         uVar22 = iVar17 / 16000;
-//       }
-//       iVar17 = *(int *)(iVar23 + (int)DAT_80097a70->object);
-//       *(uint *)(iVar17 + 0x50) = *(uint *)(iVar17 + 0x50) | 0x400;
-//       UpdateOrnament(*(OrnamentType **)(iVar23 + (int)pOVar12->object),0);
-//       pWVar24 = WorldMap[uVar18 & 7][uVar19 & 7] + (uVar22 & 7);
-//       pOVar20 = *(OrnamentType **)(iVar23 + (int)DAT_80097a70->object);
-//       if (ModelSlot.max <= ModelSlot.n) {
-//         AdtMessageBox("ModelSlot Overflow");
-//       }
-//       ModelSlot.slot[ModelSlot.n].model = pOVar20;
-//       ModelSlot.slot[ModelSlot.n].next = pWVar24->top;
-//       ModelSlot.slot[ModelSlot.n].ModelSize = (short)local_30;
-//       ModelSlot.slot[ModelSlot.n].ShiftY = 0;
-//       iVar23 = iVar23 + 4;
-//       pWVar24->top = ModelSlot.slot + ModelSlot.n;
-//       ModelSlot.n = ModelSlot.n + 1;
-//     }
-//     vfree((undefined *)in_a0);
-//     jt_init4();
-//     return -1;
-//   }
-//   switch(*psVar16) {
-//   case 0:
-//     sprintf((char *)auStack_180,s__s_ACM_80097a80,psVar16 + 2);
-//     DisposeAreaMap(GlobalAreaMap);
-//     puVar15 = PathFileRead(ImagePath,auStack_180);
-//     GlobalAreaMap = LoadAreaMap(puVar15);
-//     if (StageID != 4) break;
-//     puVar15 = PathFileRead(ImagePath,(uchar *)"BALMER.ACM");
-//     DAT_800976e8 = FUN_8001ab64(puVar15);
-//     goto LAB_8003b260;
-//   case 2:
-//     if ((char)psVar16[2] == '\0') {
-//       pOVar20 = CreateCloneOrnament(*(OrnamentType **)(local_3c + psVar16[1] * 0x10 + 2));
-//     }
-//     else {
-//       pOVar20 = DAT_80097a74->object[local_44];
-//       local_44 = local_44 + 1;
-//       *(OrnamentType **)(psVar16 + 2) = pOVar20;
-//     }
-//     (pOVar20->locate).coord.t[0] = *(long *)(psVar16 + 8);
-//     (pOVar20->locate).coord.t[1] = *(long *)(psVar16 + 10);
-//     (pOVar20->locate).coord.t[2] = *(long *)(psVar16 + 0xc);
-//     UpdateOrnament(pOVar20,psVar16[0xe]);
-//     iVar21 = *(int *)(psVar16 + 8);
-//     iVar17 = iVar21 >> 0x1f;
-//     iVar25 = iVar21 / 16000 + iVar17;
-//     if (iVar21 < 0) {
-//       uVar18 = (iVar25 - iVar17) - 1;
-//     }
-//     else {
-//       uVar18 = iVar25 - iVar17;
-//     }
-//     iVar25 = *(int *)(psVar16 + 10);
-//     if (iVar25 < 0) {
-//       uVar19 = iVar25 / 16000 - 1;
-//     }
-//     else {
-//       uVar19 = iVar25 / 16000;
-//     }
-//     iVar25 = *(int *)(psVar16 + 0xc);
-//     if (iVar25 < 0) {
-//       uVar22 = iVar25 / 16000 - 1;
-//     }
-//     else {
-//       uVar22 = iVar25 / 16000;
-//     }
-//     GetCenterAndSize((pOVar20->object).tmd,&SStack_80,&local_48);
-//     sVar13 = SStack_80.vy;
-//     pWVar24 = WorldMap[uVar18 & 7][uVar19 & 7] + (uVar22 & 7);
-//     iVar25 = local_48 / 2;
-//     if (ModelSlot.max <= ModelSlot.n) {
-//       AdtMessageBox("ModelSlot Overflow");
-//     }
-//     ModelSlot.slot[ModelSlot.n].model = pOVar20;
-//     ModelSlot.slot[ModelSlot.n].next = pWVar24->top;
-//     ModelSlot.slot[ModelSlot.n].ModelSize = (short)iVar25;
-//     ModelSlot.slot[ModelSlot.n].ShiftY = sVar13;
-//     pWVar24->top = ModelSlot.slot + ModelSlot.n;
-//     ModelSlot.n = ModelSlot.n + 1;
-//     break;
-//   case 3:
-//     psVar1 = psVar16 + 0xe;
-//     psVar2 = psVar16 + 1;
-//     psVar3 = psVar16 + 8;
-//     psVar4 = psVar16 + 10;
-//     psVar5 = psVar16 + 0xc;
-//     psVar16 = psVar16 + 0x10;
-//     BreedLife((int)*psVar2,*(undefined4 *)psVar3,*(undefined4 *)psVar4,*(undefined4 *)psVar5,
-//               *(undefined4 *)psVar1);
-//     iVar23 = iVar23 + 1;
-//     goto LAB_8003ae28;
-//   case 4:
-//     memset((uchar *)&local_60,'\0',0x14);
-//     local_78.type = (TItemType)psVar16[1];
-//     local_78.locate.vx = *(long *)(psVar16 + 8);
-//     local_78.locate.vy = *(long *)(psVar16 + 10);
-//     local_78.locate.vz = *(long *)(psVar16 + 0xc);
-//     local_78.locate.pad = local_50;
-//     local_60 = local_78.type;
-//     local_5c = local_78.locate.vx;
-//     local_58 = local_78.locate.vy;
-//     local_54 = local_78.locate.vz;
-//     ReqItemStay(&local_78);
-//     break;
-//   case 5:
-//     sprintf((char *)auStack_180,s__s_TIM_80097a88,psVar16 + 2);
-//     puVar15 = PathFileRead((uchar *)"K:\\WORK\\CDIMAGE\\IMAGE\\",auStack_180);
-//     LoadTIMAndFree(puVar15);
-//     goto LAB_8003b260;
-//   case 0xb:
-//     goto switchD_8003ae64_caseD_b;
-//   }
-// LAB_8003b260:
-//   psVar16 = psVar16 + 0x10;
-//   iVar23 = iVar23 + 1;
-//   goto LAB_8003ae28;
-// switchD_8003ae64_caseD_b:
-//   piVar6 = (int *)(psVar16 + 2);
-//   piVar7 = (int *)(psVar16 + 4);
-//   piVar8 = (int *)(psVar16 + 6);
-//   piVar9 = (int *)(psVar16 + 8);
-//   psVar16 = psVar16 + 0x10;
-//   AddMisc(*piVar6,*piVar7,*piVar8,*piVar9);
-//   iVar23 = iVar23 + 1;
-//   goto LAB_8003ae28;
-// }
+
+struct OrnamentType
+{
+    GsCOORDINATE2 locate;
+    GsDOBJ2 object;
+};
+
+typedef struct
+{
+    GsCOORDINATE2 locate;
+    SVECTOR rotate;
+    s16 id;
+    s16 attribute;
+    s16 n;
+    OrnamentType **object;
+    u32 *data;
+} OrnamentArchiveType;
+
+typedef struct tag_ObjectSlotType ObjectSlotType;
+struct tag_ObjectSlotType
+{
+    ObjectSlotType *next;
+    OrnamentType *model;
+    s16 ModelSize;
+    s16 ShiftY;
+};
+
+typedef struct
+{
+    ObjectSlotType *slot;
+    s32 n;
+    s32 max;
+} ObjectSlotManager;
+
+typedef struct
+{
+    ObjectSlotType *top;
+} WorldMapCell;
+
+typedef struct
+{
+    s16 type;
+    s16 ObjectID;
+    union
+    {
+        char name[12];
+        OrnamentType *model;
+        s32 misc[3];
+    } data;
+    s32 x;
+    s32 y;
+    s32 z;
+    s32 n;
+} WorldDataType;
+
+typedef struct
+{
+    s16 parent;
+    s16 id;
+    s16 x;
+    s16 y;
+    s16 z;
+    s16 pad;
+    s32 offset;
+} ParentingType;
+
+typedef struct
+{
+    int ObjectID;
+    u32 *MapModel;
+    WorldDataType *wlddt;
+    long n;
+    ParentingType *ix;
+    int msize;
+} LoadConstructionStack;
+
+typedef struct
+{
+    unsigned char name[256];
+    SVECTOR center;
+    PARAM_ITEM_STAY param;
+    u32 pad0;
+    PARAM_ITEM_STAY tmp;
+    u32 pad1;
+    int size;
+    LoadConstructionStack stack;
+} LoadConstructionScratch;
+
+extern WorldMapCell WorldMap[8][8][8];
+extern u32 *GlobalAreaMap;
+extern u8 *ImagePath;
+extern ObjectSlotManager ModelSlot;
+extern s32 StageID;
+extern ModelType World;
+extern OrnamentArchiveType *D_80097A70;
+extern OrnamentArchiveType *D_80097A74;
+extern u32 *D_800976E8;
+
+extern char D_800120C4[];
+extern char D_800120D8[];
+extern char D_800120F0[];
+extern char D_80012108[];
+extern char D_80012114[];
+extern char D_80012120[];
+extern char D_80097A78[];
+extern char D_80097A80[];
+extern char D_80097A88[];
+extern char D_80097A90[];
+
+extern void SystemOut(char *message);
+extern u32 vsize(void *data);
+extern void DisposeAreaMap(void *area);
+extern void ResetAllMisc(void);
+extern void ClearItemLayout(void);
+extern void DisposeOrnament(OrnamentType *model);
+extern void vfree(void *ptr);
+extern void LoadTIMpackAndFree(u32 *data);
+extern void *valloc(u32 size);
+extern OrnamentArchiveType *LoadOrnamentArchive(u32 *data, ModelType *parent);
+extern u32 *LoadAreaMap(u32 *data);
+extern u32 *handle_balmer_acm_(u32 *data);
+extern void UpdateOrnament(OrnamentType *model, s16 ry);
+extern void GetCenterAndSize(u32 *tmd, SVECTOR *center, int *size);
+extern OrnamentType *CreateCloneOrnament(OrnamentType *model);
+extern Humanoid *BreedLife(s16 type, s32 x, s32 y, s32 z, s32 r);
+extern void AddMisc(s32 type, s32 x, s32 y, s32 z,
+                    s32 a, s32 b, s32 c);
+extern void jt_init4(void);
+
+short LoadConstruction(u32 *data)
+{
+    OrnamentType *model;
+    long x;
+    long y;
+    long z;
+    long i;
+    int nModel;
+    OrnamentArchiveType *mad;
+    ObjectSlotType **slot;
+    short shifty;
+    WorldDataType *cur;
+    ObjectSlotManager *slotman;
+    LoadConstructionScratch scratch;
+
+    scratch.stack.ObjectID = 0;
+    scratch.stack.wlddt = (WorldDataType *)data;
+    if (scratch.stack.wlddt == 0)
+        SystemOut(D_800120D8);
+    memset(WorldMap, 0, sizeof(WorldMap));
+
+    nModel = 0;
+    scratch.stack.n = vsize(data) >> 5;
+    for (i = 0; i < scratch.stack.n; i++)
+    {
+        if (scratch.stack.wlddt[i].type == 2)
+            nModel++;
+    }
+
+    DisposeAreaMap(GlobalAreaMap);
+    GlobalAreaMap = 0;
+    ResetAllMisc();
+    ClearItemLayout();
+
+    mad = D_80097A70;
+    if (mad != 0)
+    {
+        for (i = 0; i < mad->n; i++)
+            DisposeOrnament(mad->object[i]);
+        vfree(mad->object);
+        vfree(mad->data);
+        vfree(mad);
+    }
+
+    mad = D_80097A74;
+    if (mad != 0)
+    {
+        for (i = 0; i < mad->n; i++)
+            DisposeOrnament(mad->object[i]);
+        vfree(mad->object);
+        vfree(mad->data);
+        vfree(mad);
+    }
+
+    LoadTIMpackAndFree((u32 *)PathFileRead((char *)ImagePath, D_80097A78));
+    LoadTIMpackAndFree((u32 *)PathFileRead(D_800120F0, D_80012108));
+
+    scratch.stack.MapModel = (u32 *)valloc(0x6B800);
+    D_80097A74 = LoadOrnamentArchive(
+        (u32 *)PathFileRead((char *)ImagePath, D_80012114), &World);
+
+    slotman = &ModelSlot;
+    if (0 < slotman->max)
+    {
+        int offset;
+
+        offset = 0;
+        for (i = 0; i < slotman->n; i++)
+        {
+            model = *(OrnamentType **)((u8 *)&slotman->slot->model + offset);
+            if (((u32)model & 0xFF000000) == 0x80000000)
+                DisposeOrnament(model);
+            offset += sizeof(ObjectSlotType);
+        }
+        vfree(slotman->slot);
+    }
+
+    slotman->max = nModel + 500;
+    slotman->slot = (ObjectSlotType *)valloc(slotman->max * sizeof(ObjectSlotType));
+    slotman->n = 0;
+
+    i = 0;
+    cur = scratch.stack.wlddt;
+    while (i < scratch.stack.n)
+    {
+        switch (cur->type)
+        {
+    case 0:
+        sprintf((char *)scratch.name, D_80097A80, cur->data.name);
+        DisposeAreaMap(GlobalAreaMap);
+        GlobalAreaMap = LoadAreaMap(
+            (u32 *)PathFileRead((char *)ImagePath, (char *)scratch.name));
+        if (StageID == 4)
+        {
+            D_800976E8 = handle_balmer_acm_(
+                (u32 *)PathFileRead((char *)ImagePath, D_80012120));
+        }
+        break;
+
+    case 5:
+        sprintf((char *)scratch.name, D_80097A88, cur->data.name);
+        LoadTIMAndFree((u_long *)PathFileRead(D_800120F0, (char *)scratch.name));
+        break;
+
+    case 2:
+        if (cur->data.name[0] == 0)
+            model = CreateCloneOrnament(scratch.stack.wlddt[cur->ObjectID].data.model);
+        else
+        {
+            model = D_80097A74->object[scratch.stack.ObjectID];
+            scratch.stack.ObjectID++;
+            cur->data.model = model;
+        }
+
+        model->locate.coord.t[0] = cur->x;
+        model->locate.coord.t[1] = cur->y;
+        model->locate.coord.t[2] = cur->z;
+        UpdateOrnament(model, cur->n);
+
+        if (cur->x < 0)
+            x = cur->x / 16000 - 1;
+        else
+            x = cur->x / 16000;
+        if (cur->y < 0)
+            y = cur->y / 16000 - 1;
+        else
+            y = cur->y / 16000;
+        if (cur->z < 0)
+            z = cur->z / 16000 - 1;
+        else
+            z = cur->z / 16000;
+
+        GetCenterAndSize(model->object.tmd, &scratch.center, &scratch.size);
+        shifty = scratch.center.vy;
+        scratch.stack.msize = scratch.size / 2;
+        slot = &WorldMap[x & 7][y & 7][z & 7].top;
+        if (ModelSlot.n >= ModelSlot.max)
+            AdtMessageBox(D_800120C4);
+        ModelSlot.slot[ModelSlot.n].model = model;
+        ModelSlot.slot[ModelSlot.n].next = *slot;
+        ModelSlot.slot[ModelSlot.n].ModelSize = scratch.stack.msize;
+        ModelSlot.slot[ModelSlot.n].ShiftY = shifty;
+        *slot = &ModelSlot.slot[ModelSlot.n];
+        ModelSlot.n++;
+        break;
+
+    case 3:
+        BreedLife(cur->ObjectID, cur->x, cur->y, cur->z, cur->n);
+        cur++;
+        i++;
+        continue;
+
+    case 11:
+        AddMisc(cur->data.misc[0], cur->data.misc[1], cur->data.misc[2],
+                cur->x, cur->y, cur->z, cur->n);
+        cur++;
+        i++;
+        continue;
+
+    case 4:
+        memset(&scratch.tmp, 0, sizeof(scratch.tmp));
+        scratch.tmp.type = cur->ObjectID;
+        scratch.tmp.locate.vx = cur->x;
+        scratch.tmp.locate.vy = cur->y;
+        scratch.tmp.locate.vz = cur->z;
+        scratch.param = scratch.tmp;
+        ReqItemStay(&scratch.param);
+        break;
+        }
+
+        cur++;
+        i++;
+    }
+
+    sprintf((char *)scratch.name, D_80097A90);
+    vfree(scratch.stack.MapModel);
+    scratch.stack.MapModel = (u32 *)PathFileRead((char *)ImagePath, (char *)scratch.name);
+    scratch.stack.ix = (ParentingType *)(scratch.stack.MapModel + 2);
+    D_80097A70 = LoadOrnamentArchive(scratch.stack.MapModel, &World);
+
+    {
+        int objectOffset;
+
+        objectOffset = 0;
+        for (i = 0; i < D_80097A70->n; i++)
+        {
+            OrnamentType *entry;
+
+            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
+            entry->locate.coord.t[0] *= 10;
+            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
+            entry->locate.coord.t[1] *= 10;
+            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
+            entry->locate.coord.t[2] *= 10;
+            scratch.stack.msize = scratch.stack.ix[i].parent * -14;
+
+            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
+            if (entry->locate.coord.t[0] < 0)
+                x = entry->locate.coord.t[0] / 16000 - 1;
+            else
+                x = entry->locate.coord.t[0] / 16000;
+            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
+            if (entry->locate.coord.t[1] < 0)
+                y = entry->locate.coord.t[1] / 16000 - 1;
+            else
+                y = entry->locate.coord.t[1] / 16000;
+            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
+            if (entry->locate.coord.t[2] < 0)
+                z = entry->locate.coord.t[2] / 16000 - 1;
+            else
+                z = entry->locate.coord.t[2] / 16000;
+
+            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
+            entry->object.attribute |= 0x400;
+            UpdateOrnament(entry, 0);
+            slot = &WorldMap[x & 7][y & 7][z & 7].top;
+            model = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
+            if (ModelSlot.n >= ModelSlot.max)
+                AdtMessageBox(D_800120C4);
+            ModelSlot.slot[ModelSlot.n].model = model;
+            ModelSlot.slot[ModelSlot.n].next = *slot;
+            ModelSlot.slot[ModelSlot.n].ModelSize = scratch.stack.msize;
+            ModelSlot.slot[ModelSlot.n].ShiftY = 0;
+            *slot = &ModelSlot.slot[ModelSlot.n];
+            ModelSlot.n++;
+            objectOffset += sizeof(OrnamentType *);
+        }
+    }
+
+    vfree(data);
+    jt_init4();
+    return -1;
+}
 
 #endif /* NON_MATCHING */
