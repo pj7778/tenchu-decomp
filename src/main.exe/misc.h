@@ -12,7 +12,9 @@
  */
 
 typedef struct tag_TMisc tag_TMisc;
+#ifndef ITEM_H
 typedef struct ModelType ModelType;
+#endif
 
 typedef struct
 {
@@ -49,6 +51,15 @@ typedef struct
     SVECTOR *snows; /* 0x8 */
 } TSnowfall;
 
+/* The MISC_PITFALL variant of the parameter union. */
+typedef struct
+{
+    ModelType *locate; /* 0x0 */
+    s16 r;             /* 0x4 */
+    u8 type;           /* 0x6 */
+    u8 pad;            /* 0x7 */
+} TPitfall;
+
 struct tag_TMisc
 {
     void (*proc)(tag_TMisc *, s32); /* 0x00 */
@@ -62,6 +73,7 @@ struct tag_TMisc
     {
         TMiscInit init;
         TDoor door;
+        TPitfall pitfall;
         TSprite sprite;
     } param;                        /* 0x18 */
 };                                  /* 0x24 */
@@ -83,6 +95,7 @@ enum TMiscMessage
  * "local wrapper reuses item.h's Sprite3D instead of redefining it" idea as
  * PutItemIcon.c's ItemIconType, but this TU doesn't include item.h at all,
  * so the full struct is declared directly instead of composing). */
+#ifndef ITEM_H
 typedef struct Sprite3D Sprite3D;
 struct Sprite3D
 {
@@ -94,6 +107,7 @@ struct Sprite3D
     s32 scale;            /* 0x64 */
     GsSPRITE sprite;      /* 0x68 */
 };                        /* 0x8C */
+#endif
 
 typedef struct
 {

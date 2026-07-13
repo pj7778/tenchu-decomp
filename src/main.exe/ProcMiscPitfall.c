@@ -32,7 +32,184 @@
  *     extern struct ConflictObjectType ConflictObject[64];
  * END PSX.SYM */
 
+/*
+ * ProcMiscPitfall (0x8004cb6c, 868 bytes) — creates the pitfall collision
+ * volume, advances its opening animation, and draws the two trap-door models.
+ *
+ * STATUS: NON_MATCHING — the pure-C draft has the exact 217-instruction
+ * length, control flow, operations, and scheduling, but 6 of 868 bytes differ.
+ * The residual is one global-register colouring tie:
+ *
+ *     value             target       draft
+ *     resume `w`        $s1          $s0
+ *     shared literal 2  $s0          $s3
+ *
+ * Those are the only differing operands (six instructions total). rtlguide
+ * classifies the residual as regalloc and reports a hard conflict for the
+ * literal allocno's target register. Guided autorules tried 160 candidates
+ * without improving 6 bytes; one bounded 300-second permuter run explored
+ * 22,097 candidates and stayed flat (authoritative rescore: 6 bytes).
+ * Per the cookbook's sub-C register-swap stop rule, keep the default
+ * INCLUDE_ASM stub and build this draft with NON_MATCHING=ProcMiscPitfall.
+ *
+ * Two non-obvious source identities are measured and load-bearing: promoting
+ * mode to int changes the lone range test from sltiu to the target's slti
+ * (7 -> 6 bytes), and keeping ConflictObject in a block pointer across
+ * GetConflictResult changes a 218-instruction draft to the target length.
+ */
+
+#include "item.h"
+#include "misc.h"
+
+typedef struct
+{
+    ModelType *model;            /* 0x00 */
+    VECTOR position;             /* 0x04 */
+    SVECTOR offset;              /* 0x14 */
+    SVECTOR size;                /* 0x1C */
+    void *common;                /* 0x24 */
+    u8 result[64];               /* 0x28 */
+    u8 pad[0x10];                /* 0x68 */
+} ConflictObjectType;            /* 0x78 */
+
+extern char D_80012710[];
+extern ConflictObjectType ConflictObject[];
+extern ModelType *LoadModel(u_long *adr);
+extern void DisposeModel(ModelType *model);
+extern short DrawModel(ModelType *model);
+extern short InsertConflict(ModelType *model);
+extern short GetConflictResult(ModelType *model, short index);
+
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcMiscPitfall", ProcMiscPitfall);
+#else
+void ProcMiscPitfall(tag_TMisc *m, enum TMiscMessage msg)
+{
+    TPitfall *param;
+
+    param = &m->param.pitfall;
+    switch (msg)
+    {
+    case MM_CREATE:
+        {
+            int type;
+            int t;
+
+            type = m->param.init.b;
+            t = m->param.init.a;
+            if (type >= 3)
+            {
+                AdtMessageBox(D_80012710, type);
+                type = 0;
+            }
+            m->mode = 0;
+            param->r = 0;
+            param->type = type;
+            param->locate = LoadModel(0);
+            param->locate->locate.coord.t[0] = m->x;
+            param->locate->locate.coord.t[1] = m->y;
+            param->locate->locate.coord.t[2] = m->z;
+            param->locate->rotate.vx = 0;
+            param->locate->rotate.vy = t;
+            param->locate->rotate.vz = 0;
+            UpdateCoordinate(param->locate);
+        }
+        return;
+
+    case MM_DESTROY:
+        DeleteConflict(param->locate);
+        DisposeModel(param->locate);
+        return;
+
+    case MM_PAUSE:
+        DeleteConflict(param->locate);
+        return;
+
+    case MM_RESUME:
+        {
+            short w;
+            int r;
+
+            w = PitfallData[param->type].HitSize;
+            r = InsertConflict(param->locate);
+            ConflictObject[r].offset.vx = 0;
+            ConflictObject[r].offset.vy = 0;
+            ConflictObject[r].offset.vz = 0;
+            ConflictObject[r].common = (void *)2;
+            ConflictObject[r].size.pad = 8;
+            ConflictObject[r].size.vx = w;
+            ConflictObject[r].size.vy = ConflictObject[r].size.vz = (w / 3) * 2;
+        }
+        return;
+
+    default:
+        {
+            ModelType *model;
+            ConflictObjectType *conflict;
+            short w;
+            int r;
+            int mode;
+
+            /* The promoted temporary selects signed slti after the lbu. */
+            mode = m->mode;
+            if (mode != 1)
+            {
+                if (mode < 2)
+                {
+                    if (mode == 0)
+                    {
+                        if ((param->locate->attribute & 0x8000) != 0)
+                        {
+                            /* Preserve the array base across the call. */
+                            conflict = ConflictObject;
+                            r = GetConflictResult(param->locate, -1);
+                            if (conflict[r].common != (void *)2)
+                            {
+                                m->mode++;
+                                SoundEx((VECTOR *)param->locate->locate.coord.t, 0x40);
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                param->r += 0xaa;
+                if (param->r >= 0x400)
+                {
+                    param->r = 0x400;
+                    m->mode++;
+                }
+            }
+
+            model = PitfallData[param->type].Model[0];
+            w = PitfallData[param->type].HitSize;
+            if (model != (ModelType *)-1)
+            {
+                model->locate.super = (GsCOORDINATE2 *)param->locate;
+                model->locate.coord.t[0] = -w;
+                model->locate.coord.t[1] = 0;
+                model->locate.coord.t[2] = 0;
+                model->rotate.vz = param->r;
+                UpdateCoordinate(model);
+                DrawModel(model);
+            }
+            model = PitfallData[param->type].Model[1];
+            if (model != (ModelType *)-1)
+            {
+                model->locate.super = (GsCOORDINATE2 *)param->locate;
+                model->locate.coord.t[0] = w;
+                model->locate.coord.t[1] = 0;
+                model->locate.coord.t[2] = 0;
+                model->rotate.vz = -param->r;
+                UpdateCoordinate(model);
+                DrawModel(model);
+            }
+        }
+        return;
+    }
+}
+#endif
 
 // triage: MEDIUM — 217 insns, mul/div, 9 callees, ~0.07 to ProcItemLightningBolt
 // likely-relevant cookbook sections:
