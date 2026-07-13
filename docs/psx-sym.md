@@ -259,6 +259,12 @@ retail `FUN_80027730`, while the currently named retail function launches a
 lightning bolt on one frame. Verify signature, parameters, constants, and
 semantics together before adopting a name.
 
+`callmatch --verify` now blocks this mechanically as `AMBIGUOUS`: after full
+containment it searches for another retail function that contains every demo
+callee, has no more extra named calls, and is at least as close in code size.
+That conservative Pareto test flags only `AttackFire` in the 34-name applied
+control table; `FUN_80027730` is the strictly better competing fit.
+
 ## What we adopted
 
 **34 names**, all rebuilt byte-identical, listed in `reference/psxsym-applied.tsv`.

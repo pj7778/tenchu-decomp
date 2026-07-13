@@ -17,6 +17,7 @@ if TOOLS not in sys.path:
 
 import autorules
 import asmdiff
+import callmatch
 import function_inventory
 import matchlock
 import matchdiff
@@ -67,6 +68,49 @@ class FunctionInventoryTests(unittest.TestCase):
             )
         finally:
             os.unlink(path)
+
+
+class CallMatchAmbiguityTests(unittest.TestCase):
+    def test_pareto_better_containment_fit_blocks_confirmation(self):
+        from collections import Counter
+
+        names = {
+            0x1000: (300, "Current"),
+            0x2000: (232, "BetterSibling"),
+            0x3000: (900, "TooLarge"),
+        }
+        demo = Counter(("A", "B", "C"))
+        calls = {
+            0x1000: Counter(("A", "B", "C", "X", "Y")),
+            0x2000: Counter(("A", "B", "C", "X")),
+            0x3000: Counter(("A", "B", "C")),
+        }
+
+        alternatives = callmatch.ambiguity_candidates(
+            0x1000, names, calls, demo, 208
+        )
+
+        self.assertEqual([a[2] for a in alternatives], [0x2000])
+
+    def test_worse_call_or_size_fit_does_not_create_noise(self):
+        from collections import Counter
+
+        names = {
+            0x1000: (220, "Current"),
+            0x2000: (210, "MoreExtras"),
+            0x3000: (800, "FartherSize"),
+        }
+        demo = Counter(("A", "B", "C"))
+        calls = {
+            0x1000: Counter(("A", "B", "C", "X")),
+            0x2000: Counter(("A", "B", "C", "X", "Y")),
+            0x3000: Counter(("A", "B", "C")),
+        }
+
+        self.assertEqual(
+            callmatch.ambiguity_candidates(0x1000, names, calls, demo, 208),
+            [],
+        )
 
 
 class AutoRulesAdvancedTests(unittest.TestCase):

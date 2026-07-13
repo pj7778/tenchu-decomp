@@ -69,6 +69,9 @@ names alone: that snapshot is not rewritten when the repository adopts a name, s
 silently turns known callees back into placeholders. Call containment is necessary,
 not sufficient; callbacks with the same small set of helpers still require prototype,
 constant, and semantic confirmation (the historical `AttackFire` collision).
+`callmatch --verify` mechanically blocks a conservative subset of these as
+`AMBIGUOUS` when another full-containment candidate has no more extra named calls
+and is at least as close in size; do not override that gate with positional evidence.
 
 Parameter names are already the authors' own wherever they could be adopted
 (`tools/symnote.py --params` lists the three still blocked by a name collision with a

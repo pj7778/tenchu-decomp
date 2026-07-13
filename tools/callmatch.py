@@ -19,7 +19,7 @@ sides), exactly as in xbuildnames.py.
 """
 from __future__ import annotations
 
-import argparse, collections, os, struct, sys
+import argparse, collections, math, os, struct, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import psxsym as P
@@ -60,6 +60,33 @@ def load_side(text: bytes, base: int, funcs: list[tuple[int, int, str]]):
     return sig
 
 
+def ambiguity_candidates(addr, rn, retail_calls, demo_calls, demo_size):
+    """Retail functions that Pareto-dominate a proposed full-containment fit.
+
+    Containment alone can collide for sibling callbacks.  An alternative is a
+    conservative blocker only when it also contains every demo call, has no
+    more extra named calls, and is at least as close in code size.  This catches
+    the historical AttackFire misallocation without flagging any other entry in
+    the applied-name control table.
+    """
+    if addr not in retail_calls or not demo_calls or addr not in rn:
+        return []
+    proposed = retail_calls[addr]
+    extra = sum((proposed - demo_calls).values())
+    size_gap = abs(math.log(max(1, rn[addr][0]) / max(1, demo_size)))
+    out = []
+    total = sum(demo_calls.values())
+    for other, calls in retail_calls.items():
+        if other == addr or other not in rn:
+            continue
+        cover = sum((calls & demo_calls).values()) / total
+        other_extra = sum((calls - demo_calls).values())
+        other_gap = abs(math.log(max(1, rn[other][0]) / max(1, demo_size)))
+        if cover == 1.0 and other_extra <= extra and other_gap <= size_gap:
+            out.append((other_extra, other_gap, other, rn[other][0], rn[other][1]))
+    return sorted(out)
+
+
 def verify(rexe, rfuncs, text, t_addr, dfuncs, tsv: str) -> int:
     """Re-check a proposed rename table: does the retail function call what the
     demo function of that name calls?  Containment (demo callees ⊆ retail) is the
@@ -72,6 +99,15 @@ def verify(rexe, rfuncs, text, t_addr, dfuncs, tsv: str) -> int:
     dn = {a: (s, n) for a, s, n in dfuncs}
     byname = {n: a for a, (_, n) in dn.items()}
     rejects = 0
+    rnames = {k: v[1] for k, v in rn.items()}
+    rtext, rbase = rexe[0x800:], 0x80011000
+    retail_calls = {}
+    for a, (size, _) in rn.items():
+        off = a - rbase
+        if size >= 8 and off >= 0 and off + size <= len(rtext):
+            retail_calls[a] = collections.Counter(
+                callees(rtext, rbase, a, size, rnames)
+            )
     print(f"{'addr':9s} {'proposed':28s} {'verdict':9s} evidence")
     for line in open(tsv):
         p = line.rstrip("\n").split("\t")
@@ -81,8 +117,7 @@ def verify(rexe, rfuncs, text, t_addr, dfuncs, tsv: str) -> int:
         if a not in rn or new not in byname:
             print(f"{a:08x} {new:28s} {'n/a':9s} (absent from one side)")
             continue
-        rc = collections.Counter(callees(rexe[0x800:], 0x80011000, a, rn[a][0],
-                                         {k: v[1] for k, v in rn.items()}))
+        rc = retail_calls.get(a, collections.Counter())
         da = byname[new]
         dc = collections.Counter(callees(text, t_addr, da, dn[da][0],
                                          {k: v[1] for k, v in dn.items()}))
@@ -90,15 +125,26 @@ def verify(rexe, rfuncs, text, t_addr, dfuncs, tsv: str) -> int:
             print(f"{a:08x} {new:28s} {'leaf':9s} (no named calls either side)")
             continue
         cover = sum((rc & dc).values()) / max(1, sum(dc.values()))
+        collision = []
         if cover == 1.0 and sum(dc.values()) >= 2:
-            v = "CONFIRM"
+            collision = ambiguity_candidates(a, rn, retail_calls, dc, dn[da][0])
+            if collision:
+                v = "AMBIGUOUS"; rejects += 1
+            else:
+                v = "CONFIRM"
         elif cover >= 0.5:
             v = "WEAK"
         else:
             v = "REJECT"; rejects += 1
         miss = sorted((dc - rc).elements())
-        print(f"{a:08x} {new:28s} {v:9s} demo-callees covered {cover:.0%}"
-              + (f", missing {miss[:4]}" if miss else ""))
+        evidence = f"demo-callees covered {cover:.0%}"
+        if miss:
+            evidence += f", missing {miss[:4]}"
+        if collision:
+            ex, _, ca, cs, cn = collision[0]
+            evidence += (f", competing fit {ca:08x} {cn}"
+                         f" (extra calls {ex}, size {cs}/{dn[da][0]})")
+        print(f"{a:08x} {new:28s} {v:9s} {evidence}")
     return rejects
 
 
@@ -138,7 +184,7 @@ def main() -> None:
         print(f"retail current-name overlays: {renamed}")
     if args.verify:
         n = verify(rexe, rfuncs, exe[0x800:0x800 + t_size], t_addr, dfuncs, args.verify)
-        print(f"\n{n} rejected" if n else "\nno rejects")
+        print(f"\n{n} rejected/ambiguous" if n else "\nno rejects or ambiguities")
         sys.exit(1 if n else 0)
 
     # main.exe text is addressed from 0x80011000 at file offset 0x800

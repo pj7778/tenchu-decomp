@@ -126,6 +126,8 @@ operating rules:
   can collide: the historical `AttackFire` adoption passed containment even though a
   later demo-assembly audit identified retail `FUN_80027730` as the frame-range napalm
   function and the currently named function as a one-frame lightning callback.
+  `callmatch --verify` now reports `AMBIGUOUS` and fails the gate when another
+  full-containment candidate has no more extra named calls and no worse size distance.
 - **Ambiguous ⇒ keep the placeholder, record the candidate.** `reference/psxsym-candidates.tsv`
   and `reference/psxsym-data-candidates.tsv` hold every suggestion we did not adopt;
   `matcher-prompt.py` surfaces them to whoever touches the function next.
