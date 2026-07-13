@@ -72,7 +72,6 @@ extern int DrawSync(int mode);
 extern s16 *Krom2RawAdd(u32 code);
 extern int LoadImage(RECT *rect, u_long *pixels);
 extern void *memset(void *dst, int value, u32 size);
-extern u16 GetTPage(s32 tp, s32 abr, s32 x, s32 y);
 
 void SetupTelop(u8 *telop, short line)
 {

@@ -71,4 +71,9 @@ struct GsIMAGE
     u_long *clut;
 };
 
+/* PsyQ LIBGPU ABI: all four arguments are full-width ints.  Keep this
+ * canonical here; TU-local s16 x/y declarations create caller-side narrowing
+ * and misleading sign-extension/codegen residuals. */
+u16 GetTPage(s32 tp, s32 abr, s32 x, s32 y);
+
 #endif

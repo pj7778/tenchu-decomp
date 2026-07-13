@@ -1546,6 +1546,33 @@ sw $2,24($sp)
 
 
 class BuildConfigurationTests(unittest.TestCase):
+    def test_get_tpage_uses_one_full_width_sdk_prototype(self):
+        root = os.path.dirname(TOOLS)
+        header = os.path.join(root, "include", "psxsdk", "libgs.h")
+        with open(header) as f:
+            declarations = f.read()
+        self.assertIn(
+            "u16 GetTPage(s32 tp, s32 abr, s32 x, s32 y);",
+            declarations,
+        )
+
+        local_declarations = []
+        source_root = os.path.join(root, "src", "main.exe")
+        pattern = __import__("re").compile(
+            r"^\s*(?:extern\s+)?(?:u16|unsigned\s+short)\s+"
+            r"GetTPage\s*\(",
+            __import__("re").M,
+        )
+        for directory, _, names in os.walk(source_root):
+            for name in names:
+                if not name.endswith(".c"):
+                    continue
+                path = os.path.join(directory, name)
+                with open(path) as f:
+                    if pattern.search(f.read()):
+                        local_declarations.append(os.path.relpath(path, root))
+        self.assertEqual(local_declarations, [])
+
     def test_matching_source_override_is_per_function_and_used_by_cpp(self):
         path = os.path.join(os.path.dirname(TOOLS), "shake", "src", "Build.hs")
         with open(path) as f:

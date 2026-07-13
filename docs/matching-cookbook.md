@@ -970,6 +970,15 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   make the `break` the fallthrough rather than the branch-away, move the real
   work for the other case bodily **inside** the `if` block, ahead of the `break`.
 
+- **A bounded scan with an independent terminator can require two literal
+  exits in one `while (1)`.** Spell the bound as a top-of-body `if (...) break`,
+  perform the body and increment, then spell the data terminator as a second
+  `if (...) break` at the bottom. Combining them in the loop condition or
+  turning the bottom exit into a `while` test changes the loop notes and which
+  edge owns the increment. SetupTelop's glyph scan needed this exact two-break
+  shape; use the target's two separately placed back-edge/exit branches as the
+  structural tell.
+
 ## Expressions
 
 - **A constant right shift can be staged without changing the value.** Under
@@ -1072,6 +1081,15 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   omitted: FUN_8005b17c's `$a1` line number is explicitly sign-extended before
   `SetupTelop`, proving the caller-local prototype is
   `SetupTelop(u8 *, short)`, not the one-argument prototype in the old stub.
+- **PsyQ `GetTPage` has four full-width `int` arguments; do not redeclare its
+  coordinates as `s16` in individual TUs.** A narrow caller-local declaration
+  inserts misleading caller-side extensions and can make a register residual
+  look like an expression or scheduling problem. `include/psxsdk/libgs.h` is
+  the canonical ABI (`s32 tp, s32 abr, s32 x, s32 y`), and the matching-tools
+  tests reject TU-local declarations. This is an SDK ABI fact, unlike the
+  deliberately caller-local game-function prototypes described below;
+  centralising it changed none of the already-matched bytes (SetupTelop and the
+  six other callers).
 - **An expanded inline helper's pointer parameters can be deliberate CSE
   barriers.** Two direct calls using `&local` let cse carry the same address
   pseudo across both calls. Wrapping them in a small `static inline` helper with
@@ -3599,6 +3617,15 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
   `addiu ...,-128` because only the low 8 bits survive the `sb`. If the target
   shows the positive encoding, route the literal through a named variable
   (`s32 bias = 0x80;`) used at both addition sites (SelectCameraOwnerOption).
+  The same principle applies when one computed coordinate fans out to several
+  byte fields: compute it once in an `s32` temp and then assign the bytes. This
+  prevents modulo-256 folding and gives allocation one full-width pseudo to
+  reuse (SetupTelop's final `u`/`v` stores). If a scratch is dead before that
+  tail, reusing the later temp name earlier can also be a zero-code allocation
+  lever: SetupTelop fed its halfword bitmap store through the later `final_u`
+  pseudo, reducing the final register cycle without changing the value or
+  adding a live range across the intervening calls. Confirm the change in
+  `.lreg`; do not create an artificial long-lived local blindly.
 
 - **A repeated `&local` passed to the same callee twice does NOT reliably get
   recomputed.** cc1 can CSE the address across an intervening conditional even

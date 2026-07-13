@@ -49,7 +49,6 @@
  *    GetTPage argument — different machine modes don't CSE (cookbook:
  *    DeleteConflict's ConflictObjects).
  */
-extern u16 GetTPage(s32 tp, s32 abr, s16 x, s16 y);
 extern void *memset(void *s, s32 c, u32 n);
 
 void InitSprite(GsIMAGE *image, GsSPRITE *sprite)

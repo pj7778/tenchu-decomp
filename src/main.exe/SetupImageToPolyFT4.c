@@ -85,7 +85,6 @@ typedef struct
 } POLY_FT4;
 
 extern void SetPolyFT4(POLY_FT4 *p);
-extern u16 GetTPage(s32 tp, s32 abr, s16 x, s16 y);
 extern u16 GetClut(s16 x, s16 y);
 
 void SetupImageToPolyFT4(GsIMAGE *image, POLY_FT4 *ply, short x, short y)

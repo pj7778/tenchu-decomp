@@ -60,7 +60,6 @@ typedef struct
 } POLY_GT4;
 
 extern void SetPolyGT4(POLY_GT4 *p);
-extern u16 GetTPage(s32 tp, s32 abr, s16 x, s16 y);
 extern u16 GetClut(s16 x, s16 y);
 
 void SetupImageToPolyGT4(GsIMAGE *image, POLY_GT4 *ply, short x, short y)

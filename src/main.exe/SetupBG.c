@@ -93,7 +93,6 @@ extern char D_8001109C[];
 extern void SystemOut(u8 *message);
 extern void *valloc(u32 size);
 extern u16 GetClut(s16 x, s16 y);
-extern u16 GetTPage(s32 tp, s32 abr, s16 x, s16 y);
 extern void GsInitFixBg16(GsBG *bg, u32 *work);
 
 BackGround *SetupBG(GsIMAGE *image, short w, short h)

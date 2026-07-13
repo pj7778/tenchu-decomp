@@ -78,7 +78,6 @@ extern void FUN_8004f6c0(s32 arg0);
 extern void StartDrawing(void);
 extern void _PlayMusic(s32 music, s32 mode);
 extern s32 CdaGetCurrentLength(void);
-extern u16 GetTPage(s32 tp, s32 abr, s16 x, s16 y);
 extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, s32 depth);
 extern void DrawBG(BackGround *bg);
 extern void FUN_80038c0c(u8 *ot, s32 r, s32 g, s32 b);
