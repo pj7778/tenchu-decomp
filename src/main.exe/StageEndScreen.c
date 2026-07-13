@@ -14,7 +14,622 @@
  *     extern struct TCameraStatus CamState;
  * END PSX.SYM */
 
+/*
+ * STATUS: NON_MATCHING — complete pure-C reconstruction with the exact target
+ * length (6084 bytes / 1521 instructions), 0xf0-byte frame, 81 conditional
+ * branches, 15 jumps, and 70 calls.  matchdiff reports 3732 differing bytes.
+ * The setup, decimal-rendering, rank, post-game, and epilogue regions also
+ * have independently exact instruction/branch/jump/call counts; the residual
+ * is broad cse/cross-jump/register-allocation ordering, not hidden asm.
+ */
+
+#ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/StageEndScreen", StageEndScreen);
+#else
+
+#include "item.h"
+
+typedef struct
+{
+    u8 bosses;
+    u8 enemies;
+    u8 hidden_finds;
+    u8 murders;
+    u8 criticals;
+    u8 friendly_hits;
+    u8 pad[2];
+    s32 clock;
+} StageScoreStats;
+
+typedef struct
+{
+    u16 value[6];
+} StageScoreResult;
+
+typedef struct
+{
+    u8 uid;
+    u8 pad[0x1b];
+} StageEndConfigEntry;
+
+typedef struct
+{
+    u8 pad[0x10];
+    Humanoid *Owner;
+} StageEndCameraStatus;
+
+typedef struct
+{
+    u8 pad[0x68];
+    GsSPRITE sprite;
+} StageRankIcon;
+
+typedef struct BackGround BackGround;
+
+typedef struct
+{
+    GsSPRITE digit;                 /* sp+0x18 */
+    u8 pad_024[4];
+    StageScoreStats stats;          /* sp+0x40 */
+    u8 pad_04c[4];
+    StageScoreResult current;       /* sp+0x50 */
+    u8 pad_05c[4];
+    StageScoreResult best;          /* sp+0x60 */
+    u8 pad_06c[4];
+    GsSPRITE rank;                  /* sp+0x70 */
+    u8 pad_07c[4];
+    GsIMAGE image;                  /* sp+0x98 */
+    u8 pad_0b4[4];
+    u16 old_pad;                    /* sp+0xb8 */
+    u8 pad_0a2[2];
+    BackGround *background;         /* sp+0xbc */
+    u_long *rank_archive;           /* sp+0xc0 */
+    u8 pad_0ac[4];
+} StageEndScreenStack;
+
+#define PSTATE ((PersistentState *)0x80010000)
+
+extern u8 CHOSEN_CHARACTER;
+extern u8 CHOSEN_STAGE;
+extern u8 STAGE_LAYOUT_NUMBER;
+extern u8 CHOSEN_LANGUAGE;
+extern u8 D_80010048;
+extern u8 D_8001005C;
+extern s32 D_8001046C;
+extern u8 SELECTED_ITEM_COUNTS[];
+extern u8 ITEM_LOADOUT_BACKUP[];
+extern u8 SHOP_STOCK_STATE_BY_CHAR[];
+extern s16 D_8008EA78[];
+extern s16 D_8008ED50[];
+extern StageEndConfigEntry StageConfig[];
+extern char NUMBER_TIM_PATH[];
+extern char *RS_ARCHIVE_PTRS[];
+extern char *RANK_ARCHIVE_PTRS[];
+extern StageRankIcon *D_8008E5BC[];
+extern StageEndCameraStatus CamState;
+extern s32 StageID;
+extern s32 GameClock;
+extern s16 SkipFrame;
+extern GsOT *OTablePt;
+
+extern void SetupAppearance(s32 character, s32 mode);
+extern void PadShockAR(s32 port, s32 time, s32 left, s32 right);
+extern void FadeOutDirect(s16 time, s16 attrib, u8 r, u8 g, u8 b);
+extern void FUN_80038ce0(void);
+extern StageScoreStats *init_score_stats(StageScoreStats *stats);
+extern StageScoreResult *calculate_score(StageScoreStats *stats, s16 stage);
+extern void mission_score_screen(s32 stage);
+extern u_long *FileRead(char *path);
+extern void InitSprite(GsIMAGE *image, GsSPRITE *sprite);
+extern void LoadTIM(u_long *tim);
+extern BackGround *FUN_8004f4f8(u_long *tim);
+extern void vfree(void *ptr);
+extern u_long *get_tim_from_archive(u_long *archive, s16 index);
+extern void _PlayMusic(s32 music, s32 mode);
+extern u16 GetRealPad(s32 port);
+extern void StartDrawing(void);
+extern void DrawBG(BackGround *background);
+extern void FUN_800515b0(GsSPRITE *sprite, s32 value, s32 x, s32 y, s32 mode);
+extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, s32 priority);
+extern s32 rsin(s32 angle);
+extern s32 rcos(s32 angle);
+extern void EndDrawing(s32 mode);
+extern void DisposeBG(BackGround *background);
+extern void FUN_80052ea8(PersistentState *state, StageScoreResult *result);
+extern void FUN_800514d8(void);
+extern void FUN_8004f6c0(s32 state);
+
+static inline void StageEndInitSprite(u_long *tim, GsIMAGE *image,
+    GsSPRITE *sprite)
+{
+    GetTIMInfo(tim, image);
+    InitSprite(image, sprite);
+}
+
+#define DRAW_SCORE_NUMBER(value_, type_, jump_, label_,                    \
+        x_, y_)                                                            \
+    do                                                                     \
+    {                                                                      \
+        s32 dividend;                                                      \
+        s32 remainder;                                                     \
+                                                                           \
+        value = (value_);                                                  \
+        signed_value = (type_)value;                                       \
+        sprite->x = (x_);                                                  \
+        sprite->y = (y_);                                                  \
+        if (jump_)                                                         \
+        {                                                                  \
+            if (signed_value < 0)                                          \
+            {                                                              \
+                value = -signed_value;                                     \
+                negative = 1;                                              \
+                goto label_;                                               \
+            }                                                              \
+            else                                                           \
+            {                                                              \
+                negative = 0;                                              \
+            }                                                              \
+        }                                                                  \
+        else                                                               \
+        {                                                                  \
+            negative = 0;                                                  \
+            if (signed_value >= 0)                                         \
+                goto label_;                                               \
+            value = -signed_value;                                         \
+            negative = 1;                                                  \
+        }                                                                  \
+label_:                                                                    \
+        do                                                                 \
+        {                                                                  \
+            dividend = (s16)value;                                         \
+            do                                                             \
+            {                                                              \
+                do                                                         \
+                {                                                          \
+                    do                                                     \
+                    {                                                      \
+                        do                                                 \
+                        {                                                  \
+                            quotient = dividend / 10;                      \
+                            remainder = dividend - quotient * 10;          \
+                        } while (0);                                       \
+                    } while (0);                                           \
+                } while (0);                                               \
+            } while (0);                                                   \
+            do                                                             \
+            {                                                              \
+                base_u = sprite->u;                                        \
+            } while (0);                                                   \
+            sprite->u = base_u + (s16)remainder * sprite->w;               \
+            GsSortSprite(sprite, OTablePt, 0);                              \
+            do                                                             \
+            {                                                              \
+                sprite->u = base_u;                                        \
+            } while (0);                                                   \
+            sprite->x -= 12;                                               \
+            do                                                             \
+            {                                                              \
+                do                                                         \
+                {                                                          \
+                    value = quotient;                                      \
+                } while (0);                                               \
+            } while (0);                                                   \
+        } while ((s16)value != 0);                                        \
+        if (negative != 0)                                                 \
+        {                                                                  \
+            base_u = sprite->u;                                            \
+            sprite->u = base_u + sprite->w * ten;                          \
+            GsSortSprite(sprite, OTablePt, 0);                              \
+            sprite->u = base_u;                                            \
+        }                                                                  \
+    } while (0)
+
+#define DRAW_LAST_SCORE_NUMBER(value_, label_)                             \
+    do                                                                     \
+    {                                                                      \
+        s32 dividend;                                                      \
+        s32 remainder;                                                     \
+        u8 base_u;                                                         \
+                                                                           \
+        value = (value_);                                                  \
+        signed_value = (s16)value;                                         \
+        sprite->x = best_x;                                                \
+        sprite->y = 0x38;                                                  \
+        negative = 0;                                                      \
+        if (signed_value >= 0)                                             \
+            goto label_;                                                   \
+        value = -signed_value;                                             \
+        negative = 1;                                                      \
+label_:                                                                    \
+        do                                                                 \
+        {                                                                  \
+            dividend = (s16)value;                                         \
+            do                                                             \
+            {                                                              \
+                do                                                         \
+                {                                                          \
+                    do                                                     \
+                    {                                                      \
+                        do                                                 \
+                        {                                                  \
+                            quotient = dividend / 10;                      \
+                            remainder = dividend - quotient * 10;          \
+                        } while (0);                                       \
+                    } while (0);                                           \
+                } while (0);                                               \
+            } while (0);                                                   \
+            do                                                             \
+            {                                                              \
+                base_u = sprite->u;                                        \
+            } while (0);                                                   \
+            sprite->u = base_u + (s16)remainder * sprite->w;               \
+            GsSortSprite(sprite, OTablePt, 0);                              \
+            do                                                             \
+            {                                                              \
+                sprite->u = base_u;                                        \
+            } while (0);                                                   \
+            sprite->x -= 12;                                               \
+            do                                                             \
+            {                                                              \
+                do                                                         \
+                {                                                          \
+                    value = quotient;                                      \
+                } while (0);                                               \
+            } while (0);                                                   \
+        } while ((s16)value != 0);                                        \
+        if (negative != 0)                                                 \
+        {                                                                  \
+            sprite->u = base_u + sprite->w * ten;                          \
+            GsSortSprite(sprite, OTablePt, 0);                              \
+            sprite->u = base_u;                                            \
+        }                                                                  \
+    } while (0)
+
+void StageEndScreen(void)
+{
+    StageEndScreenStack stack;
+    StageScoreResult *score;
+    StageScoreStats *record;
+    StageRankIcon *icon;
+    GsSPRITE *sprite;
+    u_long *tim;
+    u8 *best_stage;
+    s32 selection;
+    s32 pulse;
+    s32 i;
+    s32 ten;
+    s32 top_y;
+    s32 current_x;
+    s32 best_x;
+    s16 stage_index;
+    s16 item_index;
+    u16 pad;
+    u16 pressed;
+    u32 value;
+    u32 base_u;
+    s32 signed_value;
+    s32 negative;
+    s32 quotient;
+
+    selection = 0;
+    stack.old_pad = 0;
+    SetupAppearance(0, -1);
+    PadShockAR(0, 0, 0, 0);
+    FadeOutDirect(0x20, 2, 8, 8, 8);
+    FUN_80038ce0();
+
+    stage_index = 0;
+    if (D_8008EA78[0] != CHOSEN_STAGE)
+    {
+        do
+        {
+            stage_index++;
+        } while (D_8008EA78[stage_index] != CHOSEN_STAGE);
+    }
+    {
+        u8 *state;
+
+        state = (u8 *)0x80010000;
+        *(s32 *)(state + 0x46c) |= 1 << (stage_index - 1);
+        if (state[5] == 7 && state[0x5e] == 0)
+        {
+            *(s32 *)(state + 0x46c) |= 0x400;
+        }
+    }
+
+    init_score_stats(&stack.stats);
+    score = calculate_score(&stack.stats, CHOSEN_STAGE);
+    stack.current = *score;
+    *(StageScoreStats *)0x8001004c = stack.stats;
+
+    {
+        u8 *state;
+
+        state = (u8 *)0x80010000;
+        record = (StageScoreStats *)((u32)state[4] * 0x1d4);
+        record = (StageScoreStats *)((u8 *)record +
+            (u32)state[5] * 0x24 + 0x80010064 +
+            (u32)state[6] * 0xc);
+        score = calculate_score(record, state[5]);
+    }
+    stack.best = *score;
+    if ((s16)stack.best.value[4] < (s16)stack.current.value[4] ||
+        ((s16)stack.best.value[4] == (s16)stack.current.value[4] &&
+        stack.stats.clock < record->clock))
+    {
+        *record = stack.stats;
+        stack.best = stack.current;
+    }
+
+    if (StageConfig[StageID].uid == 0)
+    {
+        mission_score_screen(StageID);
+    }
+
+    {
+        u8 *state;
+
+        state = (u8 *)0x80010000;
+        if (state[5] == 7)
+        {
+            if (state[0x5e] == 0)
+            {
+                *(s32 *)(state + 0x46c) |= 0x400;
+            }
+        }
+        else
+        {
+        tim = FileRead(NUMBER_TIM_PATH);
+        StageEndInitSprite(tim, &stack.image, &stack.digit);
+        top_y = -0x35;
+        stack.digit.attribute |= 0x50000000;
+        stack.digit.x = -0x8c;
+        stack.digit.y = -0x28;
+        stack.digit.r = 0x80;
+        stack.digit.g = 0x80;
+        stack.digit.b = 0x80;
+        stack.digit.mx = stack.digit.w >> 1;
+        stack.digit.my = stack.digit.h >> 1;
+        stack.digit.mx = 0;
+        stack.digit.my = 0;
+        LoadTIMAndFree(tim);
+        stack.digit.w = 12;
+
+        tim = FileRead(RS_ARCHIVE_PTRS[CHOSEN_LANGUAGE]);
+        ten = 10;
+        stack.background = FUN_8004f4f8(tim);
+        vfree(tim);
+
+        stack.rank_archive = FileRead(RANK_ARCHIVE_PTRS[CHOSEN_LANGUAGE]);
+        current_x = 0x52;
+        tim = get_tim_from_archive(stack.rank_archive,
+            (s16)stack.current.value[5]);
+        best_x = 0x7f;
+        StageEndInitSprite(tim, &stack.image, &stack.rank);
+        stack.rank.x = -0xa0;
+        stack.rank.y = -0x78;
+        stack.rank.r = 0x80;
+        stack.rank.g = 0x80;
+        stack.rank.b = 0x80;
+        stack.rank.attribute |= 0x50000000;
+        stack.rank.mx = stack.rank.w >> 1;
+        stack.rank.my = stack.rank.h >> 1;
+        stack.rank.mx = 0;
+        stack.rank.my = 0;
+        LoadTIM(tim);
+
+        _PlayMusic(12, 1);
+        while (1)
+        {
+            pad = GetRealPad(0);
+            pressed = pad & (pad ^ stack.old_pad);
+            stack.old_pad = pad;
+            if ((pressed & 0x20) != 0)
+            {
+                selection = 0;
+                break;
+            }
+            if ((pressed & 0x40) != 0)
+            {
+                switch (!!pad)
+                {
+                case 0:
+                    selection = 2;
+                    break;
+                default:
+                    selection = 2;
+                    break;
+                }
+                break;
+            }
+            selection = 1;
+            if ((pressed & 0x800) != 0)
+            {
+                break;
+            }
+
+            StartDrawing();
+            DrawBG(stack.background);
+            FUN_800515b0(&stack.digit, stack.stats.clock, 0x61, -0x5d, 0);
+            sprite = &stack.digit;
+
+            DRAW_SCORE_NUMBER(stack.stats.criticals, s32, 1, number_0,
+                10, top_y);
+            DRAW_SCORE_NUMBER((s16)stack.stats.enemies - stack.stats.bosses,
+                s32, 1, number_1, 0x28, top_y);
+            DRAW_SCORE_NUMBER(stack.current.value[0], s16, 1, number_2,
+                current_x, top_y);
+            DRAW_SCORE_NUMBER(stack.best.value[0], s16, 1, number_3,
+                best_x, top_y);
+
+            DRAW_SCORE_NUMBER(stack.stats.murders, s32, 0, number_4,
+                10, -0x1a);
+            DRAW_SCORE_NUMBER(stack.stats.enemies, s32, 0, number_5,
+                0x28, -0x1a);
+            DRAW_SCORE_NUMBER(stack.current.value[1], s16, 0, number_6,
+                current_x, -0x1a);
+            DRAW_SCORE_NUMBER(stack.best.value[1], s16, 0, number_7,
+                best_x, -0x1a);
+
+            DRAW_SCORE_NUMBER(stack.stats.hidden_finds, s32, 0, number_8,
+                0x1c, 1);
+            DRAW_SCORE_NUMBER(stack.current.value[3], s16, 0, number_9,
+                current_x, 1);
+            DRAW_SCORE_NUMBER(stack.best.value[3], s16, 0, number_10,
+                best_x, 1);
+
+            DRAW_SCORE_NUMBER(stack.stats.friendly_hits, s32, 0, number_11,
+                0x1c, 0x1a);
+            DRAW_SCORE_NUMBER(stack.current.value[2], s16, 0, number_12,
+                current_x, 0x1a);
+            DRAW_SCORE_NUMBER(stack.best.value[2], s16, 0, number_13,
+                best_x, 0x1a);
+
+            DRAW_SCORE_NUMBER(stack.current.value[4], s16, 0, number_14,
+                current_x, 0x38);
+            DRAW_LAST_SCORE_NUMBER(stack.best.value[4], number_15);
+
+            do
+            {
+                stack.rank.x = -0x19;
+                stack.rank.y = 0x4e;
+                pulse = rsin((GameClock << 12) / 90) * 0x7f;
+            } while (0);
+            if (pulse < 0)
+            {
+                pulse += 0xfff;
+            }
+            stack.rank.r = (pulse >> 12) + 0x7f;
+            stack.rank.g = stack.rank.r;
+            stack.rank.b = stack.rank.r;
+            GsSortSprite(&stack.rank, OTablePt, 1);
+
+            if ((s16)stack.current.value[5] == 4)
+            {
+                icon = D_8008E5BC[D_8008ED50[CHOSEN_STAGE]];
+                icon->sprite.x = -0x78;
+                icon->sprite.y = 0x38;
+                icon->sprite.scalex = 0x1000;
+                icon->sprite.scaley = 0x1000;
+                pulse = rcos((GameClock << 12) / 90) * 0x50;
+                if (pulse < 0)
+                {
+                    pulse += 0xfff;
+                }
+                icon->sprite.r = (pulse >> 12) + 0x7f;
+                icon->sprite.g = icon->sprite.r;
+                icon->sprite.b = icon->sprite.r;
+                GsSortSprite(&icon->sprite, OTablePt, 1);
+            }
+
+            SkipFrame = 2;
+            EndDrawing(0);
+        }
+
+            DisposeBG(stack.background);
+            vfree(stack.rank_archive);
+        }
+    }
+
+    FUN_80052ea8(PSTATE, &stack.current);
+    FadeOutDirect(0x20, 2, 8, 8, 8);
+    FUN_80038ce0();
+
+    best_stage = (u8 *)PSTATE + PSTATE->chr;
+    if (best_stage[0x60] < StageConfig[PSTATE->stage].uid)
+    {
+        best_stage[0x60] = StageConfig[PSTATE->stage].uid;
+    }
+
+    item_index = 1;
+    do
+    {
+        if (CamState.Owner->item[item_index] == 0xff)
+        {
+            PSTATE->stock[item_index + (PSTATE->chr << 5)] = 0xff;
+        }
+        else if (CamState.Owner->item[item_index] != 0)
+        {
+            if (PSTATE->stock[item_index + (PSTATE->chr << 5)] == 0xfe)
+            {
+                PSTATE->stock[item_index + (PSTATE->chr << 5)] += 2;
+            }
+            PSTATE->stock[item_index + (PSTATE->chr << 5)] +=
+                CamState.Owner->item[item_index];
+            if (PSTATE->stock[item_index + (PSTATE->chr << 5)] >= 100)
+            {
+                PSTATE->stock[item_index + (PSTATE->chr << 5)] = 99;
+            }
+        }
+        PSTATE->counts[item_index] = 0;
+        item_index++;
+    } while (item_index < 0x14);
+
+    i = 0;
+    do
+    {
+        PSTATE->backup[i] = PSTATE->stock[i + (PSTATE->chr << 5)];
+        i++;
+    } while (i < 0x14);
+
+    if (D_8001005C != 0 && CHOSEN_STAGE != 7)
+    {
+        FUN_800514d8();
+    }
+
+    i = selection;
+    switch (i)
+    {
+    case 0:
+        PSTATE->flags48 &= 0xfe;
+        if (PSTATE->stage != 7)
+        {
+            PSTATE->stage = *(u8 *)&D_8008EA78[
+                StageConfig[PSTATE->stage].uid + 1];
+            record = (StageScoreStats *)((u32)PSTATE->chr * 0x1d4 +
+                ((u32)PSTATE->stage * 0x24 + 0x80010064));
+            i = 0;
+layout_loop:
+            if (record->bosses + record->enemies == 0)
+                goto layout_done;
+            i++;
+            if (i < 3)
+            {
+                record = (StageScoreStats *)((u8 *)record + 0xc);
+                goto layout_loop;
+            }
+layout_done:
+            if (i == 3)
+            {
+                STAGE_LAYOUT_NUMBER = 0xff;
+            }
+            else
+            {
+                STAGE_LAYOUT_NUMBER = i;
+            }
+        }
+        else
+        {
+            FUN_8004f6c0(0x12);
+        }
+        break;
+    case 1:
+        D_80010048 |= 1;
+        break;
+    case 2:
+        STAGE_LAYOUT_NUMBER = 0xff;
+        FUN_8004f6c0(0x10);
+        break;
+    }
+
+    FUN_8004f6c0(0x11);
+}
+
+#undef DRAW_SCORE_NUMBER
+#undef DRAW_LAST_SCORE_NUMBER
+#undef PSTATE
+
+#endif
 
 // triage: VERY-HARD — 1521 insns, mul/div, 22 loop, 28 callees, ~0.12 to BriefingAndInventorySelectionScreen
 // likely-relevant cookbook sections:
@@ -559,4 +1174,803 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/StageEndScreen", Sta
 // LAB_80054b10:
 //   FUN_8004f6c0(0x11);
 //   return;
+// }
+
+// m2c (mipsel-gcc-c reference — cleaner control flow + register
+// temps straight from the asm; Ghidra above has the real types):
+//
+// ? DisposeBG(s32);                                   /* extern */
+// ? DrawBG(s32);                                      /* extern */
+// ? EndDrawing(?);                                    /* extern */
+// ? FUN_80038ce0();                                   /* extern */
+// s32 FUN_8004f4f8(s32);                              /* extern */
+// ? FUN_8004f6c0(?);                                  /* extern */
+// ? FUN_800514d8(s32, ? *, u8 *, s16);                /* extern */
+// ? FUN_800515b0(s32 *, s32, ?, ?, s32);              /* extern */
+// ? FUN_80052ea8(?, u16 *);                           /* extern */
+// ? FadeOutDirect(?, ?, ?, ?, s32);                   /* extern */
+// s32 FileRead(? *);                                  /* extern */
+// u16 GetRealPad(?);                                  /* extern */
+// ? GetTIMInfo(s32, ? *);                             /* extern */
+// ? GsSortSprite(s32 *, s32, ?);                      /* extern */
+// ? InitSprite(? *, s32 *);                           /* extern */
+// ? LoadTIM(s32);                                     /* extern */
+// ? LoadTIMAndFree(s32);                              /* extern */
+// ? PadShockAR(?, ?, ?, ?);                           /* extern */
+// ? SetupAppearance(?, ?);                            /* extern */
+// ? StartDrawing();                                   /* extern */
+// ? _PlayMusic(?, ?);                                 /* extern */
+// void *calculate_score(s32 *, u8, ?);                /* extern */
+// s32 get_tim_from_archive(s32, s16);                 /* extern */
+// ? init_score_stats(s32 *, s32 *);                   /* extern */
+// ? mission_score_screen(s32);                        /* extern */
+// s32 rcos(s32);                                      /* extern */
+// s32 rsin(s32);                                      /* extern */
+// ? vfree(s32);                                       /* extern */
+// extern u8 CHOSEN_CHARACTER;
+// extern u8 CHOSEN_LANGUAGE;
+// extern u8 CHOSEN_STAGE;
+// extern ? CamState;
+// extern u8 D_80010048;
+// extern u8 D_8001005C;
+// extern s32 D_8001046C;
+// extern ? D_8008E5BC;
+// extern s16 D_8008EA78;
+// extern ? D_8008ED50;
+// extern s32 GameClock;
+// extern ? NUMBER_TIM_PATH;
+// extern s32 OTablePt;
+// extern ? RANK_ARCHIVE_PTRS;
+// extern ? RS_ARCHIVE_PTRS;
+// extern u8 SELECTED_ITEM_COUNTS;
+// extern ? SHOP_STOCK_STATE_BY_CHAR;
+// extern s8 STAGE_LAYOUT_NUMBER;
+// extern s16 SkipFrame;
+// extern ? StageConfig;
+// extern s32 StageID;
+//
+// void StageEndScreen(void) {
+//     s32 sp18;
+//     s16 sp20;
+//     s16 sp30;
+//     s16 sp32;
+//     s32 sp40;
+//     u16 sp50;
+//     u16 sp54;
+//     s16 sp58;
+//     u16 sp60;
+//     u16 sp64;
+//     s16 sp68;
+//     s32 sp70;
+//     s16 sp74;
+//     s16 sp76;
+//     s8 sp84;
+//     s8 sp85;
+//     s8 sp86;
+//     s16 sp88;
+//     s16 sp8A;
+//     ? sp98;
+//     u16 spB8;
+//     s32 spBC;
+//     s32 spC0;
+//     ? var_a0_2;
+//     s16 temp_s0_4;
+//     s16 temp_v0;
+//     s16 temp_v0_12;
+//     s16 temp_v0_9;
+//     s16 var_a3;
+//     s16 var_a3_2;
+//     s16 var_v1_2;
+//     s32 *temp_s0;
+//     s32 *temp_s0_34;
+//     s32 temp_a0;
+//     s32 temp_a1_2;
+//     s32 temp_v0_4;
+//     s32 temp_v0_5;
+//     s32 temp_v0_6;
+//     s32 temp_v0_7;
+//     s32 temp_v1_2;
+//     s32 var_a0;
+//     s32 var_s1;
+//     s32 var_s3;
+//     s32 var_s3_10;
+//     s32 var_s3_11;
+//     s32 var_s3_12;
+//     s32 var_s3_13;
+//     s32 var_s3_14;
+//     s32 var_s3_15;
+//     s32 var_s3_16;
+//     s32 var_s3_2;
+//     s32 var_s3_3;
+//     s32 var_s3_4;
+//     s32 var_s3_5;
+//     s32 var_s3_6;
+//     s32 var_s3_7;
+//     s32 var_s3_8;
+//     s32 var_s3_9;
+//     s32 var_v0;
+//     s32 var_v0_2;
+//     s32 var_v0_3;
+//     s32 var_v0_4;
+//     s8 temp_v0_10;
+//     s8 temp_v0_11;
+//     s8 var_a1;
+//     u16 temp_s0_14;
+//     u16 temp_s0_16;
+//     u16 temp_s0_20;
+//     u16 temp_s0_22;
+//     u16 temp_s0_26;
+//     u16 temp_s0_28;
+//     u16 temp_s0_30;
+//     u16 temp_s0_32;
+//     u16 temp_s0_6;
+//     u16 temp_s0_8;
+//     u16 temp_v0_8;
+//     u16 temp_v1;
+//     u16 var_v1_10;
+//     u16 var_v1_11;
+//     u16 var_v1_13;
+//     u16 var_v1_14;
+//     u16 var_v1_15;
+//     u16 var_v1_16;
+//     u16 var_v1_3;
+//     u16 var_v1_4;
+//     u16 var_v1_7;
+//     u16 var_v1_8;
+//     u8 *temp_a0_2;
+//     u8 *temp_a1;
+//     u8 *temp_v0_13;
+//     u8 *temp_v1_6;
+//     u8 *temp_v1_7;
+//     u8 temp_s0_10;
+//     u8 temp_s0_11;
+//     u8 temp_s0_12;
+//     u8 temp_s0_13;
+//     u8 temp_s0_15;
+//     u8 temp_s0_17;
+//     u8 temp_s0_18;
+//     u8 temp_s0_19;
+//     u8 temp_s0_21;
+//     u8 temp_s0_23;
+//     u8 temp_s0_24;
+//     u8 temp_s0_25;
+//     u8 temp_s0_27;
+//     u8 temp_s0_29;
+//     u8 temp_s0_2;
+//     u8 temp_s0_31;
+//     u8 temp_s0_33;
+//     u8 temp_s0_3;
+//     u8 temp_s0_5;
+//     u8 temp_s0_7;
+//     u8 temp_s0_9;
+//     u8 temp_s1;
+//     u8 temp_s1_10;
+//     u8 temp_s1_11;
+//     u8 temp_s1_12;
+//     u8 temp_s1_13;
+//     u8 temp_s1_14;
+//     u8 temp_s1_15;
+//     u8 temp_s1_16;
+//     u8 temp_s1_2;
+//     u8 temp_s1_3;
+//     u8 temp_s1_4;
+//     u8 temp_s1_5;
+//     u8 temp_s1_6;
+//     u8 temp_s1_7;
+//     u8 temp_s1_8;
+//     u8 temp_s1_9;
+//     u8 temp_v0_14;
+//     u8 temp_v0_15;
+//     u8 temp_v1_3;
+//     u8 temp_v1_4;
+//     u8 temp_v1_5;
+//     u8 temp_v1_8;
+//     u8 var_v1;
+//     u8 var_v1_12;
+//     u8 var_v1_5;
+//     u8 var_v1_6;
+//     u8 var_v1_9;
+//     void *temp_v0_2;
+//     void *temp_v0_3;
+//     void *var_a0_3;
+//
+//     var_s1 = 0;
+//     spB8 = 0;
+//     SetupAppearance(0, -1);
+//     PadShockAR(0, 0, 0, 0);
+//     FadeOutDirect(0x20, 2, 8, 8, 8);
+//     FUN_80038ce0();
+//     var_a3 = 0;
+//     if (D_8008EA78 != CHOSEN_STAGE) {
+//         do {
+//             temp_v0 = var_a3 + 1;
+//             var_a3 = temp_v0;
+//         } while (*(((s32) (temp_v0 << 0x10) >> 0xF) + &D_8008EA78) != CHOSEN_STAGE);
+//     }
+//     temp_a0 = D_8001046C | (1 << (var_a3 - 1));
+//     D_8001046C = temp_a0;
+//     if ((u8) D_8001046C == 7) {
+//         if ((u8) D_8001046C == 0) {
+//             D_8001046C = temp_a0 | 0x400;
+//         }
+//     }
+//     init_score_stats(&sp40, &D_8001046C);
+//     temp_v0_2 = calculate_score(&sp40, CHOSEN_STAGE);
+//     sp50 = (unaligned s32) temp_v0_2->unk0;
+//     sp54 = (unaligned s32) temp_v0_2->unk4;
+//     sp58 = (unaligned s32) temp_v0_2->unk8;
+//     (void *)0x8001004C->unk0 = sp40;
+//     (void *)0x8001004C->unk4 = sp44;
+//     (void *)0x8001004C->unk8 = sp48;
+//     temp_s0 = (*(u8 *)0x80010000 * 0x1D4) + ((*(u8 *)0x80010000 * 0x24) + 0x80010064) + (*(u8 *)0x80010000 * 0xC);
+//     temp_v0_3 = calculate_score(temp_s0, *(u8 *)0x80010000, 0x80010064);
+//     sp60 = (unaligned s32) temp_v0_3->unk0;
+//     sp64 = (unaligned s32) temp_v0_3->unk4;
+//     sp68 = (unaligned s32) temp_v0_3->unk8;
+//     if ((sp68 < sp58) || ((sp58 == sp68) && (sp48 < temp_s0->unk8))) {
+//         temp_s0->unk0 = sp40;
+//         temp_s0->unk4 = sp44;
+//         temp_s0->unk8 = sp48;
+//         sp60 = (unaligned s32) sp50;
+//         sp64 = (unaligned s32) sp54;
+//         sp68 = (unaligned s32) sp58;
+//     }
+//     if (*((StageID * 0x1C) + &StageConfig) == 0) {
+//         mission_score_screen(StageID);
+//     }
+//     if (CHOSEN_STAGE == 7) {
+//         if (CHOSEN_LANGUAGE == 0) {
+//             CHOSEN_LANGUAGE = (s32) ((s32) CHOSEN_LANGUAGE | 0x400);
+//         }
+//     } else {
+//         temp_v0_4 = FileRead(&NUMBER_TIM_PATH);
+//         GetTIMInfo(temp_v0_4, &sp98);
+//         InitSprite(&sp98, &sp18);
+//         sp18 |= 0x50000000;
+//         sp18.unk4 = -0x8CU;
+//         sp18.unk6 = -0x28;
+//         sp18.unk14 = 0x80;
+//         sp18.unk15 = 0x80;
+//         sp18.unk16 = 0x80;
+//         sp18.unk18 = (s16) ((u16) sp18.unk8 >> 1);
+//         sp18.unk1A = (s16) ((u16) sp18.unkA >> 1);
+//         sp30 = 0;
+//         sp32 = 0;
+//         LoadTIMAndFree(temp_v0_4);
+//         sp20 = 0xC;
+//         temp_v0_5 = FileRead(*((CHOSEN_LANGUAGE * 4) + &RS_ARCHIVE_PTRS));
+//         spBC = FUN_8004f4f8(temp_v0_5);
+//         vfree(temp_v0_5);
+//         temp_v0_6 = FileRead(*((CHOSEN_LANGUAGE * 4) + &RANK_ARCHIVE_PTRS));
+//         spC0 = temp_v0_6;
+//         temp_v0_7 = get_tim_from_archive(temp_v0_6, (s16) sp5A);
+//         GetTIMInfo(temp_v0_7, &sp98);
+//         InitSprite(&sp98, &sp70);
+//         sp74 = -0xA0;
+//         sp76 = -0x78;
+//         sp84 = 0x80;
+//         sp85 = 0x80;
+//         sp86 = 0x80;
+//         sp70 |= 0x50000000;
+//         sp88 = (s16) (sp78 >> 1);
+//         sp88 = 0;
+//         sp8A = (s16) (sp7A >> 1);
+//         sp8A = 0;
+//         LoadTIM(temp_v0_7);
+//         _PlayMusic(0xC, 1);
+// loop_19:
+//         temp_v0_8 = GetRealPad(0);
+//         temp_v1 = spB8;
+//         spB8 = temp_v0_8;
+//         temp_v1_2 = temp_v0_8 & (temp_v0_8 ^ temp_v1);
+//         if (!(temp_v1_2 & 0x20)) {
+//             if (!(temp_v1_2 & 0x40)) {
+//                 var_s1 = 1;
+//                 if (!(temp_v1_2 & 0x800)) {
+//                     StartDrawing();
+//                     DrawBG(spBC);
+//                     FUN_800515b0(&sp18, sp48, 0x61, -0x5D, 0);
+//                     var_v1 = (u8) sp44;
+//                     sp18.unk4 = 0xAU;
+//                     sp18.unk6 = -0x35;
+//                     if ((s32) var_v1 < 0) {
+//                         var_v1 = (u8) -(s32) var_v1;
+//                         var_s3 = 1;
+//                     } else {
+//                         var_s3 = 0;
+//                     }
+//                     do {
+//                         temp_s0_2 = var_v1 / 10;
+//                         temp_s1 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1 + ((s16) (var_v1 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1 = temp_s0_2;
+//                         sp18.unkE = temp_s1;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_2 << 0x10) != 0);
+//                     if (var_s3 != 0) {
+//                         temp_s0_3 = temp_s1 & 0xFF;
+//                         sp18.unkE = (u8) (temp_s0_3 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_3;
+//                     }
+//                     sp18.unk4 = 0x28U;
+//                     sp18.unk6 = -0x35;
+//                     temp_v0_9 = unksp41 - (u8) sp40;
+//                     var_v1_2 = temp_v0_9;
+//                     if (temp_v0_9 < 0) {
+//                         var_v1_2 = -temp_v0_9;
+//                         var_s3_2 = 1;
+//                     } else {
+//                         var_s3_2 = 0;
+//                     }
+//                     do {
+//                         temp_s0_4 = var_v1_2 / 10;
+//                         temp_s1_2 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_2 + ((s16) (var_v1_2 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_2 = temp_s0_4;
+//                         sp18.unkE = temp_s1_2;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_4 << 0x10) != 0);
+//                     temp_s0_5 = temp_s1_2 & 0xFF;
+//                     if (var_s3_2 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_5 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_5;
+//                     }
+//                     var_v1_3 = sp50;
+//                     sp18.unk4 = 0x52U;
+//                     sp18.unk6 = -0x35;
+//                     if ((s16) var_v1_3 < 0) {
+//                         var_v1_3 = (u16) -(s16) var_v1_3;
+//                         var_s3_3 = 1;
+//                     } else {
+//                         var_s3_3 = 0;
+//                     }
+//                     do {
+//                         temp_s0_6 = var_v1_3 / 10;
+//                         temp_s1_3 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_3 + ((s16) (var_v1_3 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_3 = temp_s0_6;
+//                         sp18.unkE = temp_s1_3;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_6 << 0x10) != 0);
+//                     temp_s0_7 = temp_s1_3 & 0xFF;
+//                     if (var_s3_3 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_7 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_7;
+//                     }
+//                     var_v1_4 = sp60;
+//                     sp18.unk4 = 0x7FU;
+//                     sp18.unk6 = -0x35;
+//                     if ((s16) var_v1_4 < 0) {
+//                         var_v1_4 = (u16) -(s16) var_v1_4;
+//                         var_s3_4 = 1;
+//                     } else {
+//                         var_s3_4 = 0;
+//                     }
+//                     do {
+//                         temp_s0_8 = var_v1_4 / 10;
+//                         temp_s1_4 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_4 + ((s16) (var_v1_4 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_4 = temp_s0_8;
+//                         sp18.unkE = temp_s1_4;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_8 << 0x10) != 0);
+//                     temp_s0_9 = temp_s1_4 & 0xFF;
+//                     if (var_s3_4 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_9 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_9;
+//                     }
+//                     var_v1_5 = unksp43;
+//                     sp18.unk4 = 0xAU;
+//                     sp18.unk6 = -0x1A;
+//                     var_s3_5 = 0;
+//                     if ((s32) var_v1_5 < 0) {
+//                         var_v1_5 = (u8) -(s32) var_v1_5;
+//                         var_s3_5 = 1;
+//                     }
+//                     do {
+//                         temp_s0_10 = var_v1_5 / 10;
+//                         temp_s1_5 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_5 + ((s16) (var_v1_5 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_5 = temp_s0_10;
+//                         sp18.unkE = temp_s1_5;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_10 << 0x10) != 0);
+//                     temp_s0_11 = temp_s1_5 & 0xFF;
+//                     if (var_s3_5 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_11 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_11;
+//                     }
+//                     var_v1_6 = unksp41;
+//                     sp18.unk4 = 0x28U;
+//                     sp18.unk6 = -0x1A;
+//                     var_s3_6 = 0;
+//                     if ((s32) var_v1_6 < 0) {
+//                         var_v1_6 = (u8) -(s32) var_v1_6;
+//                         var_s3_6 = 1;
+//                     }
+//                     do {
+//                         temp_s0_12 = var_v1_6 / 10;
+//                         temp_s1_6 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_6 + ((s16) (var_v1_6 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_6 = temp_s0_12;
+//                         sp18.unkE = temp_s1_6;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_12 << 0x10) != 0);
+//                     temp_s0_13 = temp_s1_6 & 0xFF;
+//                     if (var_s3_6 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_13 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_13;
+//                     }
+//                     var_v1_7 = (u16) sp52;
+//                     sp18.unk4 = 0x52U;
+//                     sp18.unk6 = -0x1A;
+//                     var_s3_7 = 0;
+//                     if ((s16) var_v1_7 < 0) {
+//                         var_v1_7 = (u16) -(s16) var_v1_7;
+//                         var_s3_7 = 1;
+//                     }
+//                     do {
+//                         temp_s0_14 = var_v1_7 / 10;
+//                         temp_s1_7 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_7 + ((s16) (var_v1_7 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_7 = temp_s0_14;
+//                         sp18.unkE = temp_s1_7;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_14 << 0x10) != 0);
+//                     temp_s0_15 = temp_s1_7 & 0xFF;
+//                     if (var_s3_7 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_15 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_15;
+//                     }
+//                     var_v1_8 = sp62;
+//                     sp18.unk4 = 0x7FU;
+//                     sp18.unk6 = -0x1A;
+//                     var_s3_8 = 0;
+//                     if ((s16) var_v1_8 < 0) {
+//                         var_v1_8 = (u16) -(s16) var_v1_8;
+//                         var_s3_8 = 1;
+//                     }
+//                     do {
+//                         temp_s0_16 = var_v1_8 / 10;
+//                         temp_s1_8 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_8 + ((s16) (var_v1_8 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_8 = temp_s0_16;
+//                         sp18.unkE = temp_s1_8;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_16 << 0x10) != 0);
+//                     temp_s0_17 = temp_s1_8 & 0xFF;
+//                     if (var_s3_8 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_17 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_17;
+//                     }
+//                     var_v1_9 = unksp42;
+//                     sp18.unk4 = 0x1CU;
+//                     sp18.unk6 = 1;
+//                     var_s3_9 = 0;
+//                     if ((s32) var_v1_9 < 0) {
+//                         var_v1_9 = (u8) -(s32) var_v1_9;
+//                         var_s3_9 = 1;
+//                     }
+//                     do {
+//                         temp_s0_18 = var_v1_9 / 10;
+//                         temp_s1_9 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_9 + ((s16) (var_v1_9 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_9 = temp_s0_18;
+//                         sp18.unkE = temp_s1_9;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_18 << 0x10) != 0);
+//                     temp_s0_19 = temp_s1_9 & 0xFF;
+//                     if (var_s3_9 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_19 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_19;
+//                     }
+//                     var_v1_10 = (u16) sp56;
+//                     sp18.unk4 = 0x52U;
+//                     sp18.unk6 = 1;
+//                     var_s3_10 = 0;
+//                     if ((s16) var_v1_10 < 0) {
+//                         var_v1_10 = (u16) -(s16) var_v1_10;
+//                         var_s3_10 = 1;
+//                     }
+//                     do {
+//                         temp_s0_20 = var_v1_10 / 10;
+//                         temp_s1_10 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_10 + ((s16) (var_v1_10 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_10 = temp_s0_20;
+//                         sp18.unkE = temp_s1_10;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_20 << 0x10) != 0);
+//                     temp_s0_21 = temp_s1_10 & 0xFF;
+//                     if (var_s3_10 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_21 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_21;
+//                     }
+//                     var_v1_11 = sp66;
+//                     sp18.unk4 = 0x7FU;
+//                     sp18.unk6 = 1;
+//                     var_s3_11 = 0;
+//                     if ((s16) var_v1_11 < 0) {
+//                         var_v1_11 = (u16) -(s16) var_v1_11;
+//                         var_s3_11 = 1;
+//                     }
+//                     do {
+//                         temp_s0_22 = var_v1_11 / 10;
+//                         temp_s1_11 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_11 + ((s16) (var_v1_11 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_11 = temp_s0_22;
+//                         sp18.unkE = temp_s1_11;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_22 << 0x10) != 0);
+//                     temp_s0_23 = temp_s1_11 & 0xFF;
+//                     if (var_s3_11 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_23 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_23;
+//                     }
+//                     var_v1_12 = unksp45;
+//                     sp18.unk4 = 0x1CU;
+//                     sp18.unk6 = 0x1A;
+//                     var_s3_12 = 0;
+//                     if ((s32) var_v1_12 < 0) {
+//                         var_v1_12 = (u8) -(s32) var_v1_12;
+//                         var_s3_12 = 1;
+//                     }
+//                     do {
+//                         temp_s0_24 = var_v1_12 / 10;
+//                         temp_s1_12 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_12 + ((s16) (var_v1_12 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_12 = temp_s0_24;
+//                         sp18.unkE = temp_s1_12;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_24 << 0x10) != 0);
+//                     temp_s0_25 = temp_s1_12 & 0xFF;
+//                     if (var_s3_12 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_25 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_25;
+//                     }
+//                     var_v1_13 = sp54;
+//                     sp18.unk4 = 0x52U;
+//                     sp18.unk6 = 0x1A;
+//                     var_s3_13 = 0;
+//                     if ((s16) var_v1_13 < 0) {
+//                         var_v1_13 = (u16) -(s16) var_v1_13;
+//                         var_s3_13 = 1;
+//                     }
+//                     do {
+//                         temp_s0_26 = var_v1_13 / 10;
+//                         temp_s1_13 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_13 + ((s16) (var_v1_13 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_13 = temp_s0_26;
+//                         sp18.unkE = temp_s1_13;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_26 << 0x10) != 0);
+//                     temp_s0_27 = temp_s1_13 & 0xFF;
+//                     if (var_s3_13 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_27 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_27;
+//                     }
+//                     var_v1_14 = sp64;
+//                     sp18.unk4 = 0x7FU;
+//                     sp18.unk6 = 0x1A;
+//                     var_s3_14 = 0;
+//                     if ((s16) var_v1_14 < 0) {
+//                         var_v1_14 = (u16) -(s16) var_v1_14;
+//                         var_s3_14 = 1;
+//                     }
+//                     do {
+//                         temp_s0_28 = var_v1_14 / 10;
+//                         temp_s1_14 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_14 + ((s16) (var_v1_14 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_14 = temp_s0_28;
+//                         sp18.unkE = temp_s1_14;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_28 << 0x10) != 0);
+//                     temp_s0_29 = temp_s1_14 & 0xFF;
+//                     if (var_s3_14 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_29 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_29;
+//                     }
+//                     var_v1_15 = (u16) sp58;
+//                     sp18.unk4 = 0x52U;
+//                     sp18.unk6 = 0x38;
+//                     var_s3_15 = 0;
+//                     if ((s16) var_v1_15 < 0) {
+//                         var_v1_15 = (u16) -(s16) var_v1_15;
+//                         var_s3_15 = 1;
+//                     }
+//                     do {
+//                         temp_s0_30 = var_v1_15 / 10;
+//                         temp_s1_15 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_15 + ((s16) (var_v1_15 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_15 = temp_s0_30;
+//                         sp18.unkE = temp_s1_15;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_30 << 0x10) != 0);
+//                     temp_s0_31 = temp_s1_15 & 0xFF;
+//                     if (var_s3_15 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_31 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_31;
+//                     }
+//                     var_v1_16 = (u16) sp68;
+//                     sp18.unk4 = 0x7FU;
+//                     sp18.unk6 = 0x38;
+//                     var_s3_16 = 0;
+//                     if ((s16) var_v1_16 < 0) {
+//                         var_v1_16 = (u16) -(s16) var_v1_16;
+//                         var_s3_16 = 1;
+//                     }
+//                     do {
+//                         temp_s0_32 = var_v1_16 / 10;
+//                         temp_s1_16 = sp18.unkE;
+//                         sp18.unkE = (u8) (temp_s1_16 + ((s16) (var_v1_16 % 10) * sp18.unk8));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         var_v1_16 = temp_s0_32;
+//                         sp18.unkE = temp_s1_16;
+//                         sp18.unk4 = (u16) (sp18.unk4 - 0xC);
+//                     } while ((temp_s0_32 << 0x10) != 0);
+//                     temp_s0_33 = temp_s1_16 & 0xFF;
+//                     if (var_s3_16 != 0) {
+//                         sp18.unkE = (u8) (temp_s0_33 + (sp18.unk8 * 0xA));
+//                         GsSortSprite(&sp18, OTablePt, 0);
+//                         sp18.unkE = temp_s0_33;
+//                     }
+//                     sp74 = -0x19;
+//                     sp76 = 0x4E;
+//                     var_v0 = rsin((GameClock << 0xC) / 90) * 0x7F;
+//                     if (var_v0 < 0) {
+//                         var_v0 += 0xFFF;
+//                     }
+//                     temp_v0_10 = (var_v0 >> 0xC) + 0x7F;
+//                     sp86 = temp_v0_10;
+//                     sp85 = temp_v0_10;
+//                     sp84 = temp_v0_10;
+//                     GsSortSprite(&sp70, OTablePt, 1);
+//                     if ((s16) sp5A == 4) {
+//                         temp_s0_34 = *((*((CHOSEN_STAGE * 2) + &D_8008ED50) * 4) + &D_8008E5BC) + 0x68;
+//                         temp_s0_34->unk4 = -0x78;
+//                         temp_s0_34->unk6 = 0x38;
+//                         temp_s0_34->unk1C = 0x1000;
+//                         temp_s0_34->unk1E = 0x1000;
+//                         var_v0_2 = rcos((GameClock << 0xC) / 90) * 0x50;
+//                         if (var_v0_2 < 0) {
+//                             var_v0_2 += 0xFFF;
+//                         }
+//                         temp_v0_11 = (var_v0_2 >> 0xC) + 0x7F;
+//                         temp_s0_34->unk16 = temp_v0_11;
+//                         temp_s0_34->unk15 = temp_v0_11;
+//                         temp_s0_34->unk14 = temp_v0_11;
+//                         GsSortSprite(temp_s0_34, OTablePt, 1);
+//                     }
+//                     SkipFrame = 2;
+//                     EndDrawing(0);
+//                     goto loop_19;
+//                 }
+//             } else {
+//                 var_s1 = 2;
+//             }
+//         } else {
+//             var_s1 = 0;
+//         }
+//         DisposeBG(spBC);
+//         vfree(spC0);
+//     }
+//     FUN_80052ea8(0x80010000, &sp50);
+//     FadeOutDirect(0x20, 2, 8, 8, 8);
+//     FUN_80038ce0();
+//     temp_a1 = &(&CHOSEN_CHARACTER)[CHOSEN_CHARACTER];
+//     temp_v1_3 = *((CHOSEN_CHARACTER * 0x1C) + &StageConfig);
+//     var_a3_2 = 1;
+//     if ((u8) temp_a1->unk60 < temp_v1_3) {
+//         temp_a1->unk60 = temp_v1_3;
+//     }
+//     var_v0_3 = 1 << 0x10;
+//     do {
+//         temp_a1_2 = var_v0_3 >> 0x10;
+//         temp_v1_4 = (CamState.unk10 + temp_a1_2)->unkB4;
+//         if (temp_v1_4 == 0xFF) {
+//             (&SELECTED_ITEM_COUNTS)[temp_a1_2 + (SELECTED_ITEM_COUNTS << 5)] = temp_v1_4;
+//             goto block_124;
+//         }
+//         var_v0_4 = var_a3_2 << 0x10;
+//         if (temp_v1_4 != 0) {
+//             temp_a0_2 = &(&SELECTED_ITEM_COUNTS)[temp_a1_2 + (SELECTED_ITEM_COUNTS << 5)];
+//             temp_v1_5 = *temp_a0_2;
+//             if (temp_v1_5 == 0xFE) {
+//                 *temp_a0_2 = temp_v1_5 + 2;
+//             }
+//             temp_v0_13 = &(&SELECTED_ITEM_COUNTS)[temp_a1_2 + (SELECTED_ITEM_COUNTS << 5)];
+//             *temp_v0_13 += (CamState.unk10 + temp_a1_2)->unkB4;
+//             temp_v1_6 = &(&SELECTED_ITEM_COUNTS)[temp_a1_2 + (SELECTED_ITEM_COUNTS << 5)];
+//             var_v0_4 = var_a3_2 << 0x10;
+//             if ((u8) *temp_v1_6 >= 0x64U) {
+//                 *temp_v1_6 = 0x63;
+// block_124:
+//                 var_v0_4 = var_a3_2 << 0x10;
+//             }
+//         }
+//         (&SELECTED_ITEM_COUNTS)[var_v0_4 >> 0x10] = 0;
+//         temp_v0_12 = var_a3_2 + 1;
+//         var_a3_2 = temp_v0_12;
+//         var_v0_3 = var_a3_2 << 0x10;
+//     } while (temp_v0_12 < 0x14);
+//     var_a0 = 0;
+//     do {
+//         temp_v1_7 = var_a0 + &SHOP_STOCK_STATE_BY_CHAR;
+//         temp_v0_14 = *(var_a0 + (CHOSEN_CHARACTER << 5) + &SHOP_STOCK_STATE_BY_CHAR);
+//         var_a0 += 1;
+//         *temp_v1_7 = temp_v0_14;
+//     } while (var_a0 < 0x14);
+//     if (D_8001005C != 0) {
+//         if (CHOSEN_STAGE != 7) {
+//             FUN_800514d8(var_a0, &SHOP_STOCK_STATE_BY_CHAR, &SELECTED_ITEM_COUNTS, var_a3_2);
+//         }
+//     }
+//     switch (var_s1) {                               /* irregular */
+//     case 0:
+//         temp_v1_8 = D_80010048;
+//         D_80010048 &= 0xFE;
+//         if (temp_v1_8 == 7) {
+//             var_a0_2 = 0x12;
+// block_149:
+//             FUN_8004f6c0(var_a0_2);
+//         } else {
+//             temp_v0_15 = D_80010048;
+//             var_a1 = 0;
+//             D_80010048 = (&D_8008EA78)[*((D_80010048 * 0x1C) + &StageConfig) + 1];
+//             var_a0_3 = (temp_v0_15 * 0x1D4) + ((D_80010048 * 0x24) + 0x80010064);
+// loop_141:
+//             if ((var_a0_3->unk0 + var_a0_3->unk1) != 0) {
+//                 var_a1 += 1;
+//                 var_a0_3 += 0xC;
+//                 if (var_a1 >= 3) {
+//
+//                 } else {
+//                     goto loop_141;
+//                 }
+//             }
+//             if (var_a1 == 3) {
+//                 STAGE_LAYOUT_NUMBER = -1;
+//             } else {
+//                 STAGE_LAYOUT_NUMBER = var_a1;
+//             }
+//         }
+//         break;
+//     case 1:
+//         D_80010048 |= 1;
+//         break;
+//     case 2:
+//         STAGE_LAYOUT_NUMBER = -1;
+//         var_a0_2 = 0x10;
+//         goto block_149;
+//     }
+//     FUN_8004f6c0(0x11);
 // }
