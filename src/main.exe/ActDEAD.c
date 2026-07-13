@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -27,231 +28,279 @@
  * END PSX.SYM */
 
 /*
- * ActDEAD (0x800268bc) — TODO one-line description.
+ * ActDEAD (0x800268bc) — advances and finalizes death motions, handles
+ * corpse settling and feedback, dispatches scripted death-frame events, and
+ * emits the associated splash/blood effects.
  *
- * STATUS: NON_MATCHING — split (jump-table) function scaffolded by
- * tools/split-scaffold.py. The #ifndef NON_MATCHING branch is the stub
- * (INCLUDE_ASM pieces + the jump-table pool as one static const array so
- * the .rodata carve has bytes); build the draft with `NON_MATCHING=ActDEAD
- * ./Build`. On a full match, delete the guards and the _jtbl array.
+ * Matching notes (1,680 bytes / 420 instructions):
+ *  - The explicit splash/event/ordinary labels preserve the target's
+ *    dispatch-chain-first layout and its otherwise-elided jump over splash.
+ *  - The 0x28 scratch overlay fixes the VECTOR at sp+0x10 and the two
+ *    SVECTORs at sp+0x28/sp+0x30 while keeping the source aggregates typed.
+ *  - D_8009771C is an unknown-sized SVECTOR array so its [0] copy retains
+ *    the target's split high/low address materialization.
+ *  - The event scan keeps count and the sentinel live across its backedge;
+ *    its explicit labels prevent cc1 from peeling the known-zero first row.
+ *    Advancing it as the natural `i++` also preserves the target's v0/v1
+ *    next-row allocation and moves the counter update into the backedge's
+ *    delay slot.
  */
 
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", ActDEAD);
+typedef struct
+{
+    s16 frame;
+    s16 action;
+    s16 argument;
+    s16 packed;
+} DeadEvent;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__switchD);
+typedef struct
+{
+    VECTOR TargetVector;
+    Humanoid *Owner;
+    s32 Mode;
+    s16 DirectionRX;
+    s16 DirectionRY;
+    s32 OldMode;
+    u8 Valiation;
+} DeadCameraStatus;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__caseD_0);
+typedef union
+{
+    struct
+    {
+        VECTOR p;
+        u8 pad[8];
+        SVECTOR position;
+        SVECTOR vector;
+    } dead;
+    u8 bytes[0x28];
+} ActDeadScratch;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__caseD_1);
+extern MotionManager *dtM;
+extern SVECTOR *dtV;
+extern VECTOR *dtL;
+extern Humanoid *Me_MOTION_C;
+extern Humanoid *StagePlayer;
+extern Humanoid *D_8009770C;
+extern s16 motID;
+extern s16 D_80097F0E;
+extern s16 ActionHalt;
+extern DeadCameraStatus CamState;
+extern DeadEvent *D_80086B0C[];
+extern SVECTOR D_8009771C[];
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__caseD_2);
+extern s32 rand(void);
+extern void *memset(void *dst, s32 value, u32 size);
+extern s16 PlayMotion(MotionManager *motion, s16 mode);
+extern void DeleteConflict(ModelType *model);
+extern void TurnAroundAllItems(Humanoid *human);
+extern void PadShockAR(s32 port, s32 power, s32 attack, s32 release);
+extern s16 Sound(Humanoid *human, s16 id);
+extern void SetSplash(VECTOR *position, s16 sx, s16 sy, s16 count);
+extern void ReqLifeBar(Humanoid *human);
+extern void FUN_80035f44(GsCOORDINATE2 *coord, SVECTOR *position,
+                        SVECTOR *vector);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__caseD_3);
+void ActDEAD(void)
+{
+    ModelArchiveType *model;
+    short blood;
+    short bldo;
+    short blds;
+    short i;
+    short mid;
+    DeadEvent *pp;
+    ActDeadScratch scratch;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/ActDEAD", switchD_80026d70__caseD_5);
+    model = Me_MOTION_C->model;
+    blood = -1;
+    if ((*model->object)->id < 0 && dtM->loop < 0)
+        return;
 
-/* jump-table pool @ 0x80011610 (5 words; tables at 0x80011610) — stub-only, one array because the object has one .rodata section; the draft's compiled switch emits its own. */
-static const u32 handle_char_state_dead__jtbl[5] = {
-    0x80026D78, 0x80026D90, 0x80026DB4, 0x80026DDC,
-    0x80026DDC,
-};
+    if (dtM->count == 0)
+    {
+        if (dtM->loop != 0)
+        {
+            dtM->loop = -1;
+            goto check_motion_end;
+        }
+    }
+    else
+    {
+check_motion_end:
+        if (dtM->loop < 0 && dtV->vy == 0)
+        {
+            MotionManager *motion;
+            Humanoid *human;
+            SVECTOR *velocity;
 
-#else /* NON_MATCHING */
-/* Draft — turn this into matching C, then delete the #ifndef/#else/
-   #endif guards and the _jtbl array(s) above.  Reference: */
-// 
-// void FUN_800268bc(void)
-// 
-// {
-//   ModelArchiveType **ppMVar1;
-//   short sVar2;
-//   Humanoid *pHVar3;
-//   SVECTOR *pSVar4;
-//   MotionManager *pMVar5;
-//   int iVar6;
-//   uint uVar7;
-//   uint uVar8;
-//   int iVar9;
-//   Humanoid *pHVar10;
-//   ModelArchiveType *pMVar11;
-//   undefined *puVar12;
-//   ushort uVar13;
-//   ushort unaff_s3;
-//   ushort unaff_s4;
-//   VECTOR local_40;
-//   int local_28;
-//   undefined4 local_24;
-//   uchar auStack_20 [2];
-//   short local_1e;
-//   short local_1c;
-//   
-//   pMVar11 = Me_MOTION_C->model;
-//   uVar13 = 0xffff;
-//   if (((*pMVar11->object)->id < 0) && (dtM->loop < 0)) {
-//     return;
-//   }
-//   if (dtM->count == 0) {
-//     if (dtM->loop != 0) {
-//       dtM->loop = -1;
-//       goto LAB_80026948;
-//     }
-//   }
-//   else {
-// LAB_80026948:
-//     pMVar5 = dtM;
-//     if ((dtM->loop < 0) && (dtV->vy == 0)) {
-//       sVar2 = dtM->motion->time;
-//       dtM->loop = 0;
-//       pMVar5->count = sVar2;
-//       PlayMotion(pMVar5,1);
-//       sVar2 = motID;
-//       dtM->loop = -1;
-//       if (sVar2 == 0x1108) {
-//         ppMVar1 = &Me_MOTION_C->model;
-//         Me_MOTION_C->attribute = Me_MOTION_C->attribute | 0x10;
-//         (*ppMVar1)->attribute = (*ppMVar1)->attribute | 1;
-//       }
-//       else {
-//         Me_MOTION_C->attribute = Me_MOTION_C->attribute & 0xffef;
-//       }
-//       pSVar4 = dtV;
-//       pHVar3 = Me_MOTION_C;
-//       pHVar10 = StagePlayer;
-//       dtV->vz = 0;
-//       pSVar4->vx = 0;
-//       if ((pHVar3 != pHVar10) &&
-//          (DeleteConflict(*pMVar11->object), (Me_MOTION_C->type & 0xf0U) != 0x80)) {
-//         TurnAroundAllItems();
-//       }
-//       if (dtM->mid < 0x1109) {
-//         return;
-//       }
-//       CamState.OldMode._1_1_ = 1;
-//       ActionHalt = 0;
-//       return;
-//     }
-//   }
-//   pMVar5 = dtM;
-//   if ((0x1108 < dtM->mid) && (dtL->vy != StagePlayer->locate->vy)) {
-//     dtL->vy = dtL->vy + -1;
-//     motID = 0x1100;
-//     ActionHalt = 0;
-//     DAT_80097f0e = 1;
-//     if (9 < pMVar5->count) {
-//       ActionHalt = 0;
-//       motID = 0x1100;
-//       DAT_80097f0e = 1;
-//       return;
-//     }
-//     PadShockAR(0,0xff,10,10);
-//     Sound(Me_MOTION_C,8);
-//     Sound(StagePlayer,5);
-//     return;
-//   }
-//   sVar2 = dtM->mid;
-//   if (sVar2 == 0x1108) {
-//     iVar6 = rand();
-//     if (iVar6 == (iVar6 / 0x14) * 0x14) {
-//       Sound(Me_MOTION_C,0x16);
-//     }
-//     local_40.vy = (Me_MOTION_C->map).level;
-//     uVar7 = rand();
-//     iVar6 = 0;
-//     if ((uVar7 & 5) == 0) {
-//       do {
-//         iVar9 = rand();
-//         local_40.vx = (long)Me_MOTION_C->width;
-//         if (local_40.vx == 0) {
-//           trap(0x1c00);
-//         }
-//         if ((local_40.vx == -1) && (iVar9 == -0x80000000)) {
-//           trap(0x1800);
-//         }
-//         local_40.vx = (dtL->vx + (iVar9 % local_40.vx) * 2) - local_40.vx;
-//         iVar9 = rand();
-//         local_40.vz = (long)Me_MOTION_C->width;
-//         if (local_40.vz == 0) {
-//           trap(0x1c00);
-//         }
-//         if ((local_40.vz == -1) && (iVar9 == -0x80000000)) {
-//           trap(0x1800);
-//         }
-//         local_40.vz = (dtL->vz + (iVar9 % local_40.vz) * 2) - local_40.vz;
-//         uVar7 = rand();
-//         uVar8 = rand();
-//         SetSplash(&local_40,(short)((uVar7 & 7) << 0xc),(short)((uVar8 & 7) << 0xc),6);
-//         iVar6 = iVar6 + 1;
-//       } while (iVar6 * 0x10000 >> 0x10 < 5);
-//     }
-//     goto switchD_80026d70_caseD_5;
-//   }
-//   if ((sVar2 < 0x1108) || (0x110e < sVar2)) {
-//     if ((Me_MOTION_C->type & 0xf0U) != 0xa0) {
-//       if ((dtM->count == 5) && (DAT_8009770c == Me_MOTION_C)) {
-//         Sound(DAT_8009770c,0x38);
-//         DAT_8009770c = (Humanoid *)0x0;
-//       }
-//       uVar13 = 1;
-//       unaff_s4 = 100;
-//       unaff_s3 = 0;
-//     }
-//     goto switchD_80026d70_caseD_5;
-//   }
-//   puVar12 = (&PTR_DAT_80086b0c)[dtM->mid + -0x1109];
-//   iVar6 = 0;
-//   if (*(short *)(puVar12 + 2) != 4) {
-//     do {
-//       iVar9 = iVar6 + 1;
-//       if (*(short *)(puVar12 + ((iVar6 << 0x10) >> 0xd)) == dtM->count) break;
-//       iVar6 = iVar9;
-//     } while (*(short *)(puVar12 + (iVar9 * 0x10000 >> 0xd) + 2) != 4);
-//   }
-//   if (dtM->count < *(short *)(puVar12 + ((iVar6 << 0x10) >> 0xd))) {
-//     return;
-//   }
-//   switch(*(short *)((int)(puVar12 + ((iVar6 << 0x10) >> 0xd)) + 2)) {
-//   case 0:
-//     pHVar10 = StagePlayer;
-//     goto LAB_80026da0;
-//   case 1:
-//     pHVar10 = Me_MOTION_C;
-// LAB_80026da0:
-//     Sound(pHVar10,*(short *)(puVar12 + ((iVar6 << 0x10) >> 0xd) + 4));
-//     break;
-//   case 2:
-//     iVar6 = (iVar6 << 0x10) >> 0xd;
-//     PadShockAR(0,0xff,(int)*(short *)(puVar12 + iVar6 + 4),(int)*(short *)(puVar12 + iVar6 + 6));
-//     break;
-//   case 3:
-//   case 4:
-//     ReqLifeBar(Me_MOTION_C);
-//     iVar6 = (iVar6 << 0x10) >> 0xd;
-//     uVar13 = *(ushort *)(puVar12 + iVar6 + 4);
-//     unaff_s4 = *(ushort *)(puVar12 + iVar6 + 6) >> 8;
-//     unaff_s3 = *(ushort *)(puVar12 + iVar6 + 6) & 0xff;
-//   }
-// switchD_80026d70_caseD_5:
-//   if (((dtM->count & 4U) != 0) && (uVar13 != 0xffff)) {
-//     local_28 = DAT_8009771c;
-//     local_24 = DAT_80097720;
-//     memset(auStack_20,'\0',8);
-//     local_1e = -unaff_s3;
-//     local_1c = -unaff_s4;
-//     if (unaff_s3 == 0) {
-//       local_28 = 0xff38;
-//       local_24 = CONCAT22(local_24._2_2_,0xff10);
-//     }
-//     else {
-//       local_28 = 0xfe66;
-//       local_24 = (uint)local_24._2_2_ << 0x10;
-//     }
-//     local_28 = local_28 << 0x10;
-//     FUN_80035f44(*(undefined4 *)
-//                   (((int)((uint)uVar13 << 0x10) >> 0xe) + (int)Me_MOTION_C->model->object),&local_28
-//                  ,auStack_20);
-//   }
-//   return;
-// }
+            motion = dtM;
+            motion->count = motion->motion->time;
+            motion->loop = 0;
+            PlayMotion(motion, 1);
+            dtM->loop = -1;
+            if (motID != 0x1108)
+            {
+                *(u16 *)&Me_MOTION_C->attribute &= 0xffef;
+            }
+            else
+            {
+                *(u16 *)&Me_MOTION_C->attribute |= 0x10;
+                *(u16 *)&Me_MOTION_C->model->attribute |= 1;
+            }
 
-#endif /* NON_MATCHING */
+            velocity = dtV;
+            human = Me_MOTION_C;
+            velocity->vz = 0;
+            velocity->vx = 0;
+            if (human != StagePlayer)
+            {
+                DeleteConflict(*model->object);
+                if ((*(u16 *)&Me_MOTION_C->type & 0xf0) != 0x80)
+                    TurnAroundAllItems(Me_MOTION_C);
+            }
+            if (dtM->mid < 0x1109)
+                return;
+            ActionHalt = 0;
+            *((u8 *)&CamState.OldMode + 1) = 1;
+            return;
+        }
+    }
+
+    if (dtM->mid > 0x1108 && dtL->vy != StagePlayer->locate->vy)
+    {
+        dtL->vy--;
+        motID = 0x1100;
+        ActionHalt = 0;
+        D_80097F0E = 1;
+        if (dtM->count >= 10)
+            return;
+        PadShockAR(0, 0xff, 10, 10);
+        Sound(Me_MOTION_C, 8);
+        Sound(StagePlayer, 5);
+        return;
+    }
+
+    mid = dtM->mid;
+    if (mid == 0x1108)
+        goto splash_dead;
+    if (mid < 0x1108)
+        goto ordinary_dead;
+    if (mid > 0x110e)
+        goto ordinary_dead;
+    goto event_dead;
+
+splash_dead:
+    {
+        if (rand() % 20 == 0)
+            Sound(Me_MOTION_C, 0x16);
+        scratch.dead.p.vy = Me_MOTION_C->map.level;
+        if ((rand() & 5) == 0)
+        {
+            i = 0;
+            do
+            {
+                long width;
+                int r;
+
+                r = rand();
+                width = Me_MOTION_C->width;
+                scratch.dead.p.vx = dtL->vx + (r % width) * 2 - width;
+                r = rand();
+                width = Me_MOTION_C->width;
+                scratch.dead.p.vz = dtL->vz + (r % width) * 2 - width;
+                SetSplash(&scratch.dead.p, (rand() & 7) << 12,
+                          (rand() & 7) << 12, 6);
+                i++;
+            } while (i < 5);
+        }
+        goto blood_effect;
+    }
+
+event_dead:
+    {
+        MotionManager *motion;
+        int count;
+        int stop;
+
+        motion = dtM;
+        pp = D_80086B0C[motion->mid - 0x1109];
+        i = 0;
+        if (pp[i].action == 4)
+            goto event_ready;
+        count = motion->count;
+        stop = 4;
+scan_event:
+        if (pp[i].frame == count)
+            goto event_ready;
+        i++;
+        if (pp[i].action != stop)
+            goto scan_event;
+event_ready:
+        if (dtM->count < pp[i].frame)
+            return;
+
+        switch (pp[i].action)
+        {
+        case 0:
+            Sound(StagePlayer, pp[i].argument);
+            break;
+        case 1:
+            Sound(Me_MOTION_C, pp[i].argument);
+            break;
+        case 2:
+            PadShockAR(0, 0xff, pp[i].argument, pp[i].packed);
+            break;
+        case 3:
+        case 4:
+        {
+            u16 packed;
+
+            ReqLifeBar(Me_MOTION_C);
+            blood = *(u16 *)&pp[i].argument;
+            packed = *(u16 *)&pp[i].packed;
+            bldo = packed >> 8;
+            blds = packed & 0xff;
+            break;
+        }
+        }
+        goto blood_effect;
+    }
+
+ordinary_dead:
+    if ((*(u16 *)&Me_MOTION_C->type & 0xf0) != 0xa0)
+    {
+        if (dtM->count == 5 && D_8009770C == Me_MOTION_C)
+        {
+            Sound(D_8009770C, 0x38);
+            D_8009770C = 0;
+        }
+        blood = 1;
+        bldo = 100;
+        blds = 0;
+    }
+
+blood_effect:
+    if ((*(u16 *)&dtM->count & 4) && blood != -1)
+    {
+        scratch.dead.position = D_8009771C[0];
+        memset(&scratch.dead.vector, 0, sizeof(scratch.dead.vector));
+        scratch.dead.vector.vy = -blds;
+        scratch.dead.vector.vz = -bldo;
+        if (blds == 0)
+        {
+            scratch.dead.position.vx = 0;
+            scratch.dead.position.vy = -200;
+            scratch.dead.position.vz = -240;
+        }
+        else
+        {
+            scratch.dead.position.vx = 0;
+            scratch.dead.position.vy = -410;
+            scratch.dead.position.vz = 0;
+        }
+        FUN_80035f44(&Me_MOTION_C->model->object[blood]->locate,
+                     &scratch.dead.position, &scratch.dead.vector);
+    }
+}
