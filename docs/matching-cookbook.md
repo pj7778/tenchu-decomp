@@ -3083,7 +3083,11 @@ before local-alloc, so the def is gone before it can bias anything.
     emits a trailing `move $v0,$v1`. Two early returns
     (`if (cond) { …; return 1; } return 0;`) let cc1 target `$v0` directly for
     each constant — 0 bytes (DrawBG). When a flag-return draft is one register
-    off, try both shapes.
+    off, try both shapes. The default `autorules` rule `flag-return-split`
+    now performs the guarded default/override-to-literal-return direction even
+    when useful statements follow the override. In FUN_8005adbc this reduced
+    a replay of the shared-result form from 27 whole-image differing bytes to
+    an exact 0-byte, 240/240 pure-C match; no permuter run was needed.
 - **Source statement order is the main regalloc lever.** Storing
   register-held values first (`prm.type = ty; prm.user = own;`) before
   memory-chain stores frees their registers for later constants — in

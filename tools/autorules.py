@@ -2591,6 +2591,159 @@ def _zero_or_one(data, node):
     return value if value in (0, 1) else None
 
 
+def rule_flag_return_split(text, name, span):
+    """Split a local 0/1 result pseudo into two literal return sites.
+
+    ``flag = 0; if (test) { ...; flag = 1; ...; } return flag;`` keeps the
+    default definition live across ``test`` and copy-preferences both values
+    through one return pseudo.  Literal returns at the two CFG exits can use
+    ``$v0`` independently and shorten the success arm's live ranges.
+
+    Keep the rewrite deliberately narrow: the three outer statements and the
+    override must be direct children of compound blocks; ``flag`` is a unique,
+    nonvolatile 32-bit automatic scalar referenced only by its declaration,
+    the two definitions, and the final return; both values are 0/1; and the
+    success arm contains no early exit or label.  Moving the success return to
+    the closing brace is then semantics-preserving even when useful work
+    follows the override.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+
+    locals_ = _nonvolatile_local_names(data, body)
+    wide_locals = set()
+    declarations = {}
+    for declaration in _find(body, ("declaration",)):
+        type_node = declaration.child_by_field_name("type")
+        if type_node is None:
+            continue
+        type_name = _txt(data, type_node).decode(errors="ignore")
+        if (type_name not in TYPES or TYPES[type_name][0] != 32 or
+                re.search(rb"\b(?:const|volatile|static|extern|register)\b",
+                          _txt(data, declaration))):
+            continue
+        declared = []
+        for child in declaration.named_children:
+            declarator = (child.child_by_field_name("declarator")
+                          if child.type == "init_declarator" else child)
+            if declarator is None or declarator.type != "identifier":
+                continue
+            declared.append((declarator, child))
+        # The rule removes the now-unused declaration, so accept only one
+        # uninitialized scalar declarator on its own declaration statement.
+        if len(declared) != 1 or declared[0][1].type != "identifier":
+            continue
+        ident = _txt(data, declared[0][0])
+        declarations.setdefault(ident, []).append(declaration)
+        wide_locals.add(ident)
+    wide_locals &= locals_
+
+    identifiers = _find(body, ("identifier",))
+    unsafe = ("break_statement", "continue_statement", "goto_statement",
+              "return_statement", "labeled_statement")
+
+    def return_identifier(statement):
+        if statement.type != "return_statement":
+            return None
+        values = [child for child in statement.named_children
+                  if child.type != "comment"]
+        if len(values) != 1 or values[0].type != "identifier":
+            return None
+        return _txt(data, values[0])
+
+    def standalone_line(node):
+        start = data.rfind(b"\n", 0, node.start_byte) + 1
+        end = data.find(b"\n", node.end_byte)
+        if end < 0:
+            end = len(data)
+        else:
+            end += 1
+        if (data[start:node.start_byte].strip() or
+                data[node.end_byte:end].strip()):
+            return None
+        return start, end
+
+    for block in _find(body, ("compound_statement",)):
+        statements = [child for child in block.named_children
+                      if child.type != "comment"]
+        for default_statement, iff, final_return in zip(
+                statements, statements[1:], statements[2:]):
+            default = _plain_assignment(data, default_statement)
+            if (default is None or iff.type != "if_statement" or
+                    iff.child_by_field_name("alternative") is not None or
+                    data[default_statement.end_byte:iff.start_byte].strip() or
+                    data[iff.end_byte:final_return.start_byte].strip()):
+                continue
+            flag, default_rhs = default
+            default_value = _zero_or_one(data, default_rhs)
+            if (flag not in wide_locals or len(declarations.get(flag, ())) != 1 or
+                    return_identifier(final_return) != flag or
+                    default_value is None):
+                continue
+
+            # Exactly four occurrences prove that the local is otherwise
+            # unobserved: declaration, default LHS, override LHS, final return.
+            occurrences = [ident for ident in identifiers
+                           if _txt(data, ident) == flag]
+            if len(occurrences) != 4:
+                continue
+
+            consequence = iff.child_by_field_name("consequence")
+            if (consequence is None or
+                    consequence.type != "compound_statement" or
+                    _find(consequence, unsafe)):
+                continue
+            arm_statements = [child for child in consequence.named_children
+                              if child.type != "comment"]
+            overrides = []
+            for statement in arm_statements:
+                assignment = _plain_assignment(data, statement)
+                if assignment is not None and assignment[0] == flag:
+                    overrides.append((statement, assignment[1]))
+            if len(overrides) != 1:
+                continue
+            override_statement, override_rhs = overrides[0]
+            override_value = _zero_or_one(data, override_rhs)
+            if override_value is None or {default_value, override_value} != {0, 1}:
+                continue
+
+            declaration_line = standalone_line(declarations[flag][0])
+            default_line = standalone_line(default_statement)
+            override_line = standalone_line(override_statement)
+            close_line = data.rfind(b"\n", consequence.start_byte,
+                                    consequence.end_byte)
+            if (declaration_line is None or default_line is None or
+                    override_line is None or
+                    close_line <= consequence.start_byte or
+                    data[close_line + 1:consequence.end_byte - 1].strip()):
+                continue
+            line = _line(data, iff.start_byte)
+            if not _guided_site(line):
+                continue
+
+            body_indent = _indent_at(data, override_statement.start_byte)
+            success_return = (body_indent + b"return " +
+                              _txt(data, override_rhs).strip() + b";\n")
+            fallback_return = (b"return " +
+                               _txt(data, default_rhs).strip() + b";")
+            edits = [
+                (final_return.start_byte, final_return.end_byte, fallback_return),
+                (close_line + 1, close_line + 1, success_return),
+                (override_line[0], override_line[1], b""),
+                (default_line[0], default_line[1], b""),
+                (declaration_line[0], declaration_line[1], b""),
+            ]
+            changed = data
+            for start, end, replacement in sorted(edits, reverse=True):
+                changed = splice(changed, start, end, replacement)
+            yield (
+                f"flag-return-split {flag.decode()} L{line}",
+                changed.decode(),
+            )
+
+
 def rule_flag_arm_assign(text, name, span):
     """Move a local 0/1 default and override to the ends of their CFG arms.
 
@@ -4439,6 +4592,7 @@ RULES = [
     ("split-chain", "t = (x-C)>>S -> t = x-C; t = t>>S (split fused chain)", rule_split_chain),
     ("min-ternary", "x=a; if(b<x) x=b; -> x = (b<a)?b:a (min-vs-memory)", rule_min_ternary),
     ("clamp-shared-return", "two direct clamp returns -> assignments plus one return", rule_clamp_shared_return),
+    ("flag-return-split", "local 0/1 default+override -> literal return sites", rule_flag_return_split),
     ("cmp-swap", "a>mem -> mem<a (comparison operand-order lever)", rule_cmp_swap),
 ]
 

@@ -1142,6 +1142,50 @@ int F(VECTOR *position) {
         self.assertLess(candidate.index("if (inner)"), candidate.index("flag = 1;"))
         self.assertIn("else\n    {\n        flag = 0;", candidate)
 
+    def test_flag_return_split_moves_override_to_success_exit(self):
+        source = """typedef int s32;
+int helper(void);
+s32 F(int ready) {
+    s32 result;
+    result = 0;
+    if (ready) {
+        helper();
+        result = 1;
+        helper();
+    }
+    return result;
+}
+"""
+        out = self.candidates(autorules.rule_flag_return_split, source)
+        self.assertEqual(len(out), 1)
+        candidate = out[0][1]
+        self.assertNotIn("s32 result;", candidate)
+        self.assertNotIn("result = 0;", candidate)
+        self.assertNotIn("result = 1;", candidate)
+        self.assertIn("helper();\n        return 1;\n    }\n    return 0;", candidate)
+
+    def test_flag_return_split_rejects_observation_or_early_exit(self):
+        observed = """typedef int s32;
+s32 F(int ready) {
+    s32 result;
+    result = 0;
+    if (ready) { result = 1; ready += result; }
+    return result;
+}
+"""
+        exits = """typedef int s32;
+s32 F(int ready) {
+    s32 result;
+    result = 0;
+    if (ready) { result = 1; if (ready > 2) return 3; }
+    return result;
+}
+"""
+        self.assertEqual(
+            self.candidates(autorules.rule_flag_return_split, observed), [])
+        self.assertEqual(
+            self.candidates(autorules.rule_flag_return_split, exits), [])
+
     def test_flag_assignment_move_rejects_use_or_early_exit(self):
         used = """int F(int outer) {
     int flag;
