@@ -956,6 +956,47 @@ int F(int a, int b) { return sink((s16)(a + next() + b)); }
         self.assertEqual(
             self.candidates(autorules.rule_add_prefix_temp, source), [])
 
+    def test_clamp_shared_return_funnels_literal_bounds_through_local(self):
+        source = """typedef int s32;
+s32 next(void);
+s32 F(void) {
+    s32 angle;
+    angle = next();
+    if (angle > 0x155)
+        return 0x155;
+    if (angle < -0x155)
+        return -0x155;
+    return angle;
+}
+"""
+        out = self.candidates(autorules.rule_clamp_shared_return, source)
+        self.assertEqual(len(out), 1)
+        candidate = out[0][1]
+        self.assertIn("angle = 0x155;", candidate)
+        self.assertIn("else if (angle < -0x155)", candidate)
+        self.assertIn("angle = -0x155;", candidate)
+        self.assertEqual(candidate.count("return angle;"), 1)
+
+    def test_clamp_shared_return_rejects_narrow_or_nonlocal_result(self):
+        narrow = """typedef short s16;
+int F(void) {
+    s16 angle;
+    if (angle > 10) return 10;
+    if (angle < -10) return -10;
+    return angle;
+}
+"""
+        parameter = """int F(int angle) {
+    if (angle > 10) return 10;
+    if (angle < -10) return -10;
+    return angle;
+}
+"""
+        self.assertEqual(
+            self.candidates(autorules.rule_clamp_shared_return, narrow), [])
+        self.assertEqual(
+            self.candidates(autorules.rule_clamp_shared_return, parameter), [])
+
     def test_rand_mod_split_names_call_result_before_remainder(self):
         source = """typedef int s32;
 int rand(void);

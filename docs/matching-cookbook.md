@@ -1060,6 +1060,19 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
     `lhu` (different machine modes don't CSE). Don't collapse to one load; give
     the narrowing use its own `short` temp and both loads fall out
     (DeleteConflict's `ConflictObjects`).
+- **An unsigned narrow field with a LATE signed consumer stays in a wide
+  working local; put the cast at the consumer, not the load.** If the target
+  has `lhu field`, updates that value in a full register, and only then emits
+  `sll 16 / sra 16` immediately before a scale/store/call, write
+  `s32 yy = node->y; ... yy = yy + slope; wide = (s16)yy * 10;`. Writing
+  `yy = (s16)node->y` folds the sign into an `lh`; making `yy` itself `s16`
+  lets combine narrow the intermediate arithmetic; and reusing the persistent
+  `wide` result as the working value joins two allocnos and rotates the caller
+  registers. In `FUN_8002fd9c`, the early-cast/reused-result form was exact
+  length but 116 bytes off; a reusable wide `yy` plus separate `height0`/
+  `height1` products left only the independent clamp tail. This is a
+  producer/consumer data-flow rule, not a blind field retype: preserve the
+  proven `u16` field and move the cast to the target's visible extension site.
 - **A `u8` local re-narrowed after arithmetic gets a defensive `andi 0xff` +
   unsigned `sltiu`** even when the value provably stays in byte range. If the
   target has a signed `slti` there instead, declare the local `s32` — the source
@@ -2209,6 +2222,18 @@ depth so the eviction never happens. When a two-call restructuring seems to
 "repartition `$a0`/`$a1` wholesale", check the argument expression's TYPE before
 abandoning the structure (`Sound`; this is why an earlier two-call attempt looked
 worse and was wrongly parked).
+
+### A two-sided scalar clamp with one return island uses assignments, not direct returns
+
+`if (x > HI) return HI; if (x < LO) return LO; return x;` can compile into
+three physically separate return paths even though the target moves the input
+into one return pseudo, overwrites that pseudo in either clamp arm, and reaches
+one tail. Spell the latter source shape literally:
+`if (x > HI) x = HI; else if (x < LO) x = LO; return x;`. On
+`FUN_8002fd9c` this was the final 29-byte residual and changed directly to an
+exact match. Ordinary autorules rule `clamp-shared-return` applies this rewrite
+only to adjacent literal-bound tests of a nonvolatile automatic 32-bit scalar,
+so narrow conversion behavior and observable destinations are left alone.
 
 ### A conditional min/max against a MEMORY operand must be the ternary
 

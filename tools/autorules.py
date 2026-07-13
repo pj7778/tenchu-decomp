@@ -2645,6 +2645,125 @@ def rule_min_ternary(text, name, span):
                    splice(data, s1.start_byte, s2.end_byte, repl).decode())
 
 
+def rule_clamp_shared_return(text, name, span):
+    """Turn two direct clamp returns into assignments plus one shared return.
+
+    ``if (x > HI) return HI; if (x < LO) return LO; return x;`` and
+    ``if (x > HI) x = HI; else if (x < LO) x = LO; return x;`` are equivalent
+    for a nonvolatile automatic 32-bit scalar.  The latter keeps one return
+    pseudo and lets jump2 build a shared clamp tail; FUN_8002fd9c went from a
+    29-byte residual to exact with this rewrite.
+
+    Restrict the transform to three adjacent statements, literal bounds, and
+    a plain wide local.  That avoids changing observable stores or conversion
+    behavior for narrow locals; authoritative scoring chooses the useful form.
+    """
+    data = text.encode()
+    body = _func_body(data, name, _byte_span(text, span))
+    if body is None:
+        return
+
+    locals_ = _nonvolatile_local_names(data, body)
+    wide_locals = set()
+    for declaration in _find(body, ("declaration",)):
+        type_node = declaration.child_by_field_name("type")
+        if type_node is None:
+            continue
+        type_name = _txt(data, type_node).decode()
+        if type_name not in TYPES or TYPES[type_name][0] != 32:
+            continue
+        for child in declaration.named_children:
+            declarator = (child.child_by_field_name("declarator")
+                          if child.type == "init_declarator" else child)
+            ident = _descend_ident(declarator) if declarator is not None else None
+            if ident is not None:
+                wide_locals.add(_txt(data, ident))
+    wide_locals &= locals_
+
+    def return_value(statement):
+        if statement is None or statement.type != "return_statement":
+            return None
+        values = [child for child in statement.named_children
+                  if child.type != "comment"]
+        return values[0] if len(values) == 1 else None
+
+    literal = re.compile(rb"[+-]?(?:0[xX][0-9a-fA-F]+|[0-9]+)[uUlL]*\Z")
+    for block in _find(body, ("compound_statement",)):
+        statements = [child for child in block.named_children
+                      if child.type != "comment"]
+        for first, second, final in zip(
+                statements, statements[1:], statements[2:]):
+            if (first.type != "if_statement" or
+                    second.type != "if_statement" or
+                    first.child_by_field_name("alternative") is not None or
+                    second.child_by_field_name("alternative") is not None or
+                    data[first.end_byte:second.start_byte].strip() or
+                    data[second.end_byte:final.start_byte].strip()):
+                continue
+
+            first_return = return_value(first.child_by_field_name("consequence"))
+            second_return = return_value(second.child_by_field_name("consequence"))
+            final_return = return_value(final)
+            if first_return is None or second_return is None or final_return is None:
+                continue
+            local = _txt(data, final_return).strip()
+            if local not in wide_locals:
+                continue
+
+            matches = []
+            for conditional, returned in ((first, first_return),
+                                          (second, second_return)):
+                condition = conditional.child_by_field_name("condition")
+                condition = (_paren_inner(condition)
+                             if condition is not None and
+                             condition.type == "parenthesized_expression"
+                             else condition)
+                if condition is None or condition.type != "binary_expression":
+                    matches = []
+                    break
+                operator = condition.child_by_field_name("operator")
+                left = _unparen(condition.child_by_field_name("left"))
+                right = _unparen(condition.child_by_field_name("right"))
+                if (operator is None or left is None or right is None or
+                        left.type != "identifier" or
+                        _txt(data, left).strip() != local):
+                    matches = []
+                    break
+                op_text = _txt(data, operator).strip()
+                bound = _txt(data, right).strip()
+                if (op_text not in (b"<", b"<=", b">", b">=") or
+                        not literal.fullmatch(bound) or
+                        _txt(data, returned).strip() != bound):
+                    matches = []
+                    break
+                matches.append((op_text, bound,
+                                _txt(data, conditional.child_by_field_name(
+                                    "condition")).strip()))
+            if len(matches) != 2:
+                continue
+            directions = ({b">", b">="}, {b"<", b"<="})
+            if not ((matches[0][0] in directions[0] and
+                     matches[1][0] in directions[1]) or
+                    (matches[0][0] in directions[1] and
+                     matches[1][0] in directions[0])):
+                continue
+
+            indent = _indent_at(data, first.start_byte)
+            body_indent = indent + b"    "
+            replacement = (
+                b"if " + matches[0][2] + b"\n" + body_indent + local +
+                b" = " + matches[0][1] + b";\n" + indent + b"else if " +
+                matches[1][2] + b"\n" + body_indent + local + b" = " +
+                matches[1][1] + b";\n" + indent + b"return " + local + b";"
+            )
+            yield (
+                f"clamp-shared-return {local.decode()} "
+                f"L{_line(data, first.start_byte)}",
+                splice(data, first.start_byte, final.end_byte,
+                       replacement).decode(),
+            )
+
+
 CMP_SWAP = {b"<": b">", b">": b"<", b"<=": b">=", b">=": b"<="}
 
 
@@ -3660,6 +3779,7 @@ RULES = [
     ("vector-copy-adjust", "split/merge a literal-adjusted vx/vy/vz field copy", rule_vector_copy_adjust),
     ("split-chain", "t = (x-C)>>S -> t = x-C; t = t>>S (split fused chain)", rule_split_chain),
     ("min-ternary", "x=a; if(b<x) x=b; -> x = (b<a)?b:a (min-vs-memory)", rule_min_ternary),
+    ("clamp-shared-return", "two direct clamp returns -> assignments plus one return", rule_clamp_shared_return),
     ("cmp-swap", "a>mem -> mem<a (comparison operand-order lever)", rule_cmp_swap),
 ]
 
