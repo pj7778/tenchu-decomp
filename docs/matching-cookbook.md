@@ -2473,7 +2473,13 @@ Hard reg numbers: `0` zero, `1` at, `2` v0, `3` v1, `4`–`7` a0–a3, `8`–`15
      `model,owner,type`, while spelling `model,type,owner` produced
      `owner,type,model` and reduced its exact-length residual from six bytes to
      four. This cannot rotate a separately lower-priority producer, so confirm
-     the post-adjustment priorities before enumerating more orders.
+     the post-adjustment priorities before enumerating more orders. The final
+     four bytes closed by loading through a single-set `loaded_model` alias and
+     immediately copying it into the destructively reused `model`: the load
+     gained the missing scheduler promotion, while copy coalescing erased the
+     assignment and kept both roles in `$s0`. This split-then-coalesce pattern
+     is the bounded lever when the target wants a multi-set destination's load
+     to tie otherwise-promoted single-set producers.
    - **`.sched2` being exact does not make a delay-slot `nop` safe.** Reorg's later
      `fill_simple_delay_slots` can still pull any independent eligible instruction
      into the branch slot. If `.dbr` alone changes the sequence, stop permuting nearby

@@ -118,11 +118,12 @@ extern MATRIX *ScaleMatrix(MATRIX *m, VECTOR *v);
  *     extern struct SVECTOR ConflictDistance;
  * END PSX.SYM */
 
-/* Matching checkpoint (retail): the pure-C draft has the exact 0x68 frame,
- * 564 instructions, exact 36/12/33/1 branch/jump/call/return inventory, and
- * target item/param/sentinel homes s3/s4/s5.  The remaining 4 differing
- * bytes are only the pre-memset owner and model loads exchanged around the
- * already-exact type load.
+/* MATCH (retail): the pure-C body has the exact 0x68 frame, 564 instructions,
+ * exact 36/12/33/1 branch/jump/call/return inventory, and target
+ * item/param/sentinel homes s3/s4/s5.  The short-lived loaded_model alias is
+ * intentional: its single-set load receives scheduler promotion, then copy
+ * coalescing erases the assignment into the destructively reused model and
+ * preserves the target owner/type/model load order in s2/s1/s0.
  *
  * Clearing the short-lived launch pointer after memset breaks the stack-
  * address CSE that otherwise occupies s3.  Reusing the model pointer for its
@@ -133,9 +134,6 @@ extern MATRIX *ScaleMatrix(MATRIX *m, VECTOR *v);
  * loops keep item in the narrow priority window between param and the later
  * bounce temporary and allow the indirect call's target delay slots.  They
  * emit no branch or loop instructions. */
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcItemNingyo", ProcItemNingyo);
-#else
 void ProcItemNingyo(tag_TItem *item)
 {
     param_ningyo *param;
@@ -217,12 +215,14 @@ void ProcItemNingyo(tag_TItem *item)
             {
                 Humanoid *owner;
                 s32 type;
+                ModelType *loaded_model;
                 ModelType *model;
                 PARAM_ITEM_USE *launchp;
 
-                model = item->locate;
-                type = item->type;
                 owner = item->owner;
+                type = item->type;
+                loaded_model = item->locate;
+                model = loaded_model;
                 launchp = (PARAM_ITEM_USE *)&scratch.vectors.v.vz;
                 memset(launchp, 0, sizeof(PARAM_ITEM_USE));
                 launchp = 0;
@@ -488,7 +488,6 @@ draw_mode0:
     }
     return;
 }
-#endif
 
 // triage: HARD — 564 insns, mul/div, 4 loop, indirect-call, 17 callees, ~0.16 to ProcItemHappou
 // likely-relevant cookbook sections:
