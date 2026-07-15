@@ -120,14 +120,15 @@ extern MATRIX *ScaleMatrix(MATRIX *m, VECTOR *v);
 
 /* Matching checkpoint (retail): the pure-C draft has the exact 0x68 frame,
  * 564 instructions, exact 36/12/33/1 branch/jump/call/return inventory, and
- * target item/param/sentinel homes s3/s4/s5.  The remaining 15 differing
- * bytes are three pre-memset input loads in the wrong order plus the three
- * mode-1 constants in the wrong order.
+ * target item/param/sentinel homes s3/s4/s5.  The remaining 6 differing
+ * bytes are only the three pre-memset input loads in cyclic order.
  *
  * Clearing the short-lived launch pointer after memset breaks the stack-
  * address CSE that otherwise occupies s3.  Reusing the model pointer for its
  * embedded position then makes the derived-address and all three shared
- * modulus-constant sequences exact.  The otherwise-odd dispose one-shot
+ * modulus-constant sequences exact.  Separate base/result conflict pointers
+ * and zero-trip fences around the call result and constants make the mode-1
+ * address and constant ordering exact.  The otherwise-odd dispose one-shot
  * loops keep item in the narrow priority window between param and the later
  * bounce temporary and allow the indirect call's target delay slots.  They
  * emit no branch or loop instructions. */
@@ -277,6 +278,8 @@ draw_mode0:
         s32 size;
         s32 offset_y;
         s32 collision_mode;
+        ConflictObjectType *conflicts;
+        ConflictObjectType *conflict;
 
         param->count = param->count + 1;
         memset(&scratch.vectors.pos, 0, sizeof(VECTOR));
@@ -295,18 +298,26 @@ draw_mode0:
         }
 
         DeleteConflict(item->locate);
-        n = InsertConflict(item->locate);
-        size = 500;
-        offset_y = -250;
+        do
+        {
+            n = InsertConflict(item->locate);
+        } while (0);
+        conflicts = ConflictObject;
+        conflict = conflicts + n;
+        do
+        {
+            offset_y = -250;
+            size = 500;
+        } while (0);
+        conflict->common = (void *)1;
         collision_mode = 12;
-        ConflictObject[n].common = (void *)1;
-        ConflictObject[n].offset.vx = 0;
-        ConflictObject[n].offset.vz = 0;
-        ConflictObject[n].offset.vy = offset_y;
-        ConflictObject[n].size.vz = size;
-        ConflictObject[n].size.vy = size;
-        ConflictObject[n].size.vx = size;
-        ConflictObject[n].size.pad = collision_mode;
+        conflict->offset.vx = 0;
+        conflict->offset.vz = 0;
+        conflict->offset.vy = offset_y;
+        conflict->size.vz = size;
+        conflict->size.vy = size;
+        conflict->size.vx = size;
+        conflict->size.pad = collision_mode;
         item->coll_mode = collision_mode;
         item->coll_size = size;
         item->coll_ofsY = offset_y;
