@@ -31,42 +31,21 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — links the CORRECT LENGTH (110 instructions, 440
- * bytes) but 293 bytes differ. Default build keeps the byte-identical
- * INCLUDE_ASM stub. The C is believed semantically correct and structurally
- * complete (every call, store, field, if/else polarity, the abs distance
- * &&-chain, the fly/reset hit path).
+ * STATUS: MATCHING (440 bytes).
  *
- * The sole residual is a loop.c biv-elimination tie below the C level:
- *  - The target keeps TWO induction variables — a counter `s4` (`slti s4,30`
- *    top test + `addiu s4,1`) AND a walking pointer `s2` (`addiu s2,0x58`) —
- *    with the invariant bases ViewInfo(s5)/ConflictObject(s6) hoisted.
- *  - Reproducing "unbiased walking giv + hoisted bases" REQUIRES `items[i]`
- *    array-indexing under a real loop (`while(1){ if(!(i<0x1e)) break; …;
- *    i++; }`): a hand-rolled goto loop gives the unbiased cursor but no
- *    hoisting (105, 5 short); an explicit walking pointer `it` under a real
- *    loop biases the cursor +0x10 and adds a 7th callee-saved register (112,
- *    2 long).
- *  - But with `items[i]`, loop.c's strength reduction derives the walking
- *    pointer as a GIV of the counter (`.loop` dump: "Insn 40: giv reg 95 …
- *    mult 88 add (reg:SI 87)", then "biv 80 can be eliminated"), so
- *    `maybe_eliminate_biv` replaces `i < 0x1e` with the giv bound
- *    (`addiu v0,s5,2640; slt v0,s2,v0`) and DROPS the counter. The target's
- *    counter survives only because its walking pointer is an independent BIV
- *    (loop.c cannot replace a biv's compare with another biv), which is the
- *    `it++`/explicit-pointer form — and that form biases the field offsets.
- *    No C spelling yields the target's "unbiased giv AND surviving counter"
- *    simultaneously; the counter loss renumbers the whole register file
- *    (ViewInfo→s4 vs s5, items base→s5, etc.), which is the bulk of the 293
- *    differing bytes despite the identical 110-instruction length.
- *  - A 24757-iteration bounded decomp-permuter run never approached zero
- *    (it transforms the C AST; the divergence is chosen in loop.c, an RTL
- *    pass below the AST). This is a genuine sub-C-level tie
- *    (docs/matching-cookbook.md, RTL escalation §).
+ * A structured `while` makes loop.c either eliminate `i` in favour of an
+ * `items[i]` GIV or bias an explicit cursor to `item + 0x10`.  The literal
+ * goto back edge keeps `i` and `item` as independent, unbiased variables.
+ * Since that shape also disables loop-invariant hoisting, cache `ViewInfo`
+ * and `ConflictObject` explicitly before the label; this reproduces the
+ * target's s5/s6 bases without reintroducing a loop GIV.
+ *
+ * The first camera coordinate deliberately uses `ViewInfo` directly while
+ * the remaining two use `view`, retaining the target's branch-local `lui`
+ * plus persistent base.  Finally, the conflict address is an integer sum
+ * with the scaled index written first: that preserves `addu v1,v1,s6`
+ * instead of the commuted `addu v1,s6,v1` emitted by ordinary subscripting.
  */
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/UpdateItemState", UpdateItemState);
-#else
 
 typedef struct
 {
@@ -92,6 +71,10 @@ extern s32 abs(s32 x);
 
 static void UpdateItemState(void)
 {
+    ConflictObjectType *object;
+    ConflictObjectType *conflicts;
+    tag_TItem *item;
+    TViewInfo *view;
     s32 i;
     s32 hit;
     s32 sz, ofsY;
@@ -99,55 +82,62 @@ static void UpdateItemState(void)
     s16 idx;
 
     i = 0;
-    while (1)
+    view = &ViewInfo;
+    conflicts = ConflictObject;
+    item = items;
+loop:
+    if (!(i < 0x1e))
+        goto done;
     {
-        if (!(i < 0x1e))
-            break;
-        if (items[i].proc != 0)
+        if (item->proc != 0)
         {
             hit = 0;
-            if (abs(ViewInfo.vpx - items[i].locate->locate.coord.t[0]) < 15000 &&
-                abs(ViewInfo.vpy - items[i].locate->locate.coord.t[1]) < 15000)
+            if (abs(ViewInfo.vpx - item->locate->locate.coord.t[0]) < 15000 &&
+                abs(view->vpy - item->locate->locate.coord.t[1]) < 15000)
             {
-                hit = abs(ViewInfo.vpz - items[i].locate->locate.coord.t[2]) < 15000;
+                hit = abs(view->vpz - item->locate->locate.coord.t[2]) < 15000;
             }
             if (hit)
             {
-                if (items[i].coll_pause != 0)
+                if (item->coll_pause != 0)
                 {
-                    sz = items[i].coll_size;
+                    sz = item->coll_size;
                     if (sz != 0)
                     {
-                        ofsY = items[i].coll_ofsY;
-                        md = items[i].coll_mode;
-                        DeleteConflict(items[i].locate);
-                        idx = InsertConflict(items[i].locate);
-                        ConflictObject[idx].offset.vx = 0;
-                        ConflictObject[idx].offset.vz = 0;
-                        ConflictObject[idx].offset.vy = ofsY;
-                        ConflictObject[idx].size.vz = sz;
-                        ConflictObject[idx].size.vy = sz;
-                        ConflictObject[idx].size.vx = sz;
-                        ConflictObject[idx].common = (void *)1;
-                        ConflictObject[idx].size.pad = md;
-                        items[i].coll_size = sz;
-                        items[i].coll_ofsY = ofsY;
-                        items[i].coll_mode = md;
-                        items[i].coll_pause = 0;
+                        ofsY = item->coll_ofsY;
+                        md = item->coll_mode;
+                        DeleteConflict(item->locate);
+                        idx = InsertConflict(item->locate);
+                        object = (ConflictObjectType *)
+                            ((s32)idx * sizeof(*object) + (u32)conflicts);
+                        object->offset.vx = 0;
+                        object->offset.vz = 0;
+                        object->offset.vy = ofsY;
+                        object->size.vz = sz;
+                        object->size.vy = sz;
+                        object->size.vx = sz;
+                        object->common = (void *)1;
+                        object->size.pad = md;
+                        item->coll_size = sz;
+                        item->coll_ofsY = ofsY;
+                        item->coll_mode = md;
+                        item->coll_pause = 0;
                     }
                 }
             }
-            else if (items[i].coll_pause == 0 && items[i].locate->locate.super == 0)
+            else if (item->coll_pause == 0 && item->locate->locate.super == 0)
             {
-                items[i].coll_pause = 1;
-                DeleteConflict(items[i].locate);
+                item->coll_pause = 1;
+                DeleteConflict(item->locate);
             }
         }
+        item++;
         i++;
+        goto loop;
     }
+done:
+    ;
 }
-
-#endif
 
 // Ghidra decompilation (reference — turn this into matching C,
 // then drop the INCLUDE_ASM above):
