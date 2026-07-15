@@ -34,82 +34,53 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 63 of 480 bytes differ, all in TWO reorg
- * delay-slot-fill ties (see below); every field offset/type/branch this
- * function establishes is otherwise correct.
+ * Reads one controller report into PadPort. A multitap report recursively
+ * supplies four eight-byte subreports; an error report clears the port; a
+ * normal report derives digital x/y values, records analog mode, and advances
+ * the actuator setup state machine.
  *
- * ComPad (0x8001abc4) — reads one controller's raw report and folds it into
- * PadPort[port>>4][port&3] (main.exe.h's `controller_input`, 14 bytes/entry
- * — see GetRealPad.c/PadShock.c, same TU). rxbuf[1]>>4==8 is the multitap
- * header: recurse over its 4 sub-ports (rxbuf+2, +10, +18, +26). Otherwise
- * rxbuf[0]!=0 (no pad / error) zeroes the held bits + x/y + fAnalog and
- * returns; the normal path folds the raw button bytes into `held`
- * (bit-inverted, matching the pad's active-low wire convention), derives a
- * digital-style x/y from the dpad bits (0x2000/0x8000 -> x, 0x4000/0x1000
- * -> y), records analog-mode (rxbuf[1]>>4==7) in fAnalog, and drives
- * PadSetAct/PadSetActAlign through the act1/act2/actbuf/Send fields based on
- * PadInfoMode's return and the state machine in PadGetState's result
- * (1/2/6).
+ * Retail inserted `active` at offset 6 in the demo's 12-byte TPadPort, moving
+ * the later byte fields by one and making this version 14 bytes. The repeated
+ * block-scoped `int i` locals follow the original debug symbols.
  *
- * Matching notes (docs/matching-cookbook.md):
- *  - `pad[6] = 1;` (Send) runs UNCONDITIONALLY right after PadGetState —
- *    it is the branch's own delay-slot fill, not inside the `if`.
- *  - Ghidra's `uVar3 = 0x2d; if (cond1 || (uVar3 = -0x2d, cond2)) store;`
- *    comma-OR is a plain `if (cond1) store = 0x2D; else if (cond2)
- *    store = -0x2D;` — the asm has both bodies reached by a forward
- *    branch/fallthrough into the SAME store instruction (cross-jump
- *    merges the two paths' identical `sh`), not the literal comma form.
- *  - The `held` reload before the second (0x4000/0x1000) test is a REAL
- *    fresh `lhu` in the target (not the register already holding the
- *    just-computed value) — re-read it explicitly rather than reusing a
- *    cached local.
- *  - PadInfoMode's guard needs Ghidra's LITERAL polarity INVERTED
- *    (`if (PadInfoMode(...) != 0) {act9/act8} else {0x40/act8}`) — the
- *    natural `==0` if/else inlines the wrong body first; matches the
- *    "opposite polarity" dispatch rule.
- *
- * THE RESIDUAL (both tried and reverted; no source lever found):
- *  1. Right after computing `held` (the inverted rxbuf[2]/[3] word) and
- *     storing it, the target does an explicit register copy (`move v1,v0`)
- *     before testing `held & 0x2000` — freeing v0 for the 0x2D/-0x2D
- *     constants. Our compile keeps `held` in one register and skips the
- *     copy (1 fewer instruction there), *and* independently reorg steals
- *     the `*(u16*)pad = held;` store into the FIRST bit-test branch's own
- *     delay slot instead of leaving it anchored before the test — visible
- *     in cc1's own pre-schedule output (`nor $3,$3,$2` / `andi $2,$3,0x2000`
- *     / `beq $2,$0,L9` / delay-slot `sh $3,0($16)`). Naming the copy
- *     explicit (`u16 tmp = held;`, with or without a `do{}while(0)` fence)
- *     had zero effect — cc1 copy-propagates the temp away before scheduling.
- *  2. The final `if (initlevel != 6) return;` guard's delay slot: the
- *     target leaves a genuine wasted `nop` there (reorg found nothing safe
- *     to hoist), while our compile finds `move a0,s3` (the next statement's
- *     PadSetActAlign port argument) ready and hoists it in, saving the
- *     `nop` — 1 fewer instruction, then the freed argument setup lets the
- *     `addiu $a1,$a1,%lo(D_800976F0)` land in the following `jal`'s OWN
- *     delay slot instead of executing before it (target keeps `addiu`
- *     before the call and `move a0,s3` in the delay slot instead — the
- *     opposite pairing). This is the named "guard's delay-slot fill tie"
- *     class (StickonCheck) — permuter-immune, not attempted further.
- * `tools/permute.py` was not run on this residual (length-off-by-one, and
- * both mechanisms above are cc1/reorg scheduling choices with no visible
- * source lever, the same signature as the already-documented delay-slot
- * ties elsewhere in this TU).
+ * Matching notes:
+ *  - The empty one-shot loop is a zero-code scheduling boundary. Together
+ *    with the identical full-width assignments it keeps the target's
+ *    `sh v0; move v1,v0` sequence instead of narrowing the copy to an `andi`
+ *    or moving the store into a branch delay slot.
+ *  - The second button test intentionally reloads `held`; the target contains
+ *    a fresh `lhu` there.
+ *  - Capturing `actbuf` before the Send guard fixes the outer branch delay
+ *    slot. The recovered `u8 *` PadSetActAlign argument and six-byte static
+ *    align object likewise reproduce the final guard/call schedule.
  */
 
 extern int PadInfoMode(int port, int mode, int unused);
 extern int PadGetState(int port);
-extern void PadSetAct(int port, u8 *data, int len);
-extern void PadSetActAlign(int port, void *data);
-extern u8 D_800976F0[];
+extern int PadSetAct(int port, u8 *data, int len);
+extern int PadSetActAlign(int port, u8 *data);
+extern u8 D_800976F0[6];
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ComPad", ComPad);
-#else
+typedef struct
+{
+    u16 held;
+    s16 x;
+    s16 y;
+    u8 active;
+    u8 fAnalog;
+    u8 act1;
+    u8 act2;
+    u8 actbuf[2];
+    u8 Send;
+    u8 pad;
+} ComPadPort;
+
 void ComPad(int port, u8 *rxbuf)
 {
-    u8 *pad;
+    ComPadPort *pad;
+    u8 *act;
     int i;
-    u16 held;
+    int raw;
     int initlevel;
     int t1, t2;
 
@@ -122,66 +93,85 @@ void ComPad(int port, u8 *rxbuf)
         return;
     }
 
-    pad = (u8 *)&PadPort[port >> 4][port & 3];
+    pad = (ComPadPort *)&PadPort[port >> 4][port & 3];
 
     if (rxbuf[0] != 0)
     {
-        *(u16 *)pad = 0;
-        *(u16 *)(pad + 2) = 0;
-        *(u16 *)(pad + 4) = 0;
-        pad[6] = 0;
+        pad->held = 0;
+        pad->x = 0;
+        pad->y = 0;
+        pad->active = 0;
         return;
     }
 
     t1 = rxbuf[2];
     t2 = rxbuf[3];
-    *(u16 *)(pad + 4) = 0;
-    *(u16 *)(pad + 2) = 0;
-    held = ~((t1 << 8) | t2);
-    *(u16 *)pad = held;
+    pad->y = 0;
+    pad->x = 0;
+    raw = ~(t2 | (t1 << 8));
+    {
+        int i;
 
-    if (held & 0x2000)
-        *(s16 *)(pad + 2) = 0x2D;
-    else if (held & 0x8000)
-        *(s16 *)(pad + 2) = -0x2D;
+        pad->held = raw;
+        do
+        {
+        } while (0);
+        if (port != 0)
+            i = raw;
+        else
+            i = raw;
+        if (i & 0x2000)
+        {
+            raw = 0x2D;
+            pad->x = raw;
+        }
+        else if (i & 0x8000)
+        {
+            raw = -0x2D;
+            pad->x = raw;
+        }
+    }
+    {
+        int i;
 
-    held = *(u16 *)pad;
-    if (held & 0x4000)
-        *(s16 *)(pad + 4) = 0x2D;
-    else if (held & 0x1000)
-        *(s16 *)(pad + 4) = -0x2D;
+        i = pad->held;
+        if (i & 0x4000)
+            pad->y = 0x2D;
+        else if (i & 0x1000)
+            pad->y = -0x2D;
+    }
 
     if ((rxbuf[1] >> 4) == 7)
-        pad[7] = 1;
+        pad->fAnalog = 1;
     else
-        pad[7] = 0;
+        pad->fAnalog = 0;
 
     if (PadInfoMode(port, 2, 0) != 0)
     {
-        pad[0xA] = pad[8];
-        pad[0xB] = pad[9];
+        pad->actbuf[0] = pad->act1;
+        pad->actbuf[1] = pad->act2;
     }
     else
     {
-        pad[0xA] = 0x40;
-        pad[0xB] = pad[8];
+        pad->actbuf[0] = 0x40;
+        pad->actbuf[1] = pad->act1;
     }
 
     initlevel = PadGetState(port);
-    pad[6] = 1;
+    pad->active = 1;
     if (initlevel == 1)
-        pad[0xC] = 0;
+        pad->Send = 0;
 
-    if (pad[0xC] == 0)
+    act = pad->actbuf;
+    if (pad->Send == 0)
     {
-        PadSetAct(port, pad + 0xA, 2);
+        PadSetAct(port, act, 2);
         if (initlevel != 2)
         {
             if (initlevel != 6)
                 return;
             PadSetActAlign(port, D_800976F0);
         }
-        pad[0xC] = 1;
+        pad->Send = 1;
     }
 }
-#endif
