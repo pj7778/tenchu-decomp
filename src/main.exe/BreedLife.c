@@ -37,29 +37,28 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 451 of 628 bytes differ, but the LENGTH matches
- * exactly (157 of 157 instructions) and every block/branch/call/offset is
- * confirmed correct against the raw `.s` (asmdiff --structural shows zero
- * insert/delete blocks, only register-choice replacements). The residual is
- * that this draft's cc1 invocation needs ONE MORE simultaneously-live
- * callee-saved register than the target: target manages the whole function
- * in $s0-$s7 (8 registers: x,y,z,type + idx/human + model + a "found entry"
- * pointer + the HumanData[] array-base/walking-pointer, the last two
- * literally SWAPPING roles via `move $s1,$s0`/`move $s0,$s3` right before
- * the rename loop), while every spelling tried here needs a 9th ($s8, i.e.
- * the frame pointer register — only available because -fomit-frame-pointer
- * frees it for general use). Tried and rejected: computing the "found
- * entry" pointer (`pp`) before vs. after the SystemOut guard (both compile,
- * neither drops below 1-too-many registers; "after" is the closer of the
- * two and is what's kept); reusing `human`'s own register for the pp role
- * via a cast (worse, 118 vs 92 differing lines); `pp = HumanData + idx`
- * vs `&HumanData[idx]` (byte-identical, as expected). A bounded
- * `tools/permute.py -j4 --stop-on-zero` run (~400s, 4 workers) plateaued at
- * score ~4090, nowhere near 0 — confirms this is a structural
- * register-pressure tie, not a permuter-crackable statement-order/coloring
- * tie. `tools/regalloc.py` shows the target's specific two-way role-swap
- * (`$s0`/`$s1`/`$s3` all changing roles at the rename-loop boundary) is
- * simply not reachable from a source-level respelling tried so far.
+ * STATUS: NON_MATCHING — 315 of 628 bytes differ, down from 451; the extent
+ * remains exact at 628 bytes / 157 instructions and the fuzzy score improved
+ * from 57.32 to 68.15. The target and candidate now both use a 0xA8-byte
+ * frame with $s0-$s7 (the old draft unnecessarily consumed $s8). Their
+ * physical CFG counts also agree for conditional branches (15/15), calls
+ * (9/9), and returns (1/1); the candidate still has one unconditional jump
+ * where the target has two. `asmdiff -n --structural` reports 54
+ * length-changing lines in 16 displayed blocks (73 raw aligned lines in 27
+ * blocks), so the residual is not being misreported as a pure register tie.
+ *
+ * The main remaining cascade starts in the HumanData searches: target
+ * materializes the table base and carries the found row/model as
+ * $s0/$s2, then explicitly rotates roles before the filename-sharing scan;
+ * this draft carries the row/model as $s2/$s1. That swap feeds the model
+ * creation, map-level call, and type-range tail. The tail has the target's
+ * signed guard branch and total conditional-branch count, but a different
+ * physical layout and the missing unconditional jump. Focused experiments
+ * that did not improve this checkpoint included declaration reordering,
+ * aliasing or making the found-row pointer volatile, reusing `idx` as a
+ * pointer, `u16`/`s32` counter variants, and explicit base/name-source
+ * identities in the second scan. Guided identical-arm and type-width sweeps
+ * likewise found no better exact-length candidate.
  *
  * BreedLife (0x8002a018, 0x278 bytes) — spawns a new Humanoid of `type` at
  * ground position (x,z) with yaw `r`: resolves `type` to its HumanData[]
@@ -172,50 +171,62 @@ extern char D_80011734[]; /* "K:\\WORK\\CDIMAGE\\HUMAN\\" */
 
 Humanoid *BreedLife(s16 type, s32 x, s32 y, s32 z, s32 r)
 {
-    s16 idx;
+    /* PSX.SYM and the retail multiply both show a full-width counter. */
+    u32 idx;
     s32 sVar1;
-    HumanDataType *pHVar5;
-    HumanDataType *pp;
+    /*
+     * Distinct volatile walkers prevent cc1 from inventing a second field
+     * induction variable in the filename scan. Cast only the signed `type`
+     * loads back to their ordinary form so they remain single `lh` loads.
+     */
+    volatile HumanDataType *search;
+    volatile HumanDataType *pHVar5;
     u32 *model;
+    HumanDataType *pp;
     Humanoid *human;
     u8 name[100];
 
     idx = 0;
-    if (HumanData[0].type != -1)
+    if (HumanData[0].type == -1)
+        goto illegal_type;
+    search = HumanData;
+    sVar1 = ((HumanDataType *)search)->type;
+    do
     {
-        pHVar5 = HumanData;
-        sVar1 = HumanData[0].type;
-        do
-        {
-            pHVar5 = pHVar5 + 1;
-            if (sVar1 == type)
-                break;
-            sVar1 = pHVar5->type;
-            idx = idx + 1;
-        } while (sVar1 != -1);
-    }
-    if (HumanData[idx].type == -1)
-    {
-        SystemOut(D_800117C8);
-    }
+        search = search + 1;
+        /* Semantics-free cc1 CSE/scheduling boundary; emits no instruction. */
+        do {
+        } while (0);
+        if (sVar1 == type)
+            break;
+        sVar1 = ((HumanDataType *)search)->type;
+        idx = idx + 1;
+    } while (sVar1 != -1);
+    if (HumanData[idx].type != -1)
+        goto type_found;
+illegal_type:
+    SystemOut(D_800117C8);
+type_found:
     pp = &HumanData[idx];
-
     model = pp->model;
     if (model == 0)
     {
         sprintf((char *)name, D_800117E0, D_80011734, pp->name);
         model = FileRead((char *)name);
         pp->model = model;
-        pHVar5 = HumanData;
         sVar1 = HumanData[0].type;
-        while (sVar1 != -1)
+        if (sVar1 != -1)
         {
-            if (strcmp((char *)pp->name, (char *)pHVar5->name) == 0)
+            pHVar5 = HumanData;
+            do
             {
-                pHVar5->model = model;
-            }
-            pHVar5 = pHVar5 + 1;
-            sVar1 = pHVar5->type;
+                if (strcmp((char *)pp->name, (char *)pHVar5->name) == 0)
+                {
+                    pHVar5->model = model;
+                }
+                pHVar5 = pHVar5 + 1;
+                sVar1 = ((HumanDataType *)pHVar5)->type;
+            } while (sVar1 != -1);
         }
     }
 
@@ -235,17 +246,26 @@ Humanoid *BreedLife(s16 type, s32 x, s32 y, s32 z, s32 r)
     }
     if (type < 0x8B)
     {
-        if ((0x80 < type) || (type < 2 && -1 < type))
+        /* Keep the target's separate signed low-type guards physical. */
+        if (type < 0x81)
         {
-            human->attribute = human->attribute | 2;
-            EquipWeapon(human, 1);
-            SetNowMotion(human, 0x501, 1);
+            if (1 < type)
+                goto done;
+            if (type < 0)
+                goto done;
+        }
+        human->attribute = human->attribute | 2;
+        EquipWeapon(human, 1);
+        SetNowMotion(human, 0x501, 1);
+    }
+    else if (type < 0xA8)
+    {
+        if (0xA5 < type)
+        {
+            human->attribute = human->attribute | 0x20;
         }
     }
-    else if (type < 0xA8 && 0xA5 < type)
-    {
-        human->attribute = human->attribute | 0x20;
-    }
+done:
     return human;
 }
 #endif /* NON_MATCHING */
