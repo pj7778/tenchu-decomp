@@ -4796,6 +4796,18 @@ effectful expressions would change semantics.
   though `loc` remained in `$s1`. Its sequence-based fuzzy score fell
   74.60→73.54 at the same time. Score these probes by exact extent and
   `matchdiff` bytes, not only by the allocator assignment or fuzzy heuristic.
+  The later 120→14-byte PlayVoice reconstruction also shows that a repeated
+  PSX.SYM local name can be the missing lifetime boundary: two block-scoped
+  `min`/`sec` pairs, rather than one function-scoped pair, made the whole
+  playback tail exact. For its two table scans, `alias = cache = raw` followed
+  by identical `raw = alias` arms kept the current pointer separate from a
+  result/peek pointer until jump2. Finally, an explicit backward success label
+  let fallback hits share retail's two-instruction trampoline, while moving
+  the id reload inside the rotated loop retained the otherwise redundant first
+  load. Together those structural changes preserved the exact 756-byte extent
+  and reduced the residual to three allocator/scheduler islands. Use symbol
+  scope, loop rotation, and shared-label placement before adding more weight to
+  a register-only checkpoint.
 - **An automatic local already read by an enclosing guard is also a safe
   ALLOCATION DONOR.** Reaching either arm proves the guard value was initialized
   and evaluated, so it can discriminate byte-identical assignments without an

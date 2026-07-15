@@ -126,21 +126,27 @@ static inline void BuildVoiceLocation(CdlLOC *loc, u8 min, u8 sec)
  *    would collapse into one).
  *
  * STATUS: NON_MATCHING — exact target extent (756 bytes / 189 instructions),
- * 120 differing bytes, fuzzy 73.54. Modeling D_800134E0 as one aggregate
- * table list recovers the target's unusual roundabout stack copy for the
- * four language filenames before the real table pointers overwrite the
- * temporary slot. Keeping the CdlLOC construction in an inline helper also
- * recovers the target's 96-byte frame and stack-address rematerialization.
- * The dispatch and all three sentinel searches now have the target control-
- * flow extent. A jump2-erased identical-arm fence on the fallback hit keeps
- * that extent exact while reducing the authoritative byte residual from 190
- * to 120; the non-monotonic fuzzy score is only an instruction-sequence
- * presentation heuristic. The remaining gap is dominated by one cyclic
- * saved-register assignment (filename/table/location lifetimes) plus
- * instruction scheduling inside those loops. Donating enough weight to fix
- * that register cycle costs one instruction at the volume-clamp delay slot;
- * keep this exact-length checkpoint until broader lifetime evidence resolves
- * that tradeoff.
+ * 14 differing linked bytes and fuzzy 95.77 (from 120 bytes / 73.54). The raw
+ * aligned residual is 10 lines in 8 blocks; the structural-only view is 5
+ * lines in 4 blocks.
+ *
+ * PSX.SYM lists two distinct nested `min`/`sec` pairs. Giving each
+ * BuildVoiceLocation call its own block scope, while keeping the volume clamp
+ * in an `s32`, fixes the saved-register cycle and makes the complete playback
+ * tail exact. The high-ID search keeps separate current and peek-next pointer
+ * identities through a jump2-erased equal-arm copy. The language search uses
+ * the same split for cursor versus result, with a second defined equal-arm
+ * donor to retain its 0xff carrier. An explicit `fallback_hit` label parks the
+ * retail two-instruction success trampoline after the high-ID loop; moving the
+ * fallback id reload into the rotated loop restores its otherwise redundant
+ * first load and exact extent.
+ *
+ * The remaining gap is three coupled allocation/scheduling islands: the two
+ * local table bases exchange s0/s1 (and therefore the two following v0/v1
+ * loads), the language loop's correct a1/v1 setup moves are reversed, and the
+ * fallback base uses a0/v1 where retail uses a1/v1 after first reserving a0 for
+ * 0xff. A bounded donor search plus a 160-candidate loop-weight composition
+ * sweep found no exact-length result below 14 bytes.
  */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PlayVoice", PlayVoice);
@@ -149,14 +155,11 @@ void PlayVoice(int id)
 {
     u8 *FileName;
     TVoiceTable *voice;
-    u8 min;
-    u8 sec;
+    s32 volume;
     TVoiceTable *loc;
     TVoiceTable *cursor;
     TVoiceTable *next;
     u8 voice_id;
-    TVoiceTable **table_base;
-    u8 **filename_base;
     u8 *filenames[4] = {
         D_80097CA0,
         D_80097CA4,
@@ -170,8 +173,6 @@ void PlayVoice(int id)
     tables = D_800134E0;
     memset(&start[0].minute, 0, 4);
     memset(&end[0].minute, 0, 4);
-    table_base = tables.entry;
-    filename_base = filenames;
 
     if (id >= 100)
     {
@@ -184,41 +185,67 @@ void PlayVoice(int id)
         else
         {
             voice = D_8008E82C;
-            id -= 100;
             FileName = D_80097C98;
+            id -= 100;
         }
         loc = 0;
         if (voice->id != 0xff)
         {
-            cursor = voice;
             do
             {
+                next = cursor = voice;
+                if (id != 0)
+                {
+                    voice = next;
+                }
+                else
+                {
+                    voice = next;
+                }
                 voice_id = cursor->id;
-                next = cursor + 1;
-                loc = cursor;
+                loc = voice;
                 if (id == voice_id)
                     goto found;
-                cursor = next;
-            } while (cursor->id != 0xff);
+                next = cursor + 1;
+                voice = next;
+            } while (next->id != 0xff);
             loc = 0;
         }
+        goto found;
+    fallback_hit:
+        loc = cursor;
+        goto found2;
     }
     else
     {
-        voice = table_base[CHOSEN_LANGUAGE];
-        FileName = filename_base[CHOSEN_LANGUAGE];
+        voice = tables.entry[CHOSEN_LANGUAGE];
+        FileName = filenames[CHOSEN_LANGUAGE];
         loc = 0;
         if (voice->id != 0xff)
         {
             cursor = voice;
-            voice_id = cursor->id;
             do
             {
-                next = cursor + 1;
-                loc = cursor;
+                next = loc = cursor;
+                if (id != 0)
+                {
+                    cursor = next;
+                }
+                else
+                {
+                    if (voice != 0)
+                    {
+                        cursor = next;
+                    }
+                    else
+                    {
+                        cursor = next;
+                    }
+                }
+                voice_id = cursor->id;
                 if (id == voice_id)
                     goto found;
-                cursor = next;
+                cursor++;
                 voice_id = cursor->id;
                 loc = 0;
             } while (voice_id != 0xff);
@@ -231,25 +258,15 @@ found:
         if (voice->id != 0xff)
         {
             cursor = voice;
-            voice_id = cursor->id;
             do
             {
-                next = cursor + 1;
+                voice_id = cursor->id;
                 if (id == voice_id)
                 {
-                    if (loc != 0)
-                    {
-                        loc = cursor;
-                    }
-                    else
-                    {
-                        loc = cursor;
-                    }
-                    goto found2;
+                    goto fallback_hit;
                 }
-                cursor = next;
-                voice_id = cursor->id;
-            } while (voice_id != 0xff);
+                cursor++;
+            } while (cursor->id != 0xff);
         }
         loc = 0;
     found2:
@@ -262,19 +279,29 @@ found:
         }
     }
 
-    min = D_8001005B;
-    if (min > 0x7e)
-        min = 0x7f;
+    volume = D_8001005B;
+    if (volume > 0x7e)
+        volume = 0x7f;
     SsSetMVol(0x7f, 0x7f);
-    FUN_8004fbf4(min, min);
+    FUN_8004fbf4(volume, volume);
 
-    min = loc->min;
-    sec = loc->sec;
-    BuildVoiceLocation(start, min, sec);
+    {
+        u8 min;
+        u8 sec;
 
-    min = loc->endmin;
-    sec = loc->endsec;
-    BuildVoiceLocation(end, min, sec);
+        min = loc->min;
+        sec = loc->sec;
+        BuildVoiceLocation(start, min, sec);
+    }
+
+    {
+        u8 min;
+        u8 sec;
+
+        min = loc->endmin;
+        sec = loc->endsec;
+        BuildVoiceLocation(end, min, sec);
+    }
 
     if (CdaPlayXA(FileName, start, end, loc->channel, 0) == 0)
     {
