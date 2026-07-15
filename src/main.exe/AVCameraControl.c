@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -33,107 +34,102 @@
  * END PSX.SYM */
 
 /*
- * AVCameraControl (0x80051228) — TODO one-line description.
+ * AVCameraControl (0x80051228) — applies the active cutscene-camera pan
+ * mode: normal camera update, orbit rotation, vertical pan, zoom, or target
+ * lock, then submits the updated ViewInfo.
  *
- * STATUS: NON_MATCHING — split (jump-table) function scaffolded by
- * tools/split-scaffold.py. The #ifndef NON_MATCHING branch is the stub
- * (INCLUDE_ASM pieces + the jump-table pool as one static const array so
- * the .rodata carve has bytes); build the draft with `NON_MATCHING=AVCameraControl
- * ./Build`. On a full match, delete the guards and the _jtbl array.
+ * STATUS: MATCHING — 0x1F4 bytes plus the 9-word jump table.
+ *
+ * The 2/3 and 6/7 arms contain source-level GetMoveSpeed calls whose common
+ * call sequence is merged by cross-jump. The short `ry` needs two ordinary
+ * wide copies in the 2/3 arm: `move_base` preserves its signed extension,
+ * while `speed` preserves D_80097CC8's signed load. Both optimize away as
+ * storage, but without them cc1 uses modulo-short `lhu` arithmetic and
+ * coalesces the input/result into the wrong register.
  */
 
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/AVCameraControl", AVCameraControl);
+typedef struct
+{
+    long vpx, vpy, vpz;
+    long vrx, vry, vrz;
+    long rz;
+    void *super;
+} GsRVIEW2;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/AVCameraControl", switchD_800512b8__switchD);
+extern GsRVIEW2 ViewInfo;
+extern s16 CameraPanMode;
+extern s16 D_80097CC8;
+extern Humanoid *CameraTarget;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/AVCameraControl", switchD_800512b8__caseD_1);
+extern s32 SquareRoot0(s32 value);
+extern s16 GetDirection(s32 dx, s32 dz, s16 roty);
+extern void GetMoveSpeed(SVECTOR *vect, s16 ry, s16 ordr, s16 side);
+extern void Camera(void);
+extern void GsSetRefView2(GsRVIEW2 *view);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/AVCameraControl", switchD_800512b8__caseD_2);
+void AVCameraControl(void)
+{
+    SVECTOR vect;
+    long xx;
+    long zz;
+    long len;
+    short ry;
+    long move_base;
+    long speed;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/AVCameraControl", switchD_800512b8__caseD_4);
+    xx = ViewInfo.vpx - ViewInfo.vrx;
+    zz = ViewInfo.vpz - ViewInfo.vrz;
+    len = SquareRoot0(xx * xx + zz * zz);
+    ry = GetDirection(xx, zz, 0);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/AVCameraControl", switchD_800512b8__caseD_6);
+    switch (CameraPanMode)
+    {
+    case 0:
+        return;
+    case 1:
+        Camera();
+        return;
+    case 2:
+    case 3:
+        move_base = ry;
+        if (CameraPanMode == 2)
+        {
+            speed = D_80097CC8;
+            ry = move_base + speed;
+        }
+        else
+        {
+            speed = D_80097CC8;
+            ry = move_base - speed;
+        }
+        GetMoveSpeed(&vect, ry, len, 0);
+        goto apply_move;
+    case 4:
+    case 5:
+        ViewInfo.vpy += (CameraPanMode == 4) ? -D_80097CC8 : D_80097CC8;
+        break;
+    case 6:
+    case 7:
+        if (CameraPanMode == 6)
+        {
+            len -= D_80097CC8;
+        }
+        else
+        {
+            len += D_80097CC8;
+        }
+        GetMoveSpeed(&vect, ry, len, 0);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/AVCameraControl", switchD_800512b8__caseD_8);
+apply_move:
+        ViewInfo.vpx = ViewInfo.vrx + vect.vx;
+        ViewInfo.vpz = ViewInfo.vrz + vect.vz;
+        break;
+    case 8:
+        ViewInfo.vrx = CameraTarget->locate->vx;
+        ViewInfo.vry = CameraTarget->locate->vy - CameraTarget->height + 300;
+        ViewInfo.vrz = CameraTarget->locate->vz;
+        break;
+    }
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/AVCameraControl", switchD_800512b8__caseD_9);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/AVCameraControl", switchD_800512b8__caseD_0);
-
-/* jump-table pool @ 0x8001368c (9 words; tables at 0x8001368c) — stub-only, one array because the object has one .rodata section; the draft's compiled switch emits its own. */
-static const u32 AVCameraControl_jtbl[9] = {
-    0x80051404, 0x800512C0, 0x800512D0, 0x800512D0,
-    0x80051300, 0x80051300, 0x8005133C, 0x8005133C,
-    0x800513AC,
-};
-
-#else /* NON_MATCHING */
-/* Draft — turn this into matching C, then delete the #ifndef/#else/
-   #endif guards and the _jtbl array(s) above.  Reference: */
-// 
-// void AVCameraControl(void)
-// 
-// {
-//   short ry;
-//   long lVar1;
-//   int iVar2;
-//   int dx;
-//   short ordr;
-//   SVECTOR local_18;
-//   
-//   dx = ViewInfo.vpx - ViewInfo.vrx;
-//   iVar2 = ViewInfo.vpz - ViewInfo.vrz;
-//   lVar1 = SquareRoot0(dx * dx + iVar2 * iVar2);
-//   ordr = (short)lVar1;
-//   ry = GetDirection(dx,iVar2,0);
-//   switch(DAT_80097cca) {
-//   case 0:
-//     goto switchD_800512b8_caseD_0;
-//   case 1:
-//     Camera();
-//     return;
-//   case 2:
-//   case 3:
-//     if (DAT_80097cca == 2) {
-//       ry = ry + DAT_80097cc8;
-//     }
-//     else {
-//       ry = ry - DAT_80097cc8;
-//     }
-//     goto LAB_80051364;
-//   case 4:
-//   case 5:
-//     if (DAT_80097cca == 4) {
-//       iVar2 = -(int)DAT_80097cc8;
-//     }
-//     else {
-//       iVar2 = (int)DAT_80097cc8;
-//     }
-//     ViewInfo.vpy = ViewInfo.vpy + iVar2;
-//     break;
-//   case 6:
-//   case 7:
-//     if (DAT_80097cca == 6) {
-//       ordr = ordr - DAT_80097cc8;
-//     }
-//     else {
-//       ordr = ordr + DAT_80097cc8;
-//     }
-// LAB_80051364:
-//     GetMoveSpeed(&local_18,ry,ordr,0);
-//     ViewInfo.vpx = ViewInfo.vrx + local_18.vx;
-//     ViewInfo.vpz = ViewInfo.vrz + local_18.vz;
-//     break;
-//   case 8:
-//     ViewInfo.vrx = **(long **)(DAT_80097cc4 + 0x38);
-//     ViewInfo.vry = (*(int *)(*(int *)(DAT_80097cc4 + 0x38) + 4) -
-//                    (int)*(short *)(DAT_80097cc4 + 0xe)) + 300;
-//     ViewInfo.vrz = *(long *)(*(int *)(DAT_80097cc4 + 0x38) + 8);
-//   }
-//   GsSetRefView2(&ViewInfo);
-// switchD_800512b8_caseD_0:
-//   return;
-// }
-
-#endif /* NON_MATCHING */
+    GsSetRefView2(&ViewInfo);
+}
