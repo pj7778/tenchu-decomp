@@ -3938,6 +3938,17 @@ both final edges are plain moves. Capture any already-loaded pointer used after
 the fence in a short-lived local before it: otherwise the loop notes can turn a
 zero-code value fence into one extra reload, as the first AttackShort probe did.
 
+The same fence works for a nonzero signed return constant. SearchTarget assigns
+`-2` to an SImode local, narrows it through an HImode local, crosses the empty
+one-shot loop, and widens it in identical arms selected by an already-live
+`short` mode. No instruction from the fence survives, but the widened result is
+no longer tagged as the literal used by an earlier close-distance return.
+`jump2` therefore keeps the target's late passage-failure `j`/`li -2` island
+while folding the close return into its conditional branch. This removed the
+last extra instruction and all 88 differing bytes from the 1,128-byte function;
+use the round trip on the return whose island must survive, not necessarily on
+the first or zero-valued return.
+
 A producer can sit inside the fenced assignment's **comma RHS** when the
 residual is only instruction order: `do { table[1] = (offset = i * 4, 58); }
 while (0);`.  This keeps the literal definition and store on opposite sides of

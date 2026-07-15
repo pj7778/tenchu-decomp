@@ -40,38 +40,20 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — complete pure-C reconstruction, 1132 bytes versus
- * the 1128-byte target (283 versus 282 instructions).  The stack plan is
- * exact: frame 0x50, delta VECTOR at sp+0x10, position VECTOR at sp+0x20,
- * and passage SVECTOR at sp+0x30.
+ * STATUS: MATCHING — exact 1128-byte / 282-instruction pure-C match.
+ * The stack plan is frame 0x50, delta VECTOR at sp+0x10, position VECTOR at
+ * sp+0x20, and passage SVECTOR at sp+0x30.
  *
- * This checkpoint routes the two retail-shared height failures through the
- * late passage label and moves the close-distance failure to a final island.
- * That removes the former early skip island.  A distinct one-set
- * `initial_delta_y` producer also gives sched1 the adjusted priority needed
- * to emit the height load before the delta load.  Addresses now stay aligned
- * through 0x80028f40, and the guarded draft improves from 572 to 88 differing
- * bytes (40 to 17 aligned diff lines; fuzzy 98.05 to 98.76).
+ * The passage failure's SImode -2 is narrowed through `passage_pad`, crosses
+ * a zero-code loop fence, and is widened through identical arms.  This strips
+ * the literal equivalence until jump2 without emitting code, so retail's late
+ * `j`/`li -2` island survives while the close-distance return folds directly
+ * into its conditional branch.
  *
- * The remaining one-instruction excess is still terminal cross-jump layout:
- * jump2 selects the final close-distance copy, while retail retains the
- * passage-failure `j`/`li -2` island and folds the close-distance return into
- * its conditional branch.  RTL-guided named-label, guard inversion, and
- * zero-code loop-fence probes were flat; shared-result and preassigned-edge
- * identities regressed and were reverted.  There are no body scheduling,
- * semantic, stack-layout, or access-width residuals.
- *
- * Key recovered shapes: the three deltas must be one stack VECTOR (three
- * scalar locals color into s-registers and lose the retail frame plan);
- * `mode` is s16, whose repeated promotions create retail's mode-copy moves;
- * and the vertical adjustment needs distinct `initial_delta_y`, updated
- * `delta_y`, and `base_y` identities.  Reusing one variable collapses the
- * retail v1-to-a1 copy and renumbers the complete normalization loop.
+ * The three deltas must be one stack VECTOR; `mode` must remain s16 for the
+ * target's repeated promotion/copy chains; and the vertical adjustment needs
+ * distinct `initial_delta_y`, updated `delta_y`, and `base_y` identities.
  */
-
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SearchTarget", SearchTarget);
-#else
 
 typedef struct
 {
@@ -160,7 +142,7 @@ degree_done:
         {
             if (*distance < 4000)
             {
-                goto close_failure;
+                return -2;
             }
         }
     }
@@ -237,24 +219,33 @@ degree_done:
         if (GetAreaMapPassage(GlobalAreaMap, &vect, &svect, n) != 0)
         {
 passage_failure:
-            return -2;
+            {
+                s32 passage_raw;
+                s16 passage_pad;
+                s32 passage_result;
+
+                passage_raw = -2;
+                passage_pad = passage_raw;
+                do
+                {
+                } while (0);
+                if (mode != 0)
+                {
+                    passage_result = (s32)passage_pad;
+                }
+                else
+                {
+                    passage_result = (s32)passage_pad;
+                }
+                return passage_result;
+            }
         }
         return (*distance < searchsight[mode].clear_distance) ? 1 : 2;
     }
     return -1;
-close_failure:
-    return -2;
 }
 
-#endif
-
-// triage: HARD — 282 insns, mul/div, 3 loop, 3 callees, ~0.05 to GetDirection
-// likely-relevant cookbook sections:
-//   - Loops: 3 back-edge(s) — for/while/do vs goto shape
-//   - Expressions: mult/div — magic-multiply constants, fold
-
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
+// Historical Ghidra decompilation retained as a reconstruction reference:
 //
 //
 // /* WARNING: Type propagation algorithm not settling */
