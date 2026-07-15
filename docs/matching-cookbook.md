@@ -2215,6 +2215,21 @@ near entry; `AdtMessageBox` wants the inline form.)
   the read to `lhu`/`lh` and can merge it into a nearby case literal
   (ProcItemArrow). This is already mechanical through `type-width`: do not
   infer a local's width solely from the constants compared against it.
+- **An eliminated identical-arm capture can keep a stack word full-width until
+  a later high-half extraction.** In FUN_800519bc, the direct
+  `page = stack.word >> 16` collapsed to `lh` and made the exact-length draft
+  one instruction short. Capturing `stack.word` in an `s32`, then assigning the
+  same shifted value in both arms of a condition on an already initialized
+  strip width, survived long enough to retain `lw; nop; sra`; jump2 removed the
+  condition itself. A small nested fence on the width-dependent position
+  expression then restored the two saved-register homes. This is narrower than
+  making the stack access volatile, which changed block layout and length.
+- **Capture a narrow call result separately when its destination store must be
+  delayed across independent arithmetic.** Assigning GetTPage directly to the
+  sprite field stored it immediately. Keeping the `u16` result in a local,
+  loading the independent x base, and fencing only the eventual field store let
+  sched2 fill the load delay with the position shift and place the tpage store
+  at the retail boundary, without changing the call or value semantics.
 - The **cast type's alignment drives copy code**: `*(VECTOR *)a =
   *(VECTOR *)b` is a word block move (4×`lw`+4×`sw`, `$t2/$t3/$t4/$t1`
   rotation; a 0x50-byte struct assignment becomes the 16-bytes-per-iteration
