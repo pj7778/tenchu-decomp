@@ -16,7 +16,7 @@ leaves them next to the `.s` for you to read.
     tools/rtldump.py <Name> --pass all      # -da: every pass (loop, cse, flow, sched, reorg…)
     tools/rtldump.py <Name> --pass loop     # just loop.c (invariant hoisting: the .loop dump)
     tools/rtldump.py <Name> --pass greg,lreg,reorg,sched
-    tools/rtldump.py <Name> --draft         # compile the #else NON_MATCHING draft
+    tools/rtldump.py <Name> --draft         # REQUIRED for a guarded C draft
     tools/rtldump.py <Name> --lines         # + source-line-mapped object/disassembly
 
 The dumps land in <scratchpad>/rtl/<Name>/ ; the tool prints the paths and a legend.
@@ -115,6 +115,8 @@ def compile_rtl(name, passes=None, draft=False, src=None, debug_lines=False,
     src = src or os.path.join("src", "main.exe", name + ".c")
     if not os.path.exists(src):
         raise FileNotFoundError(src)
+    with open(src, errors="replace") as stream:
+        guarded_stub = "ifndef NON_MATCHING" in stream.read()
 
     want = list(passes or DEFAULT_PASSES)
     bad = [p for p in want if p not in PASS_FLAG]
@@ -159,7 +161,7 @@ def compile_rtl(name, passes=None, draft=False, src=None, debug_lines=False,
     dumps = sorted(os.path.join(outdir, f) for f in os.listdir(outdir)
                    if f.startswith(prefix))
     result = dict(outdir=outdir, preprocessed=ic, asm=sfile, dumps=dumps,
-                  stderr=err)
+                  stderr=err, guarded_stub=guarded_stub and not draft)
 
     if assemble:
         if not debug_lines:
@@ -212,6 +214,10 @@ def main() -> None:
         sys.exit(f"rtldump: {e}")
     outdir, sfile, err = result["outdir"], result["asm"], result["stderr"]
     dumps = [os.path.basename(p) for p in result["dumps"]]
+    if result["guarded_stub"]:
+        print(f"rtldump: WARNING: {args.name} is guarded; this run compiled the "
+              "INCLUDE_ASM stub, not its C draft. Re-run with --draft.",
+              file=sys.stderr)
     print(f"rtldump: {args.name}{' (draft)' if args.draft else ''} -> {outdir}")
     print(f"  asm:   {sfile}")
     print(f"  dumps: {', '.join(dumps) if dumps else '(none — check the pass names)'}")
