@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -37,13 +38,15 @@
  * END PSX.SYM */
 
 /*
- * CVAupdate (0x80050628) — TODO one-line description.
+ * CVAupdate (0x80050628) — interpret character-animation and camera events.
  *
- * STATUS: NON_MATCHING — split (jump-table) function scaffolded by
- * tools/split-scaffold.py. The #ifndef NON_MATCHING branch is the stub
- * (INCLUDE_ASM pieces + the jump-table pool as one static const array so
- * the .rodata carve has bytes); build the draft with `NON_MATCHING=CVAupdate
- * ./Build`. On a full match, delete the guards and the _jtbl array.
+ * STATUS: NON_MATCHING — full guarded semantic reconstruction. The draft is
+ * 2096/2104 bytes with fuzzy 89.14 (up from the scaffold's 6.65); all 19 calls
+ * and the physical CFG counts match (44 conditional branches, 13 jumps, two
+ * returns). The eight-byte extent residual is one case-2 scheduled load-delay
+ * nop and one loop-tail coalesced move; the wider residual is now register
+ * allocation. Build with `NON_MATCHING=CVAupdate ./Build`. On a full match,
+ * delete the guards and the _jtbl array.
  */
 
 #ifndef NON_MATCHING
@@ -77,240 +80,334 @@ static const u32 CVAupdate_jtbl[9] = {
 };
 
 #else /* NON_MATCHING */
-/* Draft — turn this into matching C, then delete the #ifndef/#else/
-   #endif guards and the _jtbl array(s) above.  Reference: */
-// 
-// short CVAupdate(void)
-// 
-// {
-//   short *psVar1;
-//   undefined4 uVar2;
-//   undefined4 uVar3;
-//   long lVar4;
-//   Humanoid *pHVar5;
-//   uchar *telop;
-//   short *psVar6;
-//   short sVar7;
-//   ModelType *pMVar8;
-//   VECTOR *pVVar9;
-//   HumanAnimType *pHVar10;
-//   ModelArchiveType *pMVar11;
-//   uint uVar12;
-//   int *piVar13;
-//   int iVar14;
-//   int iVar15;
-//   VECTOR local_30;
-//   
-//   if (*DAT_80097cbc != 1) {
-//     do {
-//       switch(*DAT_80097cbc) {
-//       case 0:
-//         if (DAT_80097cbc[5] == -1) {
-//           CdaStop();
-//         }
-//         break;
-//       case 2:
-//         pHVar5 = GetHumanoid(DAT_80097cbc[1]);
-//         iVar15 = 0;
-//         if (pHVar5 == (Humanoid *)0x0) {
-//           return 0;
-//         }
-//         pHVar5->attribute = pHVar5->attribute & 0xff7f;
-//         pHVar5->motion->mask = 0x7fff;
-//         pHVar10 = CVAhuman;
-//         do {
-//           if (pHVar10->human == (Humanoid *)0x0) break;
-//           iVar15 = iVar15 + 1;
-//           pHVar10 = pHVar10 + 1;
-//         } while (iVar15 < 5);
-//         if (iVar15 == 5) {
-//           SetNowMotion(pHVar5,0x501,1);
-//         }
-//         uVar2 = UnitVector._4_4_;
-//         sVar7 = UnitVector.vy;
-//         (pHVar5->vector).vx = UnitVector.vx;
-//         uVar3 = UnitVector._4_4_;
-//         (pHVar5->vector).vy = sVar7;
-//         UnitVector.vz = (short)uVar2;
-//         UnitVector.pad = SUB42(uVar2,2);
-//         sVar7 = UnitVector.pad;
-//         (pHVar5->vector).vz = UnitVector.vz;
-//         UnitVector._4_4_ = uVar3;
-//         (pHVar5->vector).pad = sVar7;
-//         pMVar8 = *pHVar5->model->object;
-//         pMVar8->attribute = pMVar8->attribute | 0x4000;
-//         pMVar11 = pHVar5->model;
-//         iVar15 = 0;
-//         if (0 < pMVar11->n) {
-//           do {
-//             pMVar11->object[iVar15]->attribute = pMVar11->object[iVar15]->attribute & 0xfffe;
-//             iVar15 = iVar15 + 1;
-//           } while (iVar15 < pMVar11->n);
-//         }
-//         if ((StagePlayer != pHVar5) && (pHVar5->life == -1)) {
-//           pHVar5->attribute = pHVar5->attribute | 4;
-//           pHVar5->life = pHVar5->lifemax;
-//         }
-//         psVar1 = DAT_80097cbc;
-//         if (DAT_80097cbc[5] != -1) {
-//           sVar7 = DAT_80097cbc[2];
-//           pHVar5->point[0] = sVar7 * 1000;
-//           pHVar5->locate->vx = sVar7 * 1000;
-//           pVVar9 = pHVar5->locate;
-//           iVar15 = psVar1[4] * 1000;
-//           pHVar5->point[1] = iVar15;
-//           pVVar9->vz = iVar15;
-//           iVar14 = psVar1[3] * 1000;
-//           lVar4 = GetAreaMapLevel(GlobalAreaMap,pHVar5->locate->vx,iVar14 + -1000);
-//           pHVar5->locate->vy = lVar4;
-//           iVar15 = pHVar5->locate->vy;
-//           if ((iVar14 < iVar15) || (iVar15 == -0x80000000)) {
-//             pHVar5->locate->vy = iVar14;
-//           }
-//           pHVar5->rotate->vy = DAT_80097cbc[5];
-//           UpdateCoordinate((ModelType *)pHVar5->model);
-//           iVar15 = pHVar5->locate->vy - StagePlayer->locate->vy;
-//           if (iVar15 < 0) {
-//             iVar15 = -iVar15;
-//           }
-//           if (20000 < iVar15) {
-//             pHVar5->attribute = pHVar5->attribute | 0x80;
-//           }
-//         }
-//         break;
-//       case 3:
-//         pHVar5 = GetHumanoid(DAT_80097cbc[1]);
-//         if (pHVar5 == (Humanoid *)0x0) {
-//           return 0;
-//         }
-//         if ((int)((uint)(ushort)DAT_80097cbc[2] << 0x10) >> 0x10 == -1) {
-//           pHVar5->life = -1;
-//           pHVar5->attribute = pHVar5->attribute & 0xfffbU | 0x82;
-//           pHVar5->motion->mid = -1;
-//           SetNowMotion(pHVar5,0,1);
-//           PlayMotion(pHVar5->motion,1);
-//           pHVar5->motion->count = pHVar5->motion->count + -1;
-//         }
-//         else {
-//           iVar15 = (int)((uint)(ushort)DAT_80097cbc[2] << 0x10) >> 0x18;
-//           if ((pHVar5->status == 0x11) && (1 < iVar15 - 0x10U)) {
-//             return 0;
-//           }
-//           if ((0 < pHVar5->life) && (iVar15 == 0x11)) {
-//             pHVar5->life = 0;
-//             ReqLifeBar(pHVar5);
-//           }
-//           psVar1 = DAT_80097cbc;
-//           iVar15 = 0;
-//           pHVar10 = CVAhuman;
-//           do {
-//             if (pHVar10->human == pHVar5) break;
-//             iVar15 = iVar15 + 1;
-//             pHVar10 = pHVar10 + 1;
-//           } while (iVar15 < 5);
-//           if (iVar15 == 5) {
-//             iVar15 = 0;
-//             pHVar10 = CVAhuman;
-//             do {
-//               if (pHVar10->human == (Humanoid *)0x0) break;
-//               iVar15 = iVar15 + 1;
-//               pHVar10 = pHVar10 + 1;
-//             } while (iVar15 < 5);
-//             if (iVar15 == 5) {
-//               return 0;
-//             }
-//           }
-//           pHVar5->motion->mid = -1;
-//           SetNowMotion(pHVar5,psVar1[2],1);
-//           PlayMotion(pHVar5->motion,1);
-//           psVar1 = DAT_80097cbc;
-//           pHVar5->motion->count = pHVar5->motion->count + -1;
-//           CVAhuman[iVar15].human = pHVar5;
-//           sVar7 = psVar1[3];
-//           if (psVar1[3] < 1) {
-//             sVar7 = 0x7fff;
-//           }
-//           CVAhuman[iVar15].loop = sVar7;
-//           sVar7 = psVar1[4];
-//           if (psVar1[4] == 0) {
-//             sVar7 = 0x501;
-//           }
-//           CVAhuman[iVar15].motid = sVar7;
-//           if ((pHVar5->type == 0xa7) && (psVar1[2] == 0x1100)) {
-//             SoundEx((VECTOR *)0x0,0x41);
-//           }
-//         }
-//         break;
-//       case 4:
-//         AVCameraSetup();
-//         DAT_80097ccc = 1;
-//         break;
-//       case 5:
-//         if (DAT_80097cbc[1] == 0) {
-//           ViewInfo.vrx = DAT_80097cbc[2] * 100;
-//           ViewInfo.vry = DAT_80097cbc[3] * 100;
-//           ViewInfo.vrz = DAT_80097cbc[4] * 100;
-//         }
-//         else {
-//           pHVar5 = GetHumanoid(DAT_80097cbc[5]);
-//           if (pHVar5 == (Humanoid *)0x0) {
-//             return 0;
-//           }
-//           ViewInfo.vrx = pHVar5->locate->vx;
-//           ViewInfo.vry = (pHVar5->locate->vy - (int)pHVar5->height) + 300;
-//           ViewInfo.vrz = pHVar5->locate->vz;
-//           DAT_80097cc4 = pHVar5;
-//         }
-//         GsSetRefView2(&ViewInfo);
-//         break;
-//       case 6:
-//         DAT_80097cca = DAT_80097cbc[1];
-//         DAT_80097cc8 = 0x14;
-//         if (DAT_80097cbc[5] != 0) {
-//           DAT_80097cc8 = DAT_80097cbc[5];
-//         }
-//         break;
-//       case 7:
-//         local_30.vx = DAT_80097cbc[2] * 10;
-//         local_30.vy = DAT_80097cbc[3] * 10;
-//         local_30.vz = DAT_80097cbc[4] * 10;
-//         if (DAT_80097cbc[1] == 1) {
-//           SetBlood(&local_30,(SVECTOR *)(int)DAT_80097cbc[5],0x1e,(short)DAT_80097cbc);
-//         }
-//         else if (DAT_80097cbc[1] == 3) {
-//           FUN_80038fdc((char)DAT_80097cbc[2],(char)DAT_80097cbc[3],(char)DAT_80097cbc[4],
-//                        (int)DAT_80097cbc[5]);
-//         }
-//         break;
-//       case 8:
-//         if (DAT_80097cbc[1] != -1) {
-//           telop = (uchar *)strcpy((char *)&DAT_800c2c50,(char *)(DAT_80097cb8 + DAT_80097cbc[1]));
-//           SetupTelop(telop);
-//           DAT_80097ccc = 1;
-//           if (((StageID != 10) || (PersistentState._4_1_ != '\0')) ||
-//              (uVar12 = (uint)DAT_800c2c50, ((&DAT_8008ffb9)[uVar12] & 4) == 0)) break;
-//           if (uVar12 == 0x30) {
-//             piVar13 = &DAT_800c2cb0;
-//             iVar15 = 0;
-//             do {
-//               iVar15 = iVar15 + 1;
-//               *(ushort *)(*piVar13 + 0x5a) = *(ushort *)(*piVar13 + 0x5a) | 1;
-//               piVar13 = piVar13 + 1;
-//             } while (iVar15 < 6);
-//           }
-//           else {
-//             *(ushort *)((&DAT_800c2cb0)[uVar12 - 0x31] + 0x5a) =
-//                  *(ushort *)((&DAT_800c2cb0)[uVar12 - 0x31] + 0x5a) & 0xfffe;
-//           }
-//         }
-//         DAT_800c2c50 = 0;
-//       }
-//       psVar6 = DAT_80097cbc + 6;
-//       psVar1 = DAT_80097cbc + 6;
-//       DAT_80097cbc = psVar6;
-//     } while (*psVar1 != 1);
-//   }
-//   return (ushort)(DAT_80097cbc[1] != 0);
-// }
+
+typedef struct
+{
+    s16 kind;
+    s16 mode;
+    s16 x;
+    s16 y;
+    s16 z;
+    s16 param;
+} CVAEvent;
+
+typedef struct
+{
+    Humanoid *human;
+    s16 loop;
+    s16 motid;
+} HumanAnimType;
+
+typedef struct
+{
+    long vpx, vpy, vpz;
+    long vrx, vry, vrz;
+    long rz;
+    void *super;
+} GsRVIEW2;
+
+typedef struct
+{
+    u8 pad[0x5A];
+    u16 attribute;
+} PositionalEntry;
+
+extern CVAEvent *CVAnow;
+extern u8 *CVAdata;
+extern HumanAnimType CVAhuman[5];
+extern GsRVIEW2 ViewInfo;
+extern SVECTOR UnitVector;
+extern Humanoid *StagePlayer;
+extern u32 *GlobalAreaMap;
+extern Humanoid *CameraTarget;
+extern s16 CameraPanMode;
+extern s16 D_80097CC8;
+extern s16 D_80097CCC;
+extern u8 D_800C2C50[];
+extern u8 D_8008FFB9[];
+extern u8 CHOSEN_CHARACTER;
+extern s32 StageID;
+extern PositionalEntry *TENCHU_POSITIONAL_DATA_AREA_[6];
+
+extern Humanoid *GetHumanoid(s16 type);
+extern s16 SetNowMotion(Humanoid *human, s16 mid, s16 move);
+extern s16 PlayMotion(MotionManager *motion, s16 mode);
+extern s32 ReqLifeBar(Humanoid *human);
+extern void CdaStop(void);
+extern long GetAreaMapLevel(void *area, long x, long y, long z, int mode);
+extern void AVCameraSetup(void);
+extern void GsSetRefView2(GsRVIEW2 *view);
+extern void SetBlood(VECTOR *pos, s16 n, s16 time);
+extern void FUN_80038fdc(u8 arg0, u8 arg1, u8 arg2, long arg3);
+extern char *strcpy(char *dst, const char *src);
+extern void SetupTelop(u8 *telop, s16 line);
+
+s16 CVAupdate(void)
+{
+    Humanoid *human;
+    HumanAnimType *anim;
+    HumanAnimType *anim_base;
+    ModelArchiveType *model;
+    CVAEvent *event;
+    CVAEvent *cursor;
+    VECTOR vect;
+    long level;
+    long y;
+    long delta;
+    long position;
+    s32 i;
+    s32 active_status;
+    s32 pan_value;
+    u32 packed;
+    s16 value;
+    u8 ch;
+
+    cursor = CVAnow;
+    if (cursor->kind != 1)
+    {
+        anim_base = CVAhuman;
+        do
+        {
+            switch (cursor->kind)
+            {
+            case 0:
+                if (CVAnow->param == -1)
+                    CdaStop();
+                break;
+
+            case 2:
+                human = GetHumanoid(CVAnow->mode);
+                if (human == 0)
+                    return 0;
+                i = 0;
+
+                human->attribute &= 0xFF7F;
+                human->motion->mask = 0x7FFF;
+                anim = anim_base;
+            scan_case2_empty:
+                if (anim->human == 0)
+                    goto scan_case2_done;
+                i++;
+                if (i < 5)
+                {
+                    anim++;
+                    goto scan_case2_empty;
+                }
+            scan_case2_done:
+                if (i == 5)
+                    SetNowMotion(human, 0x501, 1);
+
+                human->vector = UnitVector;
+                human->model->object[0]->attribute |= 0x4000;
+                model = human->model;
+                i = 0;
+                if (model->n > 0)
+                {
+                    do
+                    {
+                        model->object[i]->attribute &= 0xFFFE;
+                        i++;
+                    } while (i < model->n);
+                }
+
+                if (StagePlayer != human && human->life == -1)
+                {
+                    human->attribute |= 4;
+                    human->life = human->lifemax;
+                }
+
+                event = CVAnow;
+                if (CVAnow->param != -1)
+                {
+                    position = event->x * 1000;
+                    human->point[0] = position;
+                    human->locate->vx = position;
+                    position = event->z * 1000;
+                    human->point[1] = position;
+                    human->locate->vz = position;
+                    y = event->y * 1000;
+                    level = GetAreaMapLevel(GlobalAreaMap, human->locate->vx,
+                                            y - 1000, human->locate->vz, 0);
+                    human->locate->vy = level;
+                    if (y < human->locate->vy || human->locate->vy == (long)0x80000000)
+                        human->locate->vy = y;
+                    human->rotate->vy = CVAnow->param;
+                    UpdateCoordinate((ModelType *)human->model);
+                    delta = human->locate->vy - StagePlayer->locate->vy;
+                    if (delta < 0)
+                        delta = -delta;
+                    if (delta > 20000)
+                        human->attribute |= 0x80;
+                }
+                break;
+
+            case 3:
+                human = GetHumanoid(CVAnow->mode);
+                if (human == 0)
+                    return 0;
+
+                packed = (u32)(u16)CVAnow->x << 16;
+                active_status = 0x11;
+                if ((s32)packed >> 16 == -1)
+                {
+                    human->life = -1;
+                    human->attribute = (human->attribute | 0x82) & 0xFFFB;
+                    human->motion->mid = -1;
+                    SetNowMotion(human, 0, 1);
+                    PlayMotion(human->motion, 1);
+                    human->motion->count--;
+                }
+                else
+                {
+                    i = (s32)packed >> 24;
+                    if (human->status == active_status && (u32)(i - 0x10) > 1)
+                        return 0;
+                    if (human->life > 0 && i == 0x11)
+                    {
+                        human->life = 0;
+                        ReqLifeBar(human);
+                    }
+
+                    event = CVAnow;
+                    i = 0;
+                    anim = anim_base;
+                scan_case3_human:
+                    if (anim->human == human)
+                        goto scan_case3_human_done;
+                    i++;
+                    if (i < 5)
+                    {
+                        anim++;
+                        goto scan_case3_human;
+                    }
+                scan_case3_human_done:
+                    if (i == 5)
+                    {
+                        i = 0;
+                        anim = anim_base;
+                    scan_case3_empty:
+                        if (anim->human == 0)
+                            goto scan_case3_empty_done;
+                        i++;
+                        if (i < 5)
+                        {
+                            anim++;
+                            goto scan_case3_empty;
+                        }
+                    scan_case3_empty_done:
+                        if (i == 5)
+                            return 0;
+                    }
+
+                    human->motion->mid = -1;
+                    SetNowMotion(human, event->x, 1);
+                    PlayMotion(human->motion, 1);
+                    human->motion->count--;
+                    anim_base[i].human = human;
+
+                    value = CVAnow->y;
+                    if (CVAnow->y < 1)
+                        value = 0x7FFF;
+                    anim_base[i].loop = value;
+                    value = CVAnow->z;
+                    if (CVAnow->z == 0)
+                        value = 0x501;
+                    anim_base[i].motid = value;
+
+                    if (human->type == 0xA7 && CVAnow->x == 0x1100)
+                        SoundEx(0, 0x41);
+                }
+                break;
+
+            case 4:
+                AVCameraSetup();
+                D_80097CCC = 1;
+                break;
+
+            case 5:
+                event = CVAnow;
+                if (event->mode == 0)
+                {
+                    ViewInfo.vpx = event->x * 100;
+                    ViewInfo.vpy = event->y * 100;
+                    ViewInfo.vpz = event->z * 100;
+                }
+                else
+                {
+                    human = GetHumanoid(event->param);
+                    if (human == 0)
+                        return 0;
+                    ViewInfo.vpx = human->locate->vx;
+                    ViewInfo.vpy = human->locate->vy - human->height + 300;
+                    ViewInfo.vpz = human->locate->vz;
+                    CameraTarget = human;
+                }
+                GsSetRefView2(&ViewInfo);
+                break;
+
+            case 6:
+                event = CVAnow;
+                CameraPanMode = (u16)event->mode;
+                pan_value = 20;
+                if (event->param != 0)
+                    pan_value = event->param;
+                D_80097CC8 = pan_value;
+                break;
+
+            case 7:
+                event = CVAnow;
+                vect.vx = event->x * 10;
+                vect.vy = event->y * 10;
+                vect.vz = event->z * 10;
+                switch (event->mode)
+                {
+                case 1:
+                    SetBlood(&vect, event->param, 30);
+                    break;
+                case 3:
+                    FUN_80038fdc((u8)event->x, (u8)event->y,
+                                 (u8)event->z, event->param);
+                    break;
+                }
+                break;
+
+            case 8:
+                if (CVAnow->mode != -1)
+                {
+                    SetupTelop((u8 *)strcpy((char *)D_800C2C50,
+                                            (char *)CVAdata + CVAnow->mode), 0);
+                    D_80097CCC = 1;
+                    if (StageID != 10 || CHOSEN_CHARACTER != 0)
+                        break;
+
+                    ch = D_800C2C50[0];
+                    if ((D_8008FFB9[ch] & 4) == 0)
+                        break;
+
+                    i = ch - '0';
+                    if (i == 0)
+                    {
+                        do
+                        {
+                            TENCHU_POSITIONAL_DATA_AREA_[i]->attribute |= 1;
+                            i++;
+                        } while (i < 6);
+                    }
+                    else
+                    {
+                        TENCHU_POSITIONAL_DATA_AREA_[ch - '1']->attribute &= 0xFFFE;
+                    }
+                }
+                D_800C2C50[0] = 0;
+                break;
+            }
+
+            cursor = CVAnow + 1;
+            CVAnow = cursor;
+        } while (cursor->kind != 1);
+    }
+
+    return CVAnow->mode != 0;
+}
 
 #endif /* NON_MATCHING */
