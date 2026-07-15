@@ -39,12 +39,13 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — exact 548-byte extent, with 40 bytes still
+ * STATUS: NON_MATCHING — exact 548-byte extent, with 33 bytes still
  * different.  The persistent register assignment now matches retail
  * (mvp=$s0, pos=$s2, wide=$s7, x=$s6, y=$s3, z=$s5, raw mode=$s1,
  * cached mode=$s4, truncated mode=$fp), and the loop plus normal return path
  * are byte-exact.  Keep the INCLUDE_ASM guard: the remaining differences are
- * four localized scheduling groups in the setup and MIN early-return path.
+ * four localized scheduling/constant-equivalence groups in the setup and
+ * MIN early-return path.
  *
  * GetAreaMapVector (0x80019ea0) — probes the height at `pos` plus the height
  * of the 4 neighbouring cells listed in the static `direction` table
@@ -79,19 +80,23 @@
  *    two source identities. `rawmode = (mode2 = mode)` followed by identical
  *    `mode = rawmode` arms defeats copy propagation without leaving a branch;
  *    the loop then retains its in-loop `andi` on the cached value.
- *  - The identical wide/y assignment arms are allocation donors only. jump2
- *    removes them, while global allocation sees enough extra references to
- *    select the retail homes for wide, y, and the cached mode.
+ *  - The duplicated wide/y early-return tails are allocation donors only.
+ *    jump2 removes the redundant CFG, while global allocation sees enough
+ *    extra references to select the retail homes for wide, y, and the cached
+ *    mode. Duplicating the complete tail (rather than only `attrib = 2`) also
+ *    recovers retail's `li 2`/attrib-store ordering.
  *  - `initial_level` preserves the first call result for the early return;
  *    the normal height calculation deliberately re-reads `mvp->level`.
  *
  * THE RESIDUAL is limited to: setup loads ordered mode/y/z instead of y/z/mode;
  * the cached-mode move scheduled before rather than after the three Field*
  * loads; the FieldArea store and MIN `lui` exchanged; and the early-return
- * `li 2`/attrib store/result move ordered differently. One bounded 300-second
- * permuter run (~26k candidates) found the source-meaningful identity split
- * above but no zero. Guided autorules sweeps of 80 and 160 targeted fence,
- * boundary, field-store, temp, and type candidates found no path below 40.
+ * result folded to a fresh MIN `lui` instead of copied from the proven-equal
+ * `initial_level`. One bounded 300-second permuter run (~26k candidates) found
+ * the source-meaningful identity split above but no zero. Guided autorules
+ * sweeps of 80 and 160 targeted fence, boundary, field-store, temp, and type
+ * candidates; focused follow-up lifetime/CFG probes reached this 33-byte
+ * checkpoint but did not close the four remaining groups.
  */
 
 struct AreaNodeType;
@@ -160,20 +165,28 @@ long GetAreaMapVector(unsigned long *area, MapVectorEx *mvp, VECTOR *pos, long w
                 if (y != 0)
                 {
                     mvp->attrib = 2;
+                    mvp->angleH = 0xF;
+                    mvp->angleL = 0xF;
+                    mvp->vector = 0xF;
+                    return initial_level;
                 }
                 else
                 {
                     mvp->attrib = 2;
+                    mvp->angleH = 0xF;
+                    mvp->angleL = 0xF;
+                    mvp->vector = 0xF;
+                    return initial_level;
                 }
             }
             else
             {
                 mvp->attrib = 2;
+                mvp->angleH = 0xF;
+                mvp->angleL = 0xF;
+                mvp->vector = 0xF;
+                return initial_level;
             }
-            mvp->angleH = 0xF;
-            mvp->angleL = 0xF;
-            mvp->vector = 0xF;
-            return initial_level;
         }
     }
     else
