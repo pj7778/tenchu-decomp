@@ -73,8 +73,10 @@
  *
  * STATUS: NON_MATCHING — complete semantic C draft. It has the target's
  * 0x1a0 frame and exact stack layout, including the filename buffer, both
- * PARAM_ITEM_STAY records, and upper scalar locals. The draft is 2764 bytes,
- * 40 bytes longer than the 2724-byte split target; remaining work is codegen
+ * PARAM_ITEM_STAY records, and upper scalar locals. Demo SLD evidence restored
+ * the indexed construction-record and ornament loops. The draft is 2748 bytes
+ * (687 instructions), 24 bytes longer than the 2724-byte/681-instruction split
+ * target, with a 70.03 fuzzy score; remaining work is control-flow/regalloc
  * alignment rather than missing behavior. Build it with
  * `NON_MATCHING=LoadConstruction ./Build`. On a full match, delete the guards
  * and the stub-only _jtbl array.
@@ -242,6 +244,7 @@ extern void jt_init4(void);
 
 short LoadConstruction(u32 *data)
 {
+    WorldDataType *wlddt;
     long x;
     long y;
     long z;
@@ -256,23 +259,12 @@ short LoadConstruction(u32 *data)
         SystemOut(D_800120D8);
     memset(WorldMap, 0, sizeof(WorldMap));
 
+    nModel = 0;
+    scratch.stack.n = vsize(data) >> 5;
+    for (i = 0; i < scratch.stack.n; i++)
     {
-        WorldDataType *scan;
-
-        nModel = 0;
-        scratch.stack.n = vsize(data) >> 5;
-        i = nModel;
-        if (scratch.stack.n != 0)
-        {
-            scan = (WorldDataType *)data;
-            do
-            {
-                if (scan->type == 2)
-                    nModel++;
-                i++;
-                scan++;
-            } while (i < scratch.stack.n);
-        }
+        if (((WorldDataType *)data)[i].type == 2)
+            nModel++;
     }
 
     DisposeAreaMap(GlobalAreaMap);
@@ -344,22 +336,16 @@ short LoadConstruction(u32 *data)
     }
 
     {
-        int i;
         OrnamentType *model;
         ObjectSlotType **slot;
-        WorldDataType *cur;
 
-        i = 0;
-        cur = scratch.stack.wlddt;
-
-construction_loop:
-        if (i >= scratch.stack.n)
-            goto construction_done;
-
-        switch (cur->type)
+        wlddt = scratch.stack.wlddt;
+        for (i = 0; i < scratch.stack.n; i++)
         {
+            switch (wlddt[i].type)
+            {
     case 0:
-        sprintf((char *)scratch.name, D_80097A80, cur->data.name);
+        sprintf((char *)scratch.name, D_80097A80, wlddt[i].data.name);
         DisposeAreaMap(GlobalAreaMap);
         GlobalAreaMap = LoadAreaMap(
             (u32 *)PathFileRead((char *)ImagePath, (char *)scratch.name));
@@ -371,37 +357,50 @@ construction_loop:
         break;
 
     case 5:
-        sprintf((char *)scratch.name, D_80097A88, cur->data.name);
+        sprintf((char *)scratch.name, D_80097A88, wlddt[i].data.name);
         LoadTIMAndFree((u_long *)PathFileRead(D_800120F0, (char *)scratch.name));
         break;
 
     case 2:
-        if (cur->data.name[0] == 0)
-            model = CreateCloneOrnament(scratch.stack.wlddt[cur->ObjectID].data.model);
+        if (wlddt[i].data.name[0] == 0)
+            model = CreateCloneOrnament(
+                scratch.stack.wlddt[wlddt[i].ObjectID].data.model);
         else
         {
             model = D_80097A74->object[scratch.stack.ObjectID];
             scratch.stack.ObjectID++;
-            cur->data.model = model;
+            wlddt[i].data.model = model;
         }
 
-        model->locate.coord.t[0] = cur->x;
-        model->locate.coord.t[1] = cur->y;
-        model->locate.coord.t[2] = cur->z;
-        UpdateOrnament(model, cur->n);
+        model->locate.coord.t[0] = wlddt[i].x;
+        model->locate.coord.t[1] = wlddt[i].y;
+        model->locate.coord.t[2] = wlddt[i].z;
+        UpdateOrnament(model, wlddt[i].n);
 
-        if (cur->x >= 0)
-            x = cur->x / 16000;
-        else
-            x = cur->x / 16000 - 1;
-        if (cur->y >= 0)
-            y = cur->y / 16000;
-        else
-            y = cur->y / 16000 - 1;
-        if (cur->z >= 0)
-            z = cur->z / 16000;
-        else
-            z = cur->z / 16000 - 1;
+        {
+            long a = wlddt[i].x;
+
+            if (a >= 0)
+                x = a / 16000;
+            else
+                x = a / 16000 - 1;
+        }
+        {
+            long a = wlddt[i].y;
+
+            if (a >= 0)
+                y = a / 16000;
+            else
+                y = a / 16000 - 1;
+        }
+        {
+            long a = wlddt[i].z;
+
+            if (a >= 0)
+                z = a / 16000;
+            else
+                z = a / 16000 - 1;
+        }
 
         GetCenterAndSize(model->object.tmd, &scratch.center, &scratch.size);
         slot = &WorldMap[x & 7][y & 7][z & 7].top;
@@ -418,83 +417,78 @@ construction_loop:
         break;
 
     case 3:
-        BreedLife(cur->ObjectID, cur->x, cur->y, cur->z, cur->n);
-        cur++;
-        i++;
-        goto construction_loop;
+        BreedLife(wlddt[i].ObjectID, wlddt[i].x, wlddt[i].y,
+                  wlddt[i].z, wlddt[i].n);
+        break;
 
     case 11:
-        AddMisc(cur->data.misc[0], cur->data.misc[1], cur->data.misc[2],
-                cur->x, cur->y, cur->z, cur->n);
-        cur++;
-        i++;
-        goto construction_loop;
+        AddMisc(wlddt[i].data.misc[0], wlddt[i].data.misc[1],
+                wlddt[i].data.misc[2], wlddt[i].x, wlddt[i].y,
+                wlddt[i].z, wlddt[i].n);
+        break;
 
     case 4:
         memset(&scratch.tmp, 0, sizeof(scratch.tmp));
-        scratch.tmp.type = cur->ObjectID;
-        scratch.tmp.locate.vx = cur->x;
-        scratch.tmp.locate.vy = cur->y;
-        scratch.tmp.locate.vz = cur->z;
+        scratch.tmp.type = wlddt[i].ObjectID;
+        scratch.tmp.locate.vx = wlddt[i].x;
+        scratch.tmp.locate.vy = wlddt[i].y;
+        scratch.tmp.locate.vz = wlddt[i].z;
         scratch.param = scratch.tmp;
         ReqItemStay(&scratch.param);
         break;
+            }
         }
-
-        cur++;
-        i++;
-        goto construction_loop;
-
-construction_done:
-        ;
     }
-
-    sprintf((char *)scratch.name, D_80097A90);
-    vfree(scratch.stack.MapModel);
-    scratch.stack.MapModel = (u32 *)PathFileRead((char *)ImagePath, (char *)scratch.name);
-    scratch.stack.ix = (ParentingType *)(scratch.stack.MapModel + 2);
-    D_80097A70 = LoadOrnamentArchive(scratch.stack.MapModel, &World);
 
     {
         OrnamentType *model;
-        long i;
-        int objectOffset;
+        int i;
         ObjectSlotType **slot;
 
-        objectOffset = 0;
-        for (i = 0; i < D_80097A70->n; i++)
-        {
-            OrnamentType *entry;
+        sprintf((char *)scratch.name, D_80097A90);
+        vfree(scratch.stack.MapModel);
+        i = 0;
+        scratch.stack.MapModel =
+            (u32 *)PathFileRead((char *)ImagePath, (char *)scratch.name);
+        scratch.stack.ix = (ParentingType *)(scratch.stack.MapModel + 2);
+        D_80097A70 = LoadOrnamentArchive(scratch.stack.MapModel, &World);
 
-            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
-            entry->locate.coord.t[0] *= 10;
-            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
-            entry->locate.coord.t[1] *= 10;
-            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
-            entry->locate.coord.t[2] *= 10;
+        for (; i < D_80097A70->n; i++)
+        {
+            D_80097A70->object[i]->locate.coord.t[0] *= 10;
+            D_80097A70->object[i]->locate.coord.t[1] *= 10;
+            D_80097A70->object[i]->locate.coord.t[2] *= 10;
             scratch.stack.msize = scratch.stack.ix[i].parent * -14;
 
-            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
-            if (entry->locate.coord.t[0] >= 0)
-                x = entry->locate.coord.t[0] / 16000;
-            else
-                x = entry->locate.coord.t[0] / 16000 - 1;
-            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
-            if (entry->locate.coord.t[1] >= 0)
-                y = entry->locate.coord.t[1] / 16000;
-            else
-                y = entry->locate.coord.t[1] / 16000 - 1;
-            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
-            if (entry->locate.coord.t[2] >= 0)
-                z = entry->locate.coord.t[2] / 16000;
-            else
-                z = entry->locate.coord.t[2] / 16000 - 1;
+            {
+                long a = D_80097A70->object[i]->locate.coord.t[0];
 
-            entry = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
-            entry->object.attribute |= 0x400;
-            UpdateOrnament(entry, 0);
+                if (a >= 0)
+                    x = a / 16000;
+                else
+                    x = a / 16000 - 1;
+            }
+            {
+                long a = D_80097A70->object[i]->locate.coord.t[1];
+
+                if (a >= 0)
+                    y = a / 16000;
+                else
+                    y = a / 16000 - 1;
+            }
+            {
+                long a = D_80097A70->object[i]->locate.coord.t[2];
+
+                if (a >= 0)
+                    z = a / 16000;
+                else
+                    z = a / 16000 - 1;
+            }
+
+            D_80097A70->object[i]->object.attribute |= 0x400;
+            UpdateOrnament(D_80097A70->object[i], 0);
             slot = &WorldMap[x & 7][y & 7][z & 7].top;
-            model = *(OrnamentType **)((u8 *)D_80097A70->object + objectOffset);
+            model = D_80097A70->object[i];
             if (ModelSlot.n >= ModelSlot.max)
                 AdtMessageBox(D_800120C4);
             ModelSlot.slot[ModelSlot.n].model = model;
@@ -503,7 +497,6 @@ construction_done:
             ModelSlot.slot[ModelSlot.n].ShiftY = 0;
             *slot = &ModelSlot.slot[ModelSlot.n];
             ModelSlot.n++;
-            objectOffset += sizeof(OrnamentType *);
         }
     }
 
