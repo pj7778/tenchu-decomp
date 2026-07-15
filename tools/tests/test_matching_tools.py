@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import unittest
+import collections
 from unittest import mock
 import contextlib
 import io
@@ -171,6 +172,91 @@ class FunctionInventoryTests(unittest.TestCase):
 
         self.assertEqual(changed, 1)
         self.assertEqual(functions, {"RecoveredName": (0x80011000, 16)})
+
+    def test_datamatch_infers_dominant_data_relocation_from_unique_names(self):
+        psx = {
+            "One": {0x1000},
+            "Two": {0x2000},
+            # Duplicate statics must not calibrate the relocation.
+            "Me": {0x3000, 0x4000},
+        }
+        demo = {
+            "One": {0x1358},
+            "Two": {0x2358},
+            "Me": {0x3358, 0x4358},
+        }
+
+        self.assertEqual(
+            datamatch.infer_data_delta(psx, demo, min_anchors=2),
+            (0x358, 2, 2),
+        )
+
+    def test_datamatch_rejects_weak_or_nondominant_data_relocation(self):
+        with self.assertRaises(ValueError):
+            datamatch.infer_data_delta(
+                {"One": {0x1000}}, {"One": {0x1358}}, min_anchors=2
+            )
+        with self.assertRaises(ValueError):
+            datamatch.infer_data_delta(
+                {"One": {0x1000}, "Two": {0x2000}, "Three": {0x3000}},
+                {"One": {0x1358}, "Two": {0x2358}, "Three": {0x3468}},
+                min_anchors=2,
+                min_dominance=0.99,
+            )
+
+    def test_datamatch_synthesis_prefers_semantic_alias(self):
+        merged, pairs, addrs = datamatch.synthesize_demo_data_labels(
+            {},
+            {
+                0x1000: {
+                    "__data_org",
+                    "__text_objend",
+                    "UnitVector2",
+                    "vector.17",
+                }
+            },
+            0x358,
+        )
+
+        self.assertEqual(merged, {0x1358: {"UnitVector2"}})
+        self.assertEqual((pairs, addrs), (1, 1))
+
+    def test_datamatch_duplicate_static_requires_matching_translation_unit(self):
+        labels = {0x1358: {"CID"}}
+        by_name = {"CID": {0x1000, 0x2000}}
+        owners = {(0x1000, "CID"): {"INFOVIEW.C"}}
+
+        self.assertIsNone(
+            datamatch.resolve_data_name(0x1358, labels, by_name, 0x358)
+        )
+        self.assertIsNone(
+            datamatch.resolve_data_name(
+                0x1358, labels, by_name, 0x358, {"MEMCARD.C"}, owners
+            )
+        )
+        self.assertEqual(
+            datamatch.resolve_data_name(
+                0x1358, labels, by_name, 0x358, {"INFOVIEW.C"}, owners
+            ),
+            "CID",
+        )
+
+    def test_datamatch_reverse_uniqueness_uses_conflicting_raw_votes(self):
+        votes = {
+            0x80001000: collections.Counter({"Name": 2}),
+            0x80002000: collections.Counter({"Name": 1, "Other": 1}),
+        }
+        targets = {
+            (0x80001000, "Name"): {0x90001000},
+            (0x80002000, "Name"): {0x90001000},
+            (0x80002000, "Other"): {0x90002000},
+        }
+
+        clean, stats = datamatch.select_clean_votes(votes, targets)
+
+        self.assertEqual(clean, {})
+        self.assertEqual(stats["nonunanimous"], 1)
+        self.assertEqual(stats["reverse_conflicts"], 1)
 
     def test_xref_uses_current_c_names_with_ghidra_extents(self):
         with tempfile.TemporaryDirectory() as td:

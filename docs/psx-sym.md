@@ -201,10 +201,13 @@ each already taken by a local. Renaming the local first would unblock them.
 It rewrites **code only**. If a file's prose comment used the old name, fix it by hand
 — `--params` shows you exactly which functions changed.
 
-**The addresses in PSX.SYM are useless.** It describes an *earlier, lost build* —
-its `.text` starts at `0x8001387c`, the demo's own `PSX.EXE` at `0x8001389c`, and a
-constant `+0x20` shift only reconciles 85% of the functions. Names and types transfer;
-addresses do not.
+**PSX.SYM addresses are not retail addresses.** It describes an *earlier, lost
+build* — its `.text` starts at `0x8001387c`, the demo's own `PSX.EXE` at
+`0x8001389c`, and a constant `+0x20` shift only reconciles 85% of the functions.
+Names and types transfer to retail; addresses do not. There is one narrower and
+useful relationship: PSX.SYM's **data** addresses map to the demo `PSX.EXE` data
+addresses by a rigid relocation which `datamatch.py` infers and calibrates below.
+That still does not map either earlier build directly to retail.
 
 ## What survives the build gap
 
@@ -345,8 +348,31 @@ inserted/removed instructions don't shift the correspondence, and zips the refer
 sequences. Each zip is one vote that retail address X is the demo's symbol Y; a
 global touched by several known functions collects several independent votes.
 
+The committed demo Ghidra label export is lossy and used to make this stage look
+exhausted. PSX.SYM itself lists many data names that the export omitted, and the old
+loader also collapsed multiple labels at one address into one dictionary value.
+`datamatch.py` now recovers those mechanically:
+
+1. Build name-to-address sets on both sides, retaining aliases.
+2. Use only names unique in both images to infer `demo_addr - psxsym_addr`.
+3. Require at least 64 anchors and 99% agreement before doing anything. The current
+   inputs give **323/323 (100%) at `+0x358`**.
+4. Synthesize the omitted demo label/address pairs from that calibrated relocation.
+5. Drop linker-boundary aliases and compiler spellings such as `vector.17`.
+   A duplicated meaningful static such as `CID` is usable only when the referencing
+   function's original PSX.SYM translation unit selects the same definition.
+
+The relocation supplies a name on the **demo** side only. Retail addresses still
+come exclusively from aligned references inside independently named function pairs.
+For adoption, unanimity and reverse uniqueness are checked against every raw vote,
+not merely the already-unanimous subset. `--apply` refuses to write a table unless
+the relocation calibration clears its thresholds, at least 64 existing-name
+controls survive, and control precision is exactly 100%.
+
 A name is adopted only when every vote for X agrees, at least two *distinct*
-functions witness it, and no other address claims the name.
+functions witness it, and no other raw-vote address claims the name. Generated
+tables record the PSX.SYM address, demo address, and complete witness-function list,
+so each decision remains auditable.
 
 Control precision — retail addresses whose current name is itself a PSX.SYM name —
 is **100% (104/104)**. Note that the two apparent counter-examples in an earlier run
