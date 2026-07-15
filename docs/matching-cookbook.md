@@ -4700,13 +4700,16 @@ effectful expressions would change semantics.
   expanded helper body. vmemoryGC first replaced two textual vfree copies with
   one static inline helper, restoring the helper-formal/local identities and
   reducing its exact-length residual 241→96. Three nested zero-trip wrappers
-  around only the first call then weighted that expansion independently of the
-  second, moved the outer pt/header/complement-mask/size pseudos into their
-  target saved registers, and reduced 96→54 with no surviving loop. This is a
-  stronger and more local lever than wrapping the helper definition, which
-  would weight every expansion equally. Require repeated-inline source evidence
-  (vmemoryGC had repeated debug-local names), inspect both expanded `.greg`
-  ranges, and verify exact extent after each depth.
+  around only the first call then provided a useful provisional 96→54 result,
+  but later source-identity evidence made that broad weighting unnecessary:
+  PSX.SYM's one `$s1` `vmpt` is both the early allocation result and the final
+  split-tail pointer, while its one `$a3` `svhp` can be reused for the post-call
+  neighbour. Those two disjoint-range reuses plus a single narrow wrapper around
+  only the helper's header assignment reached an exact-length 12-byte residual.
+  Revisit broad call-site fences after a source-variable merge; the old weights
+  can become the cause of the next allocation cycle. Require repeated-inline
+  source evidence (vmemoryGC had repeated debug-local names), inspect both
+  expanded `.greg` ranges, and verify exact extent after each depth.
 - **A whole-block `if (X) {block} else {block}` with BYTE-IDENTICAL arms is a
   scheduling lever** (permuter-found; no statement reorder reaches it).
   Duplicating an interleaved multi-load sequence into both arms shifts cc1's
