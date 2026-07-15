@@ -13,14 +13,16 @@
  * END PSX.SYM */
 
 /* STATUS: NON_MATCHING — complete pure-C reconstruction at the exact target
- * length (1448 bytes / 362 instructions). The guarded draft differs in 199
- * linked bytes, with 60 aligned instruction lines in 25 blocks. Snapshotting
- * old_pad before its write lets the store fill the target branch delay slot.
- * Caching the full tpage word at the case-3 boundary also displaces the strip
- * width into target s3 and makes the large middle control-flow region exact.
- * Remaining differences are scheduling in the prologue, register allocation
- * and scheduling within the strip renderer, and the scroll adjustment.
- * Fuzzy: 87.29%. */
+ * length (1448 bytes / 362 instructions). The guarded draft differs in 118
+ * linked bytes, with 44 aligned instruction lines in 21 blocks; the structural
+ * view is 27 lines in 11 blocks. Snapshotting old_pad before its write lets the
+ * store fill the target branch delay slot. In the strip renderer, a distinct
+ * full-word tpage capture preserves retail's lw/nop/sra sequence, while the
+ * widened position carrier remains live across GetTPage and is destructively
+ * reused by the brightness ladder. Capturing the call result and xbase before
+ * their stores recovers the target load-delay schedule. Remaining differences
+ * are prologue scheduling, four small caller-register clusters, and the scroll
+ * adjustment's load order. Fuzzy: 90.88% (up from 87.29%). */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_800519bc", FUN_800519bc);
 #else
@@ -108,14 +110,17 @@ void FUN_800519bc(void)
     u16 previous_pad;
     s16 fade;
     s16 counter;
-    s16 position;
+    s32 position;
     s16 sequence;
     s32 fade_step;
     s32 adjusted;
     s16 strip_width;
     u16 strip_px;
+    s32 xbase_value;
+    u16 tpage_result;
     s32 intensity;
     s32 brightness;
+    s32 tpage_word;
     s32 tpage_value;
     s16 signed_width;
     s16 i;
@@ -223,23 +228,44 @@ void FUN_800519bc(void)
 
         case 3:
             counter = strip_width - 4;
-            signed_width = strip_width;
-            tpage_value = stack.tpage_base;
             do
             {
                 if (counter >= 0)
                 {
                     do
                     {
+                        tpage_word = stack.tpage_base;
+                    } while (0);
+                    if (strip_width != 0)
+                        tpage_value = tpage_word >> 16;
+                    else
+                        tpage_value = tpage_word >> 16;
+                    signed_width = strip_width;
+                    do
+                    {
                         sprite.u = counter << 2;
+                        position = counter;
+                        tpage_result = GetTPage(0, 0,
+                            tpage_value + position, 0x100);
                         do
                         {
-                            sprite.tpage = GetTPage(0, 0,
-                                (tpage_value >> 16) + counter, 0x100);
+                            do
+                            {
+                                do
+                                {
+                                    position = signed_width - position;
+                                } while (0);
+                            } while (0);
+                            xbase_value = stack.xbase;
+                            position *= 8;
+                            do
+                            {
+                                sprite.tpage = tpage_result;
+                            } while (0);
+                            position = xbase_value - position;
                         } while (0);
-                        position = stack.xbase -
-                            (signed_width - counter) * 8;
                         sprite.x = position;
+                        position = (s16)position;
                         if (position < -0xa0)
                         {
                             goto brightness_zero;
