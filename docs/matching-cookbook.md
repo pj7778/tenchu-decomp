@@ -2994,6 +2994,16 @@ hoist, one instruction short; AfsOpen). This is one of the two classes previousl
 reachable. Now matched by FOUR functions (FileRead, PrepareAccess, AfsOpen + …). Found by a *Sonnet* agent from `rtldump FileRead --draft` + reading
 local-alloc.c. Worth retrying `PrepareAccess`'s park with it.
 
+DrawTargetS supplies the adjacent aggregate-call variant. Its target duplicates
+`a0 = &line`, the narrowed priority in `a2`, and the OTable load in `a1` across
+two conditional arms, but shares the four halfword stores and `jal` after the
+join. Assign short-lived `p`, `ot`, and full-width call-priority carriers inside
+each arm, then write the aggregate fields and call once after the join. The
+branch-local definitions take the argument registers before cross-jump sees the
+common store/call suffix; spelling the call directly in each arm, or assigning
+all three arguments after the join, lets cc1 merge too much. Use this when the
+target's argument setup is duplicated but its physical call tail is not.
+
 ### When GE-ternary abs costs bytes elsewhere, absorb the cascade with a scratch reuse
 
 The GE-ternary abs fold (abssi2) is C-correct but can cost bytes elsewhere via a
@@ -4197,6 +4207,13 @@ before local-alloc, so the def is gone before it can bias anything.
   5 / 35, priority 2857; that produced target `$t0`/`$t1`. A shallower wrapper
   was insufficient. Confirm the exact threshold with
   `tools/regalloc.py <Name> --compare FIRST SECOND --enclosed-refs N`.
+  DrawTargetS shows why this can be a multi-value priority WINDOW rather than
+  one outrank test. Narrow wrappers around only the small-arm x/y/neary
+  expressions produced x=14222, y=14166, neary=10909, priority=7317, and
+  nearx=4000, assigning `$s0` through `$s4` in exactly that order. One fewer
+  neary wrapper left priority/neary swapped; one more put neary ahead of y.
+  Nest only the expressions named by `regalloc.py`, re-run after every depth
+  change, and require the optimized disassembly to contain no surviving loop.
 - **Keep the small scheduling levers around that weighted identical block.** A
   large literal written as `env = 0x6e0000; env |= 0x6e6e;` exposes separate
   `lui`/`ori` definitions that can straddle the vanished branch. Assigning a

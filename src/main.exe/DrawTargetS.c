@@ -28,52 +28,35 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 3 of 65 instructions short (structural, not a pure
- * register tie; see below).
- *
  * DrawTargetS (0x8003250c, 0x104 bytes) — draws a target-lock crosshair (an
  * X of two GsSortLine diagonals) centered at (x,y): a 40px cross when
  * `color`'s sign bit is set, a 4px cross otherwise. `z` is scaled to an OT
  * depth (>>2, clamped to [0,0x4E1]) for both line's sort priority.
  *
- * Matching notes (read the raw `.s`, not Ghidra — its rendering of the
- * clamp is misleading here):
- *  - The clamp is a plain 3-way `if/else if/else`, NOT Ghidra's nested
- *    "default 0x4e1, override if < 0x4e2": the asm's `bltz` guards a
- *    negative-goes-to-0 arm, then `slti a2,0x4e2` + `beqz` picks between
- *    "z" (in range) and "0x4e1" (too far) — three disjoint assignments,
- *    not a default+conditional-override.
+ * STATUS: MATCHING — exact 260-byte / 65-instruction pure C with the target
+ * 0x38 frame and line at sp+0x10.
+ *
+ * Matching notes:
+ *  - The clamp is the reversed nested conditional expression below. Compared
+ *    with a three-arm if/else ladder, `z >= 0x4e2` preserves the target's
+ *    explicit in-range jump and negative-zero island instead of folding zero
+ *    into the first branch's delay slot.
  *  - `color`'s r/g byte extraction uses a SIGNED shift (`sra`, matching a
  *    plain `long color >> N`), not Ghidra's `(uint)param_4 >> N` (which
  *    would compile to `srl`). Both truncate to the same byte once stored,
  *    but only the signed spelling reproduces the actual opcode.
- *  - The "big"/"small" corner offsets reuse x/y IN PLACE for one corner
- *    (matching PSX.SYM: x/y are the only named params, no separate
- *    "big"/"far" locals) and assign the OTHER corner into two fresh
- *    locals — never reassign x/y a second time.
- *
- * RESIDUAL: the target duplicates the FIRST GsSortLine call's argument
- * setup (`a0 = &line`, `a2 = otz & 0xffff`, `a1 = OTablePt` via lui/lw)
- * into BOTH branches of the `color < 0` if/else, interleaved with each
- * branch's own nearx/neary/x/y arithmetic — even though all three values
- * are IDENTICAL in both branches. The shared "sh" stores + `jal` after the
- * join stay merged (one copy). Writing the call once after a merged
- * if/else (this draft) OR duplicating the whole call statement in each
- * branch both get cc1 to MERGE that setup back into one shared copy
- * (cross-jump/tail-merging is insensitive to source-level duplication when
- * the generated code is byte-identical) — the target's non-merge implies
- * something in the ORIGINAL scheduling/allocation prevented the merge that
- * this draft's simpler live-range shape doesn't reproduce. Tried: single
- * merged call (shape wrong, ~127-byte diff); call duplicated per branch
- * with `short nearx,neary` (closest: 62/65 instructions, but a spurious
- * addiu-then-move "hop" through $v0/$v1 appears for nearx/neary instead of
- * the target's direct addiu into the final register); `long nearx,neary`
- * (removes the hop but drops to 58/65, worse). `tools/regalloc.py` shows a
- * clean 5-of-5 s0-s4 assignment (x,y,otz,nearx,neary) once the hop is
- * accepted — this is a structural/scheduling gap, not a same-length
- * register swap, so the permuter was not run (cookbook: it's reliable at
- * matched length, not for filling in missing instructions). Left at the
- * closest (62/65) draft below.
+ *  - `p`, `ot`, and `callpri` are branch-local call-argument carriers. They
+ *    put `&line`, the in-place u16 narrowing, and OTablePt into a0/a2/a1 in
+ *    both color arms while leaving the four line-coordinate stores and first
+ *    jal shared after the join. Long nearx/neary locals avoid the short
+ *    addiu-then-move hops; x/y still update in place as PSX.SYM suggests.
+ *  - The nested one-shot loops in the small arm emit no runtime branches.
+ *    Their loop notes give old cc1 the exact global-allocation priority
+ *    window: x=14222, y=14166, neary=10909, otz=7317, nearx=4000, producing
+ *    target homes s0/s1/s2/s3/s4 respectively.
+ *  - The call-site declaration takes a full-width priority because both arms
+ *    already narrow otz in place. This preserves the target's plain `move
+ *    a2,s3` at the second call instead of inserting a redundant mask.
  */
 /* GsLINE isn't in include/psxsdk/libgs.h (only the Gs types other TUs
  * needed are there); declared locally from reference/psxsym-types.h's
