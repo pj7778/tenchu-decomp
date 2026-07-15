@@ -43,6 +43,11 @@ typedef struct
 
 typedef struct
 {
+    TVoiceTable *entry[4];
+} TVoiceTableList;
+
+typedef struct
+{
     u8 minute;
     u8 second;
     u8 sector;
@@ -58,10 +63,7 @@ extern u8 *D_80097CA4;
 extern u8 *D_80097CA8;
 extern u8 *D_80097CAC;
 /* Per-language voice tables. */
-extern TVoiceTable *D_800134E0;
-extern TVoiceTable *D_800134E4;
-extern TVoiceTable *D_800134E8;
-extern TVoiceTable *D_800134EC;
+extern TVoiceTableList D_800134E0;
 
 /* INTRO/TORA voice tables + their filenames (id ranges [100,200)/[200,300)). */
 extern TVoiceTable D_8008E82C[];
@@ -83,6 +85,17 @@ extern void *memset(void *s, int c, u32 n);
 extern s32 CdPosToInt(CdlLOC *pos);
 extern void CdIntToPos(s32 n, CdlLOC *pos);
 extern int CdaPlayXA(u8 *fname, CdlLOC *start, CdlLOC *end, u8 channel, int mode);
+
+static inline void BuildVoiceLocation(CdlLOC *loc, u8 min, u8 sec)
+{
+    s32 pos;
+
+    memset(&loc->minute, 0, 4);
+    loc->minute = min;
+    loc->second = sec;
+    pos = CdPosToInt(loc);
+    CdIntToPos(pos * 2 + 0x96, loc);
+}
 
 /*
  * PlayVoice (0x8004eee4) — look up voice-clip `id` in one of several
@@ -112,30 +125,19 @@ extern int CdaPlayXA(u8 *fname, CdlLOC *start, CdlLOC *end, u8 channel, int mode
  *    `pbVar6 = pbVar5 + 6; pbVar5 = pbVar5 + 6;`, that a naive reading
  *    would collapse into one).
  *
- * STATUS: NON_MATCHING — 12 of 756 bytes short (186 vs target 189
- * instructions). The residual traces to the PROLOGUE's per-language table
- * setup, which the target compiles through an unusual ROUNDABOUT COPY:
- * it loads the 4 event-XA filename pointers (D_80097CA0/A4/A8/AC, gp-rel)
- * and stores them to the STACK SLOT THAT WILL LATER HOLD THE VOICE-TABLE
- * ARRAY (sp+0x28), then immediately reloads those same 4 words and
- * stores them into the FILENAME ARRAY's own slot (sp+0x18) — only THEN
- * does it load the 4 real voice-table pointers (D_800134E0/E4/E8/EC,
- * absolute — NOT gp-rel, confirmed too far from _gp) and store those into
- * sp+0x28. A direct `filenames[i] = D_80097CAx; tables[i] = D_800134Ex;`
- * (this draft) stores each value straight to its own final slot with no
- * detour, costing 3 instructions and rippling into a smaller frame (96 vs
- * target's 96 — matches) but a different register/stack-offset assignment
- * for everything downstream (confirmed: the dispatch and both loops'
- * bodies use different specific registers even where the CONTROL FLOW
- * shape is now proven right). Tried and rejected: swapping declaration/
- * assignment order of the two arrays (no effect on the roundabout shape);
- * C89 initializer-list spellings (`u8 *filenames[4] = {A,B,C,D};` /
- * `TVoiceTable *tables[4] = {E,F,G,H};` instead of separate assignment
- * statements) — this made it dramatically WORSE (816 vs target 756, 60
- * bytes over), so cc1 does NOT route non-constant array initializer lists
- * through a shared temp the way the target's roundabout copy would need;
- * whatever produces the target's shape is not simply "how the array gets
- * initialized" at the syntax level.
+ * STATUS: NON_MATCHING — exact target extent (756 bytes / 189 instructions),
+ * 190 differing bytes, fuzzy 74.60. Modeling D_800134E0 as one aggregate
+ * table list recovers the target's unusual roundabout stack copy for the
+ * four language filenames before the real table pointers overwrite the
+ * temporary slot. Keeping the CdlLOC construction in an inline helper also
+ * recovers the target's 96-byte frame and stack-address rematerialization.
+ * The dispatch and all three sentinel searches now have the target control-
+ * flow extent. The remaining gap is dominated by one cyclic saved-register
+ * assignment (filename/table/location lifetimes) plus instruction scheduling
+ * inside those loops. Splitting the search result from the final location
+ * gives the target's tail register roles but costs one instruction; keep this
+ * exact-length checkpoint until broader lifetime evidence resolves that
+ * tradeoff.
  */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PlayVoice", PlayVoice);
@@ -144,87 +146,105 @@ void PlayVoice(int id)
 {
     u8 *FileName;
     TVoiceTable *voice;
-    TVoiceTable *entry;
     u8 min;
     u8 sec;
+    TVoiceTable *loc;
+    TVoiceTable *cursor;
+    TVoiceTable *next;
+    u8 voice_id;
+    TVoiceTable **table_base;
+    u8 **filename_base;
+    u8 *filenames[4] = {
+        D_80097CA0,
+        D_80097CA4,
+        D_80097CA8,
+        D_80097CAC,
+    };
+    TVoiceTableList tables;
     CdlLOC start[2];
     CdlLOC end[2];
-    u8 *filenames[4];
-    TVoiceTable *tables[4];
 
-    filenames[0] = D_80097CA0;
-    filenames[1] = D_80097CA4;
-    filenames[2] = D_80097CA8;
-    filenames[3] = D_80097CAC;
-    tables[0] = D_800134E0;
-    tables[1] = D_800134E4;
-    tables[2] = D_800134E8;
-    tables[3] = D_800134EC;
-    memset(start, 0, 4);
-    memset(end, 0, 4);
+    tables = D_800134E0;
+    memset(&start[0].minute, 0, 4);
+    memset(&end[0].minute, 0, 4);
+    table_base = tables.entry;
+    filename_base = filenames;
 
-    if (id < 100)
+    if (id >= 100)
     {
-        voice = tables[CHOSEN_LANGUAGE];
-        FileName = filenames[CHOSEN_LANGUAGE];
-        entry = 0;
-        if (voice->id != 0xff)
-        {
-            do
-            {
-                entry = voice;
-                if (id == voice->id)
-                    break;
-                voice++;
-                entry = 0;
-            } while (voice->id != 0xff);
-        }
-    }
-    else
-    {
-        if (id < 200)
-        {
-            voice = D_8008E82C;
-            id -= 100;
-            FileName = D_80097C98;
-        }
-        else
+        if (id >= 200)
         {
             voice = D_8008E930;
             id -= 200;
             FileName = D_80097C9C;
         }
-        entry = 0;
+        else
+        {
+            voice = D_8008E82C;
+            id -= 100;
+            FileName = D_80097C98;
+        }
+        loc = 0;
         if (voice->id != 0xff)
         {
+            cursor = voice;
             do
             {
-                entry = voice;
-                if (id == voice->id)
+                voice_id = cursor->id;
+                next = cursor + 1;
+                loc = cursor;
+                if (id == voice_id)
                     goto found;
-                entry = voice + 1;
-                voice++;
-            } while (entry->id != 0xff);
-            entry = 0;
+                cursor = next;
+            } while (cursor->id != 0xff);
+            loc = 0;
+        }
+    }
+    else
+    {
+        voice = table_base[CHOSEN_LANGUAGE];
+        FileName = filename_base[CHOSEN_LANGUAGE];
+        loc = 0;
+        if (voice->id != 0xff)
+        {
+            cursor = voice;
+            voice_id = cursor->id;
+            do
+            {
+                next = cursor + 1;
+                loc = cursor;
+                if (id == voice_id)
+                    goto found;
+                cursor = next;
+                voice_id = cursor->id;
+                loc = 0;
+            } while (voice_id != 0xff);
         }
     }
 found:
-    if (entry == 0)
+    if (loc == 0)
     {
-        entry = D_80012CBC;
-        if (entry->id != 0xff)
+        voice = D_80012CBC;
+        if (voice->id != 0xff)
         {
+            cursor = voice;
+            voice_id = cursor->id;
             do
             {
-                if (id == entry->id)
+                next = cursor + 1;
+                if (id == voice_id)
+                {
+                    loc = cursor;
                     goto found2;
-                entry++;
-            } while (entry->id != 0xff);
+                }
+                cursor = next;
+                voice_id = cursor->id;
+            } while (voice_id != 0xff);
         }
-        entry = 0;
+        loc = 0;
     found2:
         FileName = D_80097CA0;
-        if (entry == 0)
+        if (loc == 0)
         {
             AdtMessageBox(D_800134F0, id);
             CdaStop();
@@ -238,23 +258,17 @@ found:
     SsSetMVol(0x7f, 0x7f);
     FUN_8004fbf4(min, min);
 
-    min = entry->min;
-    sec = entry->sec;
-    memset(start, 0, 4);
-    start[0].minute = min;
-    start[0].second = sec;
-    CdIntToPos(CdPosToInt(start) * 2 + 0x96, start);
+    min = loc->min;
+    sec = loc->sec;
+    BuildVoiceLocation(start, min, sec);
 
-    min = entry->endmin;
-    sec = entry->endsec;
-    memset(end, 0, 4);
-    end[0].minute = min;
-    end[0].second = sec;
-    CdIntToPos(CdPosToInt(end) * 2 + 0x96, end);
+    min = loc->endmin;
+    sec = loc->endsec;
+    BuildVoiceLocation(end, min, sec);
 
-    if (CdaPlayXA(FileName, start, end, entry->channel, 0) == 0)
+    if (CdaPlayXA(FileName, start, end, loc->channel, 0) == 0)
     {
-        AdtMessageBox(D_80013500, FileName, entry->channel, id);
+        AdtMessageBox(D_80013500, FileName, loc->channel, id);
     }
 }
 #endif /* NON_MATCHING */
