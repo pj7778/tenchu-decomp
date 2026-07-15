@@ -27,27 +27,9 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 10 of 356 bytes differ. Residual is the named
- * permuter-immune "la reload tie" (cookbook, Iteration protocol): the
- * address of the unnamed SVECTOR constant `D_80097C48` builds as
- * `lui v0,%hi / addiu t3,v0,%lo` (two registers) in the target, with an
- * unrelated independent instruction (`addiu s1,sp,24`, materializing
- * `&pos`, sp+0x18 per PSX.SYM) scheduled between the two halves; our build
- * instead puts both halves in ONE register (`lui t3,%hi / addiu t3,t3,%lo`)
- * with the independent instruction moved before instead of between.
- * Tried and reverted: swapping the `vec`/`pos` local declaration order
- * (worse, 40 bytes) and swapping the `vec = D_80097C48;` /
- * `pos.v{x,y,z} = m->{x,y,z};` statement order (worse, 22 bytes — reorders
- * the visible store sequence too). RE-CONFIRMED this session: `rtldump
- * --pass all` shows the constant's address is a single-block SImode pseudo
- * (defined and consumed with no intervening branch — NOT the documented
- * "block-crossing pseudo" pattern that `local-alloc.c`'s `combine_regs`
- * fix cracked for FileRead/PrepareAccess/AfsOpen, so that fix doesn't
- * apply here), and a bounded permuter run (240s, `-j4 --stop-on-zero`,
- * 27390 iterations) never beat the base score of 205 — confirms genuinely
- * flat, not under-searched. Per the cookbook, this exact tie class
- * (PrepareAccess, cd_open) has never been cracked by the permuter or by
- * source-shaping; parked as a confirmed member of it.
+ * STATUS: MATCHING — 356 bytes. Declaring the constant as an unknown-bound
+ * `SVECTOR` array and copying element zero makes cc1 materialize its address
+ * as the target's `lui v0,%hi` / `addiu t3,v0,%lo` register handoff.
  *
  * ProcMiscFire (0x8004d570, 0x164 bytes) — MISC_FIRE's ProcMisc* handler:
  * MM_CREATE arms a 10-tick fuse; every later message decrements it (once
@@ -73,13 +55,7 @@
  *    divide operates directly on $v0.
  */
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ProcMiscFire", ProcMiscFire);
-#else
-/* Draft — turn this into matching C, then delete the #ifndef/#else/#endif
-   guards. Reference: */
-
-extern SVECTOR D_80097C48;
+extern SVECTOR D_80097C48[];
 extern void SetExplosion(VECTOR *pos, SVECTOR *vel);
 extern void SetHinoko(VECTOR *pos, SVECTOR *vel, s32 n);
 extern void SetSmoke(VECTOR *pos, SVECTOR *vel, s32 n, s32 time);
@@ -107,7 +83,7 @@ do_check:
     m->count = m->count - 1;
     if (m->count < 1)
     {
-        vec = D_80097C48;
+        vec = D_80097C48[0];
         pos.vx = m->x;
         pos.vy = m->y;
         pos.vz = m->z;
@@ -124,4 +100,3 @@ do_check:
         SoundEx(&pos, 0x28);
     }
 }
-#endif /* NON_MATCHING */
