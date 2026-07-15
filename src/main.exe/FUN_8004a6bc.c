@@ -11,10 +11,7 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 84 of 212 bytes differ (whole-image count matches
- * the window count: 0 downstream drift, so the LENGTH is already exactly
- * right — this is a pure scheduling/statement-order residual, not a
- * structural one).
+ * STATUS: MATCHING — 212 bytes.
  *
  * FUN_8004a6bc (0x8004a6bc, 0xd4 bytes) — INFOVIEW.C: initializes two pairs
  * of life-bar element sprites (attribute 0x40000000 / 0x50000000 — likely
@@ -43,19 +40,19 @@
  * tried materializes `entry+5`/`entry+1` into its own register, 4 bytes /
  * 1 reg-pair too many); `T[i].f` keeps the loop's only address GIV at the
  * table base, matching the cookbook's "index the table" loop lever.
- * The second sprite's base (`&D_8008E41C + 0x24`, one GsSPRITE past the
- * first) is likewise a constant expression, not a separately named
- * variable, so loop.c hoists it on its own — matching the target's
- * precomputed `s5 = s4+0x24` loop invariant.
+ * Keeping the proven `LifeBarStyle` aggregate is also load-bearing: direct
+ * `frame`/`fill` indexing lets loop.c derive the target's one 0x50-byte style
+ * offset and hoist the two sprite bases (`s4` and `s5 = s4+0x24`). Flattening
+ * those fields into a raw sprite array leaves the right instructions but
+ * initializes the offset GIV too early in the prologue.
  *
- * Residual: correct length (212 bytes both), correct register SET (s0-s5
- * per tools/regalloc.py, matching target), but the target computes each
- * slot's address BEFORE evaluating GetImage's argument (and schedules the
- * loop counter's `+1` into the call's delay slot), while our draft
- * schedules the opposite way and ends up with a smaller declared local
- * frame (0x30 vs target's 0x50) despite the same register set. Permuter
- * run in progress (same-length residual — cookbook says try it, not park
- * it) via tools/permute.py FUN_8004a6bc.
+ * The otherwise-unused `image[25]` declaration accounts for the target's
+ * 0x20 bytes of local-frame space. This is source-backed rather than padding:
+ * PSX.SYM records that exact local name/type at sp+16 in the demo's combined
+ * InitializeInfoView, whose life-bar initialization loop was later split into
+ * this retail helper. Finally, assign `rotate` before `attribute` for the first
+ * sprite. cc1 then schedules the rotate load before the attribute constant and
+ * moves `i++` into GetImage's delay slot, exactly as in the target.
  */
 typedef struct
 {
@@ -65,44 +62,43 @@ typedef struct
     u8 pad[2];  /* +0x6 */
 } LifeBarSpriteEntry;
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8004a6bc", FUN_8004a6bc);
-#else
-extern GsSPRITE D_8008E41C[];
+typedef struct
+{
+    u16 base;
+    s16 scale;
+    s16 dx;
+    s16 dy;
+    GsSPRITE frame;
+    GsSPRITE fill;
+} TLifeBarStyle;
+
+extern TLifeBarStyle LifeBarStyle[2];
 extern LifeBarSpriteEntry D_8008E4B4[];
 extern GsIMAGE *GetImage(s32 id);
 extern void InitSprite(GsIMAGE *image, GsSPRITE *sprite);
 
 void FUN_8004a6bc(void)
 {
+    u8 image[25];
     GsSPRITE *slot;
     s32 tmp;
-    int off;
-    int idx;
     int i;
 
-    i = 0;
-    off = 0;
-    idx = 0;
-    do
+    for (i = 0; i < 2; i++)
     {
-        slot = (GsSPRITE *)((u8 *)D_8008E41C + off);
-        i = i + 1;
-        InitSprite(GetImage(D_8008E4B4[idx].imgA), slot);
+        slot = &LifeBarStyle[i].frame;
+        InitSprite(GetImage(D_8008E4B4[i].imgA), slot);
         slot->mx = 0;
         slot->my = 0;
+        slot->rotate = D_8008E4B4[i].rotate;
         slot->attribute = 0x40000000;
-        slot->rotate = D_8008E4B4[idx].rotate;
 
-        slot = (GsSPRITE *)((u8 *)D_8008E41C + 0x24 + off);
-        off = off + 0x50;
-        InitSprite(GetImage(D_8008E4B4[idx].imgB), slot);
+        slot = &LifeBarStyle[i].fill;
+        InitSprite(GetImage(D_8008E4B4[i].imgB), slot);
         slot->mx = 0;
         slot->my = 0;
-        tmp = D_8008E4B4[idx].rotate;
-        idx = idx + 1;
+        tmp = D_8008E4B4[i].rotate;
         slot->attribute = 0x50000000;
         slot->rotate = tmp;
-    } while (i < 2);
+    }
 }
-#endif
