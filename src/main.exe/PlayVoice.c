@@ -126,18 +126,21 @@ static inline void BuildVoiceLocation(CdlLOC *loc, u8 min, u8 sec)
  *    would collapse into one).
  *
  * STATUS: NON_MATCHING — exact target extent (756 bytes / 189 instructions),
- * 190 differing bytes, fuzzy 74.60. Modeling D_800134E0 as one aggregate
+ * 120 differing bytes, fuzzy 73.54. Modeling D_800134E0 as one aggregate
  * table list recovers the target's unusual roundabout stack copy for the
  * four language filenames before the real table pointers overwrite the
  * temporary slot. Keeping the CdlLOC construction in an inline helper also
  * recovers the target's 96-byte frame and stack-address rematerialization.
  * The dispatch and all three sentinel searches now have the target control-
- * flow extent. The remaining gap is dominated by one cyclic saved-register
- * assignment (filename/table/location lifetimes) plus instruction scheduling
- * inside those loops. Splitting the search result from the final location
- * gives the target's tail register roles but costs one instruction; keep this
- * exact-length checkpoint until broader lifetime evidence resolves that
- * tradeoff.
+ * flow extent. A jump2-erased identical-arm fence on the fallback hit keeps
+ * that extent exact while reducing the authoritative byte residual from 190
+ * to 120; the non-monotonic fuzzy score is only an instruction-sequence
+ * presentation heuristic. The remaining gap is dominated by one cyclic
+ * saved-register assignment (filename/table/location lifetimes) plus
+ * instruction scheduling inside those loops. Donating enough weight to fix
+ * that register cycle costs one instruction at the volume-clamp delay slot;
+ * keep this exact-length checkpoint until broader lifetime evidence resolves
+ * that tradeoff.
  */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PlayVoice", PlayVoice);
@@ -234,7 +237,14 @@ found:
                 next = cursor + 1;
                 if (id == voice_id)
                 {
-                    loc = cursor;
+                    if (loc != 0)
+                    {
+                        loc = cursor;
+                    }
+                    else
+                    {
+                        loc = cursor;
+                    }
                     goto found2;
                 }
                 cursor = next;

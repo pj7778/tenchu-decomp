@@ -4368,6 +4368,13 @@ before local-alloc, so the def is gone before it can bias anything.
   Absent source-level proof of initialization, restrict this lever to
   nonvolatile parameters: an arbitrary automatic local may be indeterminate at
   the artificial test.
+  A donor can also improve jump2/cross-jump layout without changing the final
+  hard register. PlayVoice duplicated its fallback-hit `loc = cursor` under an
+  initialized `loc` discriminator; the conditional vanished and the function
+  stayed exactly 756 bytes, while the authoritative residual fell 190→120 even
+  though `loc` remained in `$s1`. Its sequence-based fuzzy score fell
+  74.60→73.54 at the same time. Score these probes by exact extent and
+  `matchdiff` bytes, not only by the allocator assignment or fuzzy heuristic.
 - **An automatic local already read by an enclosing guard is also a safe
   ALLOCATION DONOR.** Reaching either arm proves the guard value was initialized
   and evaluated, so it can discriminate byte-identical assignments without an
