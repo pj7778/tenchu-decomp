@@ -2858,6 +2858,16 @@ the later `if`, crossing only call-free straight-line expression statements
 that do not mention the local. This keeps the original value's evaluation
 point and semantics.
 
+The builtin can also preserve a delay-slot `nop` that a manual sign-fix loses.
+`__builtin_abs` remains one `abssi2` RTL instruction through reorg and expands
+to `bgez; nop; negu` only afterward; a source-level `if (x < 0) x = -x` exposes
+the branch early enough for reorg to steal an independent preceding producer
+into its delay slot. FUN_80056910 needed the builtin specifically to keep its
+preceding sprite-address `addiu` in place and the target `nop` after `bgez`.
+When the abs instructions themselves agree but the instruction immediately
+before or inside their branch does not, compare `.dbr` rather than respelling
+unrelated surrounding statements.
+
 ### A conditional store via a pre-branch address copy is one assignment, conditional RHS
 
 `move $v0,$a0` in a branch delay slot feeding `sh …,0($v0)` means the source is ONE
@@ -4362,6 +4372,14 @@ before local-alloc, so the def is gone before it can bias anything.
   `lbu` field feeds a multiply, a full-width named temp can schedule the load
   early without the `andi 0xff` that an `u8` temp may introduce. These three
   source shapes were all required by ProcItemNemuri's exact case-2 schedule.
+- **A narrow field's first use can need a distinct one-use full-width carrier.**
+  `s32 initial_h = sp->h;` lets combine keep the `lhu` as an SI-producing load
+  and sched place an independent store between that load and its comparison.
+  Reusing the later `u16 h` may leave a load-delay `nop`, while moving that
+  narrow carrier earlier can require an extra `andi`. FUN_80056910 used the
+  full-width carrier only for its entry guard and retained the proven `u16`
+  field/local on the later loop path. Split by use site before changing a
+  structure field's correct width.
 - **Hoist a shared `result = 0;` default to the function's SINGLE entry, not
   per-branch** — reorg then folds that one store into the very first branch's
   delay slot, shared by every downstream path; writing it separately in each
