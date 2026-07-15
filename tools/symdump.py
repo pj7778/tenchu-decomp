@@ -260,8 +260,10 @@ def main() -> None:
                 " * Globals PSX.SYM types AND our decomp already names, with the RETAIL\n"
                 " * address.  Layouts come from the earlier build -- verify against\n"
                 " * tools/access.py before relying on a field offset.\n */\n\n")
+        emitted = set()
         for s2 in sorted(sf.syms, key=lambda x: x.addr):
-            if s2.addr <= TEXT_HI or s2.name in fnames or s2.name not in repo:
+            if (s2.addr <= TEXT_HI or s2.name in fnames or s2.name not in repo
+                    or s2.name in emitted):
                 continue
             d = dtype.get(s2.name)
             if d is None:
@@ -269,6 +271,7 @@ def main() -> None:
             where = statfile.get(s2.name)
             note = f"  /* 0x{repo[s2.name]:08x}" + (f", static in {where}" if where else "") + " */"
             f.write(f"extern {declare(d, s2.name, tagmap)};{note}\n")
+            emitted.add(s2.name)
             n += 1
     print(f"wrote psxsym-globals.h ({n} typed globals our decomp names)")
 
