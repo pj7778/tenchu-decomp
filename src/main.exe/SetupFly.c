@@ -32,33 +32,39 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — linked length 656 vs carve extent 664 (8 bytes / 2
- * instructions SHORT), plus register-coloring differences that cascade once
- * the length is off. Two distinct residuals, both codegen artifacts:
+ * STATUS: NON_MATCHING — 668 bytes / 167 instructions versus the 664-byte /
+ * 166-instruction target.  The 0x30 frame and s0-s5+ra save set are exact.
+ * This guarded checkpoint raises the authoritative fuzzy score from 38.79 to
+ * 55.26; asmdiff reports 79 displayed lines in 23 blocks (91 raw-aligned
+ * lines in 35 blocks; structural filter: 58 lines in 13 blocks).
  *
- * (1) LENGTH (the 2 missing instructions): the Y and Z "current point" jitter
- *     each compute `mid ± jitter` and the target DUPLICATES that add/subtract
- *     into BOTH conditional branches — the else branch (`jitter = -hx`) folds
- *     to a single `subu mid,hx`, the if branch stays `addu mid,jitter`, and
- *     because the two tails are now different instructions cc1 keeps them
- *     duplicated (2 extra insns vs our single post-merge store). Writing the
- *     store/value inside each branch (`if(...) v=mid-hx; else v=mid+...;`) DOES
- *     reproduce the duplication and fixes the length exactly (664), but then
- *     the extra per-branch pressure displaces `pfly` from $s2 to $s4 and the
- *     whole register map shifts (414 differing bytes) — strictly worse. The
- *     single-store form kept here is 8 short but 116 diffs. Neither is
- *     reachable to 0 from C: the duplication is cc1's cross-jump/combine
- *     interaction, not a source shape.
- * (2) REGISTER COLORING: even at the right length `pfly` colors to $s4, the
- *     target uses $s2 (yw and pfly swap their callee-saved slots). No source
- *     lever found; `regalloc.py` confirms both are only callee-saved because
- *     live across GetVectorDistance, and cc1's find_reg picks the number.
+ * Two pure-C source identities close the former whole-function coloring
+ * cascade.  `InitFly` keeps the initial copies and distance call behind one
+ * pointer-formal boundary.  Its nested single-trip `do` blocks optimize away,
+ * but give the original compiler enough loop-depth weight on selected `pfly`
+ * references to cross the allocator's 31-to-32 reference threshold.  `pfly`,
+ * `yw`, `time`, and the now-independent `len` consequently land in the
+ * target's s2, s3, s0, and a0.  Mutating the two magnitude parameters after
+ * the distance calculation prevents `len` from remaining live through the
+ * jitter calls.  `SubFlyJitter` makes the Y result a branch return value, so
+ * cc1 retains the target's duplicated subtract tails instead of merging them
+ * into one post-branch expression.
  *
- * Everything structural IS reproduced: 6-arg prototype, the mode/speed byte
- * stores, the `dist/time` speed clamp via the byte's own `& 0xff` truncation,
- * the pre-shifted hy and hy/2 asymmetric split, the X/Y/Z jitter polarity,
- * and `--expand-div` for the variable divisions. The permuter aborts on this
- * TU (rand() typemap gap) as with SetBlood/SetHinoko.
+ * The remaining one-instruction excess and register residue are coupled.
+ * Retail retains start/end in a1/a2 and fills three copy-load delay slots with
+ * the late `yw` and call-argument moves.  This candidate coalesces those
+ * pointers into a0/a1 in the prologue, leaving an extra load-use nop.  It also
+ * colors scaled `yh`/the X midpoint into s1/s5 instead of the target's s5/s1,
+ * and cross-jumps the symmetric X/Z jitter tails.  Pointer-formal variants for
+ * each axis, address-taken result helpers, and separate product temporaries
+ * were all bounded and rejected because they lost saved-register pressure or
+ * reduced the byte score.  No asm, register pinning, volatile access, or
+ * undefined-value fence is used.
+ *
+ * Everything structural is reproduced: the 6-arg prototype, mode/speed byte
+ * stores, the `dist/time` speed clamp through the byte's own `& 0xff`
+ * truncation, the pre-shifted hy and hy/2 asymmetric split, the X/Y/Z jitter
+ * polarity, and `--expand-div` for the variable divisions.
  *
  * Matching notes (all verified against the original bytes):
  *  - SetupFly's true arity is 6, not Ghidra's 4: the already-matched callers
@@ -99,27 +105,48 @@ extern int GetVectorDistance(VECTOR *v1, VECTOR *v2);
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupFly", SetupFly);
 #else
+
+static inline long InitFly(long *pfly, VECTOR *start, VECTOR *end)
+{
+    do
+    {
+        do
+        {
+            *((u8 *)pfly + 0x28) = 0;
+            pfly[0] = start->vx;
+        } while (0);
+        pfly[1] = start->vy;
+        pfly[2] = start->vz;
+        pfly[3] = end->vx;
+        pfly[4] = end->vy;
+        pfly[5] = end->vz;
+    } while (0);
+
+    return GetVectorDistance(start, end);
+}
+
+static inline long SubFlyJitter(long mid, long half, long range)
+{
+    if (0 < range)
+    {
+        return mid - (rand() % range + half);
+    }
+    return mid - half;
+}
+
 void SetupFly(long *pfly, VECTOR *start, VECTOR *end, s32 yw, s32 yh, s32 time)
 {
-    long v1;
+    long len;
     long v3;
-    long v7;
     long v8;
     long midx;
     long midy;
     long midz;
 
-    *((u8 *)pfly + 0x28) = 0;
-    pfly[0] = start->vx;
-    pfly[1] = start->vy;
-    pfly[2] = start->vz;
-    pfly[3] = end->vx;
-    pfly[4] = end->vy;
-    pfly[5] = end->vz;
-    v1 = GetVectorDistance(start, end);
+    len = InitFly(pfly, start, end);
     if (0 < time)
     {
-        *((u8 *)pfly + 0x24) = v1 / time;
+        *((u8 *)pfly + 0x24) = len / time;
         if ((*((u8 *)pfly + 0x24) & 0xff) != 0)
         {
             goto skip_default;
@@ -127,49 +154,46 @@ void SetupFly(long *pfly, VECTOR *start, VECTOR *end, s32 yw, s32 yh, s32 time)
     }
     *((u8 *)pfly + 0x24) = 1;
 skip_default:
-    v7 = v1 * (yw / 2);
+    yw = len * (yw / 2);
     *((u8 *)pfly + 0x25) = *((u8 *)pfly + 0x24);
-    if (v7 < 0)
+    if (yw < 0)
     {
-        v7 = v7 + 0xfff;
+        yw = yw + 0xfff;
     }
-    v1 = v1 * (yh / 2);
-    v7 = v7 >> 12;
-    if (v1 < 0)
+    yh = len * (yh / 2);
+    yw = yw >> 12;
+    if (yh < 0)
     {
-        v1 = v1 + 0xfff;
+        yh = yh + 0xfff;
     }
-    v1 = v1 >> 12;
+    yh = yh >> 12;
     midx = (pfly[0] + pfly[3]) / 2;
-    v8 = v7 << 1;
+    v8 = yw << 1;
     if (v8 < 1)
     {
-        v8 = -v7;
+        v8 = -yw;
     }
     else
     {
-        v8 = rand() % v8 - v7;
+        v8 = rand() % v8 - yw;
     }
     midy = (pfly[1] + pfly[4]) / 2;
-    v3 = v1 / 2;
-    v1 = v1 - v3;
+    v3 = yh / 2;
+    yh = yh - v3;
     pfly[6] = midx + v8;
-    if (0 < v1)
-    {
-        v3 = rand() % v1 + v3;
-    }
+    v3 = SubFlyJitter(midy, v3, yh);
     midz = (pfly[2] + pfly[5]) / 2;
-    v8 = v7 << 1;
-    pfly[7] = midy - v3;
+    v8 = yw << 1;
+    pfly[7] = v3;
     if (v8 < 1)
     {
-        v7 = -v7;
+        yw = -yw;
     }
     else
     {
-        v7 = rand() % v8 - v7;
+        yw = rand() % v8 - yw;
     }
-    pfly[8] = midz + v7;
+    pfly[8] = midz + yw;
     *((u8 *)pfly + 0x24) = *((u8 *)pfly + 0x24) - 1;
 }
 #endif
