@@ -589,6 +589,14 @@ plain C is the matched file.
   of separately carved case text islands. LoadConstruction's target order
   `0,5,2,3,11,4` cut its draft's structural block count substantially even
   though the table's numeric destinations remained value-indexed.
+- **Write a binary case arm in physical fallthrough order, even when that
+  makes the source predicate negative.** If retail emits `beqz value, cold`,
+  the normal body, an unconditional jump to the join, and then the cold body,
+  use `if (value != 0) { normal; } else { cold; }`. The logically equivalent
+  positive test can make gcc place the cold body on the fallthrough path and
+  invert the branch/join layout. `LoadConstruction`'s clone-or-use-loaded-model
+  arm measured this directly: the normal-first spelling reduced the structural
+  residual without changing its already-correct semantics or extent.
 - **A shared continuation may live physically inside a later case body.** A
   decompiler commonly lifts that multi-predecessor block out below the switch,
   but doing so moves the block after every case. ActSQUAT's cases 2 and 3
@@ -996,6 +1004,16 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
 - A hand-rolled `label: if (...) goto...` loop also keeps the top test but
   **loses hoisting** (no loop notes → loop.c skips it): magic divisors and
   invariant addresses get rematerialized per iteration. Wrong.
+- **A mask in the next axis test's branch delay slot usually comes from a
+  separate post-division assignment, not from the final array subscript.** For
+  repeated signed coordinate bucketing, spell `x &= mask;`, `y &= mask;`, and
+  `z &= mask;` immediately after their respective positive/negative division
+  ladders, then index with the already-masked values. Leaving `x & mask` only
+  in the final multidimensional address keeps all masks late and changes both
+  scheduling and saved-register reuse. `LoadConstruction` recovered the first
+  two retail delay-slot masks and substantially reduced its large case-2
+  residual this way. This is not a compiler barrier: an independent call can
+  still let the final mask move, so verify every axis in the emitted assembly.
 - **Repeated per-axis normalization usually has one shared loop, not nested
   component loops.** A decompiler may render `vx`, `vy`, and `vz` as successive
   nested tests/divisions because their branches rotate into one another. When
