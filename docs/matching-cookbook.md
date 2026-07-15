@@ -5172,17 +5172,32 @@ so an own-statement temp (`m = smoke->mode - 1;`) is needed to keep the literal 
 on x's side. (`SetSmoke`, whole outer loop. `-da` dumps the `.loop` numbers; `-dd` dumps
 reorg/dbr for delay-slot questions.)
 
-### The loop.c "unbiased giv + surviving counter" tie is unreachable from C
+### Recover an unbiased cursor plus surviving counter with a goto and explicit hoists
 
-When the target walks a strength-reduced pointer at NATURAL field offsets (unbiased) AND
-keeps an independent counter biv for a constant-bound top test, no single C loop spelling
-reproduces both: `items[i]` under `while(1){…;i++;}` gives the unbiased giv + hoisted
-bases but loop.c makes the giv a function of the counter and `maybe_eliminate_biv` DROPS
-the counter (pointer-bound exit); an explicit `it++` walking pointer keeps the counter as
-its own biv but biases the field offsets +stride and spends an extra callee-saved reg; a
-hand-rolled goto loop is unbiased but hoists nothing. The `.loop` dump names it
-("giv … mult N add (reg base)" then "biv M can be eliminated"). Same-length,
-permuter-immune -- park it (UpdateItemState).
+When the target walks a pointer at NATURAL field offsets (unbiased) AND keeps an
+independent counter for a constant-bound top test, structured C loops can force a false
+choice: `items[i]` gives the unbiased GIV, but loop.c derives it from the counter and
+`maybe_eliminate_biv` DROPS the counter; an explicit `it++` keeps the counter but loop.c
+biases the cursor to a frequently-used field and spends an extra callee-saved register.
+The `.loop` dump names both outcomes ("giv … mult N add (reg base)" and "biv M can be
+eliminated").
+
+There is a pure-C recovery: use a literal label/back-edge `goto`, keep the counter and
+walking pointer as separate locals, and explicitly cache every invariant base before the
+label in the target's preheader order.  The goto prevents loop.c from inventing or
+eliminating either induction variable, so the cursor retains natural offsets.  It also
+prevents automatic loop-invariant hoisting; the named preheader caches deliberately put
+those lost bases back.  UpdateItemState needed `i = 0; view = &ViewInfo; conflicts =
+ConflictObject; item = items;`, then a top test and literal `goto loop`; this changed its
+previous exact-length 293-byte residual into an exact 440-byte match.
+
+Two finishing details can follow from the same split.  If the target rematerializes the
+first access to a global but keeps a base for later fields, use the global directly for
+the first access and the cached pointer for the later ones.  If an indexed cached base
+leaves only a commuted `addu base,index` residual, form the address as an integer sum with
+the scaled index written first, then cast back to the pointer type; UpdateItemState's
+`(s32)idx * sizeof(*object) + (u32)conflicts` retained the target's
+`addu index,index,base` operand order.
 
 ## Dividing by a variable needs `--expand-div`
 
