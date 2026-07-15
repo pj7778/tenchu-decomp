@@ -45,27 +45,25 @@
  * "share one sign-extended pseudo" cookbook rule) recovers the target's
  * register-based `sll/sra` instead of a spurious `lh` reload.
  *
- * STATUS: NON_MATCHING — 149 of 240 bytes differ. Length is otherwise
- * exactly right (60 instructions both sides) EXCEPT for one still-missing
- * 2-instruction pattern that recurs at BOTH call sites (the non-loop block
- * and the loop body): before `UpdateSplineControl(spc)`, the target does
- * `move v0,key_reg; move a0,spc_reg; addiu v0,v0,8` (copy-then-add) where
- * this draft's cc1 fuses key+1 straight into `addiu v0,key_reg,8` (one
- * instruction, semantically identical, 2 shorter) because `spc` already
- * colors into $a0 from its very first use (the freed entry-argument
- * register) instead of $a1 the way the target's allocation does — so no
- * `move a0,a1` call-setup copy is ever needed, and the paired `move v0,v1`
- * doesn't appear either. Tried and falsified: reordering every statement
- * that touches `time`/`key`/`spc` relative to each other (4 orderings),
- * reassigning `key = key + 1` in place instead of `key + 1` inline, an
- * explicit `MotionDataType *motion = mmp->motion;` temp, a `do{}while(0)`
- * wrapper around the call block, and autorules' full local-type sweep (its
- * one non-reverted win, `t: int->s16`, is kept — its OTHER suggested win,
- * `time: short->s8`, was REJECTED per the cookbook's "don't narrow a proven
- * s16 field's access width" rule: it turns the target's `lhu` into a wrong
- * `lbu`). Needs a decomp.me/psyq4.3 session or a fresh idea for what forces
- * `spc` into $a1 (not $a0) from the start; not a register-swap tie the
- * permuter would crack (this is 4 whole instructions short, not same-length).
+ * STATUS: NON_MATCHING — 83 of 240 bytes differ, with the exact target extent
+ * (60 instructions) and physical branch/call inventory. The prior draft was
+ * 149/240 bytes different and scored 62.07%; this one scores 71.67%.
+ *
+ * The explicit byte offset recovers the target's loop arithmetic/order. At
+ * both UpdateSplineControl call sites, an identical-arm assignment into a
+ * block-local call alias preserves a separate source identity long enough to
+ * recover the missing call-setup/copy instruction count; cc1 removes the
+ * identical source branch, so no target-absent control flow survives. The
+ * one-shot wrapper around the loop call changes only allocator weighting.
+ *
+ * Remaining differences are coupled register allocation and scheduling. The
+ * target keeps the sign-extended time in s2, the loop counter in s0, the
+ * current key in a0, and the control pointer in a1. This draft colors those
+ * pseudos differently, moving the loop sign extension and consequently the
+ * load/store schedule. The demo-disc SetupSpline is useful negative evidence:
+ * its shorter 232-byte implementation passes the control pointer directly in
+ * a0 at both calls, so retail's extra copies are an allocator/source-identity
+ * change, not evidence for different pointer arithmetic or semantics.
  */
 extern void UpdateSplineControl(SplineControlType *spc);
 
@@ -87,18 +85,36 @@ void SetupSpline(MotionManager *mmp)
     t = time;
     spc->dd0.pad = time;
     if (t != 0) {
-        spc->key1 = key + 1;
-        UpdateSplineControl(spc);
+        SplineControlType *call_spc;
+
+        if (key != 0)
+            call_spc = spc;
+        else
+            call_spc = spc;
+        call_spc->key1 = key + 1;
+        UpdateSplineControl(call_spc);
     }
     for (i = 0; i < mmp->n; i++) {
-        key = mmp->motion->rotate[i];
-        spc = (SplineControlType *)mmp->control + i + 1;
+        MotionElementType *loop_key;
+        s32 control_offset;
+
+        control_offset = i * sizeof(SplineControlType) + sizeof(SplineControlType);
+        loop_key = mmp->motion->rotate[i];
+        spc = (SplineControlType *)((u8 *)mmp->control + control_offset);
         spc->dd0.pad = time;
-        spc->key0 = key;
-        if (t != 0) {
-            spc->key1 = key + 1;
-            UpdateSplineControl(spc);
-        }
+        spc->key0 = loop_key;
+        do {
+            if (t != 0) {
+                SplineControlType *call_spc;
+
+                if (loop_key != 0)
+                    call_spc = spc;
+                else
+                    call_spc = spc;
+                call_spc->key1 = loop_key + 1;
+                UpdateSplineControl(call_spc);
+            }
+        } while (0);
     }
 }
 #endif /* NON_MATCHING */
