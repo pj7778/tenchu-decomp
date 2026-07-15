@@ -59,42 +59,14 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — links 664 bytes vs the 660-byte target (1
- * instruction / 4 bytes LONG; ~52 differing lines, all register-numbering
- * cascade). Default build keeps the byte-identical INCLUDE_ASM stub.
+ * STATUS: MATCHING — pure C, all 660 bytes / 165 instructions exact.
  *
- * The C is believed SEMANTICALLY correct and structurally complete — frame
- * size (0x98), callee-saved count (s0-s5, mask 0xc0ff0000→retail 0x803f0000),
- * every call, every store/field, and the if/else polarity all match. The sole
- * residual is a deep register-allocation tie below the C level:
- *  - The four RotTrans output vectors' addresses (&vc @ sp+80, &vd @ sp+96)
- *    are passed to RotTrans AND then re-passed to FUN_80039ddc. cc1's cse2
- *    (which, unlike cse1, does not stop at loop/label boundaries and treats
- *    calls as not invalidating pseudo equivalences) folds each address into
- *    ONE callee-saved pseudo, so the FUN_80039ddc args become `move a0,s2`/
- *    `move a1,s1` off the held registers (+1 net move vs the target).
- *    The target instead re-materialises `addiu a0,sp,80`/`addiu a1,sp,96`
- *    FRESH — no CSE. There is no C spelling that reproduces the fresh
- *    recompute WITHOUT perturbing the 6-register colour:
- *      - the SetCameraMode `pv = &vc; pv = &vd; pv = 0;` eviction trick DOES
- *        break the CSE, but drops the allocation to 5 callee-saved regs
- *        (frame 0x90) — 1 instruction SHORT the other way (164 vs 165);
- *      - accessing `target` through a `GsRVIEW2 *tp` to force the s0=&target
- *        base the target uses adds a persistent `addiu s0,sp,16` (167);
- *      - plain `target`/no-pv keeps the right 6-reg colour and frame but the
- *        CSE (166).
- *    Every form is 1 instruction off; the target sits at an allocation point
- *    that none of {CSE, pv-evict, pointer-base} reaches. A 23000-iteration
- *    bounded decomp-permuter run never beat baseline (best score 1000).
- *  - Consequently the whole register file is renumbered by one downstream
- *    (campos→s3 vs target's s2, ref→s4 vs s3, ViewInfo bases reshuffled),
- *    which is why the differing-line count looks large despite the single
- *    structural delta. This is a genuine below-the-C-level cc1 global.c
- *    colouring choice (docs/matching-cookbook.md, RTL escalation §).
+ * TransformCameraPoint's pointer formal keeps the two expanded output
+ * addresses independent, so cc1 rematerializes &vc and &vd for the following
+ * FUN_80039ddc call. The late tp alias supplies the target's s0=&target base
+ * without extending its lifetime over the earlier calls. Spelling each
+ * component delta as -va + vb preserves the target's independent-load order.
  */
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/MakeCameraPosition", MakeCameraPosition);
-#else
 
 typedef struct
 {
@@ -142,9 +114,16 @@ extern s32 FUN_80039ddc(VECTOR *from, VECTOR *to, VECTOR *out, u32 flag);
 extern void AntiWall(GsRVIEW2 *vinfo, GsRVIEW2 *target);
 extern void MakeDifSub(VECTOR *src, VECTOR *target, VECTOR *dest, TMakeDifInfo *info);
 
+static inline void TransformCameraPoint(SVECTOR *point, VECTOR *result,
+                                        long *flag)
+{
+    RotTrans(point, result, flag);
+}
+
 s32 MakeCameraPosition(VECTOR *orgpos, SVECTOR *orgrot, SVECTOR *campos, GsRVIEW2 *ref)
 {
     GsRVIEW2 target;
+    GsRVIEW2 *tp;
     VECTOR va, vb, vc, vd;
     long flag[2];
     TCameraStatus *cs;
@@ -164,49 +143,49 @@ s32 MakeCameraPosition(VECTOR *orgpos, SVECTOR *orgrot, SVECTOR *campos, GsRVIEW
 
     RotTrans(campos, &va, flag);
     RotTrans(campos + 1, &vb, flag);
-    RotTrans(campos + 2, &vc, flag);
-    RotTrans(campos + 3, &vd, flag);
+    TransformCameraPoint(campos + 2, &vc, flag);
+    TransformCameraPoint(campos + 3, &vd, flag);
 
     fwRot = FUN_80039ddc(&vc, &vd, (VECTOR *)&target, 0);
 
-    d1 = (vb.vx - va.vx) * fwRot;
+    d1 = -va.vx;
+    d1 += vb.vx;
+    d1 *= fwRot;
     if (d1 < 0)
         d1 += 0xFFF;
-    d2 = (vb.vy - va.vy) * fwRot;
+    d2 = (-va.vy + vb.vy) * fwRot;
     target.vrx = (d1 >> 12) + va.vx;
     if (d2 < 0)
         d2 += 0xFFF;
-    d3 = (vb.vz - va.vz) * fwRot;
+    d3 = (-va.vz + vb.vz) * fwRot;
     target.vry = (d2 >> 12) + va.vy;
     if (d3 < 0)
         d3 += 0xFFF;
     target.vrz = (d3 >> 12) + va.vz;
 
     AntiWall(&ViewInfo, &target);
+    tp = &target;
 
     if (cs->CriticalHit == 1)
     {
-        ref->vpx = target.vpx - ViewInfo.vpx;
-        ref->vpy = target.vpy - ViewInfo.vpy;
-        ref->vpz = target.vpz - ViewInfo.vpz;
-        ref->vrx = target.vrx - ViewInfo.vrx;
-        ref->vry = target.vry - ViewInfo.vry;
-        ref->vrz = target.vrz - ViewInfo.vrz;
+        ref->vpx = tp->vpx - ViewInfo.vpx;
+        ref->vpy = tp->vpy - ViewInfo.vpy;
+        ref->vpz = tp->vpz - ViewInfo.vpz;
+        ref->vrx = tp->vrx - ViewInfo.vrx;
+        ref->vry = tp->vry - ViewInfo.vry;
+        ref->vrz = tp->vrz - ViewInfo.vrz;
         cs->CriticalHit = 0;
     }
     else
     {
-        MakeDifSub((VECTOR *)&ViewInfo.vrx, (VECTOR *)&target.vrx, (VECTOR *)&ref->vrx, &D_80089F10);
-        MakeDifSub((VECTOR *)&ViewInfo, (VECTOR *)&target, (VECTOR *)ref, &pnt);
+        MakeDifSub((VECTOR *)&ViewInfo.vrx, (VECTOR *)&tp->vrx, (VECTOR *)&ref->vrx, &D_80089F10);
+        MakeDifSub((VECTOR *)&ViewInfo, (VECTOR *)tp, (VECTOR *)ref, &pnt);
     }
 
     return fwRot;
 }
 
-#endif
-
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
+// Ghidra decompilation (reference):
 //
 //
 // void MakeCameraPosition(VECTOR *orgpos,SVECTOR *orgrot,SVECTOR *campos,SVECTOR *ref)
