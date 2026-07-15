@@ -30,10 +30,7 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 59 of 292 bytes differ (same LENGTH as target,
- * 73 instructions both sides); every branch/loop shape and field access
- * this function establishes is otherwise correct (independently proven —
- * see notes below).
+ * STATUS: MATCHED — exact retail bytes (292 bytes, 73 instructions).
  *
  * GetCommand (0x8001af14) — checks pad->stream[] (the recent-input ring,
  * newest first) against every entry in the global Command table (same
@@ -48,13 +45,12 @@
  *    jump.c elides the front test (i=0 provably true) and fuses the
  *    increment into the "go check the next entry" continuation, matching
  *    the asm computing `i+1` only as part of testing `Command[i+1]`.
- *  - Inner match loop is `do { if (cmd[j] != pad->stream[j]) break; j++; }
- *    while (cmd[j] != 0xFFFF);` — the post-loop `if (cmd[j] != 0xFFFF)
- *    continue;` reads the SAME `j` whether the loop exited via `break`
- *    (mismatch, j unchanged) or via the bottom test (full match, j already
- *    incremented past the last matched element) — both paths' "increment
- *    j" delay slot ALWAYS runs (MIPS branch-delay semantics), so a single
- *    post-loop re-read of `cmd[j]` is correct for both exits.
+ *  - Inner matching is a natural `for (j = 0; cmd[j] != 0xFFFF; j++)`.
+ *    That source form makes cc1 keep the initial sentinel test in the loop
+ *    preheader and materialize a separate 0xFFFF carrier for the backedge;
+ *    the resulting live ranges place `cmd`, `i`, and `pad` in the registers
+ *    recorded by PSX.SYM. Spelling this as an explicit guard plus do-while
+ *    merges the two sentinel identities and displaces those registers.
  *  - The shift loop is Ghidra's literal do-while (`j = 3; do {
  *    pad->stream[j] = pad->stream[j-1]; j--; } while (j > 0);`), not a
  *    `for` — matches the single post-decrement bottom test with no
@@ -62,35 +58,10 @@
  *  - The final return re-derives `Command[i]` fresh (`*(short *)Command[i]`)
  *    rather than reusing an `entry` variable — the asm reloads it by index
  *    at the return, not from a cached pointer.
- *
- * THE RESIDUAL: `i` (the outer loop counter, PSX.SYM's own reg $a2) lands
- * in `$a3` in our build and `$pad` lands in `$t1` instead of target's
- * `$t0` — a whole-function register-renumbering shift, not a structural
- * gap (matchdiff confirms the SAME 73-instruction length both sides).
- * The other real difference: right after computing `cmd` (entry+1), the
- * target materializes a SEPARATE `li $a3,0xffff` used only by the inner
- * loop's own bottom test (a DIFFERENT register from the `$t1` used for the
- * entry `cmd[0]==0xFFFF` guard and the final post-loop check) — our build
- * reuses one shared register for all three 0xFFFF comparisons instead.
- * Tried: a named `u16 term = 0xFFFF;` assigned just inside the `if
- * (cmd[0] != 0xFFFF)` guard and read only in the loop's `while` — this
- * DID force a second register, but regressed badly (59 -> 192 bytes,
- * whole different instruction selection cascade) — the original's split
- * is not simply "the same value written twice in source" the way the
- * cookbook's shared-constant rule usually captures; something about
- * *which* register the split constant defaults to (not necessarily $a3)
- * or *when* it's materialized relative to the loop's own back-edge
- * differs from what a plain local variable produces. A `do{}while(0)`
- * wrapper around the inner match loop (the usual regalloc lever) had
- * zero effect. Not resolved this session; the register split looks like
- * it needs a lever this cookbook doesn't have a rule for yet.
  */
 
 extern u16 *Command[];
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GetCommand", GetCommand);
-#else
 short GetCommand(PADtype *pad)
 {
     u16 *cmd;
@@ -100,19 +71,13 @@ short GetCommand(PADtype *pad)
     for (i = 0; Command[i] != 0; i++)
     {
         cmd = Command[i] + 1;
-        j = 0;
-        if (cmd[0] != 0xFFFF)
+        for (j = 0; cmd[j] != 0xFFFF; j++)
         {
-            do
-            {
-                if (cmd[j] != pad->stream[j])
-                    break;
-                j++;
-            } while (cmd[j] != 0xFFFF);
-
-            if (cmd[j] != 0xFFFF)
-                continue;
+            if (cmd[j] != pad->stream[j])
+                break;
         }
+        if (cmd[j] != 0xFFFF)
+            continue;
 
         j = 3;
         do
@@ -125,4 +90,3 @@ short GetCommand(PADtype *pad)
     }
     return 0;
 }
-#endif
