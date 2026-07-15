@@ -123,10 +123,6 @@
 extern s32 abs(s32 x);
 extern void ApplyRotMatrix(SVECTOR *v, VECTOR *out);
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/IsVisible", IsVisible);
-#else
-
 int IsVisible(s32 x, s32 y, s32 z, s32 s)
 {
     s32 *view;
@@ -170,15 +166,15 @@ int IsVisible(s32 x, s32 y, s32 z, s32 s)
     fail = 0;
     iVar2 = abs(q0);
     if (iVar4 + 0xA0 < iVar2)
-    {
-        fail = 1;
-    }
-    else
-    {
-        iVar1 = abs(q2);
-        if (iVar4 + 0x78 < iVar1)
-            fail = 1;
-    }
+        goto failed;
+
+    iVar1 = abs(q2);
+    if (iVar4 + 0x78 < iVar1)
+        goto failed;
+    goto done;
+
+failed:
+    fail = 1;
+done:
     return !fail;
 }
-#endif
