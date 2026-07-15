@@ -12,10 +12,9 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 33 of 248 bytes differ (whole-image count is a
- * fixed offset above that, from the other in-progress NON_MATCHING file in
- * this batch, FUN_8004a6bc — not from this function drifting downstream:
- * the length matches exactly, 248 bytes both).
+ * STATUS: NON_MATCHING — 16 of 248 linked and whole-image bytes differ. The
+ * candidate has the target's exact 62 instructions and optimized CFG: 4
+ * conditional branches, 1 unconditional jump, no calls, and 1 return.
  *
  * FUN_8003944c (0x8003944c, 0xf8 bytes) — EFFECT.C effect-pool allocator:
  * same EffectSlot[200] round-robin search as SetSplash/SetFrame/SetBleed/
@@ -38,20 +37,17 @@
  * previously unnamed alignment padding, but this function's `sb` store
  * there is a genuine write, not an artifact.
  *
- * Residual: field STORE order matches Ghidra's rendering exactly (pz, vy,
- * vz, scale, [rotate read but not yet stored — same "read early value,
- * store late" idiom as `py`], time, vx, unk22, bright, mode, py, rotate),
- * and the register set/length already match — but cc1's scheduler pushes
- * the scale-store+rotate-load PAIR later (next to the mode/py stores)
- * than the target (which places that pair right after `vz`, before
- * time/vx). Tried: an explicit `rot` temp at several statement positions,
- * reordering vx/time, autorules (no improving type edit) — all
- * byte-identical residual. This is a pure list-scheduling tie, not a
- * source-shape difference tools/autorules.py or manual reordering can
- * reach; `tools/permute.py FUN_8003944c` errored ("does not contain any
- * function") on its pycparser preprocessing pass rather than running —
- * a tooling gap worth fixing centrally, not something to work around by
- * hand here.
+ * A weight-free empty one-shot loop immediately after the scale assignment
+ * fixes the old scheduler island: cc1 now loads the stack argument, preserves
+ * the target load-delay `nop`, stores scale, and restores the exact extent.
+ * The remaining three aligned lines are only the rotate producer: retail
+ * loads it immediately after scale and keeps it in $v1 until the return delay
+ * slot; this draft sinks that same load to just before the final stores.
+ * Empty and weighted producer boundaries were flat. An erased identical-arm
+ * use and a redundant early rotate store loaded it at function entry and
+ * disturbed the whole allocation, so they were rejected. Keep the guarded
+ * 16-byte checkpoint; revisit the rotate lifetime only after the requested
+ * untouched/zero-percent target pool.
  */
 extern void DrawImpact(TEffectSlot *ef);
 
@@ -110,6 +106,8 @@ found:
     pp->vy = param_7;
     pp->vz = param_8;
     pp->scale = param_5;
+    do {
+    } while (0);
     rot = param_6;
     pp->vx = param_4;
     pp->time = param_3;
