@@ -4533,15 +4533,25 @@ effectful expressions would change semantics.
   to a 664-byte pure-C exact match. Keep width experiments subordinate to
   proven data types: an autorules `s16` midpoint scored well but was invalid
   because both VECTOR inputs and the midpoint arithmetic are full-width.
-- **A better structural or fuzzy score can still be a worse exact linked
-  checkpoint when one early schedule shift moves a long aligned region.** In
-  BreedLife, combining a single-load first search, explicit table/name aliases,
-  the retail-shaped type tail, and a direct map argument reached 87.26 fuzzy
-  with fewer residual lines, but 475 exact linked bytes differed. The simpler
-  exact-length one-shot tail fence scored only 76.43 fuzzy yet left 305 linked
-  bytes, so it is the bankable checkpoint. Use the broad form as source-identity
-  evidence, not as progress, until its early address schedule is repaired; the
-  linked whole-function comparison remains the gate.
+- **A retained base and an advancing walker may need distinct source identities
+  even when both begin at the same array.** In BreedLife, keeping `base =
+  HumanData` beside `search = base`, then spelling the current-row load at the
+  top and the next-row sentinel as the loop condition, stopped cc1 from
+  rematerializing the table after the search. It also recovered the target's
+  load/branch cadence and reduced the exact linked residual from 305 to 282
+  bytes. Reusing only the walker loses the original base; indexing the global
+  again hides that loss behind a later `lui`/`addiu` pair.
+- **If a target-shaped CFG is one instruction too long, use only an initialized,
+  already-valid value as a bounded extent donor.** BreedLife's explicit
+  high/low tail recovered the target's 15 conditional branches and two jumps,
+  while a separately captured high attribute let sched fold two instructions.
+  A single volatile read of the already-written `human->point[0]` field restored
+  the exact 628-byte extent after the direct map argument removed its stale
+  saved-register move, cutting the authoritative residual to 214 bytes and
+  raising fuzzy to 84.08. Taking the address of a stack parameter instead was
+  not equivalent codegen: it forced an eager entry load and added two
+  instructions. Restrict this lever to initialized storage, inspect the whole
+  object for address-taken fallout, and keep `matchdiff` authoritative.
 - **Global-alloc priority is floor_log2(n_refs)·n_refs/live_length·10000·size,
   ties by pseudo number** (global.c allocno_compare; flow adds loop_depth
   per ref). cc1's `-da` dump prints each pseudo's refs/length and the

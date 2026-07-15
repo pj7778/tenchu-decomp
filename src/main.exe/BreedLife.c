@@ -37,34 +37,36 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 305 of 628 bytes differ, down from 451; the extent
+ * STATUS: NON_MATCHING — 214 of 628 bytes differ, down from 451; the extent
  * remains exact at 628 bytes / 157 instructions and the fuzzy score improved
- * from 57.32 to 76.43. The target and candidate now both use a 0xA8-byte
+ * from 57.32 to 84.08. The target and candidate now both use a 0xA8-byte
  * frame with $s0-$s7 (the old draft unnecessarily consumed $s8). Their
  * physical CFG counts also agree for conditional branches (15/15), calls
- * (9/9), and returns (1/1); the candidate still has one unconditional jump
- * where the target has two. `asmdiff -n --structural` reports 46
- * length-changing lines in 16 displayed blocks (60 raw aligned lines in 24
- * blocks), so the residual is not being misreported as a pure register tie.
+ * (9/9), returns (1/1), and unconditional jumps (2/2).
+ * `asmdiff -n --structural` reports 38 length-changing lines in 13 displayed
+ * blocks (52 raw aligned lines in 23 blocks), so the residual is not being
+ * misreported as a pure register tie.
  *
- * A jump2-erased one-shot loop around the type-special-case tail changes no
- * emitted branch or behavior, but its loop note raises the tail's allocation
- * weight enough to keep the loaded model in retail's $s2. This reduces the
- * authoritative linked residual by ten bytes and produces the larger fuzzy
- * and structural gains above.
+ * The first search now retains a separate table base while its walker advances;
+ * expressing the next-row sentinel as the loop condition recovers retail's
+ * load/branch shape without rematerializing the base after the loop.  The map
+ * argument is loaded directly into a0, and an explicit high/low type tail plus
+ * a separately captured high attribute recovers the target's total CFG.  The
+ * captured attribute folds two high-path instructions; a safe volatile read of
+ * the already-written point[0] field supplies the one-instruction exact-extent
+ * counterweight without changing the value-level behavior.
  *
  * The main remaining cascade starts in the HumanData searches: target
  * materializes the table base and carries the found row/model as
  * $s0/$s2, then explicitly rotates roles before the filename-sharing scan;
- * this draft carries them as $s1/$s2. That remaining row/base rotation feeds
- * the second search. The tail has the target's signed guard count, but a
- * different physical layout and the missing unconditional jump. A combined
- * single-load first search, explicit table/name aliases, retail-shaped tail,
- * and direct map argument reached 87.26 fuzzy with fewer structural lines,
- * but regressed the exact linked residual to 475 bytes; wrong-length siblings
- * are not authoritative. Declaration reordering, volatile row aliases,
- * `u16`/`s32` counters, and guided identical-arm/type-width sweeps likewise
- * failed to beat this exact 305-byte checkpoint.
+ * this draft carries them as $s1/$s2. That row/base rotation feeds the second
+ * search, where the draft preserves the -1 sentinel in $s3 instead of
+ * rematerializing it into $v0 after strcmp. An explicit filename-row alias
+ * recovered the target's $s0->$s1 rotation but shifted the whole call region
+ * and scored 335 linked bytes; a fully target-shaped tail is one instruction
+ * long because the original carve excludes the return delay slot. Keep those
+ * forms as structural evidence, not checkpoints. The current exact 214-byte
+ * form is authoritative.
  *
  * BreedLife (0x8002a018, 0x278 bytes) — spawns a new Humanoid of `type` at
  * ground position (x,z) with yaw `r`: resolves `type` to its HumanData[]
@@ -180,35 +182,34 @@ Humanoid *BreedLife(s16 type, s32 x, s32 y, s32 z, s32 r)
     /* PSX.SYM and the retail multiply both show a full-width counter. */
     u32 idx;
     s32 sVar1;
-    /*
-     * Distinct volatile walkers prevent cc1 from inventing a second field
-     * induction variable in the filename scan. Cast only the signed `type`
-     * loads back to their ordinary form so they remain single `lh` loads.
-     */
-    volatile HumanDataType *search;
+    /* Keep only the filename walker volatile; its signed loads are cast back
+     * to the ordinary row type so cc1 emits one `lh`, not lhu+sign extension. */
+    HumanDataType *search;
     volatile HumanDataType *pHVar5;
+    HumanDataType *base;
     u32 *model;
     HumanDataType *pp;
     Humanoid *human;
+    u16 high_attribute;
     u8 name[100];
 
     idx = 0;
     if (HumanData[0].type == -1)
         goto illegal_type;
-    search = HumanData;
-    sVar1 = ((HumanDataType *)search)->type;
+    base = HumanData;
+    search = base;
     do
     {
+        sVar1 = search->type;
         search = search + 1;
         /* Semantics-free cc1 CSE/scheduling boundary; emits no instruction. */
         do {
         } while (0);
         if (sVar1 == type)
             break;
-        sVar1 = ((HumanDataType *)search)->type;
         idx = idx + 1;
-    } while (sVar1 != -1);
-    if (HumanData[idx].type != -1)
+    } while (search->type != -1);
+    if (base[idx].type != -1)
         goto type_found;
 illegal_type:
     SystemOut(D_800117C8);
@@ -237,15 +238,15 @@ type_found:
     }
 
     human = CreateHumanoid(type, model);
-    model = GlobalAreaMap;
     human->point[0] = x;
     human->model->locate.coord.t[0] = x;
-    human->model->locate.coord.t[1] = GetAreaMapLevel(model, x, y, z, 1);
+    human->model->locate.coord.t[1] = GetAreaMapLevel(GlobalAreaMap, x, y, z, 1);
     human->point[1] = z;
     human->model->locate.coord.t[2] = z;
     human->model->rotate.vy = r;
     UpdateCoordinate((ModelType *)human->model);
 
+    (void)*(volatile s32 *)&human->point[0];
     if (type == 0x87)
     {
         human->item[3] = 1;
@@ -253,26 +254,28 @@ type_found:
     do
     {
         if (type < 0x8B)
-        {
-            /* Keep the target's separate signed low-type guards physical. */
-            if (type < 0x81)
-            {
-                if (1 < type)
-                    goto done;
-                if (type < 0)
-                    goto done;
-            }
-            human->attribute = human->attribute | 2;
-            EquipWeapon(human, 1);
-            SetNowMotion(human, 0x501, 1);
-        }
-        else if (type < 0xA8)
-        {
-            if (0xA5 < type)
-            {
-                human->attribute = human->attribute | 0x20;
-            }
-        }
+            goto low_type;
+        if (type >= 0xA8)
+            goto done;
+        if (type < 0xA6)
+            goto done;
+        high_attribute = human->attribute;
+        goto high_type;
+
+low_type:
+        if (type >= 0x81)
+            goto equip;
+        if (type >= 2)
+            goto done;
+        if (type < 0)
+            goto done;
+equip:
+        human->attribute = human->attribute | 2;
+        EquipWeapon(human, 1);
+        SetNowMotion(human, 0x501, 1);
+        goto done;
+high_type:
+        human->attribute = high_attribute | 0x20;
     } while (0);
 done:
     return human;
