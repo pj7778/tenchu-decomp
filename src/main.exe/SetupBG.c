@@ -36,8 +36,10 @@
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupBG", SetupBG);
 #else
 
-/* Complete semantic draft. Retail still differs in allocator spill shape:
- * 0x58 candidate frame / 1076 bytes versus 0x60 / 1072 bytes. */
+/* Complete semantic draft. The demo SLD line stream recovered the original
+ * field/loop order and PSX.SYM supplied the function-scope locals.  Retail now
+ * has the target 0x60 frame and saved-register set; the remaining allocator /
+ * scheduling residual is 1060 bytes versus the target's 1072 (75.80% fuzzy). */
 
 typedef struct GsCELL
 {
@@ -106,8 +108,6 @@ BackGround *SetupBG(GsIMAGE *image, short w, short h)
     short n;
     short pmode;
     short size;
-    int nx;
-    u32 *work;
 
     if (image == 0)
         SystemOut((u8 *)D_8001109C);
@@ -117,77 +117,60 @@ BackGround *SetupBG(GsIMAGE *image, short w, short h)
     bg->attribute = 0;
     memset(bg, 0, sizeof(GsBG));
 
+    pmode = image->pmode & 3;
+    bg->hundle.attribute = pmode << 24;
+    bg->hundle.r = bg->hundle.g = bg->hundle.b = 0x80;
+    bg->hundle.scalex = bg->hundle.scaley = 0x1000;
     bg->hundle.w = w;
     bg->hundle.h = h;
-    bg->hundle.r = bg->hundle.g = bg->hundle.b = 0x80;
-    bg->hundle.map = &bg->map;
     bg->hundle.mx = w >> 1;
     bg->hundle.my = h >> 1;
-    bg->hundle.scalex = bg->hundle.scaley = 0x1000;
+    bg->hundle.map = &bg->map;
 
     bg->map.cellw = bg->map.cellh = 0x10;
     bg->map.ncellw = w / bg->map.cellw;
     bg->map.ncellh = h / bg->map.cellh;
 
-    pmode = image->pmode & 3;
-    bg->hundle.attribute = pmode << 24;
-
     size = (short)(bg->map.ncellw * bg->map.ncellh);
-    bg->index = (u16 *)valloc(size << 1);
-    bg->map.index = bg->index;
+    bg->map.index = bg->index = (u16 *)valloc(size << 1);
     n = 0;
     if (0 < size)
     {
         do
         {
-            bg->index[n] = 0xffff;
-            n++;
+            bg->index[n++] = 0xffff;
         } while (n < size);
     }
 
-    nx = ((u16)image->pw << (2 - pmode)) / bg->map.cellw;
+    n = ((u16)image->pw << (2 - pmode)) / bg->map.cellw;
     sy = (short)((u16)image->ph / bg->map.cellh);
-    cell = (GsCELL *)valloc((short)nx * sy * sizeof(GsCELL));
-    bg->cell = cell;
-    bg->map.base = cell;
+    bg->map.base = bg->cell =
+        (GsCELL *)valloc(n * sy * sizeof(GsCELL));
 
-    y = 0;
     size = (1 << (8 - pmode)) - 1;
-    if (0 < sy)
+    for (y = 0; y < sy; y++)
     {
-        do
+        for (x = 0; x < n; x++)
         {
-            x = 0;
-            if (0 < (short)nx)
-            {
-                do
-                {
-                    s16 py;
-                    s16 px;
+            short px;
+            short py;
 
-                    cell = bg->cell + y * (short)nx + x;
-                    py = image->py + y * bg->map.cellh;
-                    px = image->px;
-                    cell->v = py;
-                    cell->u = ((px << (2 - pmode)) + x * bg->map.cellw) & size;
-                    cell->cba = GetClut(image->cx, image->cy);
-                    cell->flag = 0;
-                    cell->tpage = GetTPage(
-                        pmode,
-                        0,
-                        px + x * (bg->map.cellw >> (2 - pmode)),
-                        py);
-                    x++;
-                } while (x < (short)nx);
-            }
-            y++;
-        } while (y < sy);
+            cell = &bg->cell[y * n + x];
+            px = image->px;
+            py = image->py + y * bg->map.cellh;
+            cell->v = py;
+            cell->u = ((px << (2 - pmode)) +
+                       x * bg->map.cellw) & size;
+            px += x * (bg->map.cellw >> (2 - pmode));
+            cell->cba = GetClut(image->cx, image->cy);
+            cell->flag = 0;
+            cell->tpage = GetTPage(pmode, 0, px, py);
+        }
     }
 
-    work = (u32 *)valloc(
+    bg->work = (u32 *)valloc(
         (((bg->map.ncellw + 1) * (bg->map.ncellh + 2) * 12 + 10) << 16) >> 14);
-    bg->work = work;
-    GsInitFixBg16(&bg->hundle, work);
+    GsInitFixBg16(&bg->hundle, bg->work);
     bg->sz = 0;
     return bg;
 }
