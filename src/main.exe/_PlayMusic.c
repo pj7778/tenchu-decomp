@@ -30,9 +30,7 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 340 of 400 bytes differ (6 whole instructions /
- * 24 bytes too long; every downstream byte is address drift from that gap,
- * not a separate issue — see residual below).
+ * STATUS: MATCHING — pure C, all 400 bytes / 100 instructions exact.
  *
  * _PlayMusic (0x8004ed54, 0x190 bytes) — dispatches a music-play request:
  * MusicNo in [0x3D, 0x63] (checked UNSIGNED, `MusicNo-0x3D < 0x27`) or
@@ -82,21 +80,12 @@
  * specifically about a shared ADDRESS pseudo stationary across a later
  * access to the same lvalue, not a plain scalar with no further reference.
  *
- * Residual (root-caused): `start`/`end`'s stack address (`sp+224`/`sp+232`)
- * is referenced across 3-4 calls each (memset, the two field stores,
- * CdPosToInt, CdIntToPos); this draft's cc1 caches each address in its own
- * callee-saved register ($s0/$s1) since it's live across those calls,
- * pushing MusicNo/mode from the target's $s3/$s4 to $s5/$s6 and growing
- * the frame by 8 bytes (2 more saved registers) — 6 extra instructions
- * total. The target instead REMATERIALIZES `addiu $rN,$sp,22{4,8}` fresh
- * at every use (a stack-frame offset is exactly as cheap to recompute as
- * to keep live), needing no dedicated register at all. Tried and had no
- * effect on the choice: `CdlLOC[2]` vs a bare single struct, `&arr[0].
- * minute` vs bare `arr` spelling for memset's argument, and inlining
- * `CdIntToPos(CdPosToInt(start)*2+0x96, start)` instead of a named `n`
- * temp (to lower overall register pressure). This looks like a genuine
- * cc1 cost-model tie for a repeatedly-referenced stack address rather
- * than something reachable from source spelling.
+ * Two source identities close the former whole-function cascade. Expressing
+ * the synthesized-voice arm before the XA arm reproduces retail's physical
+ * body order. `InitMusicLocation` is an inlined source helper: its pointer
+ * formal keeps each expanded stack-address use independent, so cc1
+ * rematerializes sp+224/sp+232 instead of retaining two saved-register
+ * aliases. That restores the original 264-byte frame and s0-s4 allocation.
  */
 typedef struct
 {
@@ -134,11 +123,14 @@ extern s32 CdPosToInt(CdlLOC *pos);
 extern void CdIntToPos(s32 n, CdlLOC *pos);
 extern int CdaPlayXA(u8 *fname, CdlLOC *start, CdlLOC *end, u8 channel, int mode);
 
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/_PlayMusic", _PlayMusic);
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/_PlayMusic", play_stage_music__override__prt_8004ed94_2feb0bc8);
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/_PlayMusic", play_stage_music__override__prt_8004edf4_f3434af);
-#else
+static inline void InitMusicLocation(CdlLOC *location, u8 minute, u8 second)
+{
+    memset(location, 0, sizeof(CdlLOC));
+    location->minute = minute;
+    location->second = second;
+    CdIntToPos(CdPosToInt(location) * 2 + 0x96, location);
+}
+
 void _PlayMusic(int MusicNo, int mode)
 {
     u8 fname[200];
@@ -154,34 +146,7 @@ void _PlayMusic(int MusicNo, int mode)
         AdtMessageBox(D_8001349C, MusicNo);
         CdaStop();
     }
-    else if (MusicNo < 0x13)
-    {
-        music = &MusicTable[MusicNo];
-        sprintf((char *)fname, D_800134AC, music->file);
-        SsSetMVol(0x7F, 0x7F);
-        FUN_8004fbf4(D_8001005A, D_8001005A);
-
-        min = music->min;
-        sec = music->sec;
-        memset(start, 0, 4);
-        start[0].minute = min;
-        start[0].second = sec;
-        CdIntToPos(CdPosToInt(start) * 2 + 0x96, start);
-
-        min = music->endmin;
-        sec = music->endsec;
-        memset(end, 0, 4);
-        end[0].minute = min;
-        end[0].second = sec;
-        CdIntToPos(CdPosToInt(end) * 2 + 0x96, end);
-
-        n = CdaPlayXA(fname, start, end, music->channel, (int)(short)mode);
-        if (n == 0)
-        {
-            AdtMessageBox(D_800134BC, fname, music->channel, MusicNo);
-        }
-    }
-    else
+    else if (MusicNo >= 0x13)
     {
         n = MusicNo + 0x52;
         if (MusicNo > 99)
@@ -190,5 +155,25 @@ void _PlayMusic(int MusicNo, int mode)
         }
         PlayVoice(n);
     }
+    else
+    {
+        music = &MusicTable[MusicNo];
+        sprintf((char *)fname, D_800134AC, music->file);
+        SsSetMVol(0x7F, 0x7F);
+        FUN_8004fbf4(D_8001005A, D_8001005A);
+
+        min = music->min;
+        sec = music->sec;
+        InitMusicLocation(start, min, sec);
+
+        min = music->endmin;
+        sec = music->endsec;
+        InitMusicLocation(end, min, sec);
+
+        n = CdaPlayXA(fname, start, end, music->channel, (int)(short)mode);
+        if (n == 0)
+        {
+            AdtMessageBox(D_800134BC, fname, music->channel, MusicNo);
+        }
+    }
 }
-#endif
