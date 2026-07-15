@@ -405,6 +405,7 @@ MASPSX_EXTRA = {
     "DrawSnow": ["--expand-div"],
     "DrawImpact": ["--expand-div"],
     "FUN_80036284": ["--expand-div"],
+    "FUN_8003d768": ["--expand-div"],
 }
 
 COMPILE_SH = r"""#!/usr/bin/env bash
