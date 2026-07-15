@@ -5,12 +5,14 @@ current source, `tools/progress.py`, `tools/triage.py`, and each guarded
 function's `STATUS` comment are authoritative.  Re-measure before dispatching
 work; do not carry the percentages or target list below forward by assumption.
 
-The four-slot resumed rollout was intentionally wound down at the user's
-request so a wholly new Codex session can request the configured larger agent
-pool. There are no matcher agents still running. Exact results and independent
-reflection were harvested onto `master`; nonexact checkpoints remain only on
-their isolated branches. Do not resume this old rollout or launch more work
-from it.
+The rollout described below was the previous shutdown state. The flywheel has
+since resumed with the available four-slot pool. A 2026-07-15 user correction
+also supersedes this snapshot's isolated-only checkpoint policy: root may merge
+a reviewed, monotonic guarded `NON_MATCHING` improvement and its current fuzzy
+row because the default `INCLUDE_ASM` build remains byte-identical. Such a
+checkpoint must carry an honest residual, pass its draft comparison plus the
+default/global gates, and never be counted as a matched function. Exact pure-C
+promotions remain the preferred outcome.
 
 ## Clean anchor
 
@@ -168,9 +170,10 @@ The useful old worktrees are checkpoint evidence, not active workers:
   (40-byte checkpoint; reflection already integrated);
 - `/tmp/tenchu-fw2-known-buttons-0715` -> `fd303e1` (12-byte checkpoint).
 
-Create fresh uniquely named worktrees from current `master` for new work. If a
-checkpoint is needed, inspect or cherry-pick it only onto that isolated worker
-branch; never import a nonexact checkpoint into `master`.
+Create fresh uniquely named worktrees from current `master` for new work. If an
+old checkpoint is useful, compare it against the current guarded draft before
+transplanting it. A genuinely better reviewed checkpoint may now be integrated
+under rule 7; stale, equal, or worse experiments remain isolated.
 
 Do not spend a slot on these merely because they appear difficult:
 
@@ -217,10 +220,11 @@ permuter search.
 6. One worker owns one function or tightly coupled family in one isolated
    worktree.  Do not run matching tools concurrently against the same
    worktree/lock.
-7. A worker may commit an honestly documented nonexact checkpoint to its own
-   branch for preservation, but root never merges nonexact source or its fuzzy
-   row into `master`. Root cherry-picks exact results and independently useful
-   reflection only, resolves additive metadata conflicts, and runs the gates.
+7. A worker may commit an honestly documented nonexact checkpoint. Root may
+   merge it only when it is a reviewed monotonic improvement over `master`, the
+   C remains behind the `NON_MATCHING` guard, the fuzzy row is refreshed, and
+   both the draft comparison and default/global gates pass. Root still resolves
+   additive metadata conflicts and never promotes or counts a nonexact draft.
 8. Commit the function/checkpoint first.  Then perform the reflection pass and
    land any cookbook, diagnostic, autorule, test, or naming improvement in a
    separate commit.  Tooling must encode a repeatable decision, not one
