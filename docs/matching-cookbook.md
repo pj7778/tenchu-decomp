@@ -2425,18 +2425,21 @@ near entry; `AdtMessageBox` wants the inline form.)
   fresh temporary and the wrong loop-tail allocation. Confirm the target chain
   and the quotient's deadness before using this spelling.
 - **The final copy of a repeated digit loop may need a scoped byte base while
-  the preceding copies keep a shared word base.** A function-shared `u32 base`
-  keeps the repeated post-call `andi base,0xff` and gives the saved byte one
-  allocator identity across the run. If every complete copy is exact but the
-  LAST optional-sign suffix is one instruction long, clone only that final
-  source block and shadow `base` with a block-local `u8 base`: capture it in the
-  main digit pass, carry it across the sprite call, and reuse it in the optional
-  minus pass. The byte pseudo then needs neither the shared word base's final
-  `andi` nor a new copy. StageEndScreen's first fifteen loops required the shared
-  `u32`; narrowing all sixteen destroyed the target shape, while narrowing only
-  the last loop removed exactly its isolated one-instruction excess. Apply this
-  only after per-region instruction and CFG counts prove that the unmatched tail
-  is not being cancelled by the following repeated block.
+  the preceding copies keep a shared word base — but its optional sign can need
+  a fresh promoted capture.** A function-shared `u32 base` keeps the repeated
+  post-call `andi base,0xff` and gives the saved byte one allocator identity
+  across the run. If every complete copy is exact but the LAST digit pass is one
+  instruction long, clone only that final source block and shadow `base` with a
+  block-local `u8 base`: capture it in the main digit pass, carry it across the
+  sprite call, and restore it there. Do not assume that narrow identity should
+  also cross the optional-minus call. Re-reading `sprite->u` into a block-local
+  `u32 sign_base` for only the sign suffix gives that shorter region an
+  independent promoted live range. StageEndScreen's first fifteen loops required
+  the shared `u32`; narrowing all sixteen destroyed the target shape, narrowing
+  only the final main pass removed its isolated excess, and promoting only the
+  final sign capture erased the remaining 21-byte allocation cluster. Apply
+  these width choices only after per-region instruction and CFG counts prove
+  that the unmatched tail is not being cancelled by the following block.
 
 - **u16 init `= -1` with `addiu -1` AND `lhu` reloads = a 2-byte union**:
   `union { u16 u; s16 s; } pad; pad.s = -1;` — the unpromoted HImode pseudo
@@ -3010,8 +3013,12 @@ to an extern array that materializes too late can be assigned inside the
 minimum exact-extent nested `do { } while (0)` fence: the loop notes preserve
 and weight that pointer identity even though no loop survives. StageEndScreen
 needed the volatile view for its post-copy stage guard and two zero-trip levels
-for the terminal stage-order base. Recheck the entire caller-register family;
-these levers can improve a downstream loop while rotating the setup block.
+around the terminal stage-order high-page identity. Expressing the fixed image
+address as `0x80090000 - 0x1588`, with the signed low reconstruction delayed
+until after the stage uid load, restored the terminal register family even
+though the final constant fold still left the `lui`/low-immediate pair as a
+two-instruction residual. Recheck the entire caller-register family; these
+levers can improve a downstream loop while rotating the setup block.
 
 ### A shared `f(0, x)` tail vs two explicit `f(0, lit)` calls place the const arg differently
 
