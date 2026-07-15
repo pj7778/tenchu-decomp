@@ -105,6 +105,13 @@ GUIDANCE = [
     "cursor registers, pass both cursor identities to the helper and load each "
     "byte through its target base. This can preserve both inline pseudos and an "
     "address-taken output store (AfsGetEntry); require the raw asm load bases.",
+    "If the target freshly reloads an extern pointer-array slot before a field "
+    "read even though cc1 can CSE the earlier pointer, use a site-local volatile "
+    "view of the SLOT: `(*(T *volatile *)&Array[i])->field`. Do not make `T` or "
+    "the shared extern globally volatile; require the target's reload+nop evidence "
+    "(UpdateEvent). If an index-first integer pointer sum still interleaves its "
+    "narrow sll/sra with `%hi/%lo`, name the scaled byte offset in an s32 statement "
+    "before the sum.",
     "For a pure REGISTER tie (right length, right instructions, a value in the "
     "wrong register — and autorules found nothing + a short permuter run won't "
     "beat the base), don't blind-permute: run `tools/regalloc.py <Name>`. It runs "

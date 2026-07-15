@@ -376,6 +376,57 @@ def rule_pointee_volatile(text, name, span):
                    "\n".join(updated))
 
 
+EXTERN_POINTER_ARRAY_DECL = re.compile(
+    r"^\s*extern\s+((?:struct\s+)?[A-Za-z_]\w*)\s*\*\s*"
+    r"([A-Za-z_]\w*)\s*\[\s*[^\]]*\s*\]\s*;"
+)
+
+
+def rule_pointer_slot_volatile(text, name, span):
+    """Read one extern pointer-array slot through a volatile-qualified lvalue.
+
+    Old cc1 can CSE ``Objects[i]`` across a long decision tree even when the
+    target reloads the pointer slot immediately before a final field read.  A
+    site-local ``(*(T *volatile *)&Objects[i])->field`` keeps precisely that
+    pointer-object read observable without making ``T`` or every array access
+    volatile.  This is guided-only and deliberately narrow: a simple extern
+    array of pointers, a simple index expression, and a direct ``->field`` use.
+    Authoritative scoring and review must confirm the target's reload.
+    """
+    lines, ranges = body_line_ranges(text, span, name)
+    externs = {}
+    for _index, _raw, code in uncommented(lines, (0, len(lines))):
+        match = EXTERN_POINTER_ARRAY_DECL.match(code)
+        if match:
+            externs[match.group(2)] = match.group(1)
+    if not externs:
+        return
+
+    for rng in ranges:
+        for index, raw, code in uncommented(lines, rng):
+            if not _guided_site(index + 1):
+                continue
+            for array, pointee in externs.items():
+                access = re.compile(
+                    rf"\b{re.escape(array)}\s*\[\s*"
+                    r"([A-Za-z_]\w*(?:\s*[+-]\s*\d+)?)\s*\]"
+                    r"\s*->\s*([A-Za-z_]\w*)"
+                )
+                for match in access.finditer(code):
+                    index_expr = match.group(1)
+                    field = match.group(2)
+                    replacement = (
+                        f"(*({pointee} *volatile *)&{array}[{index_expr}])"
+                        f"->{field}"
+                    )
+                    changed = (raw[:match.start()] + replacement +
+                               raw[match.end():])
+                    updated = lines[:]
+                    updated[index] = changed
+                    yield (f"pointer-slot-volatile {array}[{index_expr}]"
+                           f"->{field} L{index + 1}", "\n".join(updated))
+
+
 def _swap_decl_type(raw, m, rep):
     """Replace the type token in `raw` at the position it occupies in the
     matched (comment-stripped) code. We re-find the type token followed by the
@@ -7899,6 +7950,7 @@ AGGRESSIVE_RULES = [
     ("adjacent-field-store-swap", "swap adjacent literal stores to distinct fields", rule_adjacent_field_store_swap),
     ("switch-cse-evict", "dead-overwrite an entry index before a fresh switch load", rule_switch_cse_evict),
     ("pointee-volatile", "toggle volatile on a local integer pointer's pointee", rule_pointee_volatile),
+    ("pointer-slot-volatile", "force one extern pointer-array slot reload", rule_pointer_slot_volatile),
     ("array-alias-remat", "rebuild selected local-array member lvalues instead of retaining an alias", rule_array_alias_remat),
     ("member-scalar-alias", "toggle long field read through s32 lvalue (MEM_IN_STRUCT lever)", rule_member_scalar_alias),
     ("disjoint-local-alias", "join a dead-until-overwrite scalar to an earlier live range", rule_disjoint_local_alias),
@@ -7915,7 +7967,8 @@ AGGRESSIVE_RULES = [
     ("sparse-eq-switch", "three literal equality arms -> sparse switch permutations", rule_sparse_eq_switch),
 ]
 
-LINE_RULES = {rule_type_width, rule_extern_array, rule_pointee_volatile}
+LINE_RULES = {rule_type_width, rule_extern_array, rule_pointee_volatile,
+              rule_pointer_slot_volatile}
 AST_RULES = {gen for _key, _desc, gen in RULES + AGGRESSIVE_RULES
              if gen not in LINE_RULES}
 

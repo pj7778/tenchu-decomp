@@ -1739,6 +1739,14 @@ DrawConstruction's `slot = DrawList + bucket` needed
 `slot = (T **)((u32)DrawList + bucket * sizeof(*slot))` for the terminal
 index-first `addu`.
 
+If the target completes a narrow index's sign-extension/scale before it starts an
+independent `%hi`/`%lo` base materialization, name the scaled byte offset in its own
+`s32` statement before the integer pointer sum. An inline
+`(s16)i * 4 + (s32)table` can still let sched1 interleave the table `lui/addiu`
+between the `sll` and `sra`; `offset = (s16)i * 4; *(T **)(offset +
+(s32)table) = value;` keeps the conversion chain together without extra code
+(`UpdateEvent`).
+
 **Naming an extern array base before indexing is a separate scheduling lever.**
 `T *stage = &StageConfig[StageNo]` and
 `T *base = StageConfig; stage = &base[StageNo]` preserve base-first pointer
@@ -1847,6 +1855,15 @@ made its address reuse the target's derived `$s1-10` base rather than rebuild
 this local pointee qualifier as `pointee-volatile`, restricted to plain integer
 pointer declarations. Treat a winning volatile view as evidence that the
 original source required distinct accesses, and keep it site-local.
+
+**A site-local volatile view of a pointer-array SLOT can force a fresh pointer
+reload without making the pointed-to object volatile.** When the target reloads
+`Objects[i]`, pays the load-delay `nop`, and only then reads a field—even though no
+call or visible store invalidates cc1's earlier pointer—spell just that access as
+`(*(Object *volatile *)&Objects[i])->field`. The `volatile` qualifier belongs to
+the pointer object stored in the array slot, not to `Object`, and must not be added
+to the shared extern declaration. This closed `UpdateEvent`'s exact two-instruction
+gap; use it only when the raw target proves the redundant slot reload.
 
 **Corroborate an otherwise dead target load in another shipped build before
 encoding it.** A load whose result is never consumed can be a real volatile-style

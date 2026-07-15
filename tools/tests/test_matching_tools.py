@@ -1601,6 +1601,27 @@ int F(void) { u16 *first, *second; return 0; }
         self.assertEqual(
             self.candidates(autorules.rule_pointee_volatile, source), [])
 
+    def test_pointer_slot_volatile_wraps_one_extern_array_access(self):
+        source = """typedef struct Node Node;
+extern Node *Nodes[];
+int F(int i) {
+    return Nodes[i]->value;
+}
+"""
+        out = self.candidates(autorules.rule_pointer_slot_volatile, source)
+        self.assertEqual(len(out), 1)
+        self.assertIn(
+            "return (*(Node *volatile *)&Nodes[i])->value;", out[0][1])
+        self.assertIn("pointer-slot-volatile Nodes[i]->value", out[0][0])
+
+    def test_pointer_slot_volatile_requires_extern_pointer_array(self):
+        source = """typedef struct Node Node;
+Node *Nodes[4];
+int F(int i) { return Nodes[i]->value; }
+"""
+        self.assertEqual(
+            self.candidates(autorules.rule_pointer_slot_volatile, source), [])
+
     def test_loop_fence_wraps_an_if(self):
         source = """int F(int value) {
     if (value) value++;
