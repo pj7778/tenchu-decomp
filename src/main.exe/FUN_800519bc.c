@@ -13,15 +13,14 @@
  * END PSX.SYM */
 
 /* STATUS: NON_MATCHING — complete pure-C reconstruction at the exact target
- * length (1448 bytes / 362 instructions). The guarded draft differs in 593
- * linked bytes, with 75 aligned instruction lines in 39 blocks (improved from
- * 641 bytes and 80 lines / 41 blocks on the current full-width GetTPage ABI;
- * the old 493-byte note predated that ABI correction). Preserving the strip
- * texture X value across FUN_80038ce0 fixes its load/register/schedule; the
- * signed-width and affine-brightness spellings improve the strip renderer
- * atomically. Remaining differences are register allocation/scheduling in the
- * prologue, old-pad loop, strip/tpage/brightness renderer, and scroll
- * adjustment. Fuzzy: 87.02%. */
+ * length (1448 bytes / 362 instructions). The guarded draft differs in 199
+ * linked bytes, with 60 aligned instruction lines in 25 blocks. Snapshotting
+ * old_pad before its write lets the store fill the target branch delay slot.
+ * Caching the full tpage word at the case-3 boundary also displaces the strip
+ * width into target s3 and makes the large middle control-flow region exact.
+ * Remaining differences are scheduling in the prologue, register allocation
+ * and scheduling within the strip renderer, and the scroll adjustment.
+ * Fuzzy: 87.29%. */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_800519bc", FUN_800519bc);
 #else
@@ -33,7 +32,7 @@ typedef struct
     u16 xbase;             /* +0x00 */
     u8 pad_02[6];          /* +0x02 */
     s32 scroll;            /* +0x08 */
-    volatile u16 old_pad;  /* +0x0c */
+    u16 old_pad;           /* +0x0c */
     u8 pad_0e[2];          /* +0x0e */
     BackGround *background;/* +0x10 */
     s32 tpage_base;        /* +0x14 */
@@ -106,6 +105,7 @@ void FUN_800519bc(void)
     u_long *file;
     u8 *prefix;
     u16 pad;
+    u16 previous_pad;
     s16 fade;
     s16 counter;
     s16 position;
@@ -116,6 +116,7 @@ void FUN_800519bc(void)
     u16 strip_px;
     s32 intensity;
     s32 brightness;
+    s32 tpage_value;
     s16 signed_width;
     s16 i;
 
@@ -160,11 +161,12 @@ void FUN_800519bc(void)
     while (1)
     {
         pad = GetRealPad(0);
-        if ((pad & (pad ^ stack.old_pad) & 0x820) != 0)
+        previous_pad = stack.old_pad;
+        stack.old_pad = pad;
+        if ((pad & (pad ^ previous_pad) & 0x820) != 0)
         {
             fade_step = 8;
         }
-        stack.old_pad = pad;
 
         if ((pad & 0x900) == 0x900)
         {
@@ -222,6 +224,7 @@ void FUN_800519bc(void)
         case 3:
             counter = strip_width - 4;
             signed_width = strip_width;
+            tpage_value = stack.tpage_base;
             do
             {
                 if (counter >= 0)
@@ -232,7 +235,7 @@ void FUN_800519bc(void)
                         do
                         {
                             sprite.tpage = GetTPage(0, 0,
-                                (stack.tpage_base >> 16) + counter, 0x100);
+                                (tpage_value >> 16) + counter, 0x100);
                         } while (0);
                         position = stack.xbase -
                             (signed_width - counter) * 8;
