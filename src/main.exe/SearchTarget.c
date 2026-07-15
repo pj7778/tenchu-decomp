@@ -45,14 +45,19 @@
  * exact: frame 0x50, delta VECTOR at sp+0x10, position VECTOR at sp+0x20,
  * and passage SVECTOR at sp+0x30.
  *
- * The remaining nine aligned diff lines are three local jump/scheduling
- * choices: the status-10 close-height return keeps a two-instruction return
- * island where retail folds -2 into the branch delay slot; the initial
- * delta.vy reload moves by one instruction; and the final passage failure is
- * a direct return branch where retail retains a one-instruction-longer local
- * return island.  `rtlguide` classifies these as CSE/cross-jump plus one
- * scheduling hunk; `regalloc` and bounded guided autorules found no improving
- * source lever.  There are no semantic, layout, or access-width residuals.
+ * This checkpoint routes the two retail-shared height failures through the
+ * late passage label and moves the close-distance failure to a final island.
+ * That removes the former early skip island, keeps addresses aligned through
+ * 0x80028dd8, and improves the guarded draft from 572 to 94 differing bytes
+ * (40 to 19 aligned diff lines; fuzzy 98.05 to 98.41).
+ *
+ * The remaining one-instruction excess is still terminal cross-jump layout:
+ * jump2 selects the final close-distance copy, while retail retains the
+ * passage-failure `j`/`li -2` island and folds the close-distance return into
+ * its conditional branch.  The only body scheduling residual is the adjacent
+ * delta.vy/height load order at 0x80028df0.  RTL-guided named-label, guard
+ * inversion, shared-result, and zero-code loop-fence probes were flat; there
+ * are no semantic, stack-layout, or access-width residuals.
  *
  * Key recovered shapes: the three deltas must be one stack VECTOR (three
  * scalar locals color into s-registers and lose the retail frame plan);
@@ -100,7 +105,6 @@ s16 SearchTarget(Humanoid *human, s32 *distance, s16 *degree)
     s32 full_height;
     s32 half_height;
     s32 adjusted_y;
-    s32 result;
     u16 player_height;
     s16 signed_degree;
     s16 result_degree;
@@ -147,13 +151,13 @@ degree_done:
     {
         if (delta.vy >= 0)
         {
-            return -2;
+            goto passage_failure;
         }
         if (delta.vy < -3000)
         {
             if (*distance < 4000)
             {
-                return -2;
+                goto close_failure;
             }
         }
     }
@@ -166,7 +170,7 @@ degree_done:
         }
         if (*distance < 4000)
         {
-            return -2;
+            goto passage_failure;
         }
     }
 
@@ -229,16 +233,14 @@ degree_done:
         svect.vz = delta.vz;
         if (GetAreaMapPassage(GlobalAreaMap, &vect, &svect, n) != 0)
         {
+passage_failure:
             return -2;
         }
-        result = 2;
-        if (*distance < searchsight[mode].clear_distance)
-        {
-            result = 1;
-        }
-        return result;
+        return (*distance < searchsight[mode].clear_distance) ? 1 : 2;
     }
     return -1;
+close_failure:
+    return -2;
 }
 
 #endif
