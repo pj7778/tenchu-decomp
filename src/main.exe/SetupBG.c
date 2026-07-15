@@ -37,9 +37,13 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupBG", SetupBG);
 #else
 
 /* Complete semantic draft. The demo SLD line stream recovered the original
- * field/loop order and PSX.SYM supplied the function-scope locals.  Retail now
- * has the target 0x60 frame and saved-register set; the remaining allocator /
- * scheduling residual is 1060 bytes versus the target's 1072 (75.80% fuzzy). */
+ * field/loop order and PSX.SYM supplied the function-scope locals. Retail now
+ * has the target 0x60 frame, saved-register set, and exact 1072-byte extent.
+ * Separating the pmode capture/mask and py addition reduced the raw residual
+ * from 697 to 485 bytes (80.22% fuzzy). The remaining mismatch starts with the
+ * h/pmode live-range allocation, then early-init and inner-loop scheduling.
+ * An 80-candidate guided search plus bounded width/order probes found no
+ * further improving pure-C form. */
 
 typedef struct GsCELL
 {
@@ -117,18 +121,18 @@ BackGround *SetupBG(GsIMAGE *image, short w, short h)
     bg->attribute = 0;
     memset(bg, 0, sizeof(GsBG));
 
-    pmode = image->pmode & 3;
-    bg->hundle.attribute = pmode << 24;
+    pmode = image->pmode;
     bg->hundle.r = bg->hundle.g = bg->hundle.b = 0x80;
     bg->hundle.scalex = bg->hundle.scaley = 0x1000;
     bg->hundle.w = w;
     bg->hundle.h = h;
-    bg->hundle.mx = w >> 1;
-    bg->hundle.my = h >> 1;
     bg->hundle.map = &bg->map;
-
     bg->map.cellw = bg->map.cellh = 0x10;
     bg->map.ncellw = w / bg->map.cellw;
+    pmode &= 3;
+    bg->hundle.attribute = pmode << 24;
+    bg->hundle.mx = w >> 1;
+    bg->hundle.my = h >> 1;
     bg->map.ncellh = h / bg->map.cellh;
 
     size = (short)(bg->map.ncellw * bg->map.ncellh);
@@ -157,7 +161,8 @@ BackGround *SetupBG(GsIMAGE *image, short w, short h)
 
             cell = &bg->cell[y * n + x];
             px = image->px;
-            py = image->py + y * bg->map.cellh;
+            py = image->py;
+            py += y * bg->map.cellh;
             cell->v = py;
             cell->u = ((px << (2 - pmode)) +
                        x * bg->map.cellw) & size;
