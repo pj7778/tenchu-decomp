@@ -1101,6 +1101,32 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   Its checkpoint replay is `(False,372,54,0) -> (False,127,52,0)`. The fuzzy
   percentage stayed 94.83 despite that large byte win; refresh its source hash
   anyway because fuzzy is only a structural display heuristic.
+- **A defined self-XOR update can retain a working-copy writeback that plain
+  assignment coalesces away.** For initialized scalar `persistent`,
+  `persistent ^= persistent ^ work` is exactly `persistent = work`, but old
+  cc1 carries the old persistent identity far enough for allocation to keep
+  `work` distinct. In ActSTICKON, pairing that spelling with a split rand
+  update recovered the target's `addu work,...; move persistent,work` and
+  restored the exact 812-instruction extent; plain assignment made the draft
+  one instruction short. This is valid only when the left operand is already
+  initialized, is an ordinary unaliased scalar, and bitwise XOR preserves its
+  value domain.
+- **A call-base capture and a signed comparison working copy can be an atomic
+  scheduler/allocation repair.** ActSTICKON's pad block needed `pad_rv = rv`
+  after its direction loop and `update_motion = dtM` only after the early-exit
+  test. Together they put the signed comparison value in `$a2`, reserve `$a0`
+  for the call base, and hoist that load to the target slot. Either role left
+  implicit let the comparison occupy `$a0` and delayed the global load. Keep
+  captures after guards that dominate every use so their live range models the
+  target rather than merely increasing allocation weight.
+- **Split a shared comparison label when one predecessor needs a literal-load
+  landing pad.** In ActSTICKON's camera ladder, the peep-left branch targets a
+  separate `camera_peep_left:` label that materializes direction 3 before
+  falling into the shared left comparison. Assigning 3 before `goto
+  camera_left` put it in the branch delay slot and changed the physical target.
+  Equivalent arm inversion likewise recovered the intended fallthrough for
+  the item-selection and throw-angle ladders. Verify the linked branch targets:
+  the C conditions alone do not reveal this distinction.
 - **A sentinel-record scan with a special first row may need the scan backedge
   written explicitly.** A structured loop can let cc1 peel or specialize the
   known `i == 0` row, changing physical block order even when its comparisons

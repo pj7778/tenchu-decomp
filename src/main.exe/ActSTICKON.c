@@ -47,19 +47,23 @@
  * ActSTICKON (0x80025120, 0xcb0 bytes) — controls wall-clinging movement,
  * transitions, camera/item commands, and item throws.
  *
- * STATUS: NON_MATCHING — 119 of 3248 bytes differ at the exact target extent
- * (812/812 instructions; 50 aligned residual lines in 27 blocks). The
- * remaining differences are confined to the case-0 reflected-angle register
- * chain, the pad/camera dispatch allocation and block layout, and the item
- * throw loop's angle working copy. This is a split jump-table function; the
- * #ifndef branch remains the byte-exact stub and the #else branch is the
- * reviewed draft (`NON_MATCHING=ActSTICKON ./Build`).
+ * STATUS: NON_MATCHING — 8 of 3248 linked bytes differ at the exact target
+ * extent (812/812 instructions; 8 aligned residual lines in 6 blocks; 99.01
+ * fuzzy). The residual is only the camera dispatch's a1/a0 versus a0/v0
+ * register cycle and one equivalent s2-versus-s0 source in the item-throw
+ * angle truncation. This is a split jump-table function; the #ifndef branch
+ * remains the byte-exact stub and the #else branch is the reviewed draft
+ * (`NON_MATCHING=ActSTICKON ./Build`).
  *
- * The prior exact-length checkpoint had 127 differing bytes. Duplicating
- * `motMODE = 1` into both final motion-selection arms lets jump2 merge the
- * common store only after sched2 has placed `li v0,1` before the zero `motID`
- * store, matching the target's last scheduling pair and removing eight bytes
- * of residual without changing length or control-flow counts.
+ * From the prior 119-byte checkpoint, a u16 reflected-angle carrier closes
+ * the case-0 chain. The pad block needs an atomic pair: a signed working copy
+ * of `rv` plus a post-guard `dtM` capture recover a2/a0 and the target load
+ * schedule. Equivalent branch inversions and a dedicated peep-left label
+ * recover the camera CFG; two one-shot loop notes give its mode value the
+ * target register identity. Finally, splitting the rand update and spelling
+ * `angle = next_angle` as the defined self-XOR update preserves the target's
+ * otherwise-coalesced working-copy move. None changes the optimized CFG,
+ * instruction count, or runtime behavior.
  */
 
 #ifndef NON_MATCHING
@@ -173,7 +177,7 @@ void ActSTICKON(void)
         if (dtM->count < 0)
         {
             MotionElementType *rotation;
-            u32 reflected_raw;
+            u16 reflected_raw;
             s32 reflected;
             u32 raw_y;
             s32 wall_y;
@@ -308,7 +312,9 @@ case0_motion_done:
 
         {
             s32 pad;
+            s32 pad_rv;
             s32 loop_pad;
+            MotionManager *update_motion;
 
             pad = (s16)(u16)dtPAD;
             if ((pad & 0xF000) != 0)
@@ -323,14 +329,16 @@ case0_motion_done:
                         pd++;
                     } while (((loop_pad >> (pd + 12)) & 1) == 0);
                 }
-                if (rv != ((pd + 2) & 3))
+                pad_rv = rv;
+                if (pad_rv != ((pd + 2) & 3))
                 {
+                    update_motion = dtM;
                     y = 0xC02;
-                    if (rv == ((pd + 1) & 3))
+                    if (pad_rv == ((pd + 1) & 3))
                     {
                         y = 0xC01;
                     }
-                    UpdateMotion(dtM, y);
+                    UpdateMotion(update_motion, y);
                     Me_MOTION_C->status = 0xC;
                     dtV->vz = 0;
                     dtV->vx = 0;
@@ -355,28 +363,36 @@ case0_motion_done:
             {
                 goto camera_stick_right;
             }
-            if ((u32)CamState.Mode < 8)
+            do
             {
-                camera_direction = 2;
-                if (CamState.Mode == CMODE_STICK_L)
+                do
                 {
-                    goto camera_left;
-                }
-            }
-            else
-            {
-                if (CamState.Mode == CMODE_PEEP_L)
-                {
-                    camera_direction = 3;
-                    goto camera_left;
-                }
-                camera_direction = 1;
-                if (CamState.Mode == CMODE_PEEP_R)
-                {
-                    goto camera_right;
-                }
-            }
+                    if ((u32)CamState.Mode < 8)
+                    {
+                        camera_direction = 2;
+                        if (CamState.Mode == CMODE_STICK_L)
+                        {
+                            goto camera_left;
+                        }
+                    }
+                    else
+                    {
+                        if (CamState.Mode == CMODE_PEEP_L)
+                        {
+                            goto camera_peep_left;
+                        }
+                        camera_direction = 1;
+                        if (CamState.Mode == CMODE_PEEP_R)
+                        {
+                            goto camera_right;
+                        }
+                    }
+                } while (0);
+            } while (0);
             goto camera_done;
+
+camera_peep_left:
+            camera_direction = 3;
 
 camera_left:
             if (camera_rv == camera_direction)
@@ -411,15 +427,15 @@ camera_done:
                 pd = 0;
             }
 
-            if (pd == 0)
-            {
-                SoundEx(Me_MOTION_C->locate, 0xC);
-            }
-            else
+            if (pd != 0)
             {
                 motMODE = 1;
                 motID = pd;
                 dtM->mask = -2;
+            }
+            else
+            {
+                SoundEx(Me_MOTION_C->locate, 0xC);
             }
         }
         goto common_end;
@@ -614,21 +630,25 @@ case12_no_pad:
         item.start.vy = position->vy;
         item.start.vz = position->vz;
 
-        if (pd == 0)
+        if (pd != 0)
         {
-            angle += 0x200;
+            angle -= 0x200;
         }
         else
         {
-            angle -= 0x200;
+            angle += 0x200;
         }
 
         if (item.type == ITEM_MAKIBISHI)
         {
             for (drop_index = 0; drop_index < 5; drop_index++)
             {
-                next_angle = angle - 10 + rand() % 20;
-                angle = next_angle;
+                next_angle = angle - 10;
+                do
+                {
+                    next_angle += rand() % 20;
+                } while (0);
+                angle ^= angle ^ next_angle;
                 y = next_angle;
                 item.end.vx = (rsin(y) * (-30 - rand() % 200)) >> 12;
                 item.end.vy = rand();
