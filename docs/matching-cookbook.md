@@ -1010,6 +1010,14 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   outer record loop and final map loop each hoist the signed-division `16000`
   magic once, while equivalent hand labels repeat the `lui`/`ori` sequence at
   every division site.
+- **A provably zero initial index can still need an explicit pre-loop test.**
+  In LoadConstruction's slot-disposal traversal, spelling `i = 0; if (i < n)`
+  around a `for (; i < n; i++)` and naming the invariant pointer masks lets
+  cc1 hoist those masks while retaining the target's separate entry and
+  backedge tests. The ordinary `for (i = 0; i < n; i++)` was semantically
+  identical but scheduled the whole traversal differently. Require both the
+  duplicated target test and exact invariant placement before using this
+  source-shape lever.
 - A hand-rolled `label: if (...) goto...` loop also keeps the top test but
   **loses hoisting** (no loop notes → loop.c skips it): magic divisors and
   invariant addresses get rematerialized per iteration. Wrong.

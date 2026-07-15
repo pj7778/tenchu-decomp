@@ -76,11 +76,14 @@
  * PARAM_ITEM_STAY records, and upper scalar locals. Demo SLD evidence restored
  * the indexed construction-record and ornament loops. Target-evidenced
  * top-tested loop forms, a register-resident first-pass model size, and the
- * final pass's early signed parent carrier now reproduce the target's full
- * saved-register set and exact 2724-byte/681-instruction extent. The linked
- * residual is 727 differing bytes with an 83.41 fuzzy score; remaining work is
- * parameter-home scheduling and regalloc alignment rather than missing
- * behavior. Build it with
+ * final pass's early signed parent carrier reproduce the target's full
+ * saved-register set and exact 2724-byte/681-instruction extent. An explicit
+ * initial disposal test with hoisted pointer masks now matches that traversal
+ * exactly; preserving the shared nModel/WorldMap-top source identity and the
+ * case-2 and final-preparation allocation boundaries also recover the target's
+ * first-pass slot and model registers. The linked residual is 666 differing
+ * bytes with an 85.46 fuzzy score; remaining work is parameter-home scheduling
+ * and regalloc alignment rather than missing behavior. Build it with
  * `NON_MATCHING=LoadConstruction ./Build`. On a full match, delete the guards
  * and the stub-only _jtbl array.
  */
@@ -334,13 +337,22 @@ short LoadConstruction(u32 *data)
         slotman = &ModelSlot;
         if (0 < slotman->max)
         {
-            offset = 0;
-            for (i = 0; i < slotman->n; i++)
+            u32 mask;
+            u32 base;
+
+            i = 0;
+            if (i < slotman->n)
             {
-                disposeModel = *(OrnamentType **)((u8 *)&slotman->slot->model + offset);
-                if (((u32)disposeModel & 0xFF000000) == 0x80000000)
-                    DisposeOrnament(disposeModel);
-                offset += sizeof(ObjectSlotType);
+                mask = 0xFF000000;
+                base = 0x80000000;
+                offset = i;
+                for (; i < slotman->n; i++)
+                {
+                    disposeModel = *(OrnamentType **)((u8 *)&slotman->slot->model + offset);
+                    if (((u32)disposeModel & mask) == base)
+                        DisposeOrnament(disposeModel);
+                    offset += sizeof(ObjectSlotType);
+                }
             }
             vfree(slotman->slot);
         }
@@ -352,7 +364,6 @@ short LoadConstruction(u32 *data)
 
     {
         int msize;
-        ObjectSlotType **slot;
         ObjectSlotManager *slotman;
 
         wlddt = scratch.stack.wlddt;
@@ -381,20 +392,26 @@ short LoadConstruction(u32 *data)
         break;
 
     case 2:
-        if (wlddt[i].data.name[0] != 0)
+        do
         {
-            model = D_80097A74->object[scratch.stack.ObjectID];
-            scratch.stack.ObjectID++;
-            wlddt[i].data.model = model;
-        }
-        else
-            model = CreateCloneOrnament(
-                scratch.stack.wlddt[wlddt[i].ObjectID].data.model);
+            do
+            {
+                if (wlddt[i].data.name[0] != 0)
+                {
+                    model = D_80097A74->object[scratch.stack.ObjectID];
+                    scratch.stack.ObjectID++;
+                    wlddt[i].data.model = model;
+                }
+                else
+                    model = CreateCloneOrnament(
+                        scratch.stack.wlddt[wlddt[i].ObjectID].data.model);
 
-        model->locate.coord.t[0] = wlddt[i].x;
-        model->locate.coord.t[1] = wlddt[i].y;
-        model->locate.coord.t[2] = wlddt[i].z;
-        UpdateOrnament(model, wlddt[i].n);
+                model->locate.coord.t[0] = wlddt[i].x;
+                model->locate.coord.t[1] = wlddt[i].y;
+                model->locate.coord.t[2] = wlddt[i].z;
+                UpdateOrnament(model, wlddt[i].n);
+            } while (0);
+        } while (0);
 
         {
             long a = wlddt[i].x;
@@ -425,17 +442,17 @@ short LoadConstruction(u32 *data)
         z &= 7;
 
         GetCenterAndSize(model->object.tmd, &scratch.center, &scratch.size);
-        slot = &WorldMap[x][y][z].top;
+        nModel = (int)&WorldMap[x][y][z].top;
         slotman = &ModelSlot;
         shifty = scratch.center.vy;
         msize = scratch.size / 2;
         if (slotman->n >= slotman->max)
             AdtMessageBox(D_800120C4);
         slotman->slot[slotman->n].model = model;
-        slotman->slot[slotman->n].next = *slot;
+        slotman->slot[slotman->n].next = *(ObjectSlotType **)nModel;
         slotman->slot[slotman->n].ModelSize = msize;
         slotman->slot[slotman->n].ShiftY = shifty;
-        *slot = &slotman->slot[slotman->n];
+        *(ObjectSlotType **)nModel = &slotman->slot[slotman->n];
         slotman->n++;
         break;
 
@@ -473,6 +490,8 @@ short LoadConstruction(u32 *data)
 
         sprintf((char *)scratch.name, D_80097A90);
         vfree(scratch.stack.MapModel);
+        do {
+        } while (0);
         i = 0;
         scratch.stack.MapModel =
             (u32 *)PathFileRead((char *)ImagePath, (char *)scratch.name);
