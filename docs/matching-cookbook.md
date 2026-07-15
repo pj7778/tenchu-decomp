@@ -3510,6 +3510,16 @@ before `valloc`, and made `$s1` feed `MemCardAccept`/`MemCardSync`, with no
 surviving branch. This is already an ordinary guided `loop-fence` candidate;
 the RTL symptom is one missing long-lived zero pseudo, not a wrong constant.
 
+The fence can follow a narrowing store while the value itself remains
+full-width. ComPad needs `pad->held = raw; do {} while (0);` followed by two
+identical branch-local `int` copies of `raw`. The loop note anchors the store
+and stops local copy propagation, so cc1 retains `sh v0; move v1,v0`; only the
+later bit test narrows with `andi`. Making the producer or branch copy `u16`
+moves the zero-extension onto the copy, while omitting the fence lets reorg
+steal the store into the test branch's delay slot. Use this measured trio when
+the target has a full-width producer, a narrow memory publish, then a plain
+register copy before the first explicitly narrow consumer.
+
 A producer can sit inside the fenced assignment's **comma RHS** when the
 residual is only instruction order: `do { table[1] = (offset = i * 4, 58); }
 while (0);`.  This keeps the literal definition and store on opposite sides of
