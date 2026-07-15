@@ -4434,6 +4434,15 @@ before local-alloc, so the def is gone before it can bias anything.
   415 to 204 differing bytes. Keep width experiments subordinate to proven
   data types: an autorules `s16` midpoint scored well but was invalid because
   both VECTOR inputs and the midpoint arithmetic are full-width.
+- **A better structural or fuzzy score can still be a worse exact linked
+  checkpoint when one early schedule shift moves a long aligned region.** In
+  BreedLife, combining a single-load first search, explicit table/name aliases,
+  the retail-shaped type tail, and a direct map argument reached 87.26 fuzzy
+  with fewer residual lines, but 475 exact linked bytes differed. The simpler
+  exact-length one-shot tail fence scored only 76.43 fuzzy yet left 305 linked
+  bytes, so it is the bankable checkpoint. Use the broad form as source-identity
+  evidence, not as progress, until its early address schedule is repaired; the
+  linked whole-function comparison remains the gate.
 - **Global-alloc priority is floor_log2(n_refs)·n_refs/live_length·10000·size,
   ties by pseudo number** (global.c allocno_compare; flow adds loop_depth
   per ref). cc1's `-da` dump prints each pseudo's refs/length and the

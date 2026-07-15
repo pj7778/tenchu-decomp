@@ -37,28 +37,34 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 315 of 628 bytes differ, down from 451; the extent
+ * STATUS: NON_MATCHING — 305 of 628 bytes differ, down from 451; the extent
  * remains exact at 628 bytes / 157 instructions and the fuzzy score improved
- * from 57.32 to 68.15. The target and candidate now both use a 0xA8-byte
+ * from 57.32 to 76.43. The target and candidate now both use a 0xA8-byte
  * frame with $s0-$s7 (the old draft unnecessarily consumed $s8). Their
  * physical CFG counts also agree for conditional branches (15/15), calls
  * (9/9), and returns (1/1); the candidate still has one unconditional jump
- * where the target has two. `asmdiff -n --structural` reports 54
- * length-changing lines in 16 displayed blocks (73 raw aligned lines in 27
+ * where the target has two. `asmdiff -n --structural` reports 46
+ * length-changing lines in 16 displayed blocks (60 raw aligned lines in 24
  * blocks), so the residual is not being misreported as a pure register tie.
+ *
+ * A jump2-erased one-shot loop around the type-special-case tail changes no
+ * emitted branch or behavior, but its loop note raises the tail's allocation
+ * weight enough to keep the loaded model in retail's $s2. This reduces the
+ * authoritative linked residual by ten bytes and produces the larger fuzzy
+ * and structural gains above.
  *
  * The main remaining cascade starts in the HumanData searches: target
  * materializes the table base and carries the found row/model as
  * $s0/$s2, then explicitly rotates roles before the filename-sharing scan;
- * this draft carries the row/model as $s2/$s1. That swap feeds the model
- * creation, map-level call, and type-range tail. The tail has the target's
- * signed guard branch and total conditional-branch count, but a different
- * physical layout and the missing unconditional jump. Focused experiments
- * that did not improve this checkpoint included declaration reordering,
- * aliasing or making the found-row pointer volatile, reusing `idx` as a
- * pointer, `u16`/`s32` counter variants, and explicit base/name-source
- * identities in the second scan. Guided identical-arm and type-width sweeps
- * likewise found no better exact-length candidate.
+ * this draft carries them as $s1/$s2. That remaining row/base rotation feeds
+ * the second search. The tail has the target's signed guard count, but a
+ * different physical layout and the missing unconditional jump. A combined
+ * single-load first search, explicit table/name aliases, retail-shaped tail,
+ * and direct map argument reached 87.26 fuzzy with fewer structural lines,
+ * but regressed the exact linked residual to 475 bytes; wrong-length siblings
+ * are not authoritative. Declaration reordering, volatile row aliases,
+ * `u16`/`s32` counters, and guided identical-arm/type-width sweeps likewise
+ * failed to beat this exact 305-byte checkpoint.
  *
  * BreedLife (0x8002a018, 0x278 bytes) — spawns a new Humanoid of `type` at
  * ground position (x,z) with yaw `r`: resolves `type` to its HumanData[]
@@ -244,27 +250,30 @@ type_found:
     {
         human->item[3] = 1;
     }
-    if (type < 0x8B)
+    do
     {
-        /* Keep the target's separate signed low-type guards physical. */
-        if (type < 0x81)
+        if (type < 0x8B)
         {
-            if (1 < type)
-                goto done;
-            if (type < 0)
-                goto done;
+            /* Keep the target's separate signed low-type guards physical. */
+            if (type < 0x81)
+            {
+                if (1 < type)
+                    goto done;
+                if (type < 0)
+                    goto done;
+            }
+            human->attribute = human->attribute | 2;
+            EquipWeapon(human, 1);
+            SetNowMotion(human, 0x501, 1);
         }
-        human->attribute = human->attribute | 2;
-        EquipWeapon(human, 1);
-        SetNowMotion(human, 0x501, 1);
-    }
-    else if (type < 0xA8)
-    {
-        if (0xA5 < type)
+        else if (type < 0xA8)
         {
-            human->attribute = human->attribute | 0x20;
+            if (0xA5 < type)
+            {
+                human->attribute = human->attribute | 0x20;
+            }
         }
-    }
+    } while (0);
 done:
     return human;
 }
