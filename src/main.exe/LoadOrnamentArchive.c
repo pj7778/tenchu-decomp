@@ -35,36 +35,13 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — right length (568 bytes / 142 insns); 260 of 568
- * bytes differ, concentrated in the "parent lookup" sub-loop inside loop2
- * (searching prntp[] for the entry whose `id` matches the current entry's
- * `parent`, to inherit that already-created ornament's coordinate as the
- * new one's super instead of the archive root `dim`). Structural work
- * confirmed correct: both loops' shape (loop1 top-tested goto-loop over the
- * tag/pointer table exactly like ClearItemLayout's family; loop2's nested
- * do-while search with `k`/`next` matching the target's "increment before
- * compare" order); every struct offset (OrnamentArchiveType, OrnamentType,
- * ParentingType — the latter's own name straight from PSX.SYM) verified
- * against the raw .s field-by-field; the `tagMask = 0xA0000000` and other
- * persistent-register promotions needed to reach the right frame/length.
- *
- * `autorules` found idx (loop1's captured pre-increment index) needs `s8`,
- * not `short`, to reach this length/residual (1004 -> 260 differing bytes) —
- * kept despite the semantic narrowing risk (an archive with >127 sub-models
- * would wrap) because every `short` variant tried assembles 4 bytes LONG
- * (572 vs target 568) with a much larger residual; this is the best
- * available draft, not a claim that `s8` is the true original type.
- *
- * Residual shape: the target reads `dim->object[j]` in ONE instruction
- * (`lw v0,96(s1)`) before the parent-search condition; this draft's
- * compiled order computes the search address first, and the whole
- * "found" path (id-compare, `dim->object[k]`) ends up on different
- * registers (s1/s2 swapped roles) — a downstream cascade from that one
- * reordering. Several source-order variants of the `objp =` / `super =`
- * pair and the `idx` capture were tried with no further improvement. One
- * bounded permuter run (~470 iterations, `-j4`) found no score-0 candidate
- * (best partial 2730 vs base 3610, increasingly erroring past ~iteration
- * 400) — not adopted.
+ * STATUS: MATCHING — pure C, all 568 bytes / 142 instructions exact.
+ * Reusing the PSX.SYM `i` for both archive loops and `j` for the nested
+ * parent search produces the target loop and found-path layout. The nested
+ * one-shot loops around the offset load emit no code; their two allocation
+ * weights make `prntp` outrank `prnt`, giving the target s3/s4 assignment.
+ * Assigning `count` in loop2's comparison and initializing `j` before the
+ * parent copy preserve the two target instruction-order pairs.
  */
 
 struct OrnamentType
@@ -107,9 +84,6 @@ extern void SystemOut(char *msg);
 extern char D_800120AC[]; /* "NO MODEL ARCHIVE DATA" */
 extern WorldType World;
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/LoadOrnamentArchive", LoadOrnamentArchive);
-#else
 OrnamentArchiveType *LoadOrnamentArchive(u32 *adr, ModelType *prnt)
 {
     OrnamentArchiveType *dim;
@@ -120,26 +94,36 @@ OrnamentArchiveType *LoadOrnamentArchive(u32 *adr, ModelType *prnt)
     OrnamentType *objp;
     ModelType *super;
     u32 tagMask;
+    int parent;
+    int count;
 
     if (adr == 0) {
         SystemOut(D_800120AC);
     }
     dim = (OrnamentArchiveType *)valloc(sizeof(OrnamentArchiveType));
     dim->data = adr;
-    dim->n = *(u16 *)(adr + 1);
+    adr++;
+    dim->n = *(u16 *)adr;
+    adr++;
     i = 0;
     tagMask = 0xA0000000;
     dim->object = (OrnamentType **)valloc(dim->n * 4);
-    prntp = (ParentingType *)((u8 *)adr + 8);
-    tmdp = (u8 *)adr + 8;
+    prntp = (ParentingType *)adr;
+    tmdp = (u8 *)adr;
 
 loop1:
     {
-        s8 idx = i;
+        int idx = i;
+        s32 offset;
         if (!(idx < dim->n))
             goto loop1_end;
-        i = idx + 1;
-        objp = LoadOrnament((u32 *)(tmdp + prntp[idx].offset));
+        do {
+            do {
+                offset = prntp[idx].offset;
+            } while (0);
+        } while (0);
+        i++;
+        objp = LoadOrnament((u32 *)(tmdp + offset));
         dim->object[idx] = (OrnamentType *)((u32)objp | tagMask);
     }
     goto loop1;
@@ -156,49 +140,48 @@ loop1_end:
     dim->rotate.vy = 0;
     dim->rotate.vz = 0;
     UpdateCoordinate((ModelType *)dim);
-    j = 0;
+    i = 0;
     dim->id = -1;
     dim->attribute = 0;
 loop2:
-    if (!(j < dim->n))
+    if (!(i < (count = dim->n)))
         goto loop2_end;
-    objp = dim->object[j];
+    objp = dim->object[i];
     super = (ModelType *)dim;
-    if (0 <= prntp[j].parent && 0 < dim->n) {
-        short k;
-        short next;
-
-        k = 0;
-        do {
-            next = k + 1;
-            if (prntp[j].parent == prntp[k].id) {
-                super = (ModelType *)dim->object[k];
-                break;
-            }
-            k = next;
-        } while (k < dim->n);
+    if (0 <= prntp[i].parent && 0 < count) {
+        j = 0;
+        parent = prntp[i].parent;
+parent_loop:
+        if (parent == prntp[j].id)
+            goto parent_found;
+        j++;
+        if (j < count)
+            goto parent_loop;
     }
+coordinate_init:
     GsInitCoordinate2((GsCOORDINATE2 *)super, &objp->locate);
-    objp->locate.coord.t[0] = prntp[j].x;
-    objp->locate.coord.t[1] = prntp[j].y;
-    objp->locate.coord.t[2] = prntp[j].z;
+    objp->locate.coord.t[0] = prntp[i].x;
+    objp->locate.coord.t[1] = prntp[i].y;
+    objp->locate.coord.t[2] = prntp[i].z;
     UpdateOrnament(objp, 0);
-    j = j + 1;
+    i = i + 1;
     objp->object.attribute |= 0x400;
     goto loop2;
+
+parent_found:
+    super = (ModelType *)dim->object[j];
+    goto coordinate_init;
 loop2_end:
 
     dim->rotate.pad = (short)dim->object[0]->locate.coord.t[1];
     return dim;
 }
-#endif
 
 // triage: MEDIUM — 142 insns, 1 loop, 6 callees, ~0.07 to SetupMotionRegist
 // likely-relevant cookbook sections:
 //   - Loops: 1 back-edge(s) — for/while/do vs goto shape
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
+// Ghidra decompilation (reference):
 //
 //
 // OrnamentArchiveType * LoadOrnamentArchive(ulong *adr,ModelType *prnt)
