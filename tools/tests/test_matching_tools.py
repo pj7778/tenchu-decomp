@@ -5218,6 +5218,23 @@ class BuildConfigurationTests(unittest.TestCase):
         ))
         self.assertEqual(names, set(permute.MASPSX_EXTRA))
 
+    def test_cc_extra_flags_match_build(self):
+        path = os.path.join(os.path.dirname(TOOLS), "shake", "src", "Build.hs")
+        with open(path) as f:
+            build = f.read()
+        block = build.split("ccExtraFlags src =", 1)[1].split("_ -> []", 1)[0]
+        found = {}
+        pattern = __import__("re").compile(
+            r'^\s*"([A-Za-z0-9_]+)"\s*->\s*\[(.*)\]$', __import__("re").M
+        )
+        for name, values in pattern.findall(block):
+            found[name] = __import__("re").findall(r'"([^"]+)"', values)
+        self.assertEqual(found, permute.CC_EXTRA_FLAGS)
+        self.assertIn(
+            "-mno-split-addresses", permute.cc_flags_for("MemCardCallback")
+        )
+        self.assertNotIn("-mno-split-addresses", permute.cc_flags_for("Other"))
+
     def test_gp_extern_table_matches_build(self):
         path = os.path.join(os.path.dirname(TOOLS), "shake", "src", "Build.hs")
         with open(path) as f:

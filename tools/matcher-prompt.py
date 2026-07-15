@@ -61,6 +61,12 @@ GUIDANCE = [
     "The extern form lets cc1 fold the address into each memory operand, so `as` "
     "re-materialises `%hi` per use through `$at`: extra `lui`s and WRONG LENGTH.",
 
+    "For a stock PsyQ library leaf, do not assume the game's cc1 address-splitting "
+    "default. If the original SDK object proves one unsplit `la` feeding multiple "
+    "offset-0 accesses, use a narrowly scoped Build.hs `ccExtraFlags` entry such as "
+    "`-mno-split-addresses`, and mirror it in permute.py's `CC_EXTRA_FLAGS`. Confirm "
+    "the provenance and run check-all before accepting a per-TU flag (MemCardCallback).",
+
     "If the link fails with `undefined reference to D_XXXXXXXX`, splat only "
     "auto-labels data that still-carved *asm* references — matching the last "
     "such function drops the symbol. Add a plain `D_XXXXXXXX = 0xXXXXXXXX;` to "

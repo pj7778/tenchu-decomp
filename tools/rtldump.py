@@ -97,6 +97,12 @@ def _load_maspsx_config():
     return permute.GP_EXTERNS, permute.MASPSX_EXTRA, permute.AS_FLAGS
 
 
+def cc_flags_for(name):
+    """Return the build-equivalent cc1 flags for one translation unit."""
+    import permute
+    return CC_FLAGS + permute.CC_EXTRA_FLAGS.get(name, [])
+
+
 def compile_rtl(name, passes=None, draft=False, src=None, debug_lines=False,
                 assemble=False):
     """Compile one source file and return paths to its asm/RTL artifacts.
@@ -152,7 +158,7 @@ def compile_rtl(name, passes=None, draft=False, src=None, debug_lines=False,
 
     dflags = sorted({PASS_FLAG[p] for p in want})
     debug = ["-g"] if debug_lines else []
-    r = subprocess.run([CC, *CC_FLAGS, *debug, *dflags, ic, "-o", sfile],
+    r = subprocess.run([CC, *cc_flags_for(name), *debug, *dflags, ic, "-o", sfile],
                        stderr=subprocess.PIPE, text=True, cwd=outdir)
     err = (r.stderr or "").strip()
     if not os.path.exists(sfile):

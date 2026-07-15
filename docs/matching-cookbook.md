@@ -4609,12 +4609,18 @@ absolute → keep the symbol off the list (a plain small extern).
     load/store's displacement (4 insns). A nonzero constant offset forces full
     materialization (`lui`+`addiu` forming the declared symbol's *own* address,
     never partially absorbing the extra offset), and the offset applies purely as
-    the consuming access's displacement (5 insns). Consequence for a get/set-swap
-    NON_MATCHING: if the target's `lui`+`addiu` decodes to the exact final address
-    with **0 residual displacement** on every access, no "declare the global at
-    its own offset" spelling reproduces it (offset 0 folds; a nonzero offset never
-    leaves 0 displacement) — the real symbol must be an earlier sibling field of a
-    not-yet-matched enclosing struct. Check this dead-end early (MemCardCallback).
+    the consuming access's displacement (5 insns). This diagnoses ordinary game
+    TUs, but it is not a universal dead end: stock PsyQ objects may have been built
+    with different address-splitting defaults. LIBMCRD's `MemCardCallback` proves
+    the exception. Its original object relocations identify a private offset-0 BSS
+    callback slot, and `-mno-split-addresses` preserves one unsplit `la` feeding the
+    load and store: `lui`+`addiu` forms the exact final address, both accesses use
+    displacement 0, and the leaf is the target five instructions. Before inventing
+    an enclosing struct for this shape, establish whether the function is a stock
+    library routine and inspect the shipped SDK object. Encode a proven difference
+    narrowly in Build.hs's per-TU `ccExtraFlags`; mirror it in
+    `tools/permute.py`'s `CC_EXTRA_FLAGS` so permuter/RTL diagnostics compile the
+    same object, then require `Build check-all`.
 - **≤8-byte externs are -G8-small: their address is one `la` (lui+addiu into
   the SAME register); a split `lui rA,%hi / addiu rB,rA,%lo` across TWO
   registers means the original declaration was NOT small** — respell as an

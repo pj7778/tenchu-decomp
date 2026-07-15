@@ -43,6 +43,12 @@ CPP = ("mipsel-unknown-linux-gnu-cpp -Iinclude -undef -Wall -lang-c -fno-builtin
 CC_FLAGS = ("-mcpu=3000 -quiet -G8 -w -O2 -funsigned-char -fpeephole -ffunction-cse "
             "-fpcc-struct-return -fcommon -fverbose-asm -fgnu-linker -mgas "
             "-msoft-float").split()
+# Stock PsyQ objects can use different cc1 defaults from the game TUs. Keep
+# this table in sync with Build.hs's ccExtraFlags so every candidate is scored
+# with the flags that produced the authoritative build object.
+CC_EXTRA_FLAGS = {
+    "MemCardCallback": ["-mno-split-addresses"],
+}
 AS_FLAGS = ("-EL -Iinclude -march=r3000 -mtune=r3000 -no-pad-sections -O1 -G0").split()
 LD = "mipsel-unknown-linux-gnu-ld"
 OBJCOPY = "mipsel-unknown-linux-gnu-objcopy"
@@ -66,6 +72,11 @@ PREFLIGHT_MAX_BLOCKS = 32
 PERMUTER_PARSER_DECLS = {
     "__builtin_abs": "extern int __builtin_abs(int);\n",
 }
+
+
+def cc_flags_for(name):
+    """Build-equivalent cc1 flags for one translation unit."""
+    return CC_FLAGS + CC_EXTRA_FLAGS.get(name, [])
 
 
 def add_permuter_parser_declarations(source):
@@ -750,7 +761,7 @@ def main():
     gpx = "".join(f" {f}" for f in MASPSX_EXTRA.get(name, []))
     gpx += "".join(f" --gp-extern {s}" for s in GP_EXTERNS.get(name, []))
     open(csh, "w").write(COMPILE_SH.format(
-        root=ROOT, ccflags=" ".join(CC_FLAGS), asflags=" ".join(AS_FLAGS),
+        root=ROOT, ccflags=" ".join(cc_flags_for(name)), asflags=" ".join(AS_FLAGS),
         gpexterns=gpx))
     os.chmod(csh, 0o755)
 
