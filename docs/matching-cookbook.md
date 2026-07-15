@@ -4900,6 +4900,14 @@ absolute → keep the symbol off the list (a plain small extern).
     `extern SVECTOR D_80097B0C[];`/`D_80097B14[];` on that same `D_80097Bxx`
     table, +1 insn as plain `extern SVECTOR` — the `lui` reorg only hoists into
     the dispatch delay slot once the split forces a two-register HIGH/LO_SUM).
+    The same rule applies to a four-byte pointer cell. PutMap's scalar
+    `extern Humanoid *CURRENTLY_SELECTED_CHARACTER_STATE_PTR` stayed one
+    assembler pseudo-load, so reorg could not move its eventual `lui` into the
+    case-test delay slot and the body needed a load-hazard `nop`. Declaring the
+    alias as `extern Humanoid *...[]` and reading `[0]` exposed the HIGH
+    producer to cc1; reorg hoisted it into the dispatch slot and scheduled an
+    unrelated table `lui` into the load delay, closing the exact 532-byte
+    match.
   - **Interleave tell — how to SPOT the split from the asm**: when another
     instruction sits *between* a symbol's `lui %hi` and its `lw/sw %lo` half, the
     original was NOT a small extern — a small extern is ONE `la`/macro insn whose
