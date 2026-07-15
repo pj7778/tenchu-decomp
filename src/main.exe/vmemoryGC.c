@@ -50,6 +50,61 @@ extern void SystemOut(char *);
 extern void *valloc(u32 size);
 extern void *memcpy(void *dst, void *src, u32 n);
 
+static inline void FreePoolBlockInline(void *pt, u32 cmask)
+{
+    PoolBlock *header;
+    PoolBlock *next;
+    PoolBlock *prev;
+    PoolBlock *n2;
+    u32 mask;
+    u32 sz;
+    s32 s;
+
+    if (pt == 0)
+        return;
+
+    header = (PoolBlock *)pt - 1;
+    mask = 0x80000000;
+    if ((header->size & mask) == 0)
+        SystemOut(D_8001104C);
+
+    sz = header->size & cmask;
+    header->size = sz;
+
+    next = header->next;
+    if (next != 0)
+    {
+        s = next->size;
+        if ((~s & mask) != 0)
+        {
+            header->size = sz + (s + 2);
+            header->next = next->next;
+        }
+    }
+
+    prev = virtual_memory_pool;
+    if (prev != 0)
+    {
+    search:
+        n2 = prev->next;
+        if (n2 == header)
+            goto found;
+        prev = n2;
+        if (prev != 0)
+            goto search;
+    found:
+        if (prev != 0)
+        {
+            s = prev->size;
+            if (s >= 0)
+            {
+                prev->size = s + (header->size + 2);
+                prev->next = header->next;
+            }
+        }
+    }
+}
+
 /*
  * vmemoryGC — same TU/family as valloc.c/vfree.c/vrealloc.c: a compacting
  * "garbage collector" over the free-list pool. valloc()s a fresh block the
@@ -61,57 +116,36 @@ extern void *memcpy(void *dst, void *src, u32 n);
  * list (found by the same linear walk vfree.c uses), returning the moved
  * (or, on failure, unchanged) address.
  *
- * Matching notes: no `jal vfree` appears anywhere in the target — the
- * free+coalesce logic (vfree.c's already-matched body) is inlined here
- * TWICE, textually, once operating on `pt` and once on `newp`. Each copy
- * keeps vfree's own leading `if (p == 0) return;` guard even though it is
- * provably dead at both call sites (we're already inside `p != 0`) — that
- * redundant check is real code in the target, the tell that this is a
- * literal source-level copy/paste of vfree's body rather than a call.
- *  - The `pt` copy's guard reads `if (pt == 0) return newp;` (this arm HAS
- *    a value to return, so vfree's bare `return;` becomes `return newp;`).
- *  - The `newp` copy has nothing to return here (it falls through to the
- *    third, prev-search block regardless), so vfree's guard becomes a
- *    wrapping `if (newp != 0) { ...rest of vfree's body... }` instead of an
- *    early return — the natural transform when adapting a void early-return
- *    into a fall-through position.
+ * Matching notes: no `jal vfree` appears anywhere in the target. A single
+ * inline helper containing vfree.c's already-matched free+coalesce body is
+ * expanded once for `pt` and once for `newp`. This is more than source
+ * cleanup: the helper's distinct formal/local identities recover the target
+ * full-width neighbour loads and reduce the exact-length residual from 241
+ * to 96 bytes. The repeated `pt`/`vhp`/`svhp` debug locals are consistent
+ * with those two inline expansions. Each expansion keeps vfree's leading
+ * null guard; jump2 threads the first one into the following `return newp`
+ * and the second one into the final compaction block.
+ *  - Three nested zero-trip wrappers at the FIRST helper call add no machine
+ *    code, but apply call-site loop depth to that inline expansion. This puts
+ *    the outer `pt`, header, complement mask, and size in their target saved
+ *    registers and cuts 96 differing bytes to 54.
+ *  - One zero-trip wrapper around the final mask definition keeps that value
+ *    across memcpy and restores the exact 195-instruction extent. The final
+ *    vh-size wrapper resolves another two-byte caller-register tie; neither
+ *    wrapper leaves a branch in the optimized assembly.
  *  - The final block's tail materializes with vrealloc.c's exact idiom:
  *    `(PoolBlock *)((u8 *)prev + (hsz << 2) + 8)`.
  *  - Both coalescing sums are vfree.c's proven `A + (B + 2)` spelling.
  *
- * STATUS: NON_MATCHING — 241 of 780 bytes differ, but the draft is the
- * CORRECT LENGTH (195/195 instructions) and every differing line is a pure
- * REGISTER RENUMBERING — same instructions, same order, same branch
- * targets, just a different specific hard-register assigned to each of the
- * 7 callee-saved-worthy values (pt, header, cmask (0x7fffffff), mask
- * (0x80000000, one variable reassigned fresh in each of the 3 inlined
- * blocks — this exact reuse, rather than 3 separately-scoped locals, is
- * what closed the LENGTH gap: see below), size, newp, and the per-block
- * header-copy/tail role that reuses one more slot 3x). Confirmed via
- * `tools/rtldump.py vmemoryGC --draft`'s `.greg` dump: target's allocation
- * order (by hard-reg number, ascending) is copy-var(s0) > newp(s1) >
- * pt(s2) > header(s3) > mask(s4) > cmask(s5) > size(s6, LAST); our cc1
- * run's own global-alloc priority queue ("N regs to allocate: ...") instead
- * orders newp > mask > pt > copy-var > header > size > cmask — the same 7
- * values, same 7 hard regs, different PRIORITY (refs/live-length) ranking.
- * Tried and ruled out: (1) declaring `mask` separately per block (3
- * distinct pseudos) — undershoots by 12-16 bytes, cc1 doesn't reuse one
- * hard reg across the 3 disjoint scopes on its own; (2) hoisting `mask` to
- * one function-scope variable reassigned fresh in each block (kept, closes
- * the LENGTH gap exactly) but over-inflates its priority past pt's; (3)
- * dropping the explicit `vhp = header;` copy in the first block (matches
- * block 2's simpler single-`header2` shape) — same score, doesn't fix the
- * ordering; (4) rewriting the SystemOut guard as `header->size >= 0`
- * instead of `(header->size & mask) == 0` — vfree.c's OWN matched source
- * uses the AND-mask spelling although it folds to an identical `bltz`
- * either way (confirmed against vfree's own target .s), and dropping it
- * measurably hurt mask's register assignment, so the AND-mask spelling is
- * kept. A bounded permuter run (`timeout 300 tools/permute.py vmemoryGC --
- * --stop-on-zero -j4`, ~20000+ iterations) plateaued at score 1550 (from a
- * base of 2200), never reaching 0 — consistent with a genuine
- * priority-formula tie below the C level, not a source-structure bug.
- * `tools/autorules.py` found only one 1-byte win (`s: s32->s16` in the
- * first block's forward-merge temp) and reports no further improving edit.
+ * STATUS: NON_MATCHING — exact target extent (780 bytes / 195 instructions),
+ * 52 differing bytes, fuzzy 77.95. The remaining saved-register cycle is
+ * `newp` s4→s1, first inline header s1→s0, and the two inline masks s0/s1→s4;
+ * the second inline header, outer pt/header, complement mask, size, and final
+ * mask already have their target homes. The final search cursor remains v1
+ * instead of a3, with the corresponding tail arithmetic/load schedule.
+ * Passing the mask through the helper costs two instructions because combine
+ * no longer folds the double-release test to `bltz`; signed-guard, late-mask,
+ * and whole-outer-block weighting variants also regress extent or bytes.
  */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/vmemoryGC", vmemoryGC);
@@ -132,111 +166,22 @@ void *vmemoryGC(void *pt)
     {
         if (newp < pt)
         {
-            PoolBlock *vhp;
-            PoolBlock *next;
-            PoolBlock *prev;
-            PoolBlock *n2;
-            u32 sz;
-            s16 s;
-
             memcpy(newp, pt, size);
-            if (pt == 0)
-                return newp;
-
-            vhp = header;
-            mask = 0x80000000;
-            if ((header->size & mask) == 0)
-                SystemOut(D_8001104C);
-
-            sz = header->size & cmask;
-            header->size = sz;
-
-            next = header->next;
-            if (next != 0)
+            do
             {
-                s = next->size;
-                if ((~s & mask) != 0)
+                do
                 {
-                    header->size = sz + (s + 2);
-                    header->next = next->next;
-                }
-            }
-
-            prev = virtual_memory_pool;
-            if (prev != 0)
-            {
-            search1:
-                n2 = prev->next;
-                if (n2 == vhp)
-                    goto found1;
-                prev = n2;
-                if (prev != 0)
-                    goto search1;
-            found1:
-                if (prev != 0)
-                {
-                    s = prev->size;
-                    if (s >= 0)
+                    do
                     {
-                        prev->size = s + (vhp->size + 2);
-                        prev->next = vhp->next;
-                    }
-                }
-            }
+                        FreePoolBlockInline(pt, cmask);
+                    } while (0);
+                } while (0);
+            } while (0);
             return newp;
         }
         else
         {
-            PoolBlock *header2;
-            PoolBlock *next;
-            PoolBlock *prev;
-            PoolBlock *n2;
-            u32 sz;
-            s32 s;
-
-            if (newp != 0)
-            {
-                header2 = (PoolBlock *)newp - 1;
-                mask = 0x80000000;
-                if ((header2->size & mask) == 0)
-                    SystemOut(D_8001104C);
-
-                sz = header2->size & cmask;
-                header2->size = sz;
-
-                next = header2->next;
-                if (next != 0)
-                {
-                    s = next->size;
-                    if ((~s & mask) != 0)
-                    {
-                        header2->size = sz + (s + 2);
-                        header2->next = next->next;
-                    }
-                }
-
-                prev = virtual_memory_pool;
-                if (prev != 0)
-                {
-                search2:
-                    n2 = prev->next;
-                    if (n2 == header2)
-                        goto found2;
-                    prev = n2;
-                    if (prev != 0)
-                        goto search2;
-                found2:
-                    if (prev != 0)
-                    {
-                        s = prev->size;
-                        if (s >= 0)
-                        {
-                            prev->size = s + (header2->size + 2);
-                            prev->next = header2->next;
-                        }
-                    }
-                }
-            }
+            FreePoolBlockInline(newp, cmask);
         }
     }
 
@@ -264,7 +209,10 @@ void *vmemoryGC(void *pt)
                 sz2 = prev->size;
                 if (sz2 >= 0)
                 {
-                    mask = 0x80000000;
+                    do
+                    {
+                        mask = 0x80000000;
+                    } while (0);
                     newpt = (void *)(prev + 1);
                     vh.size = sz2;
                     vh.next = header->next;
@@ -275,7 +223,10 @@ void *vmemoryGC(void *pt)
                     pt = newpt;
                     if (vh.next != 0 && (~vh.next->size & mask) != 0)
                     {
-                        vh.size = vh.size + (vh.next->size + 2);
+                        do
+                        {
+                            vh.size = vh.size + (vh.next->size + 2);
+                        } while (0);
                         vh.next = vh.next->next;
                     }
                     *tail = vh;

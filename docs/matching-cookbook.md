@@ -4305,6 +4305,17 @@ before local-alloc, so the def is gone before it can bias anything.
   wrapper the likely original macro never had. Only make this substitution
   when every invocation is a standalone statement and the body has no
   `break`/`continue` whose target would change.
+  Loop depth at an **inline call site** also propagates through that specific
+  expanded helper body. vmemoryGC first replaced two textual vfree copies with
+  one static inline helper, restoring the helper-formal/local identities and
+  reducing its exact-length residual 241→96. Three nested zero-trip wrappers
+  around only the first call then weighted that expansion independently of the
+  second, moved the outer pt/header/complement-mask/size pseudos into their
+  target saved registers, and reduced 96→54 with no surviving loop. This is a
+  stronger and more local lever than wrapping the helper definition, which
+  would weight every expansion equally. Require repeated-inline source evidence
+  (vmemoryGC had repeated debug-local names), inspect both expanded `.greg`
+  ranges, and verify exact extent after each depth.
 - **A whole-block `if (X) {block} else {block}` with BYTE-IDENTICAL arms is a
   scheduling lever** (permuter-found; no statement reorder reaches it).
   Duplicating an interleaved multi-load sequence into both arms shifts cc1's
