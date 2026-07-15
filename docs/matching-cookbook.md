@@ -1070,7 +1070,12 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
   instruction in ActKAGI and is also the documented shape in parked
   now-exact FUN_800270f8. `autorules` tries both forms as `subscript-postinc`, limited to
   a nonvolatile, non-address-taken local used only once in the affected full
-  expression; `rtlguide` names the `postincrement-working-copy` residual.
+  expression; `rtlguide` names the `postincrement-working-copy` residual. In
+  SetupWeapon, this one rewrite also moved the reused `short` counter from `$v1`
+  to the target's `$a1`; that identity carried into the following direct
+  sentinel scan and removed all 47 residual bytes without changing the
+  1,128-byte extent. Treat a postincrement mismatch as a possible downstream
+  allocation root cause, not just a local loop-scheduling difference.
   If that indexed field is both read and written in the iteration, capture its
   address at the postincrement site—`u16 *attribute =
   &model->object[i++]->attribute; value = *attribute; ...; *attribute = value;`.

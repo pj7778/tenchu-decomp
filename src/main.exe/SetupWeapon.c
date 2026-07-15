@@ -30,68 +30,11 @@
 /*
  * SetupWeapon (0x8002a484) — initialise a humanoid's weapon ornaments.
  *
- * STATUS: NON_MATCHING — complete guarded pure-C reconstruction at 92.20
- * fuzzy similarity. The draft has the target's exact 1128-byte / 282-
- * instruction extent and reproduces every weapon-kind case and call. Only
- * 47 bytes remain, all in the leading four-slot clear and HumanData search,
- * where the target keeps the short index in a1 and schedules the clear into
- * the loop delay slot. Build with `NON_MATCHING=SetupWeapon ./Build`.
+ * STATUS: MATCHING — exact 1128-byte / 282-instruction pure-C match.
+ * Keeping the clear's increment in `weapon[i++]` gives old cc1 the narrow
+ * working copy used by both the target's loop-delay-slot store and the
+ * following rotated HumanData scan.
  */
-
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", SetupWeapon);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__switchD);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_1);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_3);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_5);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_4);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_a);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_12);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_9);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_14);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_2a);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_16);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_c);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_1f);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_30);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_32);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/SetupWeapon", switchD_8002a574__caseD_6);
-
-/* jump-table pool @ 0x80011818 (53 words; tables at 0x80011818) — stub-only, one array because the object has one .rodata section; the draft's compiled switch emits its own. */
-static const u32 SetupWeapon_jtbl[53] = {
-    0x8002A57C, 0x8002A57C, 0x8002A598, 0x8002A5D8,
-    0x8002A5B4, 0x8002A8DC, 0x8002A5B4, 0x8002A8DC,
-    0x8002A664, 0x8002A610, 0x8002A8DC, 0x8002A7E0,
-    0x8002A8DC, 0x8002A8DC, 0x8002A8DC, 0x8002A664,
-    0x8002A664, 0x8002A648, 0x8002A7E0, 0x8002A67C,
-    0x8002A8DC, 0x8002A700, 0x8002A8DC, 0x8002A8DC,
-    0x8002A700, 0x8002A8DC, 0x8002A8DC, 0x8002A700,
-    0x8002A8DC, 0x8002A8DC, 0x8002A7FC, 0x8002A610,
-    0x8002A8DC, 0x8002A664, 0x8002A664, 0x8002A664,
-    0x8002A664, 0x8002A664, 0x8002A664, 0x8002A664,
-    0x8002A664, 0x8002A6B0, 0x8002A8DC, 0x8002A8DC,
-    0x8002A8DC, 0x8002A8DC, 0x8002A8DC, 0x8002A84C,
-    0x8002A84C, 0x8002A864, 0x8002A8DC, 0x8002A8DC,
-    0x8002A864,
-};
-
-#else /* NON_MATCHING */
 typedef struct
 {
     s16 type;
@@ -123,8 +66,7 @@ void SetupWeapon(Humanoid *human)
     i = 0;
     do
     {
-        human->weapon[i] = 0;
-        i++;
+        human->weapon[i++] = 0;
     } while (i < 4);
 
     i = 0;
@@ -223,5 +165,3 @@ void SetupWeapon(Humanoid *human)
     }
 
 }
-
-#endif /* NON_MATCHING */
