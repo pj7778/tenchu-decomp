@@ -5,7 +5,7 @@
 /*
  * Post-mission score/high-score screen (0x80054B48, 0x121C bytes).
  *
- * STATUS: NON_MATCHING -- 2920 of 4636 bytes differ.  The guarded draft has
+ * STATUS: NON_MATCHING -- 2904 of 4636 bytes differ.  The guarded draft has
  * the exact target length (1159 instructions) and frame size (0x1B8), with
  * 53/53 conditional branches, 8/8 unconditional jumps, 60/60 calls, and one
  * return.  No retail-name record was found in PSX.SYM or the demo symbol
@@ -279,11 +279,10 @@ void mission_score_screen(void)
         InitScoreSprite(tim, &image, sprite);
         sprite->x = -160;
         sprite->y = -120;
-        sprite->r = 128;
-        sprite->g = 128;
+        sprite->r = sprite->g = 128;
         sprite->b = 128;
         sprite->mx = sprite->w >> 1;
-        sprite->my = sprite->h >> 1;
+        SCORE_SPRITE_AT(characterSprites, i)->my = sprite->h >> 1;
         SCORE_SPRITE_AT(characterSprites, i)->mx = 0;
         SCORE_SPRITE_AT(characterSprites, i)->my = 0;
         LoadTIM(tim);
@@ -447,11 +446,8 @@ score_row_loop:
                 {
                     register GsSPRITE *rankSprite =
                         &rankSpriteBase[rankState->grades[i]];
-                    rankSprite->r = 0x7F;
-                    rankSprite->g = 0x7F;
-                    rankSprite->b = 0x7F;
-                    rankSprite->scalex = 0xB33;
-                    rankSprite->scaley = 0xB33;
+                    rankSprite->r = rankSprite->g = rankSprite->b = 0x7F;
+                    rankSprite->scalex = rankSprite->scaley = 0xB33;
                     rankSprite->x = -0x2F;
                     rankSprite->y = i * 0x16 + 0x16;
                     GsSortSprite(rankSprite, OTablePt, 1);
