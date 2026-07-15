@@ -626,6 +626,17 @@ plain C is the matched file.
   LAST copy (case 1's). Writing one shared statement after the `switch` instead
   lays the join after ALL bodies — wrong placement. Duplicate the tail into each
   case (ProcItemKawarimi, ProcItemGun, ProcItemDokudango).
+- **Duplicate a complete terminal tail when an identical-arm allocation donor
+  has the right registers but the wrong first-store schedule.** Duplicating only
+  the first store gives `jump2` too little block structure to move the store;
+  putting the remaining stores and `return` in every arm can preserve the
+  donor's global-allocation weights while changing which physical tail survives
+  cross-jumping. An isolated GetAreaMapVector experiment kept its exact
+  548-byte extent and persistent saved-register homes while reducing 40
+  differing bytes to 33 by recovering the target's first constant/store order.
+  Treat this as a bounded scheduling probe, not a guaranteed win:
+  `record_jump_equiv` may then prove the returned value equal to a constant and
+  replace a wanted register copy with a fresh literal load.
 - **The switch index register doubling as the constant it matched.** A
   `sw`/`sh` store of the literal case value *inside* a case body (ProcItemGun's
   `common = (void *)1;` under `case 1:`) is cse's `record_jump_equiv` on the
