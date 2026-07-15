@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -33,104 +34,109 @@
  * END PSX.SYM */
 
 /*
- * FallCheck (0x8001cc90) — TODO one-line description.
+ * FallCheck (0x8001cc90, 0x220 bytes) — transition a sufficiently high
+ * falling humanoid into motion 0x803, apply the facing-dependent landing
+ * displacement, and cancel the current attack.
  *
- * STATUS: NON_MATCHING — split (jump-table) function scaffolded by
- * tools/split-scaffold.py. The #ifndef NON_MATCHING branch is the stub
- * (INCLUDE_ASM pieces + the jump-table pool as one static const array so
- * the .rodata carve has bytes); build the draft with `NON_MATCHING=FallCheck
- * ./Build`. On a full match, delete the guards and the _jtbl array.
+ * Matching notes:
+ *  - The zero-attribute path is the positive wrapper around the height and
+ *    status switch. This keeps the attribute guard as a direct branch to the
+ *    epilogue and leaves the jump table's shared return-zero island between
+ *    case 7 and the default body.
+ *  - The default and looping case 7 jump to `fall`, after the common
+ *    return-zero statement. That source layout emits the target's physical
+ *    case order: case 7, return-zero, default.
+ *  - Comparing CVAhuman[] against the global Me_MOTION_C (rather than the
+ *    cached `human`) preserves the target's CSE copy in the scan prologue.
  */
 
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FallCheck", FallCheck);
+typedef struct
+{
+    Humanoid *human;
+    u8 pad4[4];
+} tag_CVAHumanEntry;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FallCheck", switchD_8001cd44__switchD);
+extern Humanoid *Me_MOTION_C;
+extern MotionManager *dtM;
+extern VECTOR *dtL;
+extern s16 motID;
+extern s16 motMODE;
+extern s16 MotionUpdateMode;
+extern s16 RefrectMove[16][2];
+extern tag_CVAHumanEntry CVAhuman[5];
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FallCheck", switchD_8001cd44__caseD_7);
+extern short SetNowMotion(Humanoid *human, short mid, short move);
+extern void AttackCancelControl(short mode);
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FallCheck", switchD_8001cd44__caseD_0);
+short FallCheck(void)
+{
+    Humanoid *human;
+    VECTOR *locate;
+    short i;
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FallCheck", switchD_8001cd44__caseD_1);
+    if (motID == 0x803)
+    {
+        return 1;
+    }
+    if (motID != 0x70f)
+    {
+        if (Me_MOTION_C->status == 9 && Me_MOTION_C->map.height > 0)
+        {
+            return 1;
+        }
+        if (((u16)Me_MOTION_C->attribute & 0x20) == 0)
+        {
+            if (Me_MOTION_C->map.height < 0x3e9)
+            {
+                return 0;
+            }
+            switch ((short)((u16)Me_MOTION_C->status - 4))
+            {
+            case 7:
+                if (dtM->loop != 0)
+                {
+                    goto fall;
+                }
+            case 0:
+            case 6:
+            case 9:
+            case 12:
+            case 13:
+                break;
+            default:
+                goto fall;
+            }
+        }
+    }
+    return 0;
 
-/* jump-table pool @ 0x80011240 (14 words; tables at 0x80011240) — stub-only, one array because the object has one .rodata section; the draft's compiled switch emits its own. */
-static const u32 FallCheck_jtbl[14] = {
-    0x8001CD64, 0x8001CD6C, 0x8001CD6C, 0x8001CD6C,
-    0x8001CD6C, 0x8001CD6C, 0x8001CD64, 0x8001CD4C,
-    0x8001CD6C, 0x8001CD64, 0x8001CD6C, 0x8001CD6C,
-    0x8001CD64, 0x8001CD64,
-};
-
-#else /* NON_MATCHING */
-/* Draft — turn this into matching C, then delete the #ifndef/#else/
-   #endif guards and the _jtbl array(s) above.  Reference: */
-// 
-// /* WARNING: Unknown calling convention -- yet parameter storage is locked */
-// 
-// short FallCheck(void)
-// 
-// {
-//   bool bVar1;
-//   Humanoid *pHVar2;
-//   VECTOR *pVVar3;
-//   int iVar4;
-//   int iVar5;
-//   
-//   pHVar2 = Me_MOTION_C;
-//   if (motID == 0x803) {
-//     return 1;
-//   }
-//   if (motID != 0x70f) {
-//     if ((Me_MOTION_C->status == 9) && (0 < (Me_MOTION_C->map).height)) {
-//       return 1;
-//     }
-//     if ((Me_MOTION_C->attribute & 0x20U) != 0) {
-//       return 0;
-//     }
-//     if ((Me_MOTION_C->map).height < 0x3e9) {
-//       return 0;
-//     }
-//     switch((int)(((ushort)Me_MOTION_C->status - 4) * 0x10000) >> 0x10) {
-//     case 0:
-//     case 6:
-//     case 9:
-//     case 0xc:
-//     case 0xd:
-//       break;
-//     default:
-// LAB_8001cd70:
-//       dtM->mask = 0x7fff;
-//       pVVar3 = dtL;
-//       dtL->vx = dtL->vx + ((int)pHVar2->width * (int)RefrectMove[0][(uint)(pHVar2->map).angleH * 2]
-//                           >> 2);
-//       DAT_80097f0e = 0;
-//       motID = 0x803;
-//       bVar1 = MotionUpdateMode != 0;
-//       pVVar3->vz = pVVar3->vz +
-//                    ((int)pHVar2->width * (int)RefrectMove[0][(uint)(pHVar2->map).angleH * 2 + 1] >>
-//                    2);
-//       if (bVar1) {
-//         iVar5 = 0;
-//         iVar4 = 0;
-//         do {
-//           iVar5 = iVar5 + 1;
-//           if (*(Humanoid **)((int)&CVAhuman[0].human + (iVar4 >> 0xd)) == pHVar2) goto LAB_8001ce60;
-//           iVar4 = iVar5 * 0x10000;
-//         } while (iVar5 * 0x10000 >> 0x10 < 5);
-//       }
-//       SetNowMotion(Me_MOTION_C,motID,DAT_80097f0e);
-//       DAT_80097f0e = -1;
-// LAB_8001ce60:
-//       if (Me_MOTION_C->status == 0xb) {
-//         dtM->count = dtM->count >> 2;
-//       }
-//       AttackCancelControl(3);
-//       return -1;
-//     case 7:
-//       if (dtM->loop != 0) goto LAB_8001cd70;
-//     }
-//   }
-//   return 0;
-// }
-
-#endif /* NON_MATCHING */
+fall:
+    dtM->mask = 0x7fff;
+    human = Me_MOTION_C;
+    locate = dtL;
+    locate->vx += (human->width * RefrectMove[human->pad0b[5]][0]) >> 2;
+    locate->vz += (human->width * RefrectMove[human->pad0b[5]][1]) >> 2;
+    motMODE = 0;
+    motID = 0x803;
+    if (MotionUpdateMode != 0)
+    {
+        i = 0;
+        do
+        {
+            if (CVAhuman[i].human == Me_MOTION_C)
+            {
+                goto found;
+            }
+            i = i + 1;
+        } while (i < 5);
+    }
+    SetNowMotion(Me_MOTION_C, motID, motMODE);
+    motMODE = -1;
+found:
+    if (Me_MOTION_C->status == 0xb)
+    {
+        dtM->count >>= 2;
+    }
+    AttackCancelControl(3);
+    return -1;
+}
