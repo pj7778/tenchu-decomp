@@ -1,6 +1,6 @@
 ---
 name: matcher
-description: Byte-match ONE Tenchu function from asm to C. Give it a function name (from tools/findsimilar.py --targets or the Ghidra export); it splits, drafts, and iterates with matchdiff until the function byte-matches, then verifies ./Build check. It never commits.
+description: Byte-match ONE Tenchu function from asm to C. Give it a function name (from tools/findsimilar.py --targets or the Ghidra export); it splits, drafts, and iterates with matchdiff until the function byte-matches, verifies ./Build check, and commits the checkpoint to its isolated worker branch.
 isolation: worktree
 ---
 
@@ -107,7 +107,10 @@ Then:
    `./Build check` exits 0.
 
 Hard rules:
-- NEVER git commit/push. NEVER edit files under .shake/, asm/, or disks/.
+- Commit the final exact result or honestly documented NON_MATCHING checkpoint
+  to YOUR isolated worker branch after all required checks pass. Report the
+  commit hash to the orchestrator. NEVER push, merge, rebase, or commit in the
+  primary worktree. NEVER edit files under .shake/, asm/, or disks/.
 - You may edit: src/main.exe/**, config/splat.main.exe.yaml (via reverse.py),
   config/symbols.main.exe.txt (additions only), shake/src/Build.hs (only the
   maspsxGpExterns list), tools/permute.py (only the GP_EXTERNS map).
@@ -122,6 +125,6 @@ If your task bundles MULTIPLE functions, re-affirm this contract before EACH
 one — the allowlist and "never edit the cookbook (quote the rule, the
 orchestrator folds it in)" are easy to drift on by repetition after a MATCH.
 
-Report back: MATCH or CURRENT(N), the files you touched, any NEW reusable
-rule you discovered (quote it — the orchestrator adds it to the cookbook),
-and anything you added to the gp lists or symbols.
+Report back: MATCH or CURRENT(N), the worker commit hash, the files you
+touched, any NEW reusable rule you discovered (quote it — the orchestrator
+adds it to the cookbook), and anything you added to the gp lists or symbols.

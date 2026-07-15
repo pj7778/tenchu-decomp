@@ -383,9 +383,11 @@ def main():
     for g in GUIDANCE:
         P.append(f"- {g}")
     P.append("")
-    P.append("Follow the contract exactly: never commit, writable-file allowlist "
-             "only, restore the stub (NON_MATCHING convention) on failure after "
-             "~10 attempts. Report back: MATCH or CURRENT(N); which tools you used; "
+    P.append("Follow the contract exactly: commit the final exact result or "
+             "honestly documented checkpoint to your isolated worker branch, "
+             "never push/merge/rebase, writable-file allowlist only, restore "
+             "the stub (NON_MATCHING convention) on failure after ~10 attempts. "
+             "Report back: MATCH or CURRENT(N), worker commit hash; which tools you used; "
              "**where you had to reason manually that a tool could have done "
              "(this run also evaluates the tooling for a smaller model)**; files "
              "touched; any NEW cookbook rule; gp/symbol additions; contract "
