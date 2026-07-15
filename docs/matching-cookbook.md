@@ -1305,6 +1305,14 @@ CODE_LABEL blocks jump.c from deleting the success return's jump-to-next, lettin
     `lhu` (different machine modes don't CSE). Don't collapse to one load; give
     the narrowing use its own `short` temp and both loads fall out
     (DeleteConflict's `ConflictObjects`).
+- **A copied aggregate can store an unsigned halfword and expose a signed view
+  only at its consumer.** If retail reloads the copied field with `lhu` and
+  then emits an explicit `sll 16`/`sra 16` at a signed use, declare the field
+  `u16` and cast that use to `s16`. Declaring the field `s16` changes the reload
+  to `lh` and collapses the visible extension, making an otherwise exact-length
+  large function one instruction short. `mission_score_screen`'s packed score
+  result is the measured case; the load plus extension proves storage type and
+  consumer interpretation independently.
 - **An unsigned narrow field with a LATE signed consumer stays in a wide
   working local; put the cast at the consumer, not the load.** If the target
   has `lhu field`, updates that value in a full register, and only then emits
@@ -2882,6 +2890,15 @@ offsets +4/+0x5e. CVAsetup matched only when all three reads used
 `$s1` across three calls. Separate scalar externs emitted another `lui`, while
 caching only the character value modeled the wrong lifetime.
 
+The shared-base evidence can include a loop result as well as adjacent fields.
+In `mission_score_screen`, retail loads the inserted rank once, reuses it for
+three parallel table stores, and reads the chosen character at +4 from the same
+persistent-state base. Caching the rank in one block-local `s32` and spelling
+the character as the aggregate field reproduced that identity; repeated rank
+reloads plus the standalone character alias caused a broad allocation cascade.
+Require both the single index load and the field-offset base in target assembly
+before combining these otherwise independent-looking accesses.
+
 The inverse can occur at one site even when the surrounding accesses use the
 aggregate. StageEndScreen's inventory-copy loop keeps one `PersistentState`
 base for `backup` and `stock`, but the target rematerializes the standalone
@@ -3525,6 +3542,16 @@ condition and true-arm prefix.  These restrictions matter because moving the
 default across either region can otherwise change what a call, macro expansion,
 or pointer alias sees.  Continue to review macro bodies manually, and do not
 blindly normalize sibling expansions when their target CFGs differ.
+
+A literal coordinate inside those expansions can also be a control-flow
+carrier. For the four two-arm signed-normalization draws, retail keeps the Y
+literal in a fresh full-width register and places the sprite Y store in the
+`bgez` delay slot. A direct literal store was scheduled before the branch and
+let `jump2` delete the negative arm's unconditional jump. Giving only those
+macro expansions a fresh block-local `s32` Y carrier restored the delay-slot
+store and three missing jumps without changing extent. Route this by expansion:
+adding the carrier to every repeated copy rotates the shared saved-register
+family and is not equivalent source evidence.
 
 ### Split a path-produced result from the final flag at its CFG join
 
