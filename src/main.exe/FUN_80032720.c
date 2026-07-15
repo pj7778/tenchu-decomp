@@ -15,38 +15,23 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — the compiled function is 4 bytes (1 instruction
- * pair) SHORT of the target's 140 instructions (asmdiff: 26 differing
- * lines in 16 blocks, no other length drift — everything else in the
- * function is either exact or a pure register-name swap). The residual is
- * entirely the outer 2x2 grid loop's `scrollY` (D_80097F32's own read,
- * widened for `scrollY + im->ph * j`): the target computes it ONCE right
- * after the read (`sll a0,a0,0x10`), SPILLS the not-yet-sign-extended
- * value to a stack slot (`sw a0,0x14(sp)`), and only sign-extends it back
- * (`lw a3,0x14(sp); sra s3,a3,0x10`) FRESH inside the outer loop body —
- * i.e. a genuine stack round-trip for a loop-invariant value, alongside
- * the loop counters' own (short)-cast fixed-point recomputation. This
- * build keeps the sign-extended value in one persistent register the
- * whole time (computed once, reused both iterations) instead — same
- * VALUE, 2 fewer instructions than the target actually executes.
- * Tried and did NOT reproduce the stack round-trip: reading
- * `D_80097F32` directly inside the loop instead of a named `scrollY`
- * (worse: 552 vs 556 bytes); wrapping `scrollY` in a 1-element array to
- * force stack residency (identical result, no round-trip — a 1-element
- * array is still promoted to a register by this cc1); the same
- * `sy = D_80097F32` read split into two separately-scoped locals (one
- * for the immediate `splash.sy` copy, one for the loop) — no different.
- * `tools/autorules.py` found `scrollX: s32→s16` genuinely helps (25→22
- * lines) but its OWN top pick `scrollY: short→s8` breaks the initial
- * `lhu` width (verified: 104-byte regression) — rejected per the
- * cookbook's "reject an autorules win that changes access width" rule.
- * One bounded `tools/permute.py` run (~260s, `--stop-on-zero -j4`, best
- * score 110 own metric) produced only dead-variable noise (`new_var =
- * pp;`, `new_var2 = 0xF;`) with no genuine stack round-trip — rejected as
- * a red herring per the cookbook. Parked per the sub-C-level early-stop;
- * the field-layout / pool-search / divergent-union-member work below is
- * all verified correct (only this one loop-invariant's storage strategy
- * is unresolved).
+ * STATUS: NON_MATCHING — exact target extent (560 bytes / 140 instructions),
+ * 25 differing bytes, fuzzy 90.00. A volatile shifted copy now reproduces
+ * the target's otherwise-unreachable `scrollY` stack round-trip: `sll` +
+ * `sw`, then one `lw` + `sra` per outer-loop iteration. Removing Ghidra's
+ * redundant `& 0x1f` from the shift count also removes the draft's extra
+ * `andi`; j/i only produce counts 0..3, so this is behaviorally identical.
+ *
+ * The remaining residual is one stack-slot ordering and its small scheduler
+ * cascade. The target first homes parameters y/z at sp+0x10/sp+0x12, then
+ * the reload spill allocator puts shifted scrollY at sp+0x14. An explicit C
+ * volatile is allocated first instead (sp+0x10), moving y/z to sp+0x14/
+ * sp+0x16. The inner loop consequently uses different temporary registers
+ * for its signed i, shift constant, and second multiply result. Explicit
+ * aggregate or separate volatile homes can force the target offsets, but
+ * perturb the pool-search and tail schedules and regress to 107+ differing
+ * bytes. Keep this exact-length checkpoint until a natural allocator-spill
+ * source shape is found.
  *
  * FUN_80032720 (0x80032720, 0x230 bytes) — spawns an EffectSlot pool entry
  * that draws a small animated 2x2-cell water/warp tile grid from a texture
@@ -83,10 +68,11 @@
  *    `short` loop counter suppresses loop.c's strength reduction and keeps
  *    the target's own `(x<<0x10)>>0x10`-style recompute-from-base shape
  *    (cookbook: "a short loop counter suppresses strength reduction").
- *  - The bit test `(0xF >> ((j*2+i) & 0x1F)) & 1` is always true for
- *    j,i in {0,1} (indices 0-3, all set in 0xF) — reproduced verbatim
- *    anyway, since the target still computes it (a shared idiom template
- *    whose mask matters for other callers/grid sizes, not this one).
+ *  - The bit test `(0xF >> (j*2+i)) & 1` is always true for j,i in {0,1}
+ *    (indices 0-3, all set in 0xF), but the target still computes it. Ghidra
+ *    renders an extra `& 0x1F` because MIPS variable shifts mask their count
+ *    in hardware; retaining that decompiler artifact emits a real `andi`
+ *    which is absent from the target.
  *  - `D_80097F30`/`D_80097F32` are read ONCE into named locals right
  *    after the slot is found (not hoisted to the top the way Ghidra's own
  *    SSA rendering shows `sVar2 = DAT_80097f32; sVar3 = DAT_80097f30;` as
@@ -155,6 +141,9 @@ loop:
     }
     goto loop;
 found:
+{
+    volatile u32 scrollYShifted;
+
     pp = &ef->param;
     pp->smoke.vec.vy = 0;
     ef->param.smoke.vec.vx = 0;
@@ -172,14 +161,18 @@ found:
     pp->bleed.vec.vy = py;
     pp->bleed.vec.vz = im->pw;
     pp->bleed.vec.pad = im->ph;
+    scrollYShifted = (u32)(u16)scrollY << 16;
 
     for (j = 0; j < 2; j++)
     {
+        s32 signedScrollY = (s32)scrollYShifted >> 16;
+
         for (i = 0; i < 2; i++)
         {
-            if ((0xF >> ((j * 2 + i) & 0x1F)) & 1)
+            if ((0xF >> (j * 2 + i)) & 1)
             {
-                MoveImage((RECT *)&pp->bleed.vec, scrollX + im->pw * i, scrollY + im->ph * j);
+                MoveImage((RECT *)&pp->bleed.vec, scrollX + im->pw * i,
+                          signedScrollY + im->ph * j);
             }
         }
     }
@@ -193,5 +186,6 @@ found:
         D_80097F32 = 0x100;
         D_80097F30 = D_80097F30 + 0x40;
     }
+}
 }
 #endif
