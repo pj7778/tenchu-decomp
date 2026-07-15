@@ -218,6 +218,16 @@ The ordered triage — fix categories in THIS order, re-running
    Finish the in-progress function (its own `tools/matchdiff.py <Name>` window
    isolates it); downstream resolves once it reaches the right length. Don't
    bisect.
+   - **A byte-residual number from a wrong-length draft is not comparable to an
+     exact-length checkpoint.** Current `matchdiff` rejects this as `LENGTH
+     MISMATCH`; treat an older STATUS claim based on the padded/carved window as
+     stale even if it says only a few bytes differ. PutItemList's 496-byte draft
+     claimed eight bytes against a 504-byte target, but had no authoritative
+     residual. Recovering the exact 504-byte/126-instruction extent produced a
+     valid 51-byte localized residual and raised its normalized fuzzy score from
+     72.80 to 94.44 — a real structural improvement despite the larger-looking
+     raw number. Once lengths match, the linked byte count is authoritative
+     again.
    - **When matching SEVERAL functions in one session, an EARLIER one
      (lower address) being the wrong length makes a LATER one's own
      `matchdiff`/`asmdiff` window compare against the WRONG BYTES, not just
