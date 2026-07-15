@@ -516,6 +516,15 @@ ccFlags =
     "-msoft-float"
   ]
 
+-- Stock PsyQ library objects were not necessarily built with the game's
+-- translation-unit defaults.  LIBMCRD's callback-slot swap keeps `la` as one
+-- unsplit address macro; splitting it lets cse fold the low half into the two
+-- memory operations and changes the five-instruction leaf into four.
+ccExtraFlags :: FilePath -> [String]
+ccExtraFlags src = case takeBaseName src of
+  "MemCardCallback" -> ["-mno-split-addresses"]
+  _ -> []
+
 cppFlags :: [String]
 cppFlags =
   [ "-Iinclude",
@@ -594,11 +603,10 @@ main = do
             -- Bump to force a full rebuild when a rule's *command* changes in a
             -- way Shake can't see (it doesn't track cmd_ contents). Bumped when
             -- main.exe.elf stopped being stripped (needed by the `mod` target).
-            -- "3": one-time bump so every .s rule re-runs once and records the
-            -- new GpFlags oracle dependency; afterwards the oracle invalidates
-            -- exactly the affected .s on a gp-list edit — no more bumps needed
-            -- for gp changes.
-            shakeVersion = "3"
+            -- "3": one-time bump so every .s rule recorded the GpFlags oracle
+            -- dependency. "4": recompile after adding the LIBMCRD-specific
+            -- cc flag; command-line contents are not otherwise tracked.
+            shakeVersion = "4"
           }
   shakeArgs opts rules
 
@@ -672,7 +680,7 @@ objRules = do
     -- directives untouched, so stubs pass through unchanged.
     gpFlags <- askOracle (GpFlags processed)
     withTempFile $ \ccOut -> do
-      cmd_ (FileStdin processed) (FileStdout ccOut) cc ccFlags
+      cmd_ (FileStdin processed) (FileStdout ccOut) cc (ccFlags <> ccExtraFlags processed)
       cmd_ (FileStdin ccOut) (FileStdout out) maspsx
         (maspsxFlags <> gpFlags)
 
