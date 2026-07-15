@@ -118,6 +118,11 @@ GUIDANCE = [
     "(UpdateEvent). If an index-first integer pointer sum still interleaves its "
     "narrow sll/sra with `%hi/%lo`, name the scaled byte offset in an s32 statement "
     "before the sum.",
+    "If a single-use stack parameter is load-sunk but the target reads it once at "
+    "entry and keeps the value across calls, an ordinary local copy may collapse. "
+    "Qualify the parameter object and copy it once instead: `volatile int mode`, "
+    "then `saved = mode` and use only `saved`. Top-level parameter qualifiers are "
+    "ABI-compatible; require the target's one early load (CdaPlayXA).",
     "For a pure REGISTER tie (right length, right instructions, a value in the "
     "wrong register — and autorules found nothing + a short permuter run won't "
     "beat the base), don't blind-permute: run `tools/regalloc.py <Name>`. It runs "

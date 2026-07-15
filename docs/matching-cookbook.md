@@ -3914,6 +3914,18 @@ before local-alloc, so the def is gone before it can bias anything.
   and the copy's pseudo needs a hard reg. Every REG_EQUIV-noted parm also
   gets REG_LIVE_LENGTH×2 — raw parms lose allocation races their ref counts
   say they should win (AddMisc).
+  - **For a genuinely single downstream use, qualify the parameter OBJECT
+    and copy it once.** An ordinary `saved = mode; ... use(saved);` can be
+    copy-propagated back into the late use, so the stack load still sinks. In
+    `f(..., volatile int mode) { int saved; saved = mode; ... use(saved); }`,
+    the observable parameter read cannot move or disappear, while `saved`
+    remains ordinary and lives across calls in one register. Top-level
+    parameter qualifiers do not change the function type or ABI. This gave
+    `CdaPlayXA` its sole early `lw s0,stack(sp)` and exact s0-s6 allocation.
+    A volatile cast only at the copy is different: cc1 preserves that early
+    read but can still re-read the original parameter later, yielding two
+    loads. Qualify the parameter object only when the target proves exactly
+    one early access.
 - **Loop notes are scheduler barriers** (sched adds artificial deps at
   LOOP_BEG/END): the FIRST real insn after `NOTE_INSN_LOOP_END` receives a full
   pending-register/pending-memory dependency (`reg_pending_sets_all`), so moving
