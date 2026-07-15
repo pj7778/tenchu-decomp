@@ -152,7 +152,7 @@ extern void ReqItemDefault(Humanoid *user, s32 item);
  * damage, knockback, animation, blood, score, and player-feedback effects.
  *
  * STATUS: NON_MATCHING — the C draft has the exact retail extent (5812 bytes,
- * 1453 instructions) with 1399 differing bytes, fuzzy 92.36%, and 100 raw
+ * 1453 instructions) with 1328 differing bytes, fuzzy 92.91%, and 94 raw
  * aligned residual blocks from `asmdiff --structural` at this checkpoint.
  * The remaining work is expression/CFG scheduling and early-path register
  * allocation; the large humanoid path's persistent registers now agree with
@@ -162,6 +162,16 @@ extern void ReqItemDefault(Humanoid *user, s32 item);
  * ./Build`. On a full match, delete the guards and the _jtbl array.
  *
  * Progress notes retained for the next pass:
+ *  - Expressing both `GetDirection` coordinate differences at the call site
+ *    removes a decompiler scratch assignment and reproduces the complete
+ *    retail argument-load sequence.  In the following guard, assigning the
+ *    signed direction to `iVar11` only at the join lets sched2 rematerialize
+ *    the target's sign extension in each branch delay slot; carrying an
+ *    explicit high-word value instead hoists it into $s0.
+ *  - The identical `motID = 0x602` arms and the zero-code fences beside the
+ *    BattleDB load and later speed setup are compiler-allocation boundaries.
+ *    They preserve the exact 1453-instruction extent and keep the attack id in
+ *    $s2 without changing runtime behavior.
  *  - Retail reuses one `enemy` identity across the early special-target and
  *    later humanoid paths ($s3), and reuses `did` across the item and humanoid
  *    direction calculations ($s4).  Keeping separate block locals needlessly
@@ -572,34 +582,38 @@ LAB_8001e028:
   {
     int iVar11;
 
-    iVar11 = enemy->locate->vx;
-    did = GetDirection(iVar11 - dtL->vx,enemy->locate->vz - dtL->vz,dtR->vy);
+    did = GetDirection(enemy->locate->vx - dtL->vx,
+                       enemy->locate->vz - dtL->vz,dtR->vy);
     deg = GetAttackDBID(enemy,enemy->motion->mid);
     do {
       if (Me_MOTION_C != StagePlayer) {
-        iVar11 = did * 0x10000;
         if ((((Me_MOTION_C->status != 7) &&
-             (iVar11 = did * 0x10000, (Me_MOTION_C->attribute & 0x40U) != 0)) &&
-            (iVar11 = did * 0x10000, (Me_MOTION_C->map).height == 0)) &&
-           (iVar11 = did * 0x10000, D_80010058 != '\0')) {
+             ((Me_MOTION_C->attribute & 0x40U) != 0)) &&
+            ((Me_MOTION_C->map).height == 0)) &&
+           (D_80010058 != '\0')) {
           iVar11 = rand();
           iVar7 = EngageLevel + 1;
           if (iVar11 % iVar7 == 0) {
             if ((Me_MOTION_C->type != 0x87) &&
-               (iVar11 = did * 0x10000, Me_MOTION_C->type != 0x8a)) goto LAB_8001e1a4;
+               (Me_MOTION_C->type != 0x8a)) goto LAB_8001e1a4;
             if ((rand() & 1) == 0) goto LAB_8001e1a0;
           }
-          motID = 0x602;
+          if (iVar7 != 0) {
+            motID = 0x602;
+          }
+          else {
+            motID = 0x602;
+          }
           goto LAB_8001e1a0;
         }
       }
       else {
   LAB_8001e1a0:
-        iVar11 = did * 0x10000;
+        ;
       }
     } while (0);
 LAB_8001e1a4:
-    iVar11 = iVar11 >> 0x10;
+    iVar11 = did;
     if (iVar11 < 0) {
       iVar11 = -iVar11;
     }
@@ -634,7 +648,14 @@ LAB_8001e1e8:
         pMVar2->count = 0;
         PlayMotion(pMVar2,1);
         pHVar14 = Me_MOTION_C;
-        dmg = (u16)BattleDB[deg].power;
+        if (pHVar14 != 0) {
+          dmg = (u16)BattleDB[deg].power;
+        }
+        else {
+          dmg = (u16)BattleDB[deg].power;
+        }
+        do {
+        } while (0);
         dtM->loop = -8 - dmg;
         MoveHumanoid(pHVar14,-((short)((dmg * 5) / 2) + 0x50),0);
         pHVar14 = StagePlayer;
@@ -754,6 +775,8 @@ LAB_8001e6d8:
       Humanoid *victim;
 
       victim = Me_MOTION_C;
+      do {
+      } while (0);
       iVar11 = __builtin_abs((int)(short)did);
 
       move_speed = -0x46;
