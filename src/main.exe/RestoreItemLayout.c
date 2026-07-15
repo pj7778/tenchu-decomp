@@ -33,40 +33,29 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — right length is 624 bytes (156 insns); this draft
- * assembles to 628 (157 insns), 4 bytes / 1 instruction over, with 48
- * differing lines concentrated in two spots:
+ * STATUS: NON_MATCHING — exact target extent (624 bytes / 156 instructions),
+ * fuzzy 98.72, with only 3 differing bytes in two adjacent instructions.
+ * Every stack slot, saved register, branch, delay slot, call, and data access
+ * otherwise matches.
  *
- *  1. The initial "temp = *buf" 5-field fill (memset + 5 field reads into a
- *     scratch PARAM_ITEM_STAY, then copied into `param`) — the target
- *     batches the last 4 loads into t1-t4 THEN stores all 4 (register-
- *     scheduling headroom); this draft's cc1 run only ever finds one spare
- *     temp (v0) at that point and interleaves lw/sw/nop per field. Frame
- *     size and the full 10-register save mask (s0-s7+fp+ra) already match
- *     the target exactly (confirmed via cc1 -dg / rtldump), so this is a
- *     scheduler headroom difference, not a missing-register structural gap.
- *  2. The search sub-loop's success path: the target's `bnez` on success
- *     jumps CLEAR OVER the retry/loop-back code to a point AFTER the loop,
- *     doing the `param.locate.vx/vz` stores only on that one path before
- *     falling into the shared "if (k==4) skip" test; every C spelling tried
- *     that reproduces this exact jump-over-the-retry-code shape reintroduces
- *     a SECOND physical ReqItemStay call site (cc1 fails to cross-jump it
- *     with the direct/no-search-needed call, adding ~30 bytes) instead of
- *     the single shared call site this draft achieves by storing vx/vz
- *     unconditionally right after the "if (k<4)" block. Every variant of
- *     this trade-off (explicit `goto`+shared label, `k=4` recycled-test
- *     idiom, `else` vs plain fallthrough) was tried; this is the
- *     Pareto-best (single call site, closest byte count).
+ * The decisive reconstruction was aggregate syntax: assigning the 16-byte
+ * VECTOR into `tmp.locate` makes cc1 emit the target's batched t1-t4 load/store
+ * copy, while the following whole PARAM_ITEM_STAY assignment emits its second
+ * batched copy.  The late `search_success` trampoline reproduces the target's
+ * success-only vx/vz stores and jump back to the shared k==4 check without
+ * cloning ReqItemStay.  The three one-shot loops around the final level/x/z
+ * stores are zero-code global-allocation weights: they order level, z, x,
+ * offs, and k into the target s0-s4 homes while leaving scheduling intact.
  *
- * Structural work that IS confirmed correct: both loops (the tag_TItem
- * dispose loop matches ClearItemLayout's hand-rolled goto-loop shape
- * exactly; the second loop's dispatch order, the shared "field9-style"
- * search-loop test recycling, and the `one`/`sentinel` constants promoted
- * to persistent locals so they demat once before the loop instead of at
- * every call site, matching the target's dedicated s7/s8-class registers).
- * One bounded permuter run (~470 iterations, `-j4`) found no score-0
- * candidate (best partial score 2810 vs base 3140, with candidates
- * increasingly erroring past iteration ~400) — not adopted.
+ * Residual: the target materializes D_8008E404 as `lui s3,%hi; addiu
+ * s3,s3,%lo`; this compiler emits `lui v0,%hi; addiu s3,v0,%lo`.  The walking
+ * `offs` pseudo crosses the search-loop block boundary, so local-alloc refuses
+ * to tie the split-address high pseudo to it (the cookbook's named
+ * la/address-materialization tie).  Block initializers, pointer/array and
+ * pair-struct views, an intermediate base/formal alias, identical arms,
+ * pointer qualification, and index/real-loop variants either preserve these
+ * same 3 bytes or damage otherwise-exact code.  Do not blind-permute this
+ * reload/local-allocation residual; keep the exact retail assembly active.
  */
 
 extern void *GlobalAreaMap;
@@ -89,6 +78,8 @@ void RestoreItemLayout(void *buf)
     s32 level;
     s32 one;
     s32 sentinel;
+    s32 x;
+    s32 z;
 
     i = 0;
     it = items;
@@ -122,20 +113,14 @@ loop2:
 
         memset(&tmp, 0, sizeof(PARAM_ITEM_STAY));
         tmp.type = *(s32 *)p;
-        tmp.locate.vx = *(s32 *)(p + 4);
-        tmp.locate.vy = *(s32 *)(p + 8);
-        tmp.locate.vz = *(s32 *)(p + 0xc);
-        tmp.locate.pad = *(s32 *)(p + 0x10);
+        tmp.locate = *(VECTOR *)(p + 4);
         param = tmp;
 
         level = GetAreaMapLevel(GlobalAreaMap, param.locate.vx, param.locate.vy, param.locate.vz, one);
         if (level == sentinel || abs(level - param.locate.vy) >= 0x3e8) {
-            s32 k;
-            s32 x, z;
-            short *offs;
+            s32 k = 0;
+            short *offs = D_8008E404;
 
-            k = 0;
-            offs = D_8008E404;
         searchloop:
             if (k < 4) {
                 x = param.locate.vx + offs[0] * 1000;
@@ -146,20 +131,31 @@ loop2:
                     k++;
                     goto searchloop;
                 }
+                goto search_success;
             }
-            param.locate.vz = z;
-            param.locate.vx = x;
+        search_check:
             if (k == 4) {
                 goto skip_stay;
             }
         }
-        param.locate.vy = level;
+        do {
+            param.locate.vy = level;
+        } while (0);
         ReqItemStay(&param);
     skip_stay:;
     }
     p += 0x14;
     j++;
     goto loop2;
+
+search_success:
+    do {
+        param.locate.vx = x;
+    } while (0);
+    do {
+        param.locate.vz = z;
+    } while (0);
+    goto search_check;
 }
 #endif
 
