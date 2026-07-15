@@ -91,6 +91,7 @@ The last assignments closed as follows:
 | `think_setting_small_rotation_small_steps_` | exact 1392 B / 346 instructions | `2416459`, reflection `11a249c` | make one signed-word carrier absorb the entire condition/result chain; reuse a dead local for the other operand to remove a hard `$v0` conflict |
 | `GetAreaMapVector` | guarded 548 B checkpoint, 40 bytes remain | isolated `f2d0a6e`, fuzzy `3764437`; only reflection `36afb3b` integrated | identical arms preserve distinct raw/cached source identities and fix every persistent saved-register assignment, but entry/early-return scheduling remains |
 | `ProcItemNingyo` | best guarded checkpoint has 15 bytes remaining | isolated `c10c3ab`; not integrated | clearing a short-lived launch pointer after `memset` breaks stack-address CSE; destructive model-pointer reuse makes the full derived-position/modulus block exact |
+| `mission_score_screen` | guarded 4636 B checkpoint, 2654 bytes remain | worker checkpoint on `codex/fw47-mission-score-0715`; fuzzy 81.19% | per-expansion decimal identities, an init-only sprite pointer, and a labelled character-sprite loop cut 250 differing bytes while preserving the exact extent/frame and all calls/conditional branches |
 
 The Ningyo branch is a materially better starting point than the 19-byte draft
 on `master`: only the three pre-`memset` loads and three mode-1 constants are in
@@ -101,6 +102,22 @@ setup scheduling and the `MIN` early return. Do not rerun their already-flat
 broad searches: Ningyo needs a zero-code ordering dependency, while
 GetAreaMapVector needs a scheduler/store-order lever. The latter already saw
 guided budgets 80/160 and a bounded roughly 26k-candidate permuter run.
+
+The `mission_score_screen` checkpoint moved from 2904 to 2654 differing bytes
+and from 58.07% to 81.19% fuzzy similarity. Its ten expanded number draws now
+use fresh dividend/remainder/quotient/value/sprite identities, while retaining
+the shared sign and base-U carriers visible in retail. Separating sprite-bank
+initialisation from the later row-display `sprite` identity aligned all six
+saved-register roles in the two setup loops. A hand-labelled character loop
+then suppressed the unwanted `sp+0x118` invariant, while its block-local 128
+carrier prevented constant rematerialisation; naming the colon digit restored
+retail's `mult` form. The main remaining cascades are the first bank loop's
+hoisted `sp+0x60` base, `$s7`/`$fp` ten-versus-row-base swap, and four missing
+unconditional jumps in the signed decimal paths. First-loop label plus named
+colour/mask forms reached the target structure but were one instruction short;
+number-pointer lifetime splits restored that instruction but regressed the
+authoritative residual. Do not repeat those combinations without a new
+allocation or scheduling lever.
 
 ## Data-name recovery status
 
