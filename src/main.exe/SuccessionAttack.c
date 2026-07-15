@@ -31,10 +31,10 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 8 of 268 bytes differ (right length: matchdiff's
- * whole-image count equals the function-local count). Was 25 bytes; closed
- * to 8 this session by fixing two real structural mismatches (see below) —
- * the remaining 8 are a dump-confirmed sched1/sched2 tie (see RESIDUAL).
+ * STATUS: NON_MATCHING — 6 of 268 bytes differ (right length: matchdiff's
+ * whole-image count equals the function-local count). Was 25 bytes, then 8;
+ * the current source fixes the compare-result register too. The remaining
+ * pair is a dump-confirmed delay-slot reorganization choice (see RESIDUAL).
  *
  * SuccessionAttack (0x8002fabc, 0x10c bytes) — same "think" TU as
  * Think3chase.c/Think3escape.c/Think3firstattack.c/Think1trace.c (s16
@@ -63,7 +63,7 @@
  * is silently dropped from the assembled output even though cc1 emitted it,
  * a ~150-byte-diff red herring that looks like a missing C construct.
  *
- * `uVar3` must stay `u16` (NOT the `u8` autorules suggests, which "wins" by
+ * `uVar3` must stay 16-bit (NOT the `u8` autorules suggests, which "wins" by
  * 2 bytes but is a FALSE WIN: `uVar3 = 0x8000;`/`= 0x2000;` truncate to 0 in
  * a u8, an outright wrong value — reject per the cookbook's "never accept
  * an autorules win that changes what a value actually holds" caveat, this
@@ -77,7 +77,7 @@
  * ABS-compute to serve as that filler when it is the textually-first
  * reference.
  *
- * TWO REAL STRUCTURAL FIXES applied this session (25 -> 8 bytes), found by
+ * FOUR REAL STRUCTURAL FIXES applied across the two focused sessions, found by
  * decoding the target's raw instructions address-by-address (not guessing):
  *
  * 1. The tail's `if/else` at LAB_8002fb84 has its arms SWAPPED relative to
@@ -101,32 +101,36 @@
  *    representation internally, so cc1 emits `li s0,0x8000` (`ori`) instead
  *    of the target's `li s0,-32768` (`addiu`) — same 4 bytes, wrong opcode.
  *    `s16` reproduces the target's `addiu` encoding exactly.
+ * 3. Store `iVar1 < d` back into `iVar1` before testing it. This deliberately
+ *    reuses Degree's dying carrier, reproducing the target's `slt v1,...` and
+ *    `bnez v1` instead of allocating a fresh `$v0` (8 -> 6 bytes).
+ * 4. Load Degree into the single-set `raw` pseudo, then assign the ABS result
+ *    to `iVar1` in both branch arms. This is not cosmetic: GCC 2.8.1's
+ *    pre-reload `adjust_priority` dynamically promotes a single-set birthing
+ *    pseudo to LAUNCH priority. It makes `.sched` and `.sched2` emit the
+ *    target pre-reorg order `sll; lh Degree; sra; bgez`, while preserving the
+ *    target hard-register colouring.
  *
- * RESIDUAL (8 bytes, same length, dump-confirmed permuter-immune): the
- * ABS(Degree)-vs-`d` compare block (0x8002fb1c-0x8002fb30). Target order is
- * `sll d(hi); lh Degree; sra d(lo); bgez Degree,L; nop; negu Degree; slt
- * v1,Degree,d; bnez v1,L2` — i.e. `d`'s `sra` completes BEFORE the `bgez`
- * test, using the Degree-load's own load-delay slot as its filler, and the
- * `slt`'s result lands in $v1 (Degree's own dying register). Ours instead
- * fills the Degree-load's delay slot with a `nop` and steals `d`'s `sra`
- * into `bgez`'s delay slot instead, and the `slt` lands in a fresh $v0.
- * `tools/rtldump.py --pass all`'s `.sched`/`.sched2` dumps show this is a
- * genuine backward-list-scheduling TIE at the RTL level: in basic block
- * "3 from 61 to 70", insns 61 (`d`'s sll), 62 (`d`'s sra) and 67 (Degree's
- * combined `lh`-sign-extend) all report `priority = 1, ref_count = 1` —
- * exactly equal — so which of {61,62} vs 67 the scheduler treats as the
- * Degree-load's mandatory 1-cycle-latency filler vs the bgez's delay-slot
- * filler is decided by an internal tie-break this session did not fully
- * reverse-engineer, not by any C-level distinction. Tried and rejected:
- * `d: int -> s16/u32` (autorules, worse: 14/6 differing lines), inlining
- * `d` at its use (autorules, worse: 14), reading `deg` directly instead of
- * `d` at the comparison (LENGTH MISMATCH, +4 bytes) — none touch the
- * scheduler's tie-break. A bounded permuter run (300s, `--stop-on-zero
- * -j4`) found no zero. Matches the cookbook's "min/clamp reload-vs-reuse is
- * a coloring tie" class, one level up (a scheduling tie, not a coloring
- * one) — do not keep guessing respellings; the next lever, if any, is
- * reading GCC 2.8.1's `sched.c` `rank_for_schedule`/`schedule_block` tie-
- * break for equal-priority ready-list entries.
+ * RESIDUAL (6 bytes, same length): only 0x8002fb1c and 0x8002fb24 differ.
+ * Target has `sra v0,v0,16; bgez v1,L; nop`; ours has `nop; bgez v1,L; sra`.
+ * The `.sched` and `.sched2` dumps are now target-ordered, but `.dbr` shows
+ * `fill_simple_delay_slots` removing the immediately preceding `sra` and
+ * placing it in `bgez`'s slot. The official GCC 2.8.1 `reorg.c` explains the
+ * result: its backward scan accepts this one-instruction arithmetic pattern
+ * and stops only at a label/jump/barrier/asm or a real resource conflict.
+ * Because the target's visible `sra v0` and `bgez v1` are independent, an
+ * invisible retained RTL boundary or dependency in the original expansion is
+ * the remaining likely difference.
+ *
+ * Focused rejects: moving declarations/assignments, an extra raw copy,
+ * manual two-step sign extension, in-place `d` conversion, branch polarity,
+ * ternary/goto spellings, and empty one-shot loops were flat or worsened
+ * allocation/length. A preserved-label probe was flattened before reorg;
+ * `register volatile int d` added 12 bytes, a real ABS loop added 8, and a
+ * one-iteration loop flattened back to CURRENT(6). The earlier bounded
+ * permuter found no zero. Do not rerun broad source permutations: the next
+ * credible lead needs direct evidence for the original RTL boundary or an
+ * exact plain-C dependency that survives through final jump optimization.
  */
 extern character_state *Me_THINK_C;
 extern s32 Distance;
