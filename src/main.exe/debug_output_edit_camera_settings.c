@@ -1,85 +1,114 @@
 #include "common.h"
 #include "main.exe.h"
 
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/debug_output_edit_camera_settings", debug_output_edit_camera_settings);
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/debug_output_edit_camera_settings", debug_output_edit_camera_settings__override__prt_800309b0_aac269c2);
+/*
+ * debug_output_edit_camera_settings (0x8003076c, 0x274 bytes) edits one of
+ * four camera SVECTORs with the held pad directions, restores all four
+ * vectors when L1+R1 are held, and prints the current values.
+ *
+ * Splat divides the original assembly at the interior
+ * `__override__prt_800309b0...` call-site marker.  The first piece falls
+ * straight through to the second; this is one ordinary C function, not a
+ * jump table or a second entry point.
+ *
+ * Matching notes:
+ *  - The one-frame button state is written through the globals themselves.
+ *    The first assignment remains observable to the following global-based
+ *    expression and reproduces both target `sh` stores; computing the result
+ *    only through locals lets cc1 delete the first store.
+ *  - The 32-byte camera reset is one align-2 aggregate assignment, producing
+ *    the target's `lwl/lwr` and `swl/swr` block copy.
+ *  - `i = 0` deliberately precedes the named format-pointer capture.  Reorg
+ *    moves the zero into the reset guard's delay slot, while the format
+ *    pointer lives in `$s3` across the four FntPrint calls.
+ */
 
-// triage: MEDIUM — 157 insns, 1 loop, 1 callees, ~0.10 to initialise_default_player_cameras_
-// likely-relevant cookbook sections:
-//   - Loops: 1 back-edge(s) — for/while/do vs goto shape
-//   - gp vs absolute globals: gp-relative smalls — tools/gpsyms.py
+typedef struct
+{
+    SVECTOR r1;
+    SVECTOR r2;
+    SVECTOR p1;
+    SVECTOR p2;
+} CameraDefaultVectors;
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// void FUN_8003076c(ushort param_1)
-//
-// {
-//   undefined4 uVar1;
-//   undefined4 uVar2;
-//   undefined *puVar3;
-//   short *psVar4;
-//   undefined4 *puVar5;
-//   char *pcVar6;
-//   char *pcVar7;
-//   int iVar8;
-//   undefined **ppuVar9;
-//
-//   DAT_80097f20 = param_1 & (param_1 ^ DAT_80097f22);
-//   if (((DAT_80097f20 & 4) != 0) && (DAT_80097a24 = DAT_80097a24 + 1, 3 < DAT_80097a24)) {
-//     DAT_80097a24 = 0;
-//   }
-//   puVar5 = &DAT_800be8f8;
-//   psVar4 = (short *)(&DAT_800be8f8)[DAT_80097a24];
-//   DAT_80097f22 = param_1;
-//   if ((param_1 & 0x1000) != 0) {
-//     psVar4[2] = psVar4[2] + -0x32;
-//   }
-//   if ((DAT_80097f22 & 0x4000) != 0) {
-//     psVar4[2] = psVar4[2] + 0x32;
-//   }
-//   if ((DAT_80097f22 & 0x10) != 0) {
-//     psVar4[1] = psVar4[1] + -0x32;
-//   }
-//   if ((DAT_80097f22 & 0x40) != 0) {
-//     psVar4[1] = psVar4[1] + 0x32;
-//   }
-//   if ((DAT_80097f22 & 0x80) != 0) {
-//     *psVar4 = *psVar4 + -0x32;
-//   }
-//   if ((DAT_80097f22 & 0x20) != 0) {
-//     *psVar4 = *psVar4 + 0x32;
-//   }
-//   puVar3 = PTR_DAT_80097a10;
-//   uVar2 = DAT_80011bc8;
-//   uVar1 = DAT_80011bc4;
-//   iVar8 = 0;
-//   if ((DAT_80097f22 & 3) == 3) {
-//     *(undefined4 *)PTR_DAT_80097a10 = DAT_80011bc0;
-//     *(undefined4 *)(puVar3 + 4) = uVar1;
-//     *(undefined4 *)(puVar3 + 8) = uVar2;
-//     uVar2 = DAT_80011bd4;
-//     uVar1 = DAT_80011bd0;
-//     *(undefined4 *)(puVar3 + 0xc) = DAT_80011bcc;
-//     *(undefined4 *)(puVar3 + 0x10) = uVar1;
-//     *(undefined4 *)(puVar3 + 0x14) = uVar2;
-//     uVar1 = DAT_80011bdc;
-//     *(undefined4 *)(puVar3 + 0x18) = DAT_80011bd8;
-//     *(undefined4 *)(puVar3 + 0x1c) = uVar1;
-//   }
-//   ppuVar9 = &PTR_DAT_80089fd0;
-//   do {
-//     pcVar6 = (char *)0x20;
-//     if (DAT_80097a24 == iVar8) {
-//       pcVar6 = (char *)0x2a;
-//     }
-//     psVar4 = (short *)*puVar5;
-//     iVar8 = iVar8 + 1;
-//     puVar5 = puVar5 + 1;
-//     pcVar7 = *ppuVar9;
-//     ppuVar9 = ppuVar9 + 1;
-//     FntPrint("%c%s %6d %6d %6d\n",pcVar6,pcVar7,(int)*psVar4);
-//   } while (iVar8 < 4);
-//   return;
-// }
+extern u16 BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT;
+extern u16 BUTTONS_REGISTERED_FOR_ONE_FRAME_DURING_EXPANDED_DEBUG_OUTPUT;
+extern s16 DEBUG_PRINT_CHOSEN_CAMERA_TYPE_INDEX;
+extern u8 *CAMERA_PTR_ARRAY_START;
+extern SVECTOR *CAMERA_POINTERS[4];
+extern char *CAMERA_PROPERTIES[4];
+extern CameraDefaultVectors D_80011BC0;
+extern char D_80011A50[];
+
+extern void FntPrint(char *fmt, ...);
+
+void debug_output_edit_camera_settings(s16 pad)
+{
+    SVECTOR *camera;
+    char *format;
+    s32 marker;
+    s32 i;
+
+    BUTTONS_REGISTERED_FOR_ONE_FRAME_DURING_EXPANDED_DEBUG_OUTPUT =
+        BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT;
+    BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT = pad;
+    BUTTONS_REGISTERED_FOR_ONE_FRAME_DURING_EXPANDED_DEBUG_OUTPUT =
+        BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT &
+        (BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT ^
+         BUTTONS_REGISTERED_FOR_ONE_FRAME_DURING_EXPANDED_DEBUG_OUTPUT);
+
+    if (BUTTONS_REGISTERED_FOR_ONE_FRAME_DURING_EXPANDED_DEBUG_OUTPUT & 4)
+    {
+        DEBUG_PRINT_CHOSEN_CAMERA_TYPE_INDEX =
+            DEBUG_PRINT_CHOSEN_CAMERA_TYPE_INDEX + 1;
+        if (DEBUG_PRINT_CHOSEN_CAMERA_TYPE_INDEX >= 4)
+        {
+            DEBUG_PRINT_CHOSEN_CAMERA_TYPE_INDEX = 0;
+        }
+    }
+
+    camera = CAMERA_POINTERS[DEBUG_PRINT_CHOSEN_CAMERA_TYPE_INDEX];
+    if (BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT & 0x1000)
+    {
+        camera->vz -= 0x32;
+    }
+    if (BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT & 0x4000)
+    {
+        camera->vz += 0x32;
+    }
+    if (BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT & 0x10)
+    {
+        camera->vy -= 0x32;
+    }
+    if (BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT & 0x40)
+    {
+        camera->vy += 0x32;
+    }
+    if (BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT & 0x80)
+    {
+        camera->vx -= 0x32;
+    }
+    if (BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT & 0x20)
+    {
+        camera->vx += 0x32;
+    }
+
+    if ((BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT & 3) == 3)
+    {
+        *(CameraDefaultVectors *)CAMERA_PTR_ARRAY_START = D_80011BC0;
+    }
+
+    i = 0;
+    format = D_80011A50;
+    for (; i < 4; i++)
+    {
+        marker = ' ';
+        if (DEBUG_PRINT_CHOSEN_CAMERA_TYPE_INDEX == i)
+        {
+            marker = '*';
+        }
+        FntPrint(format, marker, CAMERA_PROPERTIES[i],
+                 CAMERA_POINTERS[i]->vx, CAMERA_POINTERS[i]->vy,
+                 CAMERA_POINTERS[i]->vz);
+    }
+}

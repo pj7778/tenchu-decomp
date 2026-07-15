@@ -458,6 +458,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "Think3area" = ["Me_THINK_C", "Distance", "SR", "Attrib", "Degree"]
     syms "create_ninken_character_" = ["NINKEN_CHARACTER_PTR"]
     syms "death_camera_something_" = ["LOCAL_COORDINATES_"]
+    syms "debug_output_edit_camera_settings" = ["BUTTONS_HELD_DURING_EXPANDED_DEBUG_OUTPUT", "BUTTONS_REGISTERED_FOR_ONE_FRAME_DURING_EXPANDED_DEBUG_OUTPUT", "DEBUG_PRINT_CHOSEN_CAMERA_TYPE_INDEX", "CAMERA_PTR_ARRAY_START"]
     syms _ = []
 
 as :: FilePath
