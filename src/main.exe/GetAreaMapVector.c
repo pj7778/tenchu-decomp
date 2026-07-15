@@ -39,11 +39,12 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 45 of 548 bytes differ, a pure whole-function
- * register-RENUMBERING tie (same instructions, same structure, different
- * specific $s-register assigned to each of pos/wide/x/y/z/truncated-mode —
- * see below); every field offset/type/branch this function establishes is
- * otherwise correct (proven independently of the residual).
+ * STATUS: NON_MATCHING — exact 548-byte extent, with 40 bytes still
+ * different.  The persistent register assignment now matches retail
+ * (mvp=$s0, pos=$s2, wide=$s7, x=$s6, y=$s3, z=$s5, raw mode=$s1,
+ * cached mode=$s4, truncated mode=$fp), and the loop plus normal return path
+ * are byte-exact.  Keep the INCLUDE_ASM guard: the remaining differences are
+ * four localized scheduling groups in the setup and MIN early-return path.
  *
  * GetAreaMapVector (0x80019ea0) — probes the height at `pos` plus the height
  * of the 4 neighbouring cells listed in the static `direction` table
@@ -71,29 +72,26 @@
  *  - The post-first-call height delta re-reads `pos->vy` directly (a fresh
  *    load), not the cached `y` local also used by the loop — matches the
  *    asm doing an actual memory reload there instead of reusing $s3.
- *  - A `do { } while (0);` right after the FieldArea/FieldIndex stores (real
- *    lever, keep it) recovered 10 of the original 55 residual bytes — it
- *    boosts flow.c's loop_depth ref-weighting for the `if (mvp->level ==
- *    MIN)` comparison enough to match the target's `move v1,v0` / separate
- *    MIN-constant materialization shape (GetAreaMapLevel's own wrapper is
- *    the same mechanism).
+ *  - A `do { } while (0);` right after the setup remains load-bearing: its
+ *    loop notes give the MIN comparison the target allocation/scheduling
+ *    shape without emitting a runtime loop.
+ *  - Keeping both the raw full-width mode and a cached full-width mode needs
+ *    two source identities. `rawmode = (mode2 = mode)` followed by identical
+ *    `mode = rawmode` arms defeats copy propagation without leaving a branch;
+ *    the loop then retains its in-loop `andi` on the cached value.
+ *  - The identical wide/y assignment arms are allocation donors only. jump2
+ *    removes them, while global allocation sees enough extra references to
+ *    select the retail homes for wide, y, and the cached mode.
+ *  - `initial_level` preserves the first call result for the early return;
+ *    the normal height calculation deliberately re-reads `mvp->level`.
  *
- * THE RESIDUAL: with that fence in place, every remaining diff is a
- * same-instruction, different-hard-register rename across the WHOLE
- * function — target assigns pos=$s2, wide=$s7, x=$s6, y=$s3, z=$s5,
- * mode(raw)=$s1, mode-copy=$s4, truncated-mode=$fp; our compile assigns
- * pos=$s1, wide=$s8(=$fp), x=$s5, z=$s4, mode(raw)=$s6, truncated-mode=$s7
- * (y=$s3 matches already). All 9 callee-saved slots (s0-s7+fp) are in use
- * both sides — global-alloc's priority/tie-break just lands the SAME set of
- * values in a different permutation. Tried: reordering the `m = (short)
- * mode;` statement relative to the `mvp->angle*=0` stores (zero effect —
- * the swap is decided by something other than this statement's position);
- * `tools/permute.py GetAreaMapVector -- --stop-on-zero -j4` ran two bounded
- * passes (~900s combined, 6200+ iterations) and plateaued at internal score
- * 210-215 (the winning candidates were dead-code noise — a byte-identical
- * `if (y||x) {A} else {A}` split, repeated `& 0xFFFFFFFF` masks — not a
- * real fix per the cookbook's bisection warning). Parked per the "do NOT
- * open more surgical sessions on it" guidance.
+ * THE RESIDUAL is limited to: setup loads ordered mode/y/z instead of y/z/mode;
+ * the cached-mode move scheduled before rather than after the three Field*
+ * loads; the FieldArea store and MIN `lui` exchanged; and the early-return
+ * `li 2`/attrib store/result move ordered differently. One bounded 300-second
+ * permuter run (~26k candidates) found the source-meaningful identity split
+ * above but no zero. Guided autorules sweeps of 80 and 160 targeted fence,
+ * boundary, field-store, temp, and type candidates found no path below 40.
  */
 
 struct AreaNodeType;
@@ -125,38 +123,62 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GetAreaMapVector", G
 long GetAreaMapVector(unsigned long *area, MapVectorEx *mvp, VECTOR *pos, long wide, int mode)
 {
     long x, y, z;
-    long level;
     long level2;
     short i;
     short v;
+    long initial_level;
     short m;
+    long rawmode;
+    long mode2;
 
     x = pos->vx;
     y = pos->vy;
     z = pos->vz;
 
-    level = GetAreaMapLevel(area, x, y, z, (short)(mode & ~0x10));
-    mvp->level = level;
+    mvp->level = GetAreaMapLevel(area, x, y, z, (short)(mode & ~0x10));
     mvp->attrib = FieldAttrib;
     mvp->area = FieldArea;
     mvp->index = FieldIndex;
-
+    rawmode = (mode2 = mode);
+    initial_level = mvp->level;
+    if (wide != 0)
+    {
+        mode = rawmode;
+    }
+    else
+    {
+        mode = rawmode;
+    }
     do { } while (0);
     if (mvp->level == 0x80000000)
     {
         mvp->height = 0;
         if (!(mode & 4))
         {
-            mvp->attrib = 2;
+            if (wide != 0)
+            {
+                if (y != 0)
+                {
+                    mvp->attrib = 2;
+                }
+                else
+                {
+                    mvp->attrib = 2;
+                }
+            }
+            else
+            {
+                mvp->attrib = 2;
+            }
             mvp->angleH = 0xF;
             mvp->angleL = 0xF;
             mvp->vector = 0xF;
-            return level;
+            return initial_level;
         }
     }
     else
     {
-        mvp->height = level - pos->vy;
+        mvp->height = mvp->level - pos->vy;
     }
 
     i = 0;
@@ -164,13 +186,12 @@ long GetAreaMapVector(unsigned long *area, MapVectorEx *mvp, VECTOR *pos, long w
     mvp->angleH = 0;
     mvp->angleL = 0;
     mvp->vector = 0;
-    m = (short)mode;
-
+    m = (short)mode2;
     for (; i < 4; i++)
     {
         level2 = GetAreaMapLevel(area, x + direction[i][0] * wide, y, z + direction[i][1] * wide, m);
         if (level2 == 0x80000000 ||
-            ((level2 - y < -500) && !(mode & 4) && !((mvp->attrib | FieldAttrib) & 0xC000)))
+            ((level2 - y < -500) && !(mode2 & 4) && !((mvp->attrib | FieldAttrib) & 0xC000)))
         {
             mvp->vector |= v;
         }
