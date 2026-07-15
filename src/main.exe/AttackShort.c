@@ -35,22 +35,20 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING -- 8 of 1668 bytes differ.  The draft has the exact
- * 417-instruction length and control-flow layout; only two status-7 result
- * copies differ:
+ * Chooses a short-range humanoid attack.  Status 7 waits for the current
+ * BattleDB continuation frame; the ordinary path handles chase, turn, item,
+ * and SetCommand choices from distance, facing, and EngageLevel rolls.
  *
- *     target: move v0,s0
- *     draft:  andi v0,s0,0xffff
- *
- * A widened result pseudo prevents GCC 2.8.1 jump2 from threading away the
- * retail-only explicit zero-return block.  Narrowing `status_pad` through u16
- * keeps that layout, but materialises zero_extendhisi2 at both remaining copy
- * sites.  Signed assignments remove the masks but let jump2 merge four target
- * instructions.  Keep the pure-C near-match rather than forcing the two moves
- * with assembly.  A late 22,046-iteration permuter run over this exact-length
- * draft was flat at its proxy score of 400, with no improved candidate; this
- * supports the RTL diagnosis that the residual is a type-mode boundary rather
- * than ordinary expression ordering or register allocation.
+ * Matching notes:
+ *  - The full-width `status_raw` producer is narrowed through `status_pad`,
+ *    followed by an empty one-shot loop and identical full-width assignments.
+ *    This zero-code boundary preserves the explicit zero-return island while
+ *    making both result copies plain `move v0,s0` instructions.
+ *  - Capturing `status_human` before the boundary keeps the existing humanoid
+ *    pointer live across its loop notes.  Reading Me_THINK_C again afterwards
+ *    introduces one extra load.
+ *  - The separate SImode result carrier keeps the three status-7 edges joined
+ *    at one shared sign-extension tail without narrowing either copy.
  */
 
 extern Humanoid *Me_THINK_C;
@@ -67,10 +65,6 @@ extern s16 ChasetoTarget(s32 distance);
 extern s16 SetCommand(PADtype *pad, s16 command);
 extern s16 ItemUse(void);
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/AttackShort", AttackShort);
-#else /* NON_MATCHING */
-
 short AttackShort(void)
 {
     MotionManager *motion;
@@ -85,12 +79,27 @@ short AttackShort(void)
 
     if (Me_THINK_C->status == 7)
     {
+        Humanoid *status_human;
         s16 status_pad;
+        s32 status_raw;
         s32 status_degree;
 
-        status_pad = 0;
-        if (Me_THINK_C->motion->count ==
-            BattleDB[Me_THINK_C->warid].contfrm)
+        status_human = Me_THINK_C;
+        status_raw = 0;
+        status_pad = status_raw;
+        do
+        {
+        } while (0);
+        if (Degree != 0)
+        {
+            status_raw = (s32)status_pad;
+        }
+        else
+        {
+            status_raw = (s32)status_pad;
+        }
+        if (status_human->motion->count ==
+            BattleDB[status_human->warid].contfrm)
         {
             goto status7_continue;
         }
@@ -112,31 +121,31 @@ status7_continue:
         }
         if (rand() % (EngageLevel + 1) != 0)
         {
-            status7_result = (u16)status_pad;
+            status7_result = status_raw;
             goto status7_return;
         }
 
 choose_status7:
         if (Degree >= 301)
         {
-            status_pad = 0x2000;
+            status_raw = 0x2000;
         }
         else
         {
-            status_pad |= 0x80;
+            status_raw |= 0x80;
             if (Degree < -300)
             {
-                status_pad = -0x8000;
+                status_raw = -0x8000;
             }
             else
             {
                 goto status7_value;
             }
         }
-        status_pad |= 0x80;
+        status_raw |= 0x80;
 
 status7_value:
-        status7_result = (u16)status_pad;
+        status7_result = status_raw;
 status7_return:
         return (s16)status7_result;
     }
@@ -375,8 +384,6 @@ return_with_1000:
 return_pad:
     return pad;
 }
-
-#endif /* NON_MATCHING */
 
 // triage: HARD — 417 insns, mul/div, 5 callees, ~0.04 to AttackAnimal
 // likely-relevant cookbook sections:
