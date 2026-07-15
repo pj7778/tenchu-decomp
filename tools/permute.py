@@ -334,6 +334,7 @@ GP_EXTERNS = {
     "reset_alert_duration": ["FRAMES_UNTIL_END_OF_ALERT"],
     "Think3area": ["Me_THINK_C", "Distance", "SR", "Attrib", "Degree"],
     "create_ninken_character_": ["NINKEN_CHARACTER_PTR"],
+    "death_camera_something_": ["LOCAL_COORDINATES_"],
 }
 
 # Per-function extra maspsx flags — MUST mirror `extra` in Build.hs

@@ -457,6 +457,7 @@ maspsxGpExterns src = extra (takeBaseName src) <> concat [["--gp-extern", s] | s
     syms "reset_alert_duration" = ["FRAMES_UNTIL_END_OF_ALERT"]
     syms "Think3area" = ["Me_THINK_C", "Distance", "SR", "Attrib", "Degree"]
     syms "create_ninken_character_" = ["NINKEN_CHARACTER_PTR"]
+    syms "death_camera_something_" = ["LOCAL_COORDINATES_"]
     syms _ = []
 
 as :: FilePath
