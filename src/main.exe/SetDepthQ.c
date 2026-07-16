@@ -1,20 +1,15 @@
 #include "common.h"
 #include "main.exe.h"
+#include "gte.h"
 
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetDepthQ", SetDepthQ);
+/*
+ * SetDepthQ (0x8005d01c, 0x10 bytes) — loads the GTE depth-cue control
+ * registers: DQA (cr27) and DQB (cr28). First function matched under the
+ * restricted gte.h inline-asm policy (docs/gte-policy.md).
+ */
 
-// triage: HARD — 4 insns, 2 COP2 moves — no C form (inline-asm policy), 0 callees
-// likely-relevant cookbook sections:
-//   - Toolchain gotchas: COP2 data moves — assemble, but have no C spelling; blocked on the same inline-asm policy as GetPad/PClseek
-
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
-//
-//
-// void SetDepthQ(undefined4 param_1,undefined4 param_2)
-//
-// {
-//   gte_ldDQA(param_1);
-//   gte_ldDQB(param_2);
-//   return;
-// }
+void SetDepthQ(s32 dqa, s32 dqb)
+{
+    gte_ldDQA(dqa);
+    gte_ldDQB(dqb);
+}
