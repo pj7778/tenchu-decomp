@@ -33,11 +33,6 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — exact target extent (624 bytes / 156 instructions),
- * fuzzy 98.72, with only 3 differing bytes in two adjacent instructions.
- * Every stack slot, saved register, branch, delay slot, call, and data access
- * otherwise matches.
- *
  * The decisive reconstruction was aggregate syntax: assigning the 16-byte
  * VECTOR into `tmp.locate` makes cc1 emit the target's batched t1-t4 load/store
  * copy, while the following whole PARAM_ITEM_STAY assignment emits its second
@@ -46,28 +41,29 @@
  * cloning ReqItemStay.  The three one-shot loops around the final level/x/z
  * stores are zero-code global-allocation weights: they order level, z, x,
  * offs, and k into the target s0-s4 homes while leaving scheduling intact.
- *
- * Residual: the target materializes D_8008E404 as `lui s3,%hi; addiu
- * s3,s3,%lo`; this compiler emits `lui v0,%hi; addiu s3,v0,%lo`.  The walking
- * `offs` pseudo crosses the search-loop block boundary, so local-alloc refuses
- * to tie the split-address high pseudo to it (the cookbook's named
- * la/address-materialization tie).  Block initializers, pointer/array and
- * pair-struct views, an intermediate base/formal alias, identical arms,
- * pointer qualification, and index/real-loop variants either preserve these
- * same 3 bytes or damage otherwise-exact code.  Do not blind-permute this
- * reload/local-allocation residual; keep the exact retail assembly active.
  */
 
 extern void *GlobalAreaMap;
-extern short D_8008E404[];
+
+/* The [4] bound is LOAD-BEARING CODEGEN, not a claim about the table's length:
+ * the search loop below walks 4 entries x 2 shorts = 8 shorts past this symbol.
+ * The target materializes this address as `lui s3,%hi; addiu s3,s3,%lo` -- ONE
+ * register.  That is an UNSPLIT `la` macro, not a high/lo_sum pair: cc1 splits
+ * an address pre-reload into two *distinct* pseudos (`lui $tmp,%hi; addiu
+ * $dst,$tmp,%lo`), and local-alloc's combine_regs refuses to tie them whenever
+ * the destination is a multi-block pseudo -- which a loop cursor always is.  The
+ * split is declined only when mips_check_split() sees SYMBOL_REF_FLAG, which
+ * ENCODE_SECTION_INFO (mips.h) sets iff the symbol's declared type is COMPLETE
+ * and 0 < sizeof <= the -G threshold (8).  `extern short D_8008E404[];` is an
+ * incomplete type (size -1), so it always split.  Widening this bound past [4]
+ * re-splits the address and costs 3 bytes.  See docs/matching-cookbook.md.
+ */
+extern short D_8008E404[4];
 
 extern long GetAreaMapLevel(void *map, long x, long y, long z, long e);
 extern s32 abs(s32 x);
 extern void *memset(void *s, int c, u32 n);
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/RestoreItemLayout", RestoreItemLayout);
-#else
 void RestoreItemLayout(void *buf)
 {
     tag_TItem *it;
@@ -157,7 +153,6 @@ search_success:
     } while (0);
     goto search_check;
 }
-#endif
 
 // triage: MEDIUM — 156 insns, indirect-call, 6 callees, ~0.14 to ClearItemLayout
 // likely-relevant cookbook sections:

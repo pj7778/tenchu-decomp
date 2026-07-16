@@ -5878,6 +5878,26 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
   `fill_slots_from_thread` can steal it — which needs `sched2` to leave it as the
   block's first insn, and real register pressure defeats that. The testbed is
   still the cheapest instrument; just know which questions it can answer.
+- **A same-register `lui $rN,%hi(sym)` / `addiu $rN,$rN,%lo(sym)` pair is an
+  UNSPLIT `la` — not a tied split — and the ONLY lever is the DECLARATION.**
+  cc1's `movsi` expander splits addresses pre-reload into two DISTINCT pseudos
+  (`gen_reg_rtx`), and local-alloc's `combine_regs` refuses to tie them when the
+  destination is a multi-block pseudo — so a loop cursor's address init can NEVER
+  be tied by any source restructuring. The split is declined only when
+  `mips_check_split` sees `SYMBOL_REF_FLAG`, which `ENCODE_SECTION_INFO` (mips.h)
+  sets iff the decl's type is **complete** and `0 < sizeof <= -G` (8). So
+  `extern T x[];` is INCOMPLETE (`int_size_in_bytes` = -1, the `size > 0` test
+  fails) and always splits. **Give the extern a complete type of size <= 8** to
+  get the same-register form — the bound is a codegen knob, not a claim about the
+  object's real length. RestoreItemLayout's entire 3-byte park fell to
+  `extern short D_8008E404[];` -> `extern short D_8008E404[4];` — one character.
+  - Corollary: **two address sites in one function can legitimately differ** (its
+    `items` site splits, `D_8008E404` does not). That is a DECLARATION
+    difference, never an allocator inconsistency — do not "fix" the consistent
+    one.
+  - When probing address shape, grep for `\bla\b` too: a first probe searching
+    only `lui|%hi|%lo` reported "no address materialization" for exactly the
+    variants that had produced the answer.
 - **METHOD — when a residual looks unreachable, grep the whole game for the
   target's SHAPE and check whether any function with it is already MATCHED.**
   Our matched corpus is an oracle: a matched function's source IS the answer to

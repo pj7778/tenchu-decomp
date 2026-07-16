@@ -730,6 +730,13 @@ against context prototypes), so a small m2c fix-up layer is where more zeros hid
   hard veto when a kept type-narrow changes an aligned sll/sra shift AMOUNT
   vs the target; and on plateau, try reverting the sweep's own last kept
   type-narrow before concluding.
+- **autorules: the extern-array completion rule (HIGH VALUE, fully specified).**
+  For any `lui/addiu` byte-diff where target and draft differ ONLY in the `lui`
+  destination register, try completing each `extern T x[];` declaration to sizes
+  1..8 bytes. `ENCODE_SECTION_INFO` sets `SYMBOL_REF_FLAG` (which declines the
+  address split) iff the type is complete and `0 < sizeof <= -G`. Bounded,
+  byte-safe, and it would have closed RestoreItemLayout's park in one unattended
+  minute — the fix was a single character.
 - **autorules: the "narrowed negate" rule** — rewrite `narrow = -narrowVar` as a
   separate SImode negation operand (convert.c narrows NEGATE_EXPR through the
   truncation, so the narrow form can never emit the target's sign-extended
