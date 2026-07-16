@@ -5811,6 +5811,61 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
     file and let m2c ignore the unused ones:
     `--input-regs v0,v1,a0,a1,a2,a3,t0,t1,t2,t3,t4,t5,t6,t7,t8,t9,s0`
     → zero `M2C_ERROR` on `FUN_8005d1fc`.
+- **The DamageControl escalation lessons (1320→0, fence-free)** — the three that
+  closed the game's largest function:
+  1. *An ASSIGNED `__builtin_abs` reaches mips `abssi2` — ONE type-`multi` insn*
+     whose template carries its own branch (`bgez %1,1f%# / subu %0,$0,%0 / 1:`).
+     It is byte-identical to open-coded `bgez/nop/negu` but **invisible to
+     reorg**. Tell: the target shows `bgez x,+2 / nop / negu x,x` AND a nearby
+     branch delay holds a `nop` while an eligible independent insn (e.g. a
+     register copy in a load-delay slot) sits above it. The explicit
+     `if (x<0) x=-x;` exposes a real `bgez` whose backward scan provably steals
+     that copy — `reorg.c fill_simple_delay_slots` accumulates set/needed and
+     takes the first non-conflicting insn, and NO fence topology stops it (the
+     scan only stops at labels/jumps/SEQUENCEs). The multi-insn also removes a
+     block boundary, which can re-derive the whole surrounding allocation with
+     no fence at all.
+  2. *A promoted-var re-type silently moves flow2 refs between an allocno and
+     its extension temp*: `short = s8` (QI→HI, a real conversion) keeps def+use
+     refs on the destination pseudo, while `short = u16` (HImode
+     reinterpretation = a copy) lets cse rewrite the uses onto the extension
+     temp and delete the def — −2 refs, enough to cross a `floor_log2` boundary
+     and flip allocation order. Measure with `.flow`'s `Register N used M times`
+     lines (`rtldump --pass all`) and `regalloc.py --between`.
+  3. *A goto-shaped loop and a real `while` differ in NOTE_INSN_LOOP weighting
+     even at identical bytes*: loop-body refs count DOUBLE in flow2. When a
+     callee-saved role needs exactly +refs and has any use inside a Ghidra
+     if+goto loop, restore the real loop form first — it is also the faithful
+     source. (Contrast the goto-loop rule above, which is for suppressing
+     loop.c hoisting: same construct, opposite lever, pick by what the target
+     needs.)
+- **The BreedLife escalation lessons (59→0, fence-free and volatile-free)**:
+  1. *The dup-while head family*: a `%hi`-folded row-0 check plus a
+     strength-reduced walker loop whose backedge lands ONE insn past the
+     loop-top load is
+     `while (Tbl[idx].f != SENT) { if (Tbl[idx].f == key) break; idx++; }` —
+     the entry check is jump.c's exit-test duplication (`idx==0` cse-folded) and
+     the backedge offset is reorg skipping the redundant target-head load. Never
+     reconstruct it with walker/preload locals: `stmt.c expand_end_loop` rotates
+     any do-while whose body leads with a conditional exit, and cse peels every
+     hand-built preload.
+  2. *An explicit guard duplicating a `while`'s entry condition is
+     load-bearing*: it makes the machine-made duplicate fold
+     (`record_jump_equiv` on the fall-through). Without it the surviving dup
+     derails giv reduction (extra callee-saved, in-loop index recompute).
+  3. *A loop-invariant assignment as the FIRST BODY statement* is hoisted by
+     loop.c into the post-check preheader (in-place `addiu hi,hi,%lo`) — a
+     position no pre-loop statement can reach. Sound when every use-path runs
+     at least one iteration.
+  4. *Stop fighting cse on repeated global loads in one ebb*: the second load
+     folds to the first's value (even via the s16 two-step — cse records narrow
+     equivalents), and `find_best_addr` rewrites register addresses to `%lo`
+     forms wherever a symbol equivalence exists. `volatile` blocks the fold but
+     splits HImode loads into `lhu+sll+sra`. Two target loads ⇒ the second sits
+     behind a label or is compiler-made (dup/giv) — find that structure.
+  5. *`q = pp` survives as a real copy iff its uses sit behind a loop label*
+     (`optimize_reg_copy_1` cannot cross one); pp dying at the copy is what lets
+     pp share the index's register.
 - **Independent recompute vs. copy defeats coalescing.** When the target keeps
   two same-valued pointers in SEPARATE homes (one in a register, one spilled),
   do NOT write `b = a;` — a register-to-register copy carries a preference edge

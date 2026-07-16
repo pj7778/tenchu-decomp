@@ -515,6 +515,13 @@ function already byte-matches on current `master`.
   FileNotFoundError on `.shake/ghidra-export/functions.tsv`. wt-init.sh symlinks both
   from the primary worktree. Tell every worktree-isolated agent to run it first.
 
+- **Read the actual gcc-2.8.1 sources when a residual looks "provably
+  impossible".** DamageControl's last cluster fell in one step once the agent
+  read `reorg.c`'s `fill_simple_delay_slots` and `config/mips/mips.md`'s
+  `abssi2` template (extract them to /tmp; the nix-pinned compiler's source is
+  the ground truth for every "cc1 always/never does X" claim). Several parks in
+  this project rested on plausible-but-wrong models of a pass; the sources
+  settle them. Pair with `rtldump --pass all`.
 - **Escalating a same-length register tie to an RTL-capable model works.** vrealloc
   sat parked through ~3200 permuter iterations and a full C-respelling sweep. Told to
   ignore the C and read `-dg`/`-dl` dumps instead, a stronger model matched it in one
