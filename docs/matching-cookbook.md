@@ -6377,6 +6377,26 @@ while its reasoning did not.
   is not a naive per-insn count. `.flow` IS the pre-combine dump and it is the
   one that fails.) Use this oracle before believing any claim that a regalloc
   model is reading the wrong dump.
+- **A shared local MACRO is a MEGA-EXPANSION — the mega-pseudo mistake one level
+  up. Expand it per site.** Measured across the whole corpus: **0 of 593 matched
+  drafts contain a function-like local `#define`; of 51 parked drafts only 3 do —
+  and they are precisely the three most stubborn functions in the project**
+  (mission_score_screen 17 macros / 9 rounds, AddEnemy 5 / 7 rounds,
+  StageEndScreen 2 / parked). Size is not the discriminator: DamageControl
+  (5812 B), ActSTICKON (3248 B), LoadConstruction and CVAupdate are all large,
+  macro-free, and matched.
+  **Why**: a macro forces N call sites to share ONE spelling, but the original
+  author wrote each site and cc1 compiled each in its own context (register
+  pressure, live ranges, neighbours). Any per-site variation the original had is
+  inexpressible, so the residual concentrates exactly where the sites must
+  differ. The history shows it directly — every time a lane SPLIT a macro, bytes
+  fell (mission_score_screen's row draw became its own `_ROW32` macro: 476→437,
+  and its own note says "the row's flag was a distinct local in the original").
+  **The refactor is FREE**: cpp expands a macro textually before cc1 sees
+  anything, so replacing a call with its expansion is byte-neutral BY
+  CONSTRUCTION — verify the count is unchanged, then tune each site
+  independently. This is the same rule as the mega-pseudo (one register forced
+  across many jobs) and the fix is the same: split per site.
 - **Ghidra's reused variables are MEGA-PSEUDOS — split them per site.** This is
   the highest-yield structural check on any big function. Ghidra reuses one
   variable (`iVar3`, `uVar2`, …) for a dozen unrelated jobs. Each C local is ONE
