@@ -96,6 +96,123 @@
  *    SAME value under TWO names, and the name each site reads is what decides
  *    both the hoist and the cascade.  0x81c is now exact.
  *
+ * ROUND 8 — the fence macros are EXPANDED (mega-expansion).  Every fence is
+ * now literal nested do{}while(0) text at its call site, with the depth in a
+ * comment.  This is byte-neutral BY CONSTRUCTION (cpp expands textually) and
+ * was verified three ways: the preprocessed token stream is IDENTICAL (1702
+ * tokens both sides), the recompiled AddEnemy.c.o came out byte-identical (the
+ * build skipped every downstream rule), and matchdiff stayed at 42.
+ * WHY IT MATTERS HERE, concretely: ADD_ENEMY_FENCE_10 had THREE call sites and
+ * _6 had TWO, so those sites were forced to share one depth — the mega-pseudo
+ * mistake one level up.  Depth is this file's main allocator dial, and a shared
+ * macro made "raise site X only" inexpressible.  Expanded, each site is an
+ * independent dial and any depth (7, 8, 11, ...) is reachable without minting a
+ * macro.  Do NOT re-introduce a fence macro; keep the literal text.
+ *
+ * ROUND 8 also CONFIRMED round 7's byte accounting independently (the first
+ * inherited accounting in this file to survive re-measurement): A=14, B=6, C=8,
+ * D=2, E=12 = 42, computed by counting differing bytes per instruction.
+ *
+ * ROUND 8's PER-SITE DEPTH SWEEP (do not re-run; each entry is a rebuild +
+ * matchdiff).  Depth 0 = fence removed entirely:
+ *     weapon++             0/6/8/10/12/16 -> 42 42 42 42 42 42   DEAD, REMOVED
+ *     category = 0                      0 -> 86
+ *     i = count                         0 -> 76
+ *     menu_char = ...                   0 -> 86
+ *     think_item = item                 0 -> 84
+ *     menu_base[count].name = 0  0/6/8/10+ -> 72 54 42 42        plateau at >=8
+ *     think |= AdtSelect(...)  0/6/8/10/12/16 -> 93 70 51 42 42 54
+ * Every surviving fence is load-bearing.  The sites are independently sensitive
+ * with DIFFERENT curves and optima (menu_base flattens above 8; think|= peaks in
+ * a narrow 10-12 window and regresses on BOTH sides), which is the mega-pseudo
+ * mechanism made visible — but depth 10 already sat at each site's optimum, so
+ * the shared macro was costing nothing.  Expansion bought the measurement and
+ * one dead fence, not bytes.  An honest partial refutation: the hypothesis's
+ * MECHANISM is real here, its PREDICTION (hidden bytes) was not.
+ *
+ * ROUND 8 DISPROOF — "0x7f8 is a GIV INIT" IS FALSE, and so is the question
+ * "what makes $s0 a giv of the outer loop?".  Read from the .loop dump
+ * (`tools/rtldump.py AddEnemy --draft --pass loop`), not inferred:
+ *  - AddEnemy has exactly TWO real loops: `Loop from 691 to 1639: 60 real
+ *    insns` (the outer do-while) and `Loop from 31 to 540: 150 real insns`
+ *    (loop 1).  Everything else is `is phony` — 79 of them, one per fence
+ *    do{}while(0).
+ *  - **THE THINK SCAN IS NOT A LOOP TO loop.c.**  It is written as a goto-loop,
+ *    so it has no NOTE_INSN_LOOP_BEG and loop.c never sees it.  Round 7's
+ *    "0x81c is the last insn of the INNER scan loop's preheader (0x810-0x81c:
+ *    menu_char hoisted out of the scan)" and "the canonical giv-init slot" are
+ *    FICTIONS: there is no inner loop, no inner preheader, and no hoist there.
+ *    0x810-0x81c are plain source statements, which is exactly why they match.
+ *  - Loop 2's section contains NO biv and NO giv line at all.  `category` is
+ *    not recognised as a biv, so there is no biv in loop 2 for $s0 to be a giv
+ *    OF.  (Loop 1 is the only loop with induction vars: `Reg 80: biv verified`,
+ *    and `giv at 408 reduced to (reg:SI 372)` is the mult-20 names cursor.)
+ *  - 0x7f8 IS A HOIST, logged verbatim:
+ *        Insn 905:  regno 265 (life 24) ... moved to 1805   <- high(ThinkDB)
+ *        Insn 1243: regno 270 (life 22) ... moved to 1807   <- lo_sum, $s6
+ *        Insn 1333: regno 100 (life 67), savings 1 moved to 1808  <- menu_base
+ *    i.e. move_movables, three movables, menu_base THIRD — exactly what round 6
+ *    engineered.  The preheader ORDER IS ALREADY CORRECT and (C) is NOT an
+ *    order problem; 0x7f0/0x7f4/0x7f8 are all out of the diff.
+ *
+ * ROUND 8, two inherited FACTS corrected (both cheap to re-check, do not
+ * re-derive):
+ *  - **pseudo 100 is `menu_base`, NOT `item`.**  The round-5 note "cse2 rewrites
+ *    to a copy of `item` (pseudo 100, $s1)" misnames it.  The dump shows insn
+ *    1333/1808 SETS reg 100, and it is the hoisted `menu_base = ItemName`.
+ *  - **"loop.c cannot hoist a frame-address invariant (sp+K)" is HALF WRONG as
+ *    written.**  loop.c hoists one RIGHT HERE.  The hoisted insn is literally
+ *        (insn 1808 ... (set (reg/v:SI 100)
+ *                            (plus:SI (reg:SI 30 $fp) (const_int 1424))))
+ *    — a frame address, and `reg/v` = REG_USERVAR_P.  The true rule is round
+ *    7's own final clause, not its headline: a frame address is folded into one
+ *    addiu per use ONLY while no named variable holds it; a NAMED variable
+ *    creates a real invariant SET that case (1) hoists normally.  What cannot
+ *    happen is the case-(2) route (a compiler TEMP), because cse never leaves
+ *    sp+K in a temp.
+ *  - Corollary worth keeping: `move s0,s1` is NOT what loop.c emitted.  loop.c
+ *    emitted `reg100 = fp+1424`; CSE2 then rewrote it to a copy of the
+ *    equivalent register ($s1) because the preheader is one cse2 block.  Never
+ *    reason about 0x7f8 from the final mnemonic — read the .loop dump.
+ *
+ * SO WHAT (C) ACTUALLY IS, stated exactly.  $s0 = reg100 = menu_base (hoisted,
+ * born 0x7f8).  $s1 = ItemName pre-loop.  Both hold the same value.  The whole
+ * of (C) is WHICH NAME the cursor init reads: target `think_item = <$s0>`, ours
+ * `think_item = item` -> $s1; the $a0/$a1 swap at 0x830-0x85c is downstream of
+ * that one choice.  Round 8's contribution is to make the constraint exact,
+ * from the verified loop.c text (gcc-2.8.1 tarball in the nix store —
+ * /nix/store/117i80brbgcdmcl46gmpzwizikbjyx5m-gcc-2.8.1.tar.gz/loop.c, READ IT,
+ * it settles these questions in minutes):
+ *   (i)   menu_base must be hoisted THIRD  <=> its SET is discovered after the
+ *         lo_sum's set, and the lo_sum's set is created at the first INDEXED
+ *         `ThinkDB[i]`, which is inside the scan.
+ *   (ii)  case (1) is the only live disjunct (case (2) needs a non-uservar;
+ *         case (3) needs !maybe_never, and loop.c:922-931 — CONFIRMED verbatim
+ *         against the real source — sets maybe_never past ANY CODE_LABEL or
+ *         JUMP_INSN, so everything after the guard is poisoned).
+ *   (iii) case (1) demands `REGNO_FIRST_UID (regno) == INSN_UID (set)` — the set
+ *         must be the reg's FIRST mention in the WHOLE function.
+ * Reading menu_base at 0x81c therefore requires set < 0x81c < first ThinkDB[i]
+ * < set.  **A CONTRADICTION** — so (C) is UNSATISFIABLE for a named menu_base,
+ * confirming round 7's conclusion while destroying its escape hatch.
+ *
+ * THE ONE UNTRIED LEVER, and the round-9 lead.  The contradiction has exactly
+ * one soft term: "the lo_sum's set is created at the first indexed ThinkDB[i],
+ * inside the scan".  Move that set EARLIER — before 0x81c — and the ordering
+ * becomes satisfiable: menu_base's set can then sit after the lo_sum and still
+ * precede its own first read.  That needs an indexed `ThinkDB[<non-const>]`
+ * reference between the guard and the cursor init (the guard itself cannot do
+ * it: `ThinkDB[0]` folds its %lo into the load — `lw $v0,%lo(ThinkDB)($fp)` at
+ * 0x800 — which creates the CARRIER movable but no lo_sum, and that folding is
+ * exactly what retail's shared-carrier form depends on).
+ * ALSO STILL OPEN and independent of the above: reg_scan runs ONCE, at
+ * loop_optimize:62, BEFORE the `for (i = max_loop_num-1; i >= 0; i--)` loop at
+ * :108 — so REGNO_FIRST_UID is never refreshed between loops.  Any read created
+ * by a pass AFTER reg_scan is INVISIBLE to (iii).  That is the only known way to
+ * read menu_base at 0x81c without killing the hoist, and it is why the giv idea
+ * was attractive; it just cannot be a giv HERE (no biv in loop 2).  If some
+ * other post-reg_scan pass can be made to author that read, (C) falls.
+ *
  * ROUND 7 — byte accounting CORRECTED, and (C) re-diagnosed from the gcc
  * source.  Round 6's cluster table summed to 48, not 42, and its per-cluster
  * counts were each wrong; it also claimed "0x81c is now exact" when 0x81c is
@@ -526,44 +643,8 @@ extern Humanoid *BreedLife(s16 type, s32 x, s32 y, s32 z, s32 r);
 extern void SetBleeds(VECTOR *pos, short grange, short srange, short n,
                       int time, long col);
 
-#define ADD_ENEMY_FENCE_5(statement)                                           \
-    do                                                                         \
-    {                                                                          \
-        do                                                                     \
-        {                                                                      \
-            do                                                                 \
-            {                                                                  \
-                do                                                             \
-                {                                                              \
-                    do                                                         \
-                    {                                                          \
-                        statement;                                             \
-                    } while (0);                                                \
-                } while (0);                                                    \
-            } while (0);                                                        \
-        } while (0);                                                            \
-    } while (0)
 
-#define ADD_ENEMY_FENCE_6(statement)                                           \
-    do                                                                         \
-    {                                                                          \
-        ADD_ENEMY_FENCE_5(statement);                                          \
-    } while (0)
 
-#define ADD_ENEMY_FENCE_10(statement)                                          \
-    do                                                                         \
-    {                                                                          \
-        do                                                                     \
-        {                                                                      \
-            do                                                                 \
-            {                                                                  \
-                do                                                             \
-                {                                                              \
-                    ADD_ENEMY_FENCE_6(statement);                              \
-                } while (0);                                                    \
-            } while (0);                                                        \
-        } while (0);                                                            \
-    } while (0)
 
 /* An allocator fence.  The nested single-trip loops increase the source
  * weight of a live range (flow.c weights every ref by loop_depth) without
@@ -572,38 +653,7 @@ extern void SetBleeds(VECTOR *pos, short grange, short srange, short n,
  * across a NOTE_INSN_LOOP_BEG/END, else loop_depth would be wrong), so a
  * fence pins the emitted order of the statement it wraps.  The depth is a
  * dial — use the smallest that wins the allocno_compare inequality. */
-#define ADD_ENEMY_FENCE_16(statement)                                          \
-    do                                                                         \
-    {                                                                          \
-        do                                                                     \
-        {                                                                      \
-            do                                                                 \
-            {                                                                  \
-                do                                                             \
-                {                                                              \
-                    do                                                         \
-                    {                                                          \
-                        do                                                     \
-                        {                                                      \
-                            ADD_ENEMY_FENCE_10(statement);                     \
-                        } while (0);                                            \
-                    } while (0);                                                \
-                } while (0);                                                    \
-            } while (0);                                                        \
-        } while (0);                                                            \
-    } while (0)
 
-#define ADD_ENEMY_FENCE_19(statement)                                          \
-    do                                                                         \
-    {                                                                          \
-        do                                                                     \
-        {                                                                      \
-            do                                                                 \
-            {                                                                  \
-                ADD_ENEMY_FENCE_16(statement);                                 \
-            } while (0);                                                        \
-        } while (0);                                                            \
-    } while (0)
 
 void AddEnemy(void)
 {
@@ -732,7 +782,12 @@ add_enemy_weapon_scan:
                             goto add_enemy_weapon_scan_done;
                         weapon_scan++;
                         weapon_id = weapon_scan->wid;
-                        ADD_ENEMY_FENCE_10(weapon++);
+                        /* No fence here: ROUND 8 swept this site over depths
+                         * 0/6/8/10/12/16 and every one measures 42.  It was
+                         * scaffolding inherited from the shared FENCE_10 macro,
+                         * load-bearing at NO depth.  The other six fences are
+                         * each load-bearing (removing any one costs 30-51). */
+                        weapon++;
                         if (weapon_id != -1)
                             goto add_enemy_weapon_scan;
                     }
@@ -785,12 +840,26 @@ add_enemy_weapon_scan_done:
         return;
 
     think = 0;
-    ADD_ENEMY_FENCE_6(category = 0);
+    /* fence depth 6 */
+    do { do { do { do { do { 
+    do { 
+        category = 0;
+    } while (0); } while (0); } while (0); } while (0); } while (0); 
+    } while (0);
     do
     {
         count = 0;
         /* Reusing the first scan's i range restores retail's s4 assignment. */
-        ADD_ENEMY_FENCE_16(i = count);
+        /* fence depth 16 */
+        do { do { do { do { do { 
+        do { do { do { do { do { 
+        do { do { do { do { do { 
+        do { 
+            i = count;
+        } while (0); } while (0); } while (0); } while (0); } while (0); 
+        } while (0); } while (0); } while (0); } while (0); } while (0); 
+        } while (0); } while (0); } while (0); } while (0); } while (0); 
+        } while (0);
         /* Wrapping the guard in a single do{}while(0) walls off a copy the
          * local allocator would otherwise propagate through the think scan,
          * restoring retail's register choices there (zero-code fence). */
@@ -801,8 +870,22 @@ add_enemy_weapon_scan_done:
                 /* Retail emits menu_char (the compared constant) before the
                  * think_item cursor, which lands them in $a2/$a1 as the
                  * target does. */
-                ADD_ENEMY_FENCE_6(menu_char = (s16)category + 0x31);
-                ADD_ENEMY_FENCE_19(think_item = item);
+                /* fence depth 6 */
+                do { do { do { do { do { 
+                do { 
+                    menu_char = (s16)category + 0x31;
+                } while (0); } while (0); } while (0); } while (0); } while (0); 
+                } while (0);
+                /* fence depth 19 */
+                do { do { do { do { do { 
+                do { do { do { do { do { 
+                do { do { do { do { do { 
+                do { do { do { do { 
+                    think_item = item;
+                } while (0); } while (0); } while (0); } while (0); } while (0); 
+                } while (0); } while (0); } while (0); } while (0); } while (0); 
+                } while (0); } while (0); } while (0); } while (0); } while (0); 
+                } while (0); } while (0); } while (0); } while (0);
 add_enemy_think_scan:
                 if (count >= 70)
                     goto add_enemy_think_scan_done;
@@ -820,9 +903,18 @@ add_enemy_think_scan:
         } while (0);
 add_enemy_think_scan_done:
         menu_base = ItemName;
-        ADD_ENEMY_FENCE_10(menu_base[count].choice_name = 0);
-        ADD_ENEMY_FENCE_10(
-            think = think | AdtSelect(D_80013FB4, menu_base, 0));
+        /* fence depth 10 */
+        do { do { do { do { do { 
+        do { do { do { do { do { 
+            menu_base[count].choice_name = 0;
+        } while (0); } while (0); } while (0); } while (0); } while (0); 
+        } while (0); } while (0); } while (0); } while (0); } while (0);
+        /* fence depth 10 */
+        do { do { do { do { do { 
+        do { do { do { do { do { 
+            think = think | AdtSelect(D_80013FB4, menu_base, 0);
+        } while (0); } while (0); } while (0); } while (0); } while (0); 
+        } while (0); } while (0); } while (0); } while (0); } while (0);
     } while (think != 0x1111 && think != 0x2222 &&
              ++category < 4);
 
@@ -846,9 +938,6 @@ add_enemy_think_scan_done:
     SetBleeds(&pos, 400, 0, 50, 30, 0xffffff);
 }
 
-#undef ADD_ENEMY_FENCE_16
-#undef ADD_ENEMY_FENCE_10
-#undef ADD_ENEMY_FENCE_6
 
 #endif /* NON_MATCHING */
 

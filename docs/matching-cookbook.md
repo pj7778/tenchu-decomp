@@ -3359,48 +3359,54 @@ enclosing base, or vice versa, that is the lever -- confirmed on FUN_8004c59c vi
 `.cse`/`.cse2`/`.lreg` dumps (`.greg` shows the pointer correctly in $s1, but cse1 had
 already rewritten the offset-0 store to base-relative).
 
-### A spilled pseudo self-ties iff it appears as a BARE OPERAND
+### A spilled pseudo self-ties iff its OPERAND ITSELF requires a register
 
-**(This section previously read "A huge-offset-spilled pointer dereference can NEVER
-self-tie (un-matchable) … AdtSelect is parked on exactly this; do not retry it."
-That framing was WRONG and is retracted — see the disproof below. The reload
-mechanics it described are literally correct; the DISCRIMINATOR was not.)**
+**(This section has now been wrong twice. It first read "a huge-offset-spilled
+pointer dereference can NEVER self-tie … do not retry it" — retracted. Its
+replacement said the discriminator was "bare operand vs inside a MEM": the right
+CONCLUSION, the wrong REASON, and one worked example backwards. This is the
+measured version.)**
 
-Whether a spilled pseudo can self-tie depends on WHERE THE PSEUDO APPEARS, not on
-frame size or offset magnitude:
+**The discriminator is whether the OPERAND ITSELF gets reloaded — i.e. whether its
+constraint accepts `'m'`.** The step that is easy to miss is `reload.c:3812`: once
+a MEM operand's ADDRESS has been reloaded, `(mem (reg a3))` matches movsi's `'m'`,
+so the operand is never reloaded (`operand_reloadnum < 0`) and **both** address
+reloads are retyped to `RELOAD_FOR_OPERAND_ADDRESS` (`reload.c:3854`).
+`reload1.c:4623` then bars the second from the first's register via
+`reload_reg_used_in_op_addr`, and `reload_reg_class_lower`'s `r1 - r2` tiebreak
+(`reload1.c:4345`) fixes the order. The escape is `reload.c:3812`'s
+`operand_reloadnum >= 0`: **the operand must REQUIRE a register.** A branch or
+`addu` operand does (-> `RELOAD_FOR_INPUT`, which per `reload1.c:4560` only scans
+`i > opnum`, so it self-ties). A MEM used as an address never does.
 
-* **As a bare operand** (`if (title == 0)`, `p = menu`, `menu[i]`) it goes through
-  `find_reloads_toplev` and becomes one `RELOAD_FOR_INPUT`, which only checks
-  `input_addr[i]` for `i > opnum` — so it **self-ties freely**. `gen_reload` then
-  materializes the address into the reload's own destination
-  (`ori a3; addu a3,a3,sp; lw a3,0(a3)`) — note this is ONE reload, not a tie
-  between two.
-* **Inside a MEM** (`menu->choice_name`) it goes through `find_reloads_address`'s
-  `reg_equiv_address` branch, which pushes the address-of-the-spill-slot reload
-  (`RELOAD_FOR_INPADDR_ADDRESS`) BEFORE the value-used-as-address reload
-  (`RELOAD_FOR_INPUT_ADDRESS`); `reload_reg_free_p`'s `RELOAD_FOR_INPUT_ADDRESS`
-  case hardcodes a reject on the first reload's register
-  (`reload_reg_used_in_inpaddr_addr[opnum]`), and `reload_reg_class_lower`'s
-  `return r1 - r2` tiebreak makes the order deterministic. That site is **barred**.
+**Three sites, TWO mechanisms — do not group them.** `if (title == 0)`,
+`menu[i]` and `menu[selection]` self-tie because their operands require registers.
+But **`p = menu` does NOT self-tie at all**: movsi's `'m'` absorbs the MEM, so
+there is no value reload in the first place — `lw v1,0(t0)` loads straight into
+`p`'s home.
 
-**The same spilled pseudo does BOTH in one function.** AdtSelect reloads `menu`
-from the same sp+0x80CC slot at FOUR sites; **three already self-tie and
-byte-match** (`p = menu`, the print loop's `menu[i]`, the tail's
-`menu[selection]`) and only the offset-0 deref is barred. A criterion that a
-function's own matched instructions contradict cannot be a park criterion — and
-the frame offset is irrelevant: the demo build's AdtSelect has a different frame
-(0x80E0/0x80E4) and emits the same shape.
+**A copy cannot fix a barred site** (AdtSelect's round-2 dead end): a surviving
+copy `X = menu` puts the value in X's ALLOCATED register, and `$a3`/`$t0` are
+RELOAD registers — the `.greg` dispositions here only ever use
+`$v0/$v1/$a0/$s0-$s7/$fp/HI`. So a copy can only ever emit `lw v1,0(a3); lw
+v0,0(v1)`, never the target's `lw a3,0(a3)`. (Measured with `rtldump.py --src`:
+the multi-use copy still emits `lw $8,0($7)` with `p` in `$3`; combine also
+copy-propagates `p = menu` into the deref even when `p` is multi-use, so the
+"single-use yet outlives combine" catch-22 was never even reachable.) Every
+fence/`REG_N_DEATHS` lever points at this same dead lever.
 
-**Fixing a barred site needs a copy that is SINGLE-USE (so a later fresh read
-survives) yet OUTLIVES COMBINE (which folds exactly single-use copies within a
-block).** Measured on AdtSelect: a single-use copy is refolded (9); a multi-use
-copy survives but eats the second read (764, 3 insns short); an identical-arm
-fence is merged by cse1 BEFORE combine (760); `T *volatile p` does emit the
-target's load-then-deref at the barred site but makes the pseudo memory-resident
-at all four, so the other three stop being bare-operand reloads (51). A real
-block boundary would do it, but then the copy's load lands on the far side while
-the target's load is adjacent to its deref. **That is the open question — not an
-impossibility.**
+**The one live question** for a barred site: make the operand REQUIRE a register so
+`reload.c:3812`'s retype cannot fire. Already dead: `if (menu->choice_name != 0)`
+cannot fold into the branch (MIPS `branch_zero` has a `register_operand`
+PREDICATE, so combine's recog rejects it), and adding a bare-operand use of `menu`
+raises its ref count until it un-spills into `$fp` and the whole shape changes.
+
+**A reload-register-only diff downstream of a reload-COUNT difference is ONE root
+cause, not many.** `allocate_reload_reg` round-robins from `last_spill_reg`
+(`reload1.c:5082-5091`, updated at `:5185`), so consuming one extra reload
+register ANYWHERE shifts every later reload by one position. AdtSelect's regs run
+`a3, t0, a3, t0…`, and site 1 taking two regs instead of one is the SOLE cause of
+site 2's `t0<->a3` flip. Do not chase the downstream sites.
 
 ### A `%hi` reload tie is `combine_regs` refusing to tie a block-crossing pseudo
 
@@ -6105,6 +6111,16 @@ the verdict. On StageEndScreen it did break the sched1 hoist (`li s7,82` left
 0x800536bc), but the sub-block re-scheduled for a net loss: the verdict survived
 while its reasoning did not.
 
+**A fence whose DEPTH SWEEP IS FLAT is not a fence — delete it.** Sweep each
+`do{}while(0)` site over depths {0, 6, 8, 10, 12, 16}: one build each, and it
+separates load-bearing ballast from inherited scaffolding. AddEnemy's `weapon++`
+fence measured 42 at EVERY depth including 0 and was removed; its six others each
+cost 30-51 bytes at depth 0. Sites are independently sensitive with DIFFERENT
+curves — `menu_base[count]` flattens above 8, while `think |= AdtSelect` peaks in a
+narrow 10-12 window and regresses on both sides (93/70/51/42/42/54). This
+generalises "challenge every fence before a MATCH" to NON_MATCHING checkpoints,
+where it is equally valid and finds scaffolding years earlier.
+
 **Failure modes, all paid for in real bytes:**
 - **Over-ballasting.** Too much depth pushes the wrong rival ahead. Compute BOTH
   rivals' priorities from `.lreg` first and pick the SMALLEST depth that wins the
@@ -6189,14 +6205,24 @@ while its reasoning did not.
   loop-note ref WEIGHT and a scheduling barrier but no block boundary; an
   identical-arm fence gives a real block boundary. Pick by which one the
   mechanism needs.
-- **loop.c CANNOT hoist a frame-address invariant (`sp+K`).** cse/combine fold it
-  into one cheap `addiu` per use, so there is no invariant SET for
-  `move_movables` to move and case (2) can never engage. A frame address becomes
-  a register ONLY as a NAMED user variable via case (1). (Measured on AddEnemy:
-  deleting `menu_base` for direct `ItemName[...]` gives 1144, and the `.s` shows
-  four `addu $reg,$sp,1424` and no hoist anywhere.) Note how this pairs with the
-  "delete the variable to get the hoist" rule: for a frame address the variable
-  is the ONLY way in.
+- **A frame-address invariant (`sp+K`) hoists ONLY through a NAMED variable —
+  case (2) can never carry it.** (An earlier form of this rule said "loop.c cannot
+  hoist a frame address" full stop; that is HALF WRONG and is corrected here —
+  loop.c does hoist one, logged verbatim as
+  `(insn 1808 (set (reg/v:SI 100) (plus (reg $fp) (const_int 1424))))`.) The
+  accurate statement: while no named variable holds it, cse/combine fold the
+  address into one cheap `addiu` per use, so there is no invariant SET for
+  `move_movables` to find — that is the case-(2) route, and it is genuinely
+  closed. A NAMED variable creates a real invariant SET that case (1) moves.
+  (Measured: deleting AddEnemy's `menu_base` for direct `ItemName[...]` gives
+  1144 with four `addu $reg,$sp,1424` and no hoist.) This inverts the
+  "delete the variable to get the hoist" rule: for a FRAME address the variable
+  is the only way IN.
+  - **Corollary — never reason about a hoisted insn from its final mnemonic.**
+    AddEnemy's `move s0,s1` at 0x7f8 is cse2's LATER rewrite of that hoist, not
+    loop.c's output; two rounds built a "giv init" story on the mnemonic alone.
+    Read `.loop`'s own log (`rtldump.py --draft --pass loop`), which prints
+    `Insn N: regno R (life L), savings S moved to M` verbatim.
   - Correction to a half-rule in circulation: loop.c sets `maybe_never` past
     **any** `CODE_LABEL` or `JUMP_INSN`, not merely a backward jump.
 - **gcc 2.8's `sched` is a BACKWARD list scheduler** (the dump's `T-1` is the
@@ -6395,7 +6421,16 @@ while its reasoning did not.
   **The refactor is FREE**: cpp expands a macro textually before cc1 sees
   anything, so replacing a call with its expansion is byte-neutral BY
   CONSTRUCTION — verify the count is unchanged, then tune each site
-  independently. This is the same rule as the mega-pseudo (one register forced
+  independently. (AddEnemy confirmed the neutrality three ways: identical
+  preprocessed token streams, a byte-identical `.o`, and an unchanged matchdiff.)
+  - **Honest scope, measured on AddEnemy: the MECHANISM is real but hidden bytes
+    are NOT guaranteed.** Its `FENCE_10` genuinely drove THREE unrelated sites
+    from one dial, and the sites are independently sensitive with different
+    curves — but depth 10 already sat at every site's optimum, so that macro was
+    costing ZERO bytes. Expansion still paid for itself (it bought the
+    per-site sweep and exposed one dead fence), but expect a measurement, not a
+    windfall. The prediction is strongest where sites visibly WANT different
+    spellings, as mission_score_screen's history shows. This is the same rule as the mega-pseudo (one register forced
   across many jobs) and the fix is the same: split per site.
 - **Ghidra's reused variables are MEGA-PSEUDOS — split them per site.** This is
   the highest-yield structural check on any big function. Ghidra reuses one

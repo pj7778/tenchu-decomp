@@ -11,77 +11,101 @@
  * STATUS: NON_MATCHING — 9 of 776 bytes differ.  Build the draft with
  * `NON_MATCHING=AdtSelect ./Build` (or tools/matchdiff.py, which sets it
  * automatically); the default build keeps the INCLUDE_ASM stub below.
- * The 9 differing
- * bytes are ONE reload-register swap (a3<->t0) in the entry-count block:
+ *
+ * The 9 differing bytes are ONE reload decision, in the entry-count block:
  *
  *   target:  lw a3,0(a3); lw v0,0(a3);  ...  li t0,0x80CC; addu; lw v1,0(t0)
  *   ours:    lw t0,0(a3); lw v0,0(t0);  ...  li a3,0x80CC; addu; lw v1,0(a3)
  *
- * The residual is a COMBINE problem, not the reload problem this file used to
- * claim.  The earlier note said "a huge-offset-spilled pointer dereference can
- * NEVER self-tie".  Its reload mechanism is real (re-verified line-by-line
- * against the nix-pinned gcc-2.8.1 sources) but its FRAMING is wrong, and the
- * wrong framing is what kept the function parked:
+ * Both are the SAME 4-insn shape (`li`/`addu` materialise sp+0x80CC, load
+ * menu, deref).  Only the register holding menu's value differs: the target
+ * reuses the address register a3, we take t0.  Site 2's t0<->a3 is NOT an
+ * independent difference — see the round-robin note below.
  *
- *   reload.c ~4296  `reg_equiv_address` branch: recurses on the "sp+32972"
- *                   PLUS first (RELOAD_FOR_INPADDR_ADDRESS via ADDR_TYPE),
- *                   THEN push_reload's menu's value (RELOAD_FOR_INPUT_ADDRESS).
- *   reload1.c ~4567 RELOAD_FOR_INPUT_ADDRESS rejects any reg already in
- *                   reload_reg_used_in_inpaddr_addr[opnum] — the first
- *                   reload's own register.
- *   reload1.c ~4315 reload_reg_class_lower ties break on `r1 - r2` (push
- *                   order), so INPADDR_ADDRESS is always allocated first.
+ * ---- WHY (verified line-by-line against the nix-pinned gcc-2.8.1 sources) ----
  *
- * All three are literally correct — but they are NOT a property of "huge
- * offsets" or of "spilled pointers".  They are a property of WHERE THE PSEUDO
- * APPEARS.  A pseudo INSIDE a MEM (`menu->choice_name`) goes through
- * find_reloads_address and is barred from self-tying.  The SAME pseudo as a
- * BARE OPERAND goes through find_reloads_toplev and becomes a single
- * RELOAD_FOR_INPUT, which only checks input_addr[i] for i > opnum — so it
- * self-ties freely.  Proof that this is the real discriminator: this very
- * function reloads this very `menu` pseudo from this very sp+0x80CC slot at
- * FOUR sites, and THREE of them already self-tie and byte-match —
- * `p = menu` (a bare copy), the print loop's `menu[i]` and the tail's
- * `menu[selection]` (bare operands of an addu).  Only the offset-0 deref,
- * where menu sits inside the MEM, is barred.  "Huge-offset-spilled" is not
- * the discriminator and must not be used as a park criterion.
+ * For `name = menu->choice_name` the insn is `(set (reg 93) (mem (reg 81)))`
+ * with reg 81 = menu spilled (reg_equiv_address = sp+32972; 32972 > 32767 so
+ * the address must be materialised).  Reload does:
  *
- * The self-tie is also not a "tie" between two reloads: at the bare-operand
- * sites it is ONE reload whose gen_reload sequence materialises the address
- * into its own destination (`ori a3; addu a3,a3,sp; lw a3,0(a3)`).
+ *   reload.c 2552   a MEM operand goes STRAIGHT to find_reloads_address — it
+ *                   never reaches find_reloads_toplev.
+ *   reload.c 4296   reg_equiv_address branch: recurse on the sp+32972 PLUS
+ *                   (RELOAD_FOR_INPADDR_ADDRESS via ADDR_TYPE), THEN
+ *                   push_reload menu's value (RELOAD_FOR_INPUT_ADDRESS).
+ *   reload.c 3812   *** the step round 1 missed ***  `(mem (reg a3))` matches
+ *                   movsi's 'm' constraint, so the OPERAND ITSELF is never
+ *                   reloaded (operand_reloadnum[1] < 0).  Both address reloads
+ *                   are therefore RETYPED to RELOAD_FOR_OPERAND_ADDRESS
+ *                   (reload.c 3854).
+ *   reload1.c 4623  RELOAD_FOR_OPERAND_ADDRESS returns 0 for any reg in
+ *                   reload_reg_used_in_op_addr — i.e. the second one may not
+ *                   reuse the first one's register.  ==> t0.
+ *   reload1.c 4345  reload_reg_class_lower's last tiebreak is `r1 - r2`
+ *                   (push order), and both reloads share class/nregs, so the
+ *                   materialisation is ALWAYS allocated first and always wins
+ *                   a3.  The order is not perturbable.
  *
- * So the target's site 1 is `X = menu; name = X->choice_name;` with the copy
- * surviving to reload (X in a3).  The shape IS reachable — declaring the
- * param `debug_menu_choice *volatile menu` breaks the mem-of-mem fold and
- * emits exactly the target's separate load-then-deref here — so "there is no
- * such respelling" was false.  It is not USABLE: volatile makes menu
- * memory-resident at all four sites, so the other three stop being
- * bare-operand reloads and global allocation shifts (s3/s4) — 9 -> 51 bytes.
+ * This is unconditional for the deref shape, so NO respelling of
+ * `menu->choice_name` can self-tie it.
  *
- * The real blocker, newly characterised, is a combine catch-22 measured this
- * round:
- *   - single-use copy (`q = menu; name = q->choice_name`): combine folds it
- *     back to (mem (reg 81)) within the block  ->  9 bytes  (unchanged)
- *   - multi-use copy (`p = menu; if (p->choice_name)...` reusing p as the
- *     loop cursor): the copy SURVIVES and site 1 self-ties correctly, but p
- *     then serves the loop too and the target's second, fresh `p = menu`
- *     read disappears  ->  764 bytes (12 short, i.e. 3 insns)
- *   - identical-arm fence around the copy: the arms are identical, so cse1
- *     merges them before combine ever sees the CODE_LABEL  ->  760 bytes
- * i.e. site 1 needs a copy that is SINGLE-USE (so read 2 survives) yet
- * survives combine (which folds exactly single-use copies inside a block).
- * A real basic-block boundary between the copy and its use would do it, but
- * the copy's load then lands on the far side of that boundary, and the
- * target's load is adjacent to its deref.  That is the open question; it is
- * not "no C respelling exists".
+ * The escape hatch in reload.c 3812 is `operand_reloadnum[opnum] >= 0` — the
+ * operand must ITSELF be reloaded, which happens only when the operand needs a
+ * REGISTER rather than accepting 'm'.  That is the real discriminator, and it
+ * explains all four menu sites:
+ *   - `if (title == 0)` and the print/tail `menu[i]` / `menu[selection]`:
+ *     bare operands of a branch/addu, which require a register.  The operand
+ *     is reloaded (RELOAD_FOR_INPUT), so the address reload KEEPS
+ *     RELOAD_FOR_INPUT_ADDRESS, and RELOAD_FOR_INPUT (reload1.c 4560) only
+ *     scans i > opnum — so it self-ties.  `lw a3,0(a3)`.
+ *   - `p = menu`: movsi's 'm' absorbs the MEM, so there is NO value reload at
+ *     all — `lw v1,0(t0)` loads straight into p's home.  (This site does NOT
+ *     "self-tie"; the old note grouped it with the two above by mistake.)
+ *   - `menu->choice_name`: 'm' absorbs it too, but here the MEM is an ADDRESS,
+ *     so the retype fires and the second reload is barred.  ==> the residual.
  *
- * Ruled out this round: autorules (23 candidates, no improving edit; both
- * do{}while(0) fences are load-bearing, unwrapping either costs +16), a
- * bounded decomp-permuter run (flat at 9, base best), and the demo build,
- * whose AdtSelect has a DIFFERENT frame (0x80E0/0x80E4) yet emits the same
- * `lw a3,0(a3)` — so the shape is a stable source property, not a
- * frame-size artefact.  All other allocation (9 callee-saved pseudos + 2
- * spilled params) matches.
+ * ---- WHAT ROUND 2 DISPROVED (do not re-derive) ----
+ *
+ * Round 1's "open question" — *a copy that is single-use yet outlives combine*
+ * — is a DEAD END even if solved.  A surviving copy `X = menu` puts menu's
+ * value in X's ALLOCATED register, and reload's spill registers (a3, t0) are
+ * excluded from allocation: the .greg dispositions here only ever use
+ * $v0/$v1/$a0/$s0-$s7/$fp/HI.  So a copy can only ever emit
+ * `lw v0/v1,0(a3); lw v0,0(v0/v1)` — never the target's `lw a3,0(a3)`.
+ * Measured directly (tools/rtldump.py --src): the multi-use copy still emits
+ * `lw $8,0($7)` at site 1 with p in $3.  Combine also copy-propagates
+ * `p = menu` into the deref even when p is multi-use, so the catch-22 the old
+ * note described is not even reachable.  Chasing a combine fence here is wasted
+ * effort: the copy is the wrong lever, not a blocked one.
+ *
+ * Also disproved: adding any bare-operand use of `menu` to force the self-tie
+ * (e.g. `if (menu == 0) return -1;`) raises menu's ref count enough that it is
+ * no longer spilled at all — it lands in $fp and the whole shape changes.
+ *
+ * ---- WHY IT IS ONE DECISION, NOT TWO ----
+ *
+ * reload1.c 5082-5091: allocate_reload_reg starts its scan at
+ * `last_spill_reg + 1` and wraps `% n_spills`, setting last_spill_reg on each
+ * success (5185) — a ROUND ROBIN.  The function's reload regs therefore run
+ * a3, t0, a3, t0, ...  Site 1 consuming ONE reload reg (target) instead of TWO
+ * (ours) shifts every later reload by one position, which is exactly why site 2
+ * flips t0<->a3.  Fixing site 1 would fix site 2 for free; there is no separate
+ * site-2 bug.
+ *
+ * ---- CLOSED ----
+ *
+ * autorules (23 candidates, no improving edit; both do{}while(0) fences are
+ * load-bearing, unwrapping either costs +16); a bounded decomp-permuter run
+ * (flat at 9, base best); reghist (194/194 insns, delta sum 0 — no
+ * decomposition lever).  The demo build's AdtSelect has a DIFFERENT frame
+ * (0x80E0/0x80E4) yet emits the same a3/t0 split, so the shape is a stable
+ * source property, not a frame-size artefact.  All other allocation (9
+ * callee-saved pseudos + 2 spilled params) matches.
+ *
+ * WHAT WOULD ACTUALLY CLOSE IT: the target's site-1 operand must be one that
+ * REQUIRES A REGISTER (so reload.c 3812's retype does not fire).  Every C
+ * spelling of the deref tried so far accepts 'm'.  A round 3 should attack
+ * that single question and ignore combine entirely.
  */
 
 #ifndef NON_MATCHING
