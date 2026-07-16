@@ -5811,6 +5811,40 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
     file and let m2c ignore the unused ones:
     `--input-regs v0,v1,a0,a1,a2,a3,t0,t1,t2,t3,t4,t5,t6,t7,t8,t9,s0`
     → zero `M2C_ERROR` on `FUN_8005d1fc`.
+- **NEVER infer cse-time block structure from the final asm.** cse1 runs BEFORE
+  jump2, and jump2's cross-jumping merges identical arms — erasing the very
+  labels cse saw. So a store/reload pair that looks impossibly co-located in one
+  block with no label may have been two arms at cse time. **A store that must not
+  be forwarded belongs inside BOTH arms**: only a real join label stops cse's
+  store-to-load forwarding, only arms supply one, and the `do{}while(0)` fence
+  cannot (a loop note is a scheduling barrier, not an aliasing one). Corollary:
+  Ghidra temps that look like pointless copies (`pMin`/`pCx`/`pCy`) can be
+  ARTIFACTS of that late merge rather than source variables. This single
+  restructuring took FUN_80057b80 from 494 to 8 bytes after three rounds had
+  read the final asm and concluded a label was impossible.
+- **Length-neutral packages cannot land piecemeal — look for the payer.** The
+  same FUN_80057b80 change was four "separate" sites that only worked together:
+  two saved an instruction each (`sll/sra` -> `lh`), one gained a missing reload,
+  and the net -1 exactly paid for a proven `+1` base pointer that had been
+  unscoreable for three rounds because it overflowed the carve alone. When a
+  proven finding costs +1 and is rejected on length, do not drop it — go find
+  what pays for it.
+- **Test a shape in a STANDALONE 25-line `.c` compiled directly with cc1-281
+  (~1 s/variant) before editing a 750-line draft.** Use `tools/rtldump.py`'s
+  CC_FLAGS. FUN_80057b80's X box as a testbed reproduced the forwarding bug and
+  then produced the target's exact sequence on the first try. This is the
+  cheapest experiment in the toolkit and it is under-used.
+- **A preceding statement is computed FIRST.** If the target computes a base
+  pointer in argument order, spell it INLINE in the call and let cse merge the
+  occurrences (FUN_80057b80's third `gte_stsz3` pointer: 42 -> 36).
+- **Two `maspsx` counting traps** (both manufactured a phantom "+3 surplus refs"
+  and a false theory): maspsx emits `nop # DEBUG: ... 'sh $2,44($16)' ...` lines
+  that QUOTE instructions, so strip each line's first `#` to EOL before counting
+  — `grep -v '^#'` misses them because they start with `nop`. And in a gte.h
+  function `swc2 $17,...` is COP2 register 17, NOT `$s1`.
+  (Editing gotcha: `sed 's/#.*//'` written literally inside a C block comment
+  embeds a `*/` and silently truncates the comment.)
+
 ### The two fence idioms: what each one ACTUALLY does
 
 Fences became this project's dominant lever, so know precisely what you are
