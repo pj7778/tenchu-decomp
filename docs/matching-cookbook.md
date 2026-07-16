@@ -5781,6 +5781,28 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
     file and let m2c ignore the unused ones:
     `--input-regs v0,v1,a0,a1,a2,a3,t0,t1,t2,t3,t4,t5,t6,t7,t8,t9,s0`
     → zero `M2C_ERROR` on `FUN_8005d1fc`.
+- **The `do{}while(0)` wall generalizes from a single statement to a whole
+  `if`-block**: `do { if (cond) { ... } } while (0)` walls off a copy the local
+  allocator would propagate through the block, changing register homes with
+  zero emitted code (AddEnemy's think-scan guard, −4).
+- **`Array[count]` (ARRAY_REF, base-first) vs `ptr[count]` (pointer deref,
+  index-first) helps ONLY where the base is freshly materialized at that
+  site.** When a pointer alias is already cached in a callee-saved register
+  across the region, the array form recomputes the base and REGRESSES
+  (AddEnemy: fresh `sp+0x590` base → −4; cached `s0` base → +2). Pick the form
+  from the target's addu order at each site, not globally.
+- **PARK ON SIGHT — the `acc = acc | call()` OR-temp copy-move.** When the
+  target keeps an accumulator live via `or $tmp,$acc,$ret; move $acc,$tmp`
+  (so a later `(short)acc` narrows the temp), C cannot reproduce the `move`:
+  `optimize_reg_copy_1` propagates the copy and coalesces the temp back
+  in-place regardless of explicit temps, single/nested walls, or fence
+  removal (AddEnemy: five spellings + a bounded permuter, all coalesced).
+- **combine's `num_sign_bit_copies` elides a redundant call-arg narrow only
+  for a SINGLE-assignment `(s16)`-cast local.** A variable reused across two
+  roles (a loop-phase `addiu` offset + a selected value) carries the
+  `addiu`'s low sign-bit-copies and forces the `sll/sra`; split into two
+  disjoint-lifetime locals to restore the elision — but the split can drop an
+  instruction that must be rebalanced elsewhere.
 - **Write an s16→s32 sign-extend as an explicit in-place shift pair on the
   destination** (`x <<= 16; x >>= 16;`, or `x = src << 16; x >>= 16;`) to force
   `sll d,d,16; sra d,d,16` IN PLACE instead of routing the intermediate through

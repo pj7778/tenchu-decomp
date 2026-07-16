@@ -640,6 +640,13 @@ against context prototypes), so a small m2c fix-up layer is where more zeros hid
   flag the delay-slot signature mechanically — for every carved function,
   objdump the word at `carve_start+carve_size` and warn when it decodes as
   frame teardown / a return delay slot rather than the next prologue.
+- **autorules: veto/flag width-changing type-narrows + plateau revert.**
+  AddEnemy's sweep greedily kept a byte-reducing `s16→s8` narrow that emitted
+  `sll 0x18` where the target has `sll 0x10` — semantically wrong AND masking
+  a −14 win behind it. Extend the LOCAL-SHAPE REGRESSION mechanism into a
+  hard veto when a kept type-narrow changes an aligned sll/sra shift AMOUNT
+  vs the target; and on plateau, try reverting the sweep's own last kept
+  type-narrow before concluding.
 - **autorules: in-place sign-extend shift-pair rule** — rewrite `x = (s16)x` /
   `x = (s16)src` sites as `x <<= 16; x >>= 16;` (forces in-place sll/sra
   instead of a $v0 scratch; FUN_800519bc paid it manually twice). Also
