@@ -100,6 +100,18 @@ def matched(name):
 STATUS_RE = re.compile(r"STATUS:\s*NON_MATCHING\s*[—–-]?\s*(.*)")
 
 
+def _handwritten():
+    """Names whose originals are handwritten assembly (docs/gte-policy.md):
+    the asm is the canonical source form; they are never matching targets."""
+    path = "config/handwritten-asm.txt"
+    if not os.path.exists(path):
+        return set()
+    return {line.split("#")[0].strip() for line in open(path)} - {""}
+
+
+HANDWRITTEN = _handwritten()
+
+
 def parked(name):
     """Reason if <name>.c exists, is still INCLUDE_ASM-backed, and is documented
     NON_MATCHING — i.e. we tried it and shelved it. None otherwise.
@@ -107,6 +119,10 @@ def parked(name):
     A carve with no NON_MATCHING note is just an unfinished draft, still a fair
     target; only a deliberate park counts.
     """
+    if name in HANDWRITTEN:
+        return ("handwritten-asm CANONICAL — the original was assembly "
+                "(cc1-invariant tells); the asm is the faithful source form, "
+                "never a matching target (docs/gte-policy.md)")
     f = os.path.join(SRC, name + ".c")
     if not os.path.exists(f):
         return None

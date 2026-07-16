@@ -106,5 +106,10 @@ family cleanly:
    conventions + macro set landed in `gte.h`.
 3. `FUN_80057b80` (3796 B, 2 GTE commands — mostly ordinary C).
 4. The three twin pairs: match one anchor per pair, clone its twin.
-5. The 15 remaining `draw*` + `DrawTMD`: BLOCKED on the owner's
-   handwritten-class accounting decision.
+5. ~~The 15 remaining `draw*` + `DrawTMD`~~ — RESOLVED (owner decision,
+   2026-07-16): the class is **asm-canonical**. Their assembly is the faithful
+   source form (scene-standard, like SM64's handwritten `.s`);
+   `config/handwritten-asm.txt` is the machine-readable list, `progress.py`
+   counts them in the `game done (C+asm)` line, and `triage.py` hides them
+   from targets permanently. drawF3's 8-byte C reconstruction remains as
+   documentation; no further C lanes for this class.

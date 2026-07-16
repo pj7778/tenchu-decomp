@@ -1,0 +1,21 @@
+# Handwritten-assembly originals: their asm IS the canonical faithful source
+# (owner decision 2026-07-16, docs/gte-policy.md). Proven by cc1-invariant
+# tells (li r,0 spelling / beq operand order) the compiler cannot emit from C.
+# progress.py counts these as done-by-asm; triage.py hides them from targets.
+DrawTMD
+drawF3
+drawG3
+drawzF3
+drawF4
+drawFT3
+drawzG3
+drawG4
+drawGT3
+drawzFT3
+drawzF4
+drawFT4
+drawzGT3
+drawzG4
+drawGT4
+drawzFT4
+drawzGT4

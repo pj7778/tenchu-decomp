@@ -97,8 +97,25 @@ def main():
     sdk = bucket(lambda a: a >= SDK_START)
     total = bucket(lambda a: True)
 
+    # Handwritten-assembly originals (docs/gte-policy.md): their INCLUDE_ASM
+    # stub IS the canonical faithful source, so they count as done-by-asm.
+    hw_names = set()
+    if os.path.exists("config/handwritten-asm.txt"):
+        hw_names = {l.split("#")[0].strip()
+                    for l in open("config/handwritten-asm.txt")} - {""}
+    fn_by_addr = {a: (s, n) for a, s, n in funcs}
+    hw = [(sym_addr[n], fn_by_addr[sym_addr[n]][0], n) for n in sorted(hw_names)
+          if n in sym_addr and sym_addr[n] in fn_by_addr]
+    hw_bytes = sum(s for _, s, _ in hw)
+    game_done_fns = game["fns_matched"] + len(hw)
+    game_done_bytes = game["bytes_matched"] + hw_bytes
+
     if args.json:
         print(json.dumps({"game": game, "sdk": sdk, "total": total,
+                          "handwritten": {"fns": len(hw), "bytes": hw_bytes,
+                                          "names": sorted(n for _, _, n in hw)},
+                          "game_done": {"fns": game_done_fns,
+                                        "bytes": game_done_bytes},
                           "matched_names": sorted(matched)}, indent=2))
         return
 
@@ -108,10 +125,21 @@ def main():
         print(f"{label:18} {b['fns_matched']:5}/{b['fns']:<5} functions "
               f"({fp:5.2f}%)   {b['bytes_matched']:7}/{b['bytes']:<7} bytes ({bp:5.2f}%)")
 
+    def done_line(label, dfns, dbytes, b):
+        fp = 100.0 * dfns / b["fns"] if b["fns"] else 0
+        bp = 100.0 * dbytes / b["bytes"] if b["bytes"] else 0
+        print(f"{label:18} {dfns:5}/{b['fns']:<5} functions "
+              f"({fp:5.2f}%)   {dbytes:7}/{b['bytes']:<7} bytes ({bp:5.2f}%)")
+
     print(f"Tenchu decomp progress (matched = carved + real C, no INCLUDE_ASM)")
     line("game code", game)
     line(f"SDK (>{SDK_START:#x})", sdk)
     line("total", total)
+    if hw:
+        print(f"{'canonical asm':18} {len(hw):5} functions            "
+              f"{hw_bytes:7} bytes — handwritten originals, asm is the "
+              f"faithful source (docs/gte-policy.md)")
+        done_line("game done (C+asm)", game_done_fns, game_done_bytes, game)
     if matched:
         print("matched:", ", ".join(sorted(matched)))
 

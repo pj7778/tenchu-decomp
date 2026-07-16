@@ -217,7 +217,12 @@ boundary lives in the tool; refine it as library identification improves.
 **Full compilation is already a permanent property**: every unmatched function
 is assembled from its extracted asm (INCLUDE_ASM), so the build links a
 complete, byte-identical exe at every stage — matching only ever replaces
-blobs with C. The realistic goal metric is **100% of game code matched**; for
+blobs with C. The realistic goal metric is **100% of game code DONE**, where
+done = matched C **plus** the 17 handwritten-assembly originals
+(`config/handwritten-asm.txt`, the draw*/DrawTMD renderers) whose asm IS the
+faithful source (owner decision 2026-07-16 — see
+[`docs/gte-policy.md`](docs/gte-policy.md); `tools/progress.py` reports the
+combined `game done (C+asm)` line). For
 the SDK the options (in scene-standard order) are:
 
 1. **Leave it as INCLUDE_ASM** — shippable "source + vendored asm" forever.

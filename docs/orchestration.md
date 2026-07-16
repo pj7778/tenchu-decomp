@@ -342,6 +342,12 @@ Commit the `.c` + `config/splat.main.exe.yaml` + `shake/src/Build.hs` +
   dep-tracking latent issue). `./Build clean` (~7s) fixes it; harvests in a
   churny region (e.g. the 0x8005fxxx CD block) may as well `./Build clean` up
   front.
+- **Fix authorship at cherry-pick time.** Worker worktrees inherit the repo
+  git config (Codex's identity), so after cherry-picking an agent commit run
+  `git -c user.name="Claude Fable 5" -c user.email="noreply@anthropic.com"
+  commit --amend --no-edit --author="Claude Fable 5 <noreply@anthropic.com>"`.
+  Claude commits as Claude; Codex commits as Codex; never change the repo
+  config itself.
 - **Never pipe `git cherry-pick` through another command** (`| tail` etc.) —
   the pipe eats the conflict exit status, the `&&` chain barrels on, and you
   end up running verification builds against a tree with conflict markers in

@@ -30,3 +30,10 @@ newly reported rules into the cookbook.
 
 If you need some tools, you can use ~/programming/nixpkgs to get anything you
 need from nix.
+
+Commit authorship: each agent commits under its own identity — Claude commits
+as Claude (`git -c user.name="Claude Fable 5" -c user.email="noreply@anthropic.com"
+commit …`; the repo-level git config identity belongs to Codex and must not be
+changed), and Codex commits as Codex. Matcher-agent worktrees inherit the repo
+config, so when harvesting an agent commit, fix the author at cherry-pick time
+(`git commit --amend --no-edit --author="Claude Fable 5 <noreply@anthropic.com>"`).
