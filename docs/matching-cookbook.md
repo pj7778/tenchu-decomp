@@ -5777,6 +5777,34 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
     canonicalize lower-regno first, but a subtract-then-zero-test through the
     fixed `$v1` carrier combines to `beq $v1,$v0`. drawF3 now uses that pure-C
     form and matches the opening branch exactly.
+  - **A COMPILED GTE caller needs `nop;nop` before every GTE command; a
+    HANDWRITTEN one does not.** The command reads the COP2 register file, which
+    is not stable until 2 cycles after the preceding `lwc2`/`swc2`, and cc1
+    cannot schedule across the opaque `.word`. A compiled caller has its loads
+    and command adjacent, so the original's PsyQ macro carried the nops — a
+    draft exactly 2 instructions SHORT PER COMMAND is this (FUN_80058c70).
+    Handwritten authors filled the latency with real work (drawF3 uses a
+    `lui/ori`), so their reconstructions need the bare command. `gte.h` carries
+    both spellings — `gte_<cmd>()` vs `gte_<cmd>_raw()` — and a unit test pins
+    handwritten files to `_raw`: applying the nop form to drawF3 silently added
+    6 instructions and put it 24 bytes over its carve, which **fuzz-score did
+    not catch — only the linked length did**.
+  - **The permuter cannot search a `gte.h` function AT ALL**: its C parser
+    rejects inline asm (`base.c does not contain any function!`). This class is
+    not "one bounded run then park" — the run is impossible. `permute.py` now
+    refuses it with that message and points at `rtlguide`/`rtldump`; escalate
+    straight to `.loop`/`.greg`.
+  - **A `u16` loop counter that only helps in a do-while is a strength-reduction
+    artifact, not the real type.** If `u16` beats `int` only because `int`
+    strength-reduces, the counter IS `int` and the LOOP SHAPE is wrong:
+    suppress loop.c with a goto-loop and `int` wins (the target's unmasked
+    `bnez` proves it). FUN_80058c70's do-while additionally made loop.c
+    synthesize a second induction register while `Cannot eliminate biv N` kept
+    the bare cursor alive — a double cursor and a whole-function cascade.
+  - **Take a prototype from the matched CALLER, not from Ghidra.**
+    FUN_80058a54 gave FUN_80058c70's real types (`u_short *primitive,
+    u_long vertices, …`) where Ghidra guessed all-`int`; byte-neutral there but
+    load-bearing for faithfulness (a `u_short*` cursor advances by 5, not 20).
   - **m2c can read them**: our m2c carries a PSX GTE/COP2 patch series
     (`nix/m2c/*.patch`). You MUST pass `--input-regs`, or every entry-live value
     becomes `M2C_ERROR(Read from unset register)`. Hand it the whole caller-saved

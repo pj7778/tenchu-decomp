@@ -117,6 +117,20 @@ family cleanly:
    family conventions + macro set landed in `gte.h`.
 3. `FUN_80057b80` (3796 B, 2 GTE commands — mostly ordinary C).
 4. The three twin pairs: match one anchor per pair, clone its twin.
+   - `FUN_80058c70` (anchor of pair 1) is PARKED at 620 bytes with the target's
+     exact length and its whole loop body/cursor/counter/callee-saved roles
+     byte-exact; the residual is one caller-saved selection tie. Its twin
+     `FUN_80059008` is unstarted and should be cheap once the anchor closes
+     (the goto-loop + latency-nop + int-counter recipe transplants directly).
+
+**Two facts this family established** (detail in the cookbook):
+- **Latency nops are provenance-keyed.** `gte_<cmd>()` carries `nop;nop` (what a
+  compiled caller's PsyQ macro emitted); `gte_<cmd>_raw()` is bare, for
+  reconstructions of handwritten assembly whose authors scheduled the latency by
+  hand. A unit test pins handwritten files to `_raw` — the nop form silently put
+  drawF3 24 bytes over its carve, and only the linked length caught it.
+- **The permuter cannot search this class**: its C parser rejects inline asm, so
+  `permute.py` refuses gte.h functions outright and points at RTL escalation.
 5. ~~The 15 remaining `draw*` + `DrawTMD`~~ — RESOLVED (owner decision,
    2026-07-16): the class is **asm-canonical**. Their assembly is the faithful
    source form (scene-standard, like SM64's handwritten `.s`);
