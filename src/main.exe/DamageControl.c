@@ -94,7 +94,7 @@ extern s16 GetDirection(s32 dx, s32 dz, s32 roty);
 extern s16 PlayMotion(MotionManager *mmp, s16 mode);
 extern VECTOR *GetAbsolutePosition(ModelType *model, s32 x, s32 y, s32 z);
 extern void FUN_8003944c(long *pos, long pz, short time, short vx,
-                         long scale, long rotate, u16 vy, u16 vz,
+                         long scale, long rotate, s16 vy, u16 vz,
                          u16 unk22, u16 mode);
 extern s16 GetConflictResult(ModelType *model, s16 index);
 extern TItemType GetItemType(s16 id);
@@ -151,110 +151,66 @@ extern void ReqItemDefault(Humanoid *user, s32 item);
  * DamageControl (0x8001d6bc) — resolves item and humanoid collisions into
  * damage, knockback, animation, blood, score, and player-feedback effects.
  *
- * STATUS: NON_MATCHING — the C draft has the exact retail extent (5812 bytes,
- * 1453 instructions) with 1320 differing bytes, fuzzy 92.70%, and 96 raw
- * aligned residual blocks from `asmdiff --structural` at this checkpoint
- * (was 1328 bytes / fuzzy 92.91% / 94 blocks last session; -8 bytes this pass).
- * The remaining work is expression/CFG scheduling and early-path register
- * allocation; the large humanoid path's persistent registers now agree with
- * the target.  rtlguide now classifies EVERY register goal as HARD-CONFLICT
- * (weighting/priority cannot move them; only a live-range/identity change can),
- * so the residual is genuinely below the C level for this cc1 — see the notes
- * dated 2026-07-16.  The #ifndef NON_MATCHING branch is the stub
- * (INCLUDE_ASM pieces + the jump-table pool as one static const array so
- * the .rodata carve has bytes); build the draft with `NON_MATCHING=DamageControl
- * ./Build`. On a full match, delete the guards and the _jtbl array.
+ * STATUS: NON_MATCHING — exact retail extent (5812 bytes, 1453 instructions),
+ * 118 differing bytes at this checkpoint (was 1320 before this session; the
+ * Fable escalation pass re-derived the source decomposition from the target
+ * RTL shapes, then landed the s16 hp life-decrement tie and the unconditional
+ * dtR->vy store before the knockback abs test).
+ * The #ifndef NON_MATCHING branch is the stub (INCLUDE_ASM pieces + the
+ * jump-table pool as one static const array so the .rodata carve has bytes);
+ * build the draft with `NON_MATCHING=DamageControl ./Build`.  On a full match,
+ * delete the guards and the _jtbl array.
  *
- * Progress notes retained for the next pass:
- *  - Expressing both `GetDirection` coordinate differences at the call site
- *    removes a decompiler scratch assignment and reproduces the complete
- *    retail argument-load sequence.  In the following guard, assigning the
- *    signed direction to `iVar11` only at the join lets sched2 rematerialize
- *    the target's sign extension in each branch delay slot; carrying an
- *    explicit high-word value instead hoists it into $s0.
- *  - The identical `motID = 0x602` arms and the zero-code fences beside the
- *    BattleDB load and later speed setup are compiler-allocation boundaries.
- *    They preserve the exact 1453-instruction extent and keep the attack id in
- *    $s2 without changing runtime behavior.
- *  - Retail reuses one `enemy` identity across the early special-target and
- *    later humanoid paths ($s3), and reuses `did` across the item and humanoid
- *    direction calculations ($s4).  Keeping separate block locals needlessly
- *    rotates both allocations.
- *  - The target's long-lived human-path roles are enemy=$s3, direction=$s4,
- *    attack id then severity=$s2, damage=$s1, scale/speed/bleed counter=$s0,
- *    and conflict id=$s5.  Reusing a source local for two non-overlapping
- *    roles was required; cleaner one-role locals rotated these registers.
- *  - The component-halving passage test is one repeated three-axis
- *    normalization loop.  `__builtin_abs` on both threshold tests keeps the
- *    entry test separate from the backedge test, while arithmetic shifts on
- *    all three components reproduce retail's halving block.  This region is
- *    now structurally exact; the older ternary/mixed-division spelling
- *    cross-jumped the tests and only happened to preserve the total extent.
- *  - `local_38 = *dtL` is deliberately an aggregate VECTOR copy.  Four field
- *    assignments choose a different block-move/load schedule.
- *  - `D_80086B6C[deg]` is the real eight-entry motion table.  A magic absolute
- *    pointer folded the low address into the load and lost the target's
- *    base-materialization sequence.  Keep `deg` a `short`, as recorded in the
- *    demo symbols: narrowing it to `s8` adds two severity sign extensions and
- *    perturbs the early saved-register allocation.
- *  - Computing the knockback magnitude before the severity tests gives sched2
- *    enough independent work to fill the final size-balancing delay slot.
- *    A named intermediate makes that subregion closer but globally rotates
- *    the early allocation, so keep the direct expression.
- *  - Identical MoveHumanoid calls stay duplicated in their branch arms.  cc1
- *    tail-merges the call while preserving predecessor-specific argument
- *    setup; factoring the call in C loses that shape.
- *  - The identical `pad.time = 0` arms near the exit are a deliberate cc1
- *    allocation fence.  The condition does not alter behavior, but retaining
- *    the two predecessor blocks substantially improves register allocation.
- *  - An identical-arm fence around the item-path life store reduces the
- *    aligned residual to about 1004 bytes, but leaves the draft one instruction
- *    long.  Splitting the signed death-test value instead makes the generated
- *    body 5808 bytes (the retail function's true body size), while this carve
- *    includes the next symbol's first word and therefore requires 5812.  The
- *    bounded type/fence/CFG partner audit only found exact-length regressions;
- *    neither spelling is a valid checkpoint by itself.
- *  - Item case 0 deliberately falls through the shared case-0xe damage test.
- *    Since damage is already 20 this is semantically neutral, but it recovers
- *    the target's branch into the existing zero-test instead of a later case.
- *  - The signed/unsigned short-to-high-word spellings are intentional.  In
- *    particular `(u16)dmg << 16` and `dmg * 0x10000` reach different
- *    canonicalization paths even where the final arithmetic is equivalent.
+ * What this session PROVED (the prior "below the C level / HARD-CONFLICT"
+ * verdict was an artifact of the old decomposition, not a cc1 limit):
+ *  - The dominant $a1->$a0 family was caused by the function-spanning cached
+ *    pointer locals (pHVar14/pHVar17/pSVar1).  The original uses NO caches:
+ *    each region loads Me_MOTION_C / StagePlayer / dtR / dtV fresh, and cc1's
+ *    per-region CSE temps then land in $a0/$v1 exactly like retail.  Killing
+ *    the caches dissolved every "hard conflict" rtlguide reported.
+ *  - The do-while(0)+goto guard scaffolding around the 0x602 engage block is
+ *    not original.  The real shape is a plain nested if with an else arm
+ *    (`if (rand() % (EngageLevel+1) == 0) { type checks; if (rand()&1)
+ *    motID=0x602; } else { motID=0x602; }`); cc1's cross-jump + eager delay
+ *    fill reproduce the shared `sh motID` tail with per-predecessor `li 0x602`
+ *    delay slots automatically.  Same for case 0x15: a plain
+ *    `if ((rand()&1)==0) motID=0x1003; else motID=0x1001;` (no next_mot temp,
+ *    no fence) and case 1 storing motID/motMODE directly; the shared store is
+ *    cross-jumped, giving `j DC08 / li v0,0x100A` for case 1.
+ *  - `-(x/3) - 1` must be spelled `x / -3 - 1`: cc1 folds -x-1 into nor, but a
+ *    NEGATIVE divisor makes expmed emit the reversed magic-division subtract
+ *    (subu sign,hi) with a plain addiu -1 — the retail shape at both sites.
+ *  - `dmg <<= 1` under enemy->active_item==0xc is `(u32)(dmg << 0x10) >> 0xf`
+ *    (sll 16 / srl 15).  The old `(dmg<<16); dmg>>=0xf` truncated to zero via
+ *    the short lvalue (real behavior bug, compiled to `move s1,zero`).
+ *  - The armour block computes deg BEFORE the knockback: `deg=(short)dmg>>3;
+ *    clamp; clamp; TVar8=(short)dmg*5/2+0x50;` — no cached `(u16)dmg<<16`
+ *    temp; every read re-extends dmg so the sll is shared/rematerialized.
+ *  - Both ReqLifeBar sites are if/else (`who=enemy` in the taken arm, else
+ *    `who=Me_MOTION_C`), which lets who coalesce with the Me load in $a0 and
+ *    compile the else arm to zero code.
+ *  - GetAbsolutePosition's third arg is (short)-converted at the call site
+ *    (sll/sra interleaved into the pointer chain); FUN_8003944c's rot arg is
+ *    an s16 param (sll/sra, not andi — prototype changed in this TU), and its
+ *    `rand() % 0x168` is precomputed into a temp so the 0xB60B60B7 magic pair
+ *    forms before the 0xDCDCDC pair.
+ *  - The exit block loads dtV INSIDE the mid==0x300/0x302 arm; the pad.time
+ *    identical-arm fence was scaffolding and is gone.
+ *  - PSX.SYM roles that survive: dmg=$s1, enemy=$s3, did=$s4, id=$s5.
  *
- *  Session 2026-07-16 (1328 -> 1320 bytes):
- *  - The humanoid guard `if (StagePlayer != Me_MOTION_C)` is written with
- *    StagePlayer as op0 deliberately.  Although the target evaluates Me first
- *    into $a0, spelling this guard StagePlayer-first realigns the branch
- *    operand encodings across the whole do-while region for a net -6 bytes
- *    (verified in isolation: 1328->1322).  The underlying delay-slot drift
- *    (target defers `move s2,v0` for `deg` into the Me==SP branch delay slot
- *    because it loads StagePlayer into $v1; ours loads it into $v0, forcing an
- *    early capture + one extra load-delay nop) is a pure allocator tie: neither
- *    operand order nor a bounded guided sweep moves the StagePlayer temp off
- *    $v0, and it is a HARD-CONFLICT in .greg.
- *  - The `if (conflict != 0) motID = next_mot; else motID = next_mot;`
- *    identical-arm fence at LAB_8001dc08 (found by `autorules --guided`)
- *    is zero-code (cross-jumped; extent stays 1453, no invented branch) and
- *    fixes the case-0x15 motID store SCHEDULING (the `sh ...,motID` now sits
- *    before the `li 1`, matching the target) for -2 bytes.  next_mot itself is
- *    still $v1 vs the target's $v0 — a $v1->$v0 HARD-CONFLICT that survives.
- *  - RULED OUT this pass (do not retry): `dtM->loop = -dmg - 8` REGRESSES (+3)
- *    vs the kept `-8 - dmg` (the target's `negu; addiu -8` is a scheduling
- *    outcome, not this spelling).  Two full guided autorules sweeps
- *    (allocation-donor-fence across the item path, then cmp-swap / cmp-polarity
- *    / type-width / difference-role-fuse / shared-tail-assign / flag-arm-assign
- *    / disjoint-local-alias / plus-group / shift16-mul / member-scalar-alias
- *    across all guided sites) found NO further improving path.  The
- *    `enemy->motion->loop = -(dmg/3) - 1` sites (both) emit a `nor` because
- *    cc1 combine always folds `-x - 1` -> `~x`; the target fuses the negation
- *    into the division (`subu sign,mulhi; addiu -1`) and no source spelling
- *    reaches that here.
- *  - The dominant residual is the `$a1 -> $a0` family (pHVar14 / pHVar17 /
- *    sound_id / move_speed, 19 sites): $a0 is live during each cached-`Me`
- *    range (call-argument setup), so pseudos p89/p108/p425/p842/p906/p1052 all
- *    hard-conflict $a0.  cc1 has already split pHVar14 into these disjoint
- *    pseudos; a C-level split cannot remove a liveness conflict, so this needs
- *    a schedule that keeps Me in $a0 across the call args (below the C level).
+ * Remaining 145 bytes, three families (see the session log in git):
+ *  1. deg/TVar8 role swap: ours deg=$s0/TVar8=$s2, target deg=$s2/TVar8=$s0
+ *     (~24 single-register sites, incl. the %100 magic constant reg pairing
+ *     with the blood counter).  Pure global-alloc ordering; needs .greg
+ *     analysis or a priority nudge.
+ *  2. 0x8001d7c0: iVar11 (life-power) should tie into the life-load register
+ *     (subu v1,v1,v0) with the store BEFORE sll/bltz+nop; the plain
+ *     minus-expression unties (subu v0,v1,v0), and `-=` respellings so far
+ *     either untie or let the store sink into the delay slot.
+ *  3. 0x8001e7d8-e858: dtR-temp/sVar12 registers rotated (ours dtR=$a0,
+ *     sVar12=v1-tie; target dtR=$v1, sVar12=$a0) which also blocks the
+ *     deg-arm's early `lw a0,Me` hoist (a0 busy), costing the j/nop shape at
+ *     e84c-e858.  Likely falls out of family 1/scheduling; else .greg.
  */
 
 #ifndef NON_MATCHING
@@ -297,20 +253,16 @@ static const u32 DamageControl_jtbl[23] = {
 void DamageControl(void)
 
 {
-  SVECTOR *pSVar1;
   MotionManager *pMVar2;
   short did;
   short deg;
   short sVar6;
-  int iVar7;
   short TVar8;
   short sVar12;
   int iVar13;
-  Humanoid *pHVar14;
   Humanoid *enemy;
-  short id;
+  s8 id;
   short dmg;
-  Humanoid *pHVar17;
   SVECTOR local_40;
   VECTOR local_38;
   SVECTOR local_28;
@@ -337,12 +289,14 @@ void DamageControl(void)
       Sound(enemy,4);
       DeleteConflict(ConflictObject[id].model);
       deg = GetAttackDBID(enemy,enemy->motion->mid);
-      pHVar14 = Me_MOTION_C;
-      iVar11 = (u32)(u16)Me_MOTION_C->life -
-               (u32)(u16)BattleDB[deg].power;
-      Me_MOTION_C->life = (short)iVar11;
-      if ((iVar11 * 0x10000 < 0) || ((pHVar14->attribute & 0x40U) == 0)) {
-        pHVar14->life = 0;
+      {
+        s16 hp;
+
+        hp = (u16)Me_MOTION_C->life - (u16)BattleDB[deg].power;
+        Me_MOTION_C->life = hp;
+        if ((hp * 0x10000 < 0) || ((Me_MOTION_C->attribute & 0x40U) == 0)) {
+          Me_MOTION_C->life = 0;
+        }
       }
       local_38.vx = dtL->vx;
       iVar11 = (u32)(u16)Me_MOTION_C->height << 0x10;
@@ -429,7 +383,6 @@ LAB_8001da70:
   AttackCancelControl(3);
   {
   Humanoid *conflict;
-  int next_mot;
 
   TVar8 = id;
   conflict = (Humanoid *)ConflictObject[TVar8].common;
@@ -442,8 +395,9 @@ LAB_8001da70:
     switch((short)(TVar8 - ITEM_SHURIKEN)) {
     case 1:
       dmg = 3;
-      next_mot = 0x100a;
-      goto LAB_8001dc08;
+      motID = 0x100a;
+      motMODE = 1;
+      break;
     case 0:
       if ((short)dmg == 0) {
         dmg = 0x14;
@@ -484,23 +438,11 @@ LAB_8001da70:
       goto switchD_8001db0c_caseD_14;
     case 0x15:
       dmg = 0x19;
-      {
-        int r;
-
-        r = rand();
-        next_mot = 0x1001;
-        if ((r & 1) == 0) {
-          next_mot = 0x1003;
-        }
+      if ((rand() & 1) == 0) {
+        motID = 0x1003;
       }
-  LAB_8001dc08:
-      if (conflict != 0)
-      {
-          motID = next_mot;
-      }
-      else
-      {
-          motID = next_mot;
+      else {
+        motID = 0x1001;
       }
       motMODE = 1;
       break;
@@ -631,34 +573,23 @@ LAB_8001e028:
     did = GetDirection(enemy->locate->vx - dtL->vx,
                        enemy->locate->vz - dtL->vz,dtR->vy);
     deg = GetAttackDBID(enemy,enemy->motion->mid);
-    do {
-      if (StagePlayer != Me_MOTION_C) {
-        if ((((Me_MOTION_C->status != 7) &&
-             ((Me_MOTION_C->attribute & 0x40U) != 0)) &&
-            ((Me_MOTION_C->map).height == 0)) &&
-           (D_80010058 != '\0')) {
-          iVar11 = rand();
-          iVar7 = EngageLevel + 1;
-          if (iVar11 % iVar7 == 0) {
-            if ((Me_MOTION_C->type != 0x87) &&
-               (Me_MOTION_C->type != 0x8a)) goto LAB_8001e1a4;
-            if ((rand() & 1) == 0) goto LAB_8001e1a0;
+    if (Me_MOTION_C != StagePlayer) {
+      if ((((Me_MOTION_C->status != 7) &&
+           ((Me_MOTION_C->attribute & 0x40U) != 0)) &&
+          ((Me_MOTION_C->map).height == 0)) &&
+         (D_80010058 != '\0')) {
+        if (rand() % (EngageLevel + 1) == 0) {
+          if ((Me_MOTION_C->type == 0x87) || (Me_MOTION_C->type == 0x8a)) {
+            if ((rand() & 1) != 0) {
+              motID = 0x602;
+            }
           }
-          if (iVar7 != 0) {
-            motID = 0x602;
-          }
-          else {
-            motID = 0x602;
-          }
-          goto LAB_8001e1a0;
+        }
+        else {
+          motID = 0x602;
         }
       }
-      else {
-  LAB_8001e1a0:
-        ;
-      }
-    } while (0);
-LAB_8001e1a4:
+    }
     iVar11 = did;
     if (iVar11 < 0) {
       iVar11 = -iVar11;
@@ -693,28 +624,19 @@ LAB_8001e1e8:
         Me_MOTION_C->status = 5;
         pMVar2->count = 0;
         PlayMotion(pMVar2,1);
-        pHVar14 = Me_MOTION_C;
-        if (pHVar14 != 0) {
-          dmg = (u16)BattleDB[deg].power;
-        }
-        else {
-          dmg = (u16)BattleDB[deg].power;
-        }
-        do {
-        } while (0);
-        dtM->loop = -8 - dmg;
-        MoveHumanoid(pHVar14,-((short)((dmg * 5) / 2) + 0x50),0);
-        pHVar14 = StagePlayer;
+        dmg = (u16)BattleDB[deg].power;
+        dtM->loop = -dmg - 8;
+        MoveHumanoid(Me_MOTION_C,-((short)((dmg * 5) / 2) + 0x50),0);
         if (enemy->status == 7) {
-          enemy->motion->loop = -(dmg / 3) - 1;
+          enemy->motion->loop = dmg / -3 - 1;
           (enemy->vector).vz = 0;
           (enemy->vector).vx = 0;
-          if (pHVar14 == enemy) {
+          if (StagePlayer == enemy) {
             PadShockAR(0,0x7f,10,0);
           }
         }
         DeleteConflict(ConflictObject[id].model);
-        blood_pos = GetAbsolutePosition(Me_MOTION_C->model->object[2],0,dmg * 10 + 100,0);
+        blood_pos = GetAbsolutePosition(Me_MOTION_C->model->object[2],0,(short)(dmg * 10 + 100),0);
       {
         TVar8 = 0;
         do {
@@ -725,17 +647,23 @@ LAB_8001e1e8:
           TVar8 = TVar8 + 1;
         } while (TVar8 < 10);
       }
-        pHVar14 = Me_MOTION_C;
+      {
+        Humanoid *who;
+
         if (StagePlayer == Me_MOTION_C) {
           PadShockAR(0,0x7f,10,0);
-          pHVar14 = enemy;
+          who = enemy;
         }
-        ReqLifeBar(pHVar14);
+        else {
+          who = Me_MOTION_C;
+        }
+        ReqLifeBar(who);
+      }
       {
-        int r;
+        s16 r;
 
-        r = rand();
-        FUN_8003944c(blood_pos,0,0x2000,0x6000,0xdcdcdc,0,(r % 0x168) * 0x10000 >> 0x10,6,9,1);
+        r = rand() % 0x168;
+        FUN_8003944c(blood_pos,0,0x2000,0x6000,0xdcdcdc,0,r,6,9,1);
       }
         if ((rand() & 1) != 0) {
           Sound(Me_MOTION_C,10);
@@ -784,52 +712,49 @@ LAB_8001e6d8:
       dmg = (int)(short)dmg / 3;
     }
     if (enemy->active_item == 0xc) {
-      dmg = (dmg << 0x10);
-      dmg = dmg >> 0xf;
+      dmg = (u32)(dmg << 0x10) >> 0xf;
     }
   {
-    int iVar11;
-
-    iVar11 = (u16)dmg << 0x10;
     if ((Me_MOTION_C == StagePlayer) && (PLAYER_REDUCE_DAMAGE_DUE_TO_ARMOUR != 0)) {
       dmg = ((short)dmg * 7) / 10;
-      iVar11 = dmg * 0x10000;
     }
-    TVar8 = (short)(((iVar11 >> 0x10) * 5) / 2) + 0x50;
-    deg = iVar11 >> 0x13;
+    deg = (short)dmg >> 3;
     if (3 < deg) {
       deg = 3;
     }
     if (0 < (Me_MOTION_C->map).height) {
       deg = 3;
     }
-    pSVar1 = dtR;
-    sVar12 = pSVar1->vy + did;
-    iVar11 = (int)(short)did;
-    if (iVar11 < 0) {
-      iVar11 = -iVar11;
-    }
-    pSVar1->vy = sVar12;
-    if (iVar11 < 0x400) {
-      TVar8 = -TVar8;
-    }
-    else {
-      pSVar1->vy = sVar12 + -0x800;
+    TVar8 = (short)dmg * 5 / 2 + 0x50;
+    {
+      int ad;
+
+      ad = (int)(short)did;
+      sVar12 = dtR->vy + did;
+      dtR->vy = sVar12;
+      if (ad < 0) {
+        ad = -ad;
+      }
+      if (ad < 0x400) {
+        TVar8 = -TVar8;
+      }
+      else {
+        dtR->vy = sVar12 + -0x800;
+      }
     }
     if (deg == 3) {
       int move_speed;
-      Humanoid *victim;
+      int ad;
 
-      victim = Me_MOTION_C;
-      do {
-      } while (0);
-      iVar11 = __builtin_abs((int)(short)did);
-
+      ad = did;
+      if (ad < 0) {
+        ad = -ad;
+      }
       move_speed = -0x46;
-      if (0x400 < iVar11) {
+      if (0x400 < ad) {
         move_speed = 0x46;
       }
-      MoveHumanoid(victim,move_speed,0);
+      MoveHumanoid(Me_MOTION_C,move_speed,0);
     }
     else {
       MoveHumanoid(Me_MOTION_C,TVar8,0);
@@ -838,12 +763,11 @@ LAB_8001e6d8:
   {
     s16 iVar11;
 
-    pHVar14 = Me_MOTION_C;
     iVar11 = (u16)Me_MOTION_C->life - dmg;
     Me_MOTION_C->life = (short)iVar11;
     if (iVar11 * 0x10000 < 1) {
-      pHVar14->life = 0;
-      D_8009770C = pHVar14;
+      Me_MOTION_C->life = 0;
+      D_8009770C = Me_MOTION_C;
       if (deg == 3) {
         goto LAB_8001e944;
       }
@@ -854,7 +778,7 @@ LAB_8001e6d8:
         motMODE = 1;
         if (MotionUpdateMode != 0) {
           for (i = 0; i < 5; i++) {
-            if (CVAhuman[i].human == pHVar14) {
+            if (CVAhuman[i].human == Me_MOTION_C) {
               goto LAB_8001e91c;
             }
           }
@@ -916,12 +840,11 @@ LAB_8001eaa8:
       reset_alert_duration();
     }
   }
-    pHVar14 = StagePlayer;
     if (enemy->status == 7) {
-      enemy->motion->loop = -((short)dmg / 3) - 1;
+      enemy->motion->loop = (short)dmg / -3 - 1;
       (enemy->vector).vz = 0;
       (enemy->vector).vx = 0;
-      if (pHVar14 == enemy) {
+      if (StagePlayer == enemy) {
         PadShockAR(0,0xff,10,10);
       }
     }
@@ -937,12 +860,18 @@ LAB_8001eaa8:
   }
     SetBlood(&local_38,5,0x78);
     SetImpact(&local_38,0x6000,2);
-    pHVar14 = Me_MOTION_C;
-    if (StagePlayer == Me_MOTION_C) {
-      PadShockAR(0,0x7f,10,0x1e);
-      pHVar14 = enemy;
+    {
+      Humanoid *who;
+
+      if (StagePlayer == Me_MOTION_C) {
+        PadShockAR(0,0x7f,10,0x1e);
+        who = enemy;
+      }
+      else {
+        who = Me_MOTION_C;
+      }
+      ReqLifeBar(who);
     }
-    ReqLifeBar(pHVar14);
     {
       int r;
       short sound_id;
@@ -971,19 +900,14 @@ LAB_8001ec30:
       motMODE = 1;
     }
   }
-  pHVar17 = Me_MOTION_C;
-  /* Deliberate cc1 allocation fence; both arms have identical semantics. */
-  if (1 < (u32)(u16)motID - 0x1005) {
-    (Me_MOTION_C->pad).time = 0;
-  }
-  else {
-    (Me_MOTION_C->pad).time = 0;
-  }
-  pSVar1 = dtV;
+  (Me_MOTION_C->pad).time = 0;
   if ((dtM->mid == 0x300) || (dtM->mid == 0x302)) {
-    dtV->vz = 0;
-    pSVar1->vx = 0;
-    if (pHVar17->life != 0) {
+    SVECTOR *v;
+
+    v = dtV;
+    v->vz = 0;
+    v->vx = 0;
+    if (Me_MOTION_C->life != 0) {
       motMODE = 0xffff;
       return;
     }
