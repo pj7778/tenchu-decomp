@@ -250,6 +250,12 @@ Opus for the hard tier, should carry the flywheel.
   MATCH by re-deriving the decomposition (spilled-locals diagnosis +
   allocation-ladder engineering — see the cookbook's LoadConstruction
   lessons).
+- **Fable-exhaustion fallback (owner, 2026-07-17):** if a Fable lane dies on
+  a Fable-specific usage limit (as opposed to the ordinary 5-hour window),
+  salvage it and RELAUNCH THE SAME LANE ON OPUS rather than waiting for Fable
+  to return — continuity beats tier. The orchestrator session itself cannot
+  self-switch models; if IT is Fable-capped, the user must `/model opus` and
+  nudge it (or start a fresh session from the handoff docs).
 
 ## Bundling: one agent for many functions
 
