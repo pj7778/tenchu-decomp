@@ -5,8 +5,12 @@
 /*
  * Post-mission score/high-score screen (0x80054B48, 0x121C bytes).
  *
- * STATUS: NON_MATCHING -- 413 of 4636 bytes differ (was 433; 437; 476; 498;
- * 525; 1266).
+ * STATUS: NON_MATCHING -- 401 of 4636 bytes differ (was 413; 433; 437; 476;
+ * 498; 525; 1266).
+ *
+ * 2026-07-17 round-6: THE ten s7<->s8 SWAP IS SOLVED (the old INFEASIBLE
+ * entry below was based on a MISIDENTIFIED pseudo; see "round-6" section).
+ * s7/s8 register mentions now match the target exactly (4/4 and 13/13).
  * Exact target length (1159 instructions), frame 0x1B8, 60/60 calls; the whole
  * function is address-aligned except the LoadTIMAndFree arg copy (9 low) and
  * one +4/-4 skew pair (medal bgez delay nop vs the row draw's sra).  No
@@ -103,19 +107,62 @@
  * - guided autorules on the 525 and 498 residuals: no genuine win (every
  *   candidate regresses or is a LOCAL-SHAPE regression).  Do not rerun broad.
  *
- * INFEASIBLE (measured, do not retry):
- * - ten s7->s8 / rankSpriteBase s8->s7 swap: NOT a steerable priority tie.
- *   regalloc.py: ten=p95 priority 1443, rankSpriteBase=p807 priority 99 (15x
- *   gap, both cross 33 calls).  ten wins s7 by huge margin; no minor lever
- *   flips them.  This also owns every DRAW `w*ten` (mult v0,s7 vs s8).
+ * 2026-07-17 round-6 (Opus) landed identity — THE ten s7<->s8 SWAP (413->401):
+ * - The old INFEASIBLE verdict ("15x gap, priority-infeasible") compared ten
+ *   against THE WRONG PSEUDO.  The `priority 99` allocno is NOT rankSpriteBase
+ *   — it is the SPILLED insertedRank (it has no disposition at all).  The real
+ *   competitor is rankSpriteBase at priority 544 vs ten's 1375: a 2.5x gap,
+ *   and `regalloc.py --compare 798 94` says plainly "needs +4 weighted ref(s)".
+ *   ALWAYS confirm a pseudo's identity via its DISPOSITION before believing a
+ *   priority verdict about it.
+ * - Mechanism (global.c + flow.c, read directly): MIPS defines no
+ *   REG_ALLOC_ORDER, so find_reg scans hard regs ASCENDING, and pass 0 can
+ *   never claim a callee-saved reg for the first time (it ORs in the complement
+ *   of regs_used_so_far).  So cross-call allocnos take s0..s7 then $30(fp/s8)
+ *   strictly in PRIORITY order.  s8 is $30 — the LAST register — so the target
+ *   putting the high-ref `ten` in s8 means ten is allocated LAST, i.e. ten must
+ *   rank BELOW rankSpriteBase.  Priority is
+ *     floor_log2(n_refs) * n_refs / live_length * 10000 * size
+ *   (global.c), and flow.c weights refs by `REG_N_REFS += loop_depth`.
+ * - THE LEVER: `do{}while(0)` fences are REAL loop notes, so each nesting level
+ *   adds +1 loop_depth to every ref inside it.  rankSpriteBase's single row-loop
+ *   use, nested 4 fence levels deep, goes 4 -> 8 weighted refs; floor_log2 steps
+ *   3 at 8, so its priority jumps 544 -> 1632, clearing ten's 1375.  It is then
+ *   allocated first and takes s7; ten is pushed to $30.  This is surgical: 1632
+ *   lands between p83 (3036) and p94 (1375), so NOTHING else moves.
+ * - CAVEAT (honest): the 4-nested-fence spelling is SCAFFOLDING, a proxy for
+ *   "the original's rankSpriteBase carries 8 weighted refs".  The mechanism is
+ *   real and measured, but the original almost certainly reached 8 refs another
+ *   way (e.g. 3 cse-surviving uses at main-loop depth == def@2 + 3*2 = 8).
+ *   Finding that spelling should drop the ~32B this scaffolding costs elsewhere.
+ * - Measured alternatives (all worse; do not retry): unwrapping the draw macros'
+ *   fences drops ten 39->21 refs (1375->592) and needs only +1 ref on
+ *   rankSpriteBase, but the unwrap itself costs ~50B and nets 419.  A single
+ *   fence around the whole row body lifts ten's row use too (40 refs/1410) and
+ *   does not flip.  Wrapper-unwrap + 3 fences (ten 874 / p798 952): 420.
+ * - THE ROW GOTO-LOOP IS LOAD-BEARING: rewriting it as a real `do {...} while
+ *   (i < 3)` (semantically identical, and the tempting "clean" shape since its
+ *   loop note would flip the pair with NO fence scaffolding) REGRESSES TO 698 —
+ *   the loop note lets loop.c hoist the row body's invariants and the whole row
+ *   region re-derives.  The goto-loop must stay; that is why the flip has to be
+ *   bought with fences instead.
  *
- * Remaining classes (498 bytes, all hard sub-C ties — owner=regalloc per
- * rtlguide): entry a0/128 dbr delay-slot fill; LoadTIMAndFree arg copy 9 low
- * (brightness-fence-blocked, above); s2->s3 drawnSprite/tim/sprite cascade
- * (prio 79200, no hard-conflict but rotates the whole s-family); rank/char
- * bank-address hoist (addiu v0,sp,K vs sp+i*36 then +K); DRAW2/row value/sv
- * register roles; colon x=0x66 store deferral (li t1 vs li v0); scan/shift
- * addu operand orders; row-loop transient +4 skew; GsSortSprite a2 schedules.
+ * Remaining classes — RE-MEASURED at 401 (the old "498 bytes" list below was
+ * stale; two of its entries are now closed).  A target-vs-draft register-mention
+ * histogram (the cookbook's mega-pseudo diagnostic) comes back CLEAN: s0-s8 all
+ * match exactly, so there is NO mega-pseudo here and the s2->s3 cascade the
+ * round-5 ladder flip addressed is DONE (s2 148/148, s3 52/52).  s7/s8 is now
+ * 4/4 and 13/13 (round-6, above).  Of the 144 differing rows, 85 are PURE
+ * REORDER (identical insn text at a different address = scheduling), and only
+ * 59 are real.  The real ones, largest first:
+ *   - colon x=0x66 store deferral: `li t1,102`/`sh t1,4(s2)` x4 vs li/sh v0 (8
+ *     insns, 32B) — the last big coherent class.
+ *   - scan/shift/bank addu operand orders (addu v0,v0,s1 vs addu v0,sp,s1 etc).
+ *   - the SV32 subtraction draw's v1/a0 role swap (lbu/subu/bgez/negu block).
+ *   - entry a0/128 dbr delay-slot fill; LoadTIMAndFree arg copy 9 low
+ *     (brightness-fence-blocked, above); rank/char bank-address hoist;
+ *     row-loop transient +4 skew; GsSortSprite a2 schedules (the bulk of the
+ *     85 reorder rows: target places `move a2,zero` early, we place it late).
  *
  * The local aggregates reproduce the original stack layout: packed
  * ScoreResult copy at sp+50, sprite banks at sp+60/sp+118, one GsIMAGE
@@ -155,10 +202,9 @@
  * - Other measured dead ends: rankColour entry fence (no-op), row value as
  *   i+1 (length) or (u16)(i+1) (480), y-seed/x-store fence (+2 insns),
  *   160 guided candidates (no improving path).
- * Remaining residual classes: ten $s7<->$s8 x10 (priority-infeasible,
- * measured round 1), $v0->$a0 x7 hard-conflicts p91, $s2->$s3 x13, and the
- * scheduling islands above — all regalloc/sched ties; park pending a NEW
- * pass-level lever.
+ * (Round-3's residual list is superseded: its "ten $s7<->$s8 x10
+ * priority-infeasible" is SOLVED in round 6, and its "$s2->$s3 x13" is solved
+ * by round 5's ladder flip.  Both verdicts were wrong; see above.)
  */
 
 typedef struct
@@ -801,6 +847,7 @@ score_row_loop:
                 GsSortSprite(sprite, OTablePt, 1);
 
                 rankState = (MissionScorePersistent *)0x80010000;
+                do { do { do { do
                 {
                     register GsSPRITE *rankSprite =
                         &rankSpriteBase[rankState->grades[i]];
@@ -809,7 +856,7 @@ score_row_loop:
                     rankSprite->x = -0x2F;
                     rankSprite->y = i * 0x16 + 0x16;
                     GsSortSprite(rankSprite, OTablePt, 1);
-                }
+                } while (0); } while (0); } while (0); } while (0);
             }
             i++;
             if (i < 3)

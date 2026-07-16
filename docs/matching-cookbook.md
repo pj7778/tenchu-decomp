@@ -5811,6 +5811,26 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
     file and let m2c ignore the unused ones:
     `--input-regs v0,v1,a0,a1,a2,a3,t0,t1,t2,t3,t4,t5,t6,t7,t8,t9,s0`
     → zero `M2C_ERROR` on `FUN_8005d1fc`.
+- **Confirm a pseudo's IDENTITY via its DISPOSITION before believing any priority
+  verdict about it.** `regalloc.py`'s priority list and its disposition list are
+  separate, and an allocno with a priority but NO `pN->reg` disposition is a
+  SPILLED pseudo — not the variable you are reasoning about.
+  mission_score_screen carried "ten vs rankSpriteBase: 15x gap,
+  priority-INFEASIBLE" through three rounds because the 99-priority allocno was
+  read as rankSpriteBase when it was really the spilled `insertedRank`; the true
+  competitor sat at 544 vs ten's 1375 (2.5x), and `--compare` reported "needs +4
+  weighted refs". **A gap that names a variable you never confirmed is a misread,
+  not a wall.**
+- **`$s8` is `$30` — the LAST register `find_reg` scans.** MIPS defines no
+  `REG_ALLOC_ORDER`, so cross-call allocnos take `$s0..$s7` then `$30`. If the
+  target holds a HIGH-ref value in `$s8`, that value is allocated LAST and must
+  therefore rank BELOW its neighbour — the opposite of the intuitive reading.
+  (mission_score_screen chased this backwards for three rounds.)
+- **`floor_log2` makes the ref payoff LUMPY — aim at the step.** Priority is
+  `floor_log2(refs)*refs/live_length`, so refs 4→7 moved one allocno 544→952
+  while 4→8 jumped it to 1632. Target the power-of-two boundary, not a linear
+  increment. `regalloc.py --enclosed-refs` already models the loop weighting —
+  use it instead of hand-arithmetic.
 - **The ref lever is NEVER "exhausted" by asm-mention count: `reg_n_refs` is
   LOOP-DEPTH WEIGHTED, and a `do{}while(0)` buys weight for free.** flow.c adds
   one unit per enclosed ref per loop depth, and a `do{}while(0)` emits no code
