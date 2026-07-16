@@ -5903,6 +5903,9 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
   `fill_slots_from_thread` can steal it — which needs `sched2` to leave it as the
   block's first insn, and real register pressure defeats that. The testbed is
   still the cheapest instrument; just know which questions it can answer.
+  **Second counter-example: results on COPY SURVIVAL do not transfer either** —
+  ActSTICKON's testbed did not need the self-XOR that the real function required,
+  because whether a copy survives depends on the surrounding register pressure.
 - **A same-register `lui $rN,%hi(sym)` / `addiu $rN,$rN,%lo(sym)` pair is an
   UNSPLIT `la` — not a tied split — and the ONLY lever is the DECLARATION.**
   cc1's `movsi` expander splits addresses pre-reload into two DISTINCT pseudos
@@ -5982,7 +5985,7 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
   first equal-priority group, and mips.md gives a store a memory unit while a
   reg-reg move has none, which is what drags each `sw` to sit just before its
   copy regardless of the order `save_restore_insns` emitted them in.
-- **NEVER infer cse-time block structure from the final asm.** cse1 runs BEFORE
+- **NEVER infer PRE-JUMP2 block structure from the final asm.** cse1 runs BEFORE
   jump2, and jump2's cross-jumping merges identical arms — erasing the very
   labels cse saw. So a store/reload pair that looks impossibly co-located in one
   block with no label may have been two arms at cse time. **A store that must not
@@ -5993,6 +5996,15 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
   ARTIFACTS of that late merge rather than source variables. This single
   restructuring took FUN_80057b80 from 494 to 8 bytes after three rounds had
   read the final asm and concluded a label was impossible.
+  **The same trap catches register allocation, because cross-jumping runs AFTER
+  it.** ActSTICKON's "a1/a0 vs a0/v0 register cycle" verdict was really a jump2
+  artifact: the shared `li v0,K / bne a0,v0` tail is two case bodies differing
+  only in `li v0,K`, merged after allocation. Modelling that merged tail as a
+  source-level variable gave the constant a live range spanning the switch tree's
+  own compare scratch, exiling it from `v0` and cascading the rest. Written as a
+  plain switch on an UNSIGNED mode (the target's `sltiu`, not `slt`) with the
+  literals inline per case, they become short-lived pseudos that reuse `v0` — and
+  case order 6, 9, 7, 10 reproduces the fall-through layout.
 - **A "narrowed negate" can never be sign-extended: `narrow = -narrowVar` is not
   the target's shape.** convert.c's `convert_to_integer` narrows `NEGATE_EXPR`
   THROUGH the truncation, so cc1 emits `negu` on the raw register and combine
@@ -6060,7 +6072,14 @@ must be re-challenged at exact promotion — but the mechanisms below are real.
    order of the statement it wraps.** The tell is a LOG_LINK with no data behind
    it. When a fenced statement sits where the target's does not, the fence is the
    suspect.
-3. **Nothing else — in particular NO basic-block boundary.** `find_basic_blocks`
+3. **A hard barrier to LOCAL-ALLOC's copy propagation.** `optimize_reg_copy_1`
+   (local-alloc.c:753 — there is NO `regmove.c` in gcc 2.8.1) rewrites a later
+   read of `src` into `dst` after a copy `dst = src`; its forward scan breaks on
+   a `CODE_LABEL`, a `JUMP_INSN`, or a `NOTE_INSN_LOOP_BEG/END`. So a fence that
+   **ENCLOSES THE COPY** puts a loop note between the copy and the read and
+   blocks the rewrite. The fence must CONTAIN the copy — one merely nearby does
+   nothing.
+4. **Nothing else — in particular NO basic-block boundary.** `find_basic_blocks`
    starts a block only at a `CODE_LABEL` or after a `JUMP_INSN`/`BARRIER`/
    `CALL_INSN`; loop notes only change `depth`. So a fence can never keep a copy
    alive past combine, and it does NOT block cse store-to-load forwarding.
@@ -6170,6 +6189,19 @@ while its reasoning did not.
   loop-note ref WEIGHT and a scheduling barrier but no block boundary; an
   identical-arm fence gives a real block boundary. Pick by which one the
   mechanism needs.
+- **`optimize_reg_copy_1` lives in `local-alloc.c` in this cc1 — there is no
+  `regmove.c` in gcc 2.8.1.** If a copy `dst = src` is followed by a later read of
+  `src`, local-alloc rewrites that read to `dst` — so a sign-extension can end up
+  reading the copy's DESTINATION rather than its source, and cse/loop/combine/sched
+  are all innocent (ActSTICKON's last byte: every earlier pass read the right
+  register). The guard is `! find_reg_note (insn, REG_DEAD, SET_SRC (set))`, and
+  the forward scan breaks on a `CODE_LABEL`, a `JUMP_INSN`, or a
+  `NOTE_INSN_LOOP_BEG/END`. To keep the target's read of `src`, place a
+  `do{}while(0)` so that it ENCLOSES the copy.
+- **The self-XOR (`x ^= x ^ y`) and an enclosing fence are INDEPENDENT levers and
+  can both be required at one site**: the fence blocks the copy-propagation
+  rewrite, the XOR stops the copy being coalesced away. (ActSTICKON: replacing the
+  XOR with a plain `angle = next_angle` cost 4 bytes even WITH the fence.)
 - **`sched` CANNOT reorder a LOAD-FREE block — so a misplaced instruction there
   is SOURCE ORDER, not a scheduling tie.** gcc-2.8.1's `sched.c:1521` computes
   `priority(x) + insn_cost(x,…) - 1`, and its own comment says it outright:

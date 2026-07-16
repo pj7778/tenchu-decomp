@@ -784,6 +784,11 @@ against context prototypes), so a small m2c fix-up layer is where more zeros hid
   many commits the branch is behind master and the exact ff command. Seven lanes
   in one rollout started 26-36 commits stale; one was missing the checkpoint its
   task described, another a tool its task told it to run first.
+- **asmdiff `--context N`**: show N unchanged instructions around each hunk.
+  asmdiff prints only differing lines, but the SURROUNDING context is what reveals
+  delay-slot and cross-jump structure — the ActSTICKON lane hand-rolled a 10-line
+  script over `asmdiff.dis()` to get it, and that context is what exposed the
+  jump2 artifact behind a 7-byte "register cycle".
 - **regalloc.py `--spill-uses <Name>`**: for a spilled pseudo, list each use as
   BARE (self-tie legal) or IN-MEM (self-tie barred). That single distinction was
   the whole of AdtSelect's round — done by hand-grepping `reg/v:SI 81` in the
