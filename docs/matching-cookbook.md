@@ -5811,6 +5811,17 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
     file and let m2c ignore the unused ones:
     `--input-regs v0,v1,a0,a1,a2,a3,t0,t1,t2,t3,t4,t5,t6,t7,t8,t9,s0`
     → zero `M2C_ERROR` on `FUN_8005d1fc`.
+- **Narrow locals are genuine QI/HI pseudos here — not PROMOTE_MODE-promoted.**
+  `rtldump` shows `reg/v:QI` / `reg/v:HI` directly, so a narrow local ALWAYS
+  needs a real extension (`sll`/`andi`) and can never produce the target's bare
+  `move`. If a target join copies with a plain `move`, that value is SImode in
+  the original, whatever a narrow spelling does elsewhere (ActivateHumans).
+- **A `.greg` "hard-conflict" can be an artifact of BIRTH ORDER, not of the
+  values.** mission_score_screen's row draw carried a recorded
+  "rowValue->a0 hard-conflict p91" through two passes; giving the row its own
+  macro so `value` became the COPY (born second) instead of the `andi` owner
+  (born first) dissolved it outright. Before accepting a conflict verdict, ask
+  which of the two values is created first and whether the source can swap that.
 - **The DamageControl escalation lessons (1320→0, fence-free)** — the three that
   closed the game's largest function:
   1. *An ASSIGNED `__builtin_abs` reaches mips `abssi2` — ONE type-`multi` insn*
