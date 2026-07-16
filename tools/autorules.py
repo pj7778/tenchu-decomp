@@ -41,7 +41,8 @@ ungraceful exit cannot strand a speculative rewrite in the checked-in file.
 SIGTERM/SIGHUP also tear down the active build process group, and on Linux a
 parent-death signal prevents a command frontend from orphaning autorules.
 """
-import argparse, ctypes, glob, hashlib, itertools, os, re, signal, subprocess, sys, tempfile
+import argparse, glob, hashlib, itertools, os, re, signal, subprocess, sys, tempfile
+import proclife
 from contextlib import contextmanager
 
 from matchlock import MatchToolBusy, matching_tool_lock
@@ -8052,31 +8053,14 @@ SUMMARY = re.compile(
     r"length ours (\d+) vs target (\d+)(?:;[^\]]*)?\]"
 )
 
-_PR_SET_PDEATHSIG = 1
-_LIBC = ctypes.CDLL(None, use_errno=True) if sys.platform.startswith("linux") else None
-
-
-def _source_override_var(name):
-    """Shake's per-function staged-source environment oracle."""
-    return SOURCE_OVERRIDE_PREFIX + name
-
-
-def _set_parent_death_signal(sig):
-    """Ask Linux to signal this process when its current parent exits."""
-    if _LIBC is None:
-        return
-    if _LIBC.prctl(_PR_SET_PDEATHSIG, sig, 0, 0, 0) != 0:
-        err = ctypes.get_errno()
-        raise OSError(err, os.strerror(err))
+# Process lifecycle is shared with permute.py so the two long-running drivers
+# cannot drift apart; see tools/proclife.py for why each piece exists.
+_LIBC = proclife.LIBC
+_set_parent_death_signal = proclife.set_parent_death_signal
 
 
 def arm_parent_death_signal():
-    """Prevent a command runner's death from orphaning the autorules driver.
-
-    PR_SET_PDEATHSIG has a small setup race. Checking getppid again closes it:
-    if the original parent disappeared between the two calls, abort before the
-    driver can start a candidate search.
-    """
+    """Prevent a command runner's death from orphaning the autorules driver."""
     if _LIBC is None:
         return
     parent = os.getppid()
@@ -8085,79 +8069,31 @@ def arm_parent_death_signal():
         raise InterruptedError("autorules parent exited during startup")
 
 
-@contextmanager
 def interruption_handlers():
-    """Convert frontend termination into a catchable driver interruption."""
-    def interrupted(signum, _frame):
-        raise InterruptedError(f"autorules interrupted by signal {signum}")
-
-    old_handlers = {}
-    for sig in (signal.SIGTERM, getattr(signal, "SIGHUP", None)):
-        if sig is not None:
-            old_handlers[sig] = signal.signal(sig, interrupted)
-    try:
-        yield
-    finally:
-        for sig, handler in old_handlers.items():
-            signal.signal(sig, handler)
-
-
-def _child_parent_death_setup(expected_parent):
-    """Popen child hook: do not leave ./Build alive if autorules is killed."""
-    if _LIBC is None:
-        return
-    # SIGKILL is intentional here. The child has not exec'd yet, so running a
-    # Python signal handler in the post-fork/pre-exec window would be unsafe.
-    _set_parent_death_signal(signal.SIGKILL)
-    if os.getppid() != expected_parent:
-        os._exit(128 + signal.SIGKILL)
+    return proclife.interruption_handlers("autorules")
 
 
 def _terminate_process_group(proc):
-    """Terminate and reap a subprocess plus every descendant in its session."""
-    try:
-        os.killpg(proc.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
-    try:
-        proc.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        pass
-    # The group can outlive its leader: a shell/Shake process may exit on TERM
-    # before one of its compiler children does. Probe by sending KILL even when
-    # wait() already reaped the immediate child; ESRCH means the group is gone.
-    try:
-        os.killpg(proc.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    if proc.poll() is None:
-        proc.wait()
+    return proclife.terminate_process_group(proc)
 
 
 def _run_owned(args, **kwargs):
-    """subprocess.run equivalent whose process group cannot escape an abort.
-
-    `subprocess.run` does not terminate its child when a Python signal handler
-    raises during `wait()`. Autorules used to restore the source in that case
-    while the interrupted Shake/build tree continued independently. Give each
-    command a session, kill the whole group on every exception, and arrange for
-    the immediate child to die even if autorules itself receives SIGKILL.
-    """
-    parent = os.getpid()
-    child_setup = ((lambda: _child_parent_death_setup(parent))
-                   if _LIBC is not None else None)
-    proc = subprocess.Popen(
-        args,
-        start_new_session=True,
-        preexec_fn=child_setup,
-        **kwargs,
-    )
+    """subprocess.run equivalent whose process group cannot escape an abort."""
+    proc = proclife.owned_popen(args, **kwargs)
     try:
         stdout, stderr = proc.communicate()
     except BaseException:
         _terminate_process_group(proc)
         raise
     return subprocess.CompletedProcess(args, proc.returncode, stdout, stderr)
+
+
+def _source_override_var(name):
+    """Shake's per-function staged-source environment oracle."""
+    return SOURCE_OVERRIDE_PREFIX + name
+
+
+
 
 
 def _write_text(path, text):

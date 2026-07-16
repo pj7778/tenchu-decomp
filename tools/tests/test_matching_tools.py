@@ -4928,6 +4928,64 @@ class MatchToolLockTests(unittest.TestCase):
                 os.chdir(old)
 
 
+class PermuteResultReportTests(unittest.TestCase):
+    """A bounded run's findings must survive the SIGTERM that ends it."""
+
+    def test_dead_declarations_flags_only_unused_identifiers(self):
+        source = (
+            "void F(void) {\n"
+            "    GsSPRITE *new_var;\n"
+            "    int live = 1;\n"
+            "    int used_once;\n"
+            "    used_once = live + 1;\n"
+            "    g(used_once);\n"
+            "}\n"
+        )
+        self.assertEqual(permute.dead_declarations(source), ["new_var"])
+
+    def test_semantic_delta_ignores_pure_reformatting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = os.path.join(directory, "base.c")
+            candidate_dir = os.path.join(directory, "output-1")
+            os.makedirs(candidate_dir)
+            candidate = os.path.join(candidate_dir, "source.c")
+            with open(base, "w") as stream:
+                stream.write("int F(int a) {\n    return a + 1;\n}\n")
+            # Same code, permuter-style reflow: no semantic delta should show.
+            with open(candidate, "w") as stream:
+                stream.write("int F(int a)\n{\n\n        return a + 1;\n\n}\n")
+            self.assertEqual(permute.semantic_delta(base, candidate), [])
+
+            with open(candidate, "w") as stream:
+                stream.write("int F(int a)\n{\n    return a + 2;\n}\n")
+            delta = permute.semantic_delta(base, candidate)
+            self.assertTrue(any(line.startswith("-return a + 1;") for line in delta))
+            self.assertTrue(any(line.startswith("+return a + 2;") for line in delta))
+
+    def test_report_is_written_for_an_interrupted_run(self):
+        with tempfile.TemporaryDirectory() as work:
+            with open(os.path.join(work, "base.c"), "w") as stream:
+                stream.write("int F(int a) { return a + 1; }\n")
+            candidate_dir = os.path.join(work, "output-7")
+            os.makedirs(candidate_dir)
+            source = os.path.join(candidate_dir, "source.c")
+            with open(source, "w") as stream:
+                stream.write("int F(int a) { int dead_one; return a + 2; }\n")
+            valid = [{"whole": 12, "window": 8, "text_size": 40, "source": source}]
+            path = permute.write_result_report("F", work, valid, interrupted=True)
+            report = open(path).read()
+        self.assertIn("INTERRUPTED", report)
+        self.assertIn("output-7/source.c", report)
+        self.assertIn("12 whole-image differing bytes", report)
+        self.assertIn("+return a + 2;", report)
+        self.assertIn("dead_one", report)
+
+    def test_report_records_an_empty_search(self):
+        with tempfile.TemporaryDirectory() as work:
+            path = permute.write_result_report("F", work, [], interrupted=True)
+            self.assertIn("retained nothing usable", open(path).read())
+
+
 class PermuteRescoreTests(unittest.TestCase):
     def test_permuter_declares_gcc_intrinsics_for_type_parser(self):
         source = "int F(int value) { return __builtin_abs(value); }\n"

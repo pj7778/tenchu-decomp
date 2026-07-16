@@ -27,10 +27,11 @@ This wrapper therefore full-links every retained output and prints matchdiff's r
 whole-image ranking after the run. Use `<name> --rescore-only` after interrupting
 one, and still verify an adopted/cleaned candidate with tools/matchdiff.py.
 """
-import argparse, glob, os, re, shutil, subprocess, sys, tempfile
+import argparse, difflib, glob, os, re, shutil, subprocess, sys, tempfile
 
 from matchlock import MatchToolBusy, matching_tool_lock
 import matchdiff
+import proclife
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
@@ -706,6 +707,110 @@ def authoritative_rescore(name, work, csh):
     return valid
 
 
+RESULT_NAME = "RESULT.md"
+
+# A declaration whose identifier never appears again. Deliberately conservative:
+# one leading type word (optionally qualified/`struct`-tagged) plus an optional
+# pointer star. Missing an exotic declaration only costs a hint; a false hit
+# would send a reader deleting live code.
+DECL_RE = re.compile(
+    r"^\s*(?:const |volatile |static |unsigned |signed )*"
+    r"(?:(?:struct|union|enum) \w+|\w+)\s+\**\s*(\w+)\s*(?:;|=[^=])",
+    re.M)
+
+
+def _normalized_lines(path):
+    """One statement per entry, so the permuter's reflow cannot show as a diff.
+
+    Collapsing whitespace per LINE is not enough: the permuter also moves braces
+    and re-breaks lines, so `int F(void) {` vs `int F(void)` + `{` would read as
+    an edit. Splitting after every `;`/`{`/`}` instead makes layout unrepresentable
+    and leaves only real edits.
+    """
+    text = re.sub(r"\s+", " ", open(path, errors="replace").read())
+    return [part.strip() for part in re.split(r"(?<=[;{}])", text) if part.strip()]
+
+
+def dead_declarations(text):
+    """Identifiers declared in `text` but never used again.
+
+    The permuter invents scratch declarations that ride along into a winning
+    candidate without contributing to it (start_demo_'s retained candidate
+    carried a dead `GsSPRITE *new_var`). Flag them so whoever transcribes the
+    win drops the noise instead of copying it into the draft.
+    """
+    dead = []
+    for match in DECL_RE.finditer(text):
+        name = match.group(1)
+        if len(re.findall(rf"\b{re.escape(name)}\b", text)) == 1:
+            dead.append(name)
+    return dead
+
+
+def semantic_delta(base_path, candidate_path, limit=120):
+    """The candidate's edits against base.c, minus reformatting noise.
+
+    The permuter rewrites whitespace/parenthesisation wholesale, so a raw diff
+    buries the two or three real edits. Normalizing first is what turns a
+    retained candidate into something a reader can act on (start_demo_'s two
+    real edits had to be extracted by hand from exactly this diff).
+    """
+    diff = list(difflib.unified_diff(
+        _normalized_lines(base_path), _normalized_lines(candidate_path),
+        fromfile="base.c", tofile=os.path.basename(os.path.dirname(candidate_path)),
+        lineterm="", n=2))
+    if len(diff) > limit:
+        diff = diff[:limit] + [f"... ({len(diff) - limit} more diff lines)"]
+    return diff
+
+
+def write_result_report(name, work, valid, interrupted=False):
+    """Persist the ranking and the best candidate's delta to a known path.
+
+    Bounded `timeout` runs are the contract (.claude/agents/matcher.md), so the
+    normal ending is SIGTERM mid-search — and three separate agents lost a
+    finished search's best candidate that way (one recovered it only via
+    --rescore-only plus a hand diff; two lost it outright). Every exit path
+    writes this file, so a killed run still reports what it found.
+    """
+    path = os.path.join(work, RESULT_NAME)
+    base = os.path.join(work, "base.c")
+    out = [f"# permute {name}",
+           "",
+           f"Run ended: {'INTERRUPTED (bounded timeout / signal)' if interrupted else 'search completed'}.",
+           "",
+           "## Authoritative full-link rescore (whole image / window / .text)",
+           ""]
+    if not valid:
+        out += ["No candidate survived a full link — the search retained nothing usable.", ""]
+    else:
+        for result in valid[:20]:
+            label = os.path.relpath(result["source"], work)
+            out.append(f"    {result['whole']:6d} / {result['window']:5d} / "
+                       f"{result['text_size']:5d}  {label}")
+        best = valid[0]
+        label = os.path.relpath(best["source"], work)
+        out += ["",
+                f"## Best candidate: `{label}` — {best['whole']} whole-image differing bytes",
+                ""]
+        if os.path.exists(base):
+            delta = semantic_delta(base, best["source"])
+            out += ["Minimal semantic delta vs base.c (reformatting normalized away):",
+                    "", "```diff"] + delta + ["```", ""]
+            dead = dead_declarations(open(best["source"], errors="replace").read())
+            if dead:
+                out += ["DEAD DECLARATIONS in this candidate (permuter noise — do "
+                        "not transcribe): " + ", ".join(dead), ""]
+        out += ["Re-verify any transcribed edit with tools/matchdiff.py: this "
+                "ranking is a full link, but read the diff for relocated `goto`s "
+                "landing after an unconditional jump (dead-code moves score "
+                "better while changing reachability).", ""]
+    with open(path, "w") as stream:
+        stream.write("\n".join(out))
+    print(f"permute: result report → {path}")
+    return path
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rescore-only", action="store_true",
@@ -786,6 +891,19 @@ def main():
     # sanity: base.c must compile
     subprocess.run([csh, base, "-o", os.path.join(work, "base.o")], check=True)
 
+    # The permuter's C parser cannot read the gte.h macro layer's inline asm
+    # ("base.c does not contain any function!"), so this whole class is not a
+    # "bounded run then park" step — the run is impossible, and an agent that
+    # tries it burns a turn on a confusing parser error. Say so and point at the
+    # escalation that does work (docs/gte-policy.md, FUN_80058c70).
+    if re.search(r"^\s*#\s*include\s+\"gte\.h\"", open(src).read(), re.M):
+        sys.exit(
+            f"permute: {name} uses the gte.h macro layer — the permuter's C parser\n"
+            "         rejects inline asm and cannot search this class at all.\n"
+            "         Escalate straight to RTL: tools/rtlguide.py, then\n"
+            "         tools/rtldump.py --pass loop/greg (docs/gte-policy.md)."
+        )
+
     print(f"permute: set up {work} — running permuter…")
     print("permute: BUDGET REMINDER — a <=10-byte register-swap / adjacent-"
           "reorder residual is\n         usually sub-C-level (reload/sched) "
@@ -795,13 +913,32 @@ def main():
     rest = args.rest[1:] if args.rest and args.rest[0] == "--" else args.rest
     if not rest:
         rest = ["--stop-on-zero", "-j4"]
-    rc = subprocess.run(["permuter.py", work, *rest]).returncode
+
+    # The contract runs this under `timeout`, so SIGTERM mid-search is the
+    # NORMAL ending, not an error path: rescore and report what the search
+    # already retained instead of discarding it. The search owns its own
+    # session so a kill here cannot leave permuter workers behind.
+    interrupted = False
+    rc = 0
+    try:
+        with proclife.interruption_handlers("permute"):
+            proc = proclife.owned_popen(["permuter.py", work, *rest])
+            try:
+                rc = proc.wait()
+            except BaseException:
+                proclife.terminate_process_group(proc)
+                raise
+    except (InterruptedError, KeyboardInterrupt) as stop:
+        interrupted = True
+        rc = 143
+        print(f"\npermute: {stop} — rescoring what the search already retained…")
 
     wins = sorted(glob.glob(os.path.join(work, "output-0-*", "source.c")))
     if wins:
         print(f"\npermute: proxy score 0 retained → {wins[0]}\n"
               "         Full-link rescoring below decides whether it really matches.")
-    authoritative_rescore(name, work, csh)
+    valid = authoritative_rescore(name, work, csh)
+    write_result_report(name, work, valid, interrupted=interrupted)
     sys.exit(rc)
 
 
