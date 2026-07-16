@@ -7,17 +7,16 @@
  * renderer of the DrawTMD handler family. Compiled-style C using the PsyQ
  * inline-GTE macros (gte_ldv3/gte_rtpt/gte_stsxy3/gte_stsz3) at two RTPT sites.
  *
- * STATUS: NON_MATCHING — first full reconstruction of this 3796-byte function.
- * The draft links 3804 bytes: 947 real instructions where the target has 945,
- * i.e. TWO SURPLUS INSTRUCTIONS to find and remove (asmdiff -n --structural).
+ * STATUS: NON_MATCHING — LENGTH IS NOW EXACT (945 real instructions, 3796
+ * bytes, no knock-on shift to the rest of the image). Residual: 759 differing
+ * bytes, dominated by the param_1/param_2 $s0/$s1 swap.
  *
- * READ THIS BEFORE TRUSTING AN OLDER NUMBER: the worker measured "3788, 2
- * instructions SHORT" against a private gte.h whose command macros had no
- * latency nops. That arithmetic is void. The target provably issues
- * `lwc2; nop; nop; RTPT` at both command sites (0x80058320, 0x80058548), so the
- * nop-carrying `gte_rtpt()` is correct here (this is a COMPILED caller — see
- * docs/gte-policy.md); with it the four nops land and the draft is 2 real
- * instructions OVER, not under. Chase the surplus, not a shortfall.
+ * The `lwc2; nop; nop; RTPT` shape at both command sites (0x80058320,
+ * 0x80058548) is confirmed from the raw image bytes, so the nop-carrying
+ * `gte_rtpt()` is correct here (this is a COMPILED caller — docs/gte-policy.md).
+ * Note both dumps elide the paired zero words as objdump `...` runs, so the
+ * captured-instruction counts (945) each omit 4 real nops; 945+4 = 949 words
+ * = 3796 bytes.
  *
  * The body reproduces Ghidra's logic exactly. Two source-structure findings got
  * the register allocation to match almost entirely:
@@ -29,10 +28,86 @@
  *      writing them all as `param_1 + offset` starves the midpoints of refs, so
  *      they score below piVar13 and steal its register.
  * With both, s2..s8 reference counts match the target exactly (20/17/18/13/18/
- * 18/19) and piVar13 correctly lands in $fp. The residual: param_1/param_2 are
- * swapped between $s0/$s1 (cc1 scores param_2 above param_1 here), and the
- * `move s8,t0` sinks out of the prologue. Build the draft with
- * `NON_MATCHING=FUN_80057b80 ./Build`.
+ * 18/19) and piVar13 correctly lands in $fp.
+ *
+ *   3. `sVar1` is a SIGNED `short`, not a `u16` (Ghidra had it right). The two
+ *      reads of the same halfword — `sVar1 = *(short *)(p + 0xc)` and
+ *      `uVar2 = *(u16 *)(p + 0xc)` — are DIFFERENT modes, so cc1 emits two
+ *      loads (`lh` + `lhu`) and does not CSE them. Declaring sVar1 as `u16`
+ *      collapsed both to one `lhu` plus a redundant `andi rX,rY,0xffff` copy,
+ *      and forced the `(short)` compare operands to be sign-extended in-register
+ *      with `sll`/`sra` instead of reloaded with `lh`. That cost exactly the two
+ *      surplus instructions; fixing the declaration made the length exact.
+ *
+ * ---------------------------------------------------------------------------
+ * ROUND 2 FINDINGS — read before touching this again.
+ *
+ * The length is exact, but it balances by CANCELLATION (-1 -1 +1 +1), not
+ * because every site is right. Align on MNEMONICS ONLY to see the real
+ * structure (a plain per-index diff desynchronises after the first
+ * insert/delete, and difflib cannot align across the s0/s1 swap). The four
+ * open sites, all confirmed against the target asm:
+ *
+ *   A. MISSING (-1) `addiu a2,param_2,76` at target index 25 (0x80057be0).
+ *      PROVEN: the target keeps a base pointer to `param_2 + 0x13` and the
+ *      LEAF block reads all three of its fields through it —
+ *      `lhu v0,14(a2)`/`lhu v0,26(a2)`/`lw v0,0(a2)` = param_2 + 90/102/76.
+ *      The four RECURSIVE blocks instead read 90/102 directly off param_2 in
+ *      BOTH builds (identical indices 683/686/757/760/831/834/905/908), so the
+ *      pointer is leaf-only. Offsets 76/90/102 all fit a signed 16-bit
+ *      immediate, so cc1 would never invent the base — it is source structure.
+ *      Adding `int *proto = param_2 + 0x13;` at the top and spelling the leaf's
+ *      three reads through it reproduces `addiu a2,s0,76` at EXACTLY index 25
+ *      and the leaf reads at 274-282. It costs +1 (-> 946 insns = 3800 bytes),
+ *      which OVERFLOWS the 3796-byte carve and makes matchdiff refuse to score,
+ *      so it can only land together with a payback from site B/C below.
+ *      Bonus: it also drops param_2 from 104 to 102 refs (see D).
+ *
+ *   B/C. SURPLUS (+1 each) at 0x80057d00 (X box, param_2+44) and 0x80057df4
+ *      (Y box, param_2+46). We emit `sll`/`sra` where the target emits one
+ *      `lh` reload.
+ *   D-adjacent. MISSING (-1) the `lw param_2[7]` reload at 0x80057c14.
+ *
+ *      A, B and C share ONE root cause, established from the RTL dumps: cc1's
+ *      expander emits `movhi` + `ashift` + `ashiftrt` carrying a
+ *      `REG_EQUAL (sign_extend:SI (mem:HI ...))` note, and COMBINE normally
+ *      folds that triple back into a single `lh`. At the first read after a
+ *      store to the same address IN THE SAME BASIC BLOCK, cse's store-to-load
+ *      forwarding has already replaced the movhi's source MEM with the stored
+ *      register, so combine has no load left to fold and the sll/sra survive.
+ *      Later reads (different block, cse table cleared) keep the movhi and DO
+ *      become `lh` — see the draft .s, where param_2+44 is read as sll/sra once
+ *      and as `lh` twice. The target reloads at ALL of them.
+ *      The same forwarding explains the missing `lw param_2[7]` reload.
+ *
+ *      MECHANISM CONFIRMED, spelling NOT yet found: routing the STORE through
+ *      an alias assigned in a different basic block (`int *ctx = param_2;` at
+ *      the top, then `ctx[7] = ...`) makes cse unable to prove the addresses
+ *      equal and the `lw param_2[7]` reload appears exactly where the target
+ *      has it. But the store then uses ctx's own register (`sw v0,28(a1)`)
+ *      where the target uses param_2's (`sw v0,28(s1)`) — ctx and param_2 are
+ *      both live so they never coalesce. The target performs the store AND the
+ *      reload through the same base register, so the real source blocks the
+ *      forwarding some other way. Do not ship the ctx alias.
+ *
+ *   D. The dominant byte residual: param_1/param_2 swapped between $s0/$s1.
+ *      Measured with tools/regalloc.py (allocnos identified by the copy-chains
+ *      `i4 a0->s1` = p80 = param_1, `i6 a1->s0` = p81 = param_2):
+ *          p80 param_1: 74 refs / 1316 live -> 3373
+ *          p81 param_2: 104 refs / 1470 live -> 4244
+ *      p81 outranks p80, so param_2 takes $s0 first; the target has param_1 in
+ *      $s0. `regalloc.py FUN_80057b80 --compare 80 81` says p80 needs +20
+ *      weighted refs (+18 with `proto` applied). Ballast alone is a big ask;
+ *      note allocno_compare ties break on the LOWER allocno number, and p80 <
+ *      p81 — so making the two priorities EQUAL also hands param_1 $s0.
+ *
+ * Aligned operand residual: 629/945 instructions match as-is; 745/945 would
+ * match under a mechanical s0<->s1 rename (the ~6 prologue save-slot lines
+ * that rename wrongly flips are position-fixed, not swapped).
+ *
+ * Do NOT re-run: autorules (46 candidates, no win) or the permuter (refused
+ * outright for gte.h functions — its parser cannot read inline asm).
+ * Build the draft with `NON_MATCHING=FUN_80057b80 ./Build`.
  */
 
 #ifndef NON_MATCHING
@@ -40,7 +115,7 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80057b80", FUN_8
 #else
 void FUN_80057b80(int *param_1, int *param_2, int param_3)
 {
-    u16 sVar1;
+    short sVar1;
     u16 uVar2;
     int iVar3;
     u32 *puVar4;
