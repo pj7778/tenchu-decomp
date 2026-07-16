@@ -10,11 +10,37 @@
  * recovers the full five-state jump-table loop, including state 2's shared
  * prompt/input tail with state 3, resource ownership, timed sprite fades,
  * pad-edge detection and both cleanup paths. It has the exact 0x1a0 frame and
- * exact 2188-byte/547-instruction extent; 98 differing bytes and fuzzy score
- * 94.34% (up from the comments-only scaffold's 7.01%, 71.29% before the first
- * matching pass, and 90.39% before this pass). Remaining differences are
- * localized scheduling around the prologue, fade arguments, archive path and
- * first state-3 sort. Build with `NON_MATCHING=start_demo_ ./Build`.
+ * exact 2188-byte/547-instruction extent; 75 differing bytes (down from 98).
+ * Build with `NON_MATCHING=start_demo_ ./Build`.
+ *
+ * This pass (98 -> 75): the prologue `li a1,-1` placement cluster closed by
+ * making `old_pad` a plain `s16` instead of `volatile u16` — the volatile
+ * store at `old_pad = 0` was a scheduling barrier that pinned the SetupAppearance
+ * argument load below the register-save block; non-volatile lets cc1 hoist it
+ * into the prologue exactly as the target does (and non-volatile is the correct
+ * semantics — the pad shadow was never volatile). `color` also narrows to `u32`.
+ * Both were found by the decomp-permuter (output-665; authoritative full-link
+ * rescore) and re-derived by hand; an unused `GsSPRITE *new_var` the permuter
+ * added was dead and excluded.
+ *
+ * Residual 75 bytes are hard sub-C allocation/scheduling ties, all confirmed
+ * immovable by autorules --guided (80-candidate beam), a full 420s permuter run,
+ * regalloc.py and rtlguide (several HARD-CONFLICT):
+ *   - suffix lives in a2, target a3 (0x55e7c/0x55ea8): suffix (p100, prio 2000)
+ *     and color (p97, prio 36363) are NON-conflicting live ranges the allocator
+ *     assigned to a2/a3 in the opposite order from the target; both computed at
+ *     the same position, so no live-range lever exists.
+ *   - the sprintf archive-path address materialization (0x55ebc-0x55ee4) is the
+ *     scheduling/coalescing cascade of that a2/a3 swap plus a v0-vs-v1 index reg.
+ *   - FadeOutDirect(0x20,2,8,8,8): the shared constant 8 stays in a temp (v0) in
+ *     the target, coalesces into a2 for us (0x55df4-0x55e04).
+ *   - the `addu` operand order at 0x55dd8 (commutative, hard-conflict p98).
+ *   - the state-3 first GsSortSprite delay slot (0x56444-0x56460): the target
+ *     sinks `new_press = pad & (pad^prev)`'s final `and` into the jal delay slot.
+ *   - a v0-vs-v1 stack reload at 0x55fd0.
+ *   - setup_brightness must stay -0x80 (see below): a plain 0x80 CSEs with
+ *     full_brightness/shade and collapses the frame (98 -> 346); the lone
+ *     `li s0,-128` vs `li s0,128` at 0x55f64 is the unavoidable cost.
  */
 
 #ifndef NON_MATCHING
@@ -115,7 +141,7 @@ void start_demo_(void)
     RECT clear_rect;
     char archive_path[64];
     GsIMAGE image;
-    volatile u16 old_pad;
+    s16 old_pad;
     BackGround *background;
     u_long *gov_archive;
     u_long *tim;
@@ -132,7 +158,7 @@ void start_demo_(void)
     s32 title_brightness;
     s32 full_brightness;
     s32 setup_brightness;
-    s32 color;
+    u32 color;
     s32 increment;
     s32 i;
     s32 suffix;
@@ -185,7 +211,10 @@ void start_demo_(void)
     background = FUN_8004f4f8(tim);
     gov_archive = PathFileRead(resource_root,
                                GOV_ARCHIVE_PTRS[language_state[0x5e]]);
-    /* This value is only narrowed into u8 fields, where -0x80 is 0x80. */
+    /* +128 held distinct from full_brightness/shade; a plain 0x80 here would
+     * CSE with them and collapse the frame, so keep it as -0x80 (narrows to
+     * 0x80 in the u8 sprite fields). The lone li s0,-128 vs li s0,128 is the
+     * residual cost. */
     setup_brightness = -0x80;
 
     tim = get_tim_from_archive(gov_archive, 0);
