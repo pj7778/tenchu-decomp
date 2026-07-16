@@ -5,10 +5,11 @@
 /*
  * Post-mission score/high-score screen (0x80054B48, 0x121C bytes).
  *
- * STATUS: NON_MATCHING -- 525 of 4636 bytes differ (was 1266).  Exact target
- * length (1159 instructions), frame 0x1B8, 60/60 calls, 8/8 unconditional
- * jumps; the whole function is address-aligned except one +4/-4 skew pair
- * inside the row-number draw.  No retail-name record in PSX.SYM/demo export.
+ * STATUS: NON_MATCHING -- 498 of 4636 bytes differ (was 525; was 1266).  Exact
+ * target length (1159 instructions), frame 0x1B8, 60/60 calls, 8/8 unconditional
+ * jumps; the whole function is address-aligned except the LoadTIMAndFree arg
+ * copy (9 low) and one +4/-4 skew pair inside the row-number draw.  No
+ * retail-name record in PSX.SYM/demo export.
  *
  * Proven identities added this session (do not undo):
  * - insertedRank is a PLAIN s32 LOCAL, spilled by reload to sp+392: the
@@ -32,6 +33,15 @@
  * - numberSprite is TWO variables: a block-scoped init pointer and the
  *   loop-phase `numberSprite = &number` set before the main for(;;)
  *   (target re-materializes addiu s6,sp,24 in the preheader).
+ * - number-init block has NO do{}while(0) fence before number.mx=0/my=0
+ *   (the old "pivot reset boundary" fence was WRONG): removing it merges the
+ *   pivot reset into the rgb block and lets the LoadTIMAndFree(tim) arg copy
+ *   `move a0,s2` float up (target hoists it to the block top right after
+ *   InitSprite).  This closed the ~80B block-rotation to a 9-insn shift and
+ *   is the 525->498 win.  The a0=tim copy now stops just past the brightness
+ *   fence (line ~c1c); it cannot reach the target's bf8 without deleting the
+ *   brightness fence, and deleting THAT regresses (503) — so it is parked at
+ *   the 9-insn residual.
  * - DRAW2/DRAW5 (the two draws after colons) pass numberSprite (move s2,s6
  *   class); other draws pass &number (fresh addiu).  The colon x-store is
  *   the OBJECT form `number.x = x_` (sp-direct, pinned at block top).
@@ -51,13 +61,26 @@
  * - `signedValue = expr; value = signedValue;` for DRAW2/row (coalesces,
  *   one short) and pasting the expression twice (cse does NOT fold, grows).
  * - A separate rowNumber pointer for the row draw (spills rankSpriteBase).
+ * - Removing the i=0 entry fence (line ~320): regresses to 578.  Removing the
+ *   brightness copy fence (line ~334): regresses to 503.  Both fences needed.
+ * - Moving `ten = 10;`/`numberSprite = &number;` into the loop body: loop.c
+ *   hoists them to the SAME preheader slot (before the /10 magic); no change.
+ * - guided autorules on the 525 and 498 residuals: no genuine win (every
+ *   candidate regresses or is a LOCAL-SHAPE regression).  Do not rerun broad.
  *
- * Remaining classes (525 bytes): entry a0/128 scheduling; LoadTIMAndFree
- * arg-copy position; s5/s6 numberSprite-vs-magic swap; ten s7-vs-s8 and
- * rankSpriteBase s8-vs-s7 swap; preheader hoist order ([magic][10][sp+24]
- * in target — bottom-of-body placement for ten/numberSprite still untested);
- * DRAW2/row value/sv register roles; scan/shift addu operand orders;
- * row-loop transient +4 skew; various GsSortSprite a0/a2 arg schedules.
+ * INFEASIBLE (measured, do not retry):
+ * - ten s7->s8 / rankSpriteBase s8->s7 swap: NOT a steerable priority tie.
+ *   regalloc.py: ten=p95 priority 1443, rankSpriteBase=p807 priority 99 (15x
+ *   gap, both cross 33 calls).  ten wins s7 by huge margin; no minor lever
+ *   flips them.  This also owns every DRAW `w*ten` (mult v0,s7 vs s8).
+ *
+ * Remaining classes (498 bytes, all hard sub-C ties — owner=regalloc per
+ * rtlguide): entry a0/128 dbr delay-slot fill; LoadTIMAndFree arg copy 9 low
+ * (brightness-fence-blocked, above); s2->s3 drawnSprite/tim/sprite cascade
+ * (prio 79200, no hard-conflict but rotates the whole s-family); rank/char
+ * bank-address hoist (addiu v0,sp,K vs sp+i*36 then +K); DRAW2/row value/sv
+ * register roles; colon x=0x66 store deferral (li t1 vs li v0); scan/shift
+ * addu operand orders; row-loop transient +4 skew; GsSortSprite a2 schedules.
  *
  * The local aggregates reproduce the original stack layout: packed
  * ScoreResult copy at sp+50, sprite banks at sp+60/sp+118, one GsIMAGE
@@ -340,9 +363,10 @@ void mission_score_screen(void)
         initNumber->mx = initNumber->w >> 1;
         initNumber->my = initNumber->h >> 1;
     }
-    /* Preserve the scheduler boundary before the independent pivot reset. */
-    do {
-    } while (0);
+    /* NO do{}while(0) fence here: merging the pivot reset into the rgb block
+     * lets the LoadTIMAndFree(tim) arg copy `move a0,s2` float toward the top
+     * (target hoists it right after InitSprite).  Re-adding a fence pins the
+     * arg copy back down and regresses (see STATUS). */
     number.mx = 0;
     number.my = 0;
     LoadTIMAndFree(tim);
