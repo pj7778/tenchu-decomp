@@ -25,6 +25,10 @@ decisions behind the toolchain. It's the reference companion to the terse
   work**: the cc1 2.8.1 source idioms that byte-match (dispatch, loops, fold
   reassociation, stack buffers, regalloc steering), the `tools/matchdiff.py`
   iteration loop, and pointers to the worked examples.
+- [gte-policy.md](gte-policy.md) — the restricted GTE inline-asm policy
+  (adopted 2026-07-16): why COP2/GTE has no C spelling, the `src/main.exe/gte.h`
+  macro layer, the whitelist (`config/gte-allowlist.txt`), enforcement, and the
+  family matching order.
 - [matching-get-held-buttons.md](matching-get-held-buttons.md) — a worked
   case study of trying to byte-match a real function, and what makes it hard.
 - [modding-and-nonmatching.md](modding-and-nonmatching.md) — building

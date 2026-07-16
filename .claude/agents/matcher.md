@@ -107,6 +107,12 @@ Then:
    `./Build check` exits 0.
 
 Hard rules:
+- Inline `__asm__` is allowed ONLY via the shared `src/main.exe/gte.h` macro
+  layer, ONLY in functions listed in `config/gte-allowlist.txt`
+  (docs/gte-policy.md). Anywhere else it remains an automatic failure — do not
+  use it to force bytes. If your whitelisted target needs a missing GTE
+  operation, add the macro to `gte.h` mirroring PsyQ's INLINE_N.H naming
+  (GTE commands as `.word`) and report the addition.
 - Commit the final exact result or honestly documented NON_MATCHING checkpoint
   to YOUR isolated worker branch after all required checks pass. Report the
   commit hash to the orchestrator. NEVER push, merge, rebase, or commit in the

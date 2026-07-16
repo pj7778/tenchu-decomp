@@ -247,13 +247,13 @@ def docs_for(f):
                   "sll16/sra-split sign-extension — no natural-C form; see GetPad.c"))
     if f["gtecmd"]:
         d.append(("Toolchain gotchas",
-                  "GTE command opcodes — splat's generated gte_macros.inc makes "
-                  "the split assemble; a MATCH still needs the inline-asm policy, "
-                  "since no C construct emits a GTE opcode"))
+                  "GTE command opcodes — matchable via the restricted gte.h "
+                  "layer if whitelisted in config/gte-allowlist.txt "
+                  "(docs/gte-policy.md); commands are .word in gte.h"))
     elif f["cop2"]:
         d.append(("Toolchain gotchas",
-                  "COP2 data moves — assemble, but have no C spelling; blocked on "
-                  "the same inline-asm policy as GetPad/PClseek"))
+                  "COP2 data moves — assemble natively; matchable via the "
+                  "gte.h layer if whitelisted (docs/gte-policy.md)"))
     return d
 
 
@@ -296,9 +296,9 @@ def relevant_docs(name):
 def why(f, sim, twin):
     bits = [f"{len(f['mns'])} insns"]
     if f["gtecmd"]:
-        bits.append(f"{f['gtecmd']} GTE CMD — split OK, no C form (inline-asm policy)")
+        bits.append(f"{f['gtecmd']} GTE CMD — gte.h layer if whitelisted (gte-policy)")
     elif f["cop2"]:
-        bits.append(f"{f['cop2']} COP2 moves — no C form (inline-asm policy)")
+        bits.append(f"{f['cop2']} COP2 moves — gte.h layer if whitelisted (gte-policy)")
     if f["switch"]:
         bits.append("JUMP TABLE")
     if f["floats"]:

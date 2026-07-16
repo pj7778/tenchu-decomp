@@ -5693,7 +5693,8 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
     split into two `sra`s summing to 16, with **no** scale folded in.
     `triage.py`'s detector already requires the 3-insn form, so it will not
     false-positive here.
-- **PS1 GTE command opcodes: handled by splat, still blocked for matching.**
+- **PS1 GTE command opcodes: handled by splat; matching is now SANCTIONED via
+  the restricted `gte.h` layer (owner decision 2026-07-16 — docs/gte-policy.md).**
   Our `mipsel-...-as` (binutils 2.40, `-march=r3000`) is vanilla MIPS: the COP2
   *data moves* (`lwc2`/`swc2`/`mfc2`/`mtc2`/`cfc2`/`ctc2`) assemble, but the GTE
   *command* opcodes (`RTPS`/`RTPT`/`NCLIP`/`DPCS`/`DPCT`/`MVMVA`/…) are
@@ -5706,12 +5707,20 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
   If you ever need the encoding by hand, note splat's `/* addr vaddr WORD */`
   comment column is the raw little-endian file bytes in address order, NOT the
   instruction word — `RTPT` prints `3000284A` and is `.word 0x4A280030`.)
-  - **What is still blocked is MATCHING**: no C construct emits a GTE opcode, and
-    these functions also use a non-ABI calling convention (values live in
-    `$t2..$t5`/`$s0` at entry). That needs the register-pinned-locals / inline-asm
-    policy — the same open question as `GetPad`/`PClseek`. `triage.py` says
-    `GTE CMD — split OK, no C form (inline-asm policy)` and keeps them VERY-HARD.
-    `DrawTMD` is blocked the same way despite containing no GTE command opcode.
+  - **MATCHING them is now allowed, narrowly**: no C construct emits a GTE
+    opcode and the render handlers use a non-ABI entry convention (values live
+    in `$t2..$t5`/`$s0` at entry), so functions whitelisted in
+    `config/gte-allowlist.txt` use the shared macro layer `src/main.exe/gte.h`
+    (PsyQ INLINE_N.H-style names; COP2 data moves as native mnemonics, GTE
+    commands as `.word 0x4A......` — the `.c` pipeline's `as` input does not
+    include splat's `gte_macros.inc`) plus `register long x __asm__("$12");`
+    pinned locals for the non-ABI entries. Verified end-to-end by `SetDepthQ`
+    (byte-exact first build): cc1 passes `#APP` blocks through, maspsx ignores
+    the markers and leaves unknown COP2 mnemonics alone, `as` assembles the
+    data moves natively. `__asm__` outside `gte.h` remains an automatic
+    matchdiff blocker, and `test_matching_tools.py` pins the containment +
+    whitelist. `DrawTMD` is whitelisted despite containing no GTE opcode (its
+    handler dispatch needs pinned live registers).
     ArrangeLocalMatrix was previously listed here too, but that was a false
     inference from its dense use of `$t2..$t6`: those are ordinary internal
     loop temporaries, while both calls use ABI `$a0/$a1`. Its complete
@@ -5728,8 +5737,10 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
   Ghidra/objdump-printed `break code1, code2` form crashes it with `invalid
   literal for int() with base 0: '0,'`. Relevant only when hand-writing inline
   asm for a raw BIOS trap (PClseek's `break 0x107` host-lseek — a syscall with
-  no C representation, currently parked NON_MATCHING pending the inline-asm
-  policy question; see GetPad.c).
+  no C representation. The adopted GTE policy (docs/gte-policy.md) deliberately
+  EXCLUDES PClseek and the GetPad sign-extension trio: their originals were
+  plain C or a libsn assembly object, so an asm body would be unfaithful; they
+  stay parked NON_MATCHING; see GetPad.c).
 - **An UNDER-SIZED `functions.tsv` entry carves a truncated function that still
   builds GREEN — the failure is silent.** `reverse.py` takes the function's size
   from the Ghidra export. If Ghidra sized it short, splat carves only the first

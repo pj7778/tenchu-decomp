@@ -5401,5 +5401,63 @@ MASPSX_EXTRA = {{
         )
 
 
+class GtePolicyTests(unittest.TestCase):
+    """docs/gte-policy.md containment: gte.h is the only asm-bearing header,
+    and every .c that includes it is whitelisted.
+
+    .c files with literal __asm__ are already blocked from ever completing by
+    matchdiff's source_completion_blockers; the gap these tests close is asm
+    smuggled through a header (which that blocker cannot see) and gte.h use
+    spreading beyond the owner-approved whitelist. The three parked
+    investigation drafts (PClseek/GetPad/FUN_8001b174) legitimately contain
+    __asm__ inside their NON_MATCHING-guarded bodies and are exempt here
+    because they are .c files, not headers.
+    """
+
+    GTE_HEADER = os.path.join("src", "main.exe", "gte.h")
+
+    @staticmethod
+    def _strip_comments(text):
+        import re
+        text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+        return re.sub(r"//[^\n]*", "", text)
+
+    def test_gte_h_is_the_only_asm_bearing_header_under_src(self):
+        import re
+        root = os.path.dirname(TOOLS)
+        offenders = []
+        for directory, _, names in os.walk(os.path.join(root, "src")):
+            for name in names:
+                if not name.endswith(".h"):
+                    continue
+                path = os.path.join(directory, name)
+                rel = os.path.relpath(path, root)
+                if rel == self.GTE_HEADER:
+                    continue
+                with open(path, errors="replace") as stream:
+                    code = self._strip_comments(stream.read())
+                if re.search(r"\b__asm__\b", code):
+                    offenders.append(rel)
+        self.assertEqual(offenders, [])
+
+    def test_every_gte_h_includer_is_whitelisted(self):
+        import re
+        root = os.path.dirname(TOOLS)
+        allowlist_path = os.path.join(root, "config", "gte-allowlist.txt")
+        with open(allowlist_path) as stream:
+            allowed = {line.strip() for line in stream if line.strip()}
+        offenders = []
+        src = os.path.join(root, "src", "main.exe")
+        include = re.compile(r"^\s*#\s*include\s+\"gte\.h\"", re.M)
+        for name in sorted(os.listdir(src)):
+            if not name.endswith(".c"):
+                continue
+            with open(os.path.join(src, name), errors="replace") as stream:
+                code = self._strip_comments(stream.read())
+            if include.search(code) and name[:-2] not in allowed:
+                offenders.append(name)
+        self.assertEqual(offenders, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -29,6 +29,11 @@ DEMO_TSV = "reference/demo-psxexe.functions.tsv"
 # ---- evolving guidance: the load-bearing lessons every agent should get at
 # launch (deeper detail is in the cookbook, which the agent reads). Edit here. --
 GUIDANCE = [
+    "GTE/COP2 operations are matchable ONLY for functions whitelisted in "
+    "config/gte-allowlist.txt, via the shared src/main.exe/gte.h macro layer "
+    "(PsyQ INLINE_N.H names; GTE commands as .word) plus pinned-register "
+    "locals for non-ABI entries — see docs/gte-policy.md. __asm__ anywhere "
+    "else is an automatic matchdiff blocker; never use it to force bytes.",
     "If this function still has a FUN_ or hand-written descriptive name and "
     "the original demo name becomes genuinely converged, report/adopt it "
     "instead of leaving the custom label: first prove the demo name is unused "

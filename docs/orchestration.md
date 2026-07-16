@@ -640,12 +640,17 @@ against context prototypes), so a small m2c fix-up layer is where more zeros hid
 - **GTE splitting is DONE, upstream.** splat >= 0.4x generates
   `include/gte_macros.inc`, so `as` assembles the GTE command opcodes; all 25 GTE
   functions are carved and `./Build check` is byte-identical. (Our stopgap
-  `tools/gte2word.py` is deleted.) **What remains is the OWNER'S POLICY CALL**:
-  matching them needs register-pinned locals / inline asm, because no C construct
-  emits a GTE opcode and the region uses a non-ABI calling convention (values in
-  `$t2..$t5`/`$s0` at entry). The same decision unblocks `GetPad`/`GetPadXY`/
-  `FUN_8001b174` (the sign-extension trio), `DrawTMD`, and `PClseek`'s
-  `break 0x107`. Until it is made, those functions stay VERY-HARD/parked. m2c
+  `tools/gte2word.py` is deleted.) **The policy call is RESOLVED (2026-07-16):
+  the owner adopted the restricted `gte.h` inline-asm layer** — see
+  [gte-policy.md](gte-policy.md): PsyQ INLINE_N.H-style macros in
+  `src/main.exe/gte.h` (COP2 moves native, GTE commands as `.word`) plus
+  pinned-register locals, ONLY for functions whitelisted in
+  `config/gte-allowlist.txt`; containment + whitelist are unit-tested.
+  `SetDepthQ` matched byte-exactly as the pipeline spike. The
+  `GetPad`/`GetPadXY`/`FUN_8001b174` sign-extension trio and `PClseek` are
+  deliberately EXCLUDED (plain-C / libsn-assembly originals — an asm body
+  would be unfaithful; they stay parked). Family order: `drawF3` anchor →
+  15 `draw*` clones → the three twin pairs → `FUN_80057b80` → `DrawTMD`. m2c
   can already read the region (`--input-regs`). ArrangeLocalMatrix was an old
   false positive in this list: its `$t2..$t6` values are internal loop
   temporaries and its calls use the normal ABI; it now matches in pure C.
