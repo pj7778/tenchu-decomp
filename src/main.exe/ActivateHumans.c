@@ -73,30 +73,63 @@ extern s32 GetAreaMapLevel(u_long *area, s32 x, s32 y, s32 z, s32 mode);
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/ActivateHumans", ActivateHumans);
 #else
 /*
- * STATUS: NON_MATCHING — complete pure-C behavior with the target's exact
- * 0x68-byte frame, 0x30-byte working stack window, and 1,608-byte /
- * 402-instruction length.  Its physical CFG is also exact: 44 conditional
- * branches, 8 unconditional jumps, 4 calls, and 1 return.  The current draft
- * has 360 differing bytes, with 5 length-changing structural lines in 3
- * displayed blocks (24 raw aligned residual lines in 22 blocks).  Build it
- * with `NON_MATCHING=ActivateHumans ./Build`.
+ * STATUS: NON_MATCHING — 10 of 1608 bytes differ (was 360), at the exact
+ * 0x68-byte frame, 0x30-byte working stack window, 1,608-byte /
+ * 402-instruction length, and exact physical CFG (44 conditional branches,
+ * 8 unconditional jumps, 4 calls, 1 return).  Build with
+ * `NON_MATCHING=ActivateHumans ./Build`.
  *
- * Spelling the camera owner as `CamState.Owner` reproduces retail's shared
- * camera-status base and removes ten differing bytes from the opening block.
+ * SOLVED this session (do not undo):
+ * - The coupled StageChar base identity: retail derives $s3 from the $s5
+ *   high half (`lui s5,0x8009; addiu s3,s5,-6436`).  The working spelling is
+ *   `stage_char = (StageCharType *)((u8 *)stage_hi - 0x1924);` at the clamp
+ *   join, with `stage_hi = (StageCharType *)0x80090000;` (plus `i = 0;`)
+ *   duplicated into ALL THREE n-clamp arms.  The multi-def in separate
+ *   extended basic blocks fences cse1/cse2 constant-folding (a join-block
+ *   single def gets folded to `li 0x8008E6DC` = lui+ori, one insn long) and
+ *   blocks combine's cross-block const substitution; jump2's cross-jump then
+ *   merges the three identical `[move s1,zero; lui s5]` arm tails back to the
+ *   join and reorg's delay-slot steal/retarget reproduces the exact retail
+ *   clamp layout (beqz->0x8003b950 with move in the slot, j past the merged
+ *   move).  Single-def spellings CANNOT work: guard via stage_char[0] gets
+ *   cse1-canonicalized to 0(s3) (kills s5), direct StageChar[0].stage is NOT
+ *   loop-hoisted (conditional invariant), and stage_hi-derived-later forms
+ *   fold.  This removed the whole 90-word one-instruction-shift region
+ *   (360 -> 20 differing bytes in one step).
+ * - The nested do{}while(0) fence around `human == target` raises target's
+ *   weighted refs so it colors $s4 (guided autorules find, 20 -> 13).
+ * - The identical-arm fence `if (target) {arm} else {arm}` around the middle
+ *   n-clamp arm (both arms = the same `i = 0; stage_hi = ...;`) re-colors
+ *   stage_char to $s3: the pre-jump2 duplicate defs shift allocno priorities,
+ *   then cross-jump deletes the test entirely (decomp-permuter find, verified
+ *   byte-neutral in code layout; 13 -> 10 with the s8 join).  `human` also
+ *   works as the condition but is uninitialized there; `target` is clean.
  *
- * Remaining concentrated residuals:
- * - The path-local active/computed split recovers retail's $v1 flag and
- *   $v0->$v1 computed-result join.  Retail retains one further $v1->$v0 copy
- *   before the final flag test that cc1 coalesces away in this draft.
- * - One signed-short induction variable shared by the disjoint visible and
- *   StageChar scans reproduces retail's rotated table loop and caller-register
- *   roles.  The direct loop condition plus short increment removed the former
- *   large visible-scan residual without changing the physical CFG.
- * - Retail shares StageChar's `%hi` value in $s5 with the full base in $s3.
- *   The two explicit pure-C locals recover the exact six saved-register roles
- *   and frame, but cc1 still emits one separate base materialization.
- * - Making that shared induction variable genuinely s16 also recovers
- *   StageChar's retail add-one/sll/sra sequence exactly.
+ * Remaining 10 bytes, two independent residuals:
+ * - 7 bytes: a callee-saved 2-swap.  Retail colors activate_distance=$s2 and
+ *   stage_hi=$s5; ours swaps them (stage_hi=$s2, activate_distance=$s5).
+ *   stage_char=$s3, target=$s4, human=$s0, i=$s1 all match retail.
+ *   global.c priority = floor_log2(refs)*refs/live_length; measured refs/live
+ *   (regalloc.py): stage_hi 6/253, stage_char 5/246, target 5/308,
+ *   activate_distance 4/303, i 7/257.  activate_distance needs a score inside
+ *   (stage_hi, i) = (0.0474, 0.0545): at live 303 no integer refs value lands
+ *   there (7 -> 0.0462, 8 -> 0.0792), and stage_hi cannot drop below target
+ *   (0.0325) while the arms structure fixes it at >= 5 refs (>= 0.0395).
+ *   The loop-depth/fence lever is quantized past both windows; three full
+ *   guided-autorules budgets confirm no reachable candidate improves on 10.
+ * - 3 bytes: the join copy at 0x8003baec.  Retail `move v0,v1`; ours (s8
+ *   active) `sll v0,v1,0x18` (combine drops the sra under the zero-test).
+ *   u8 gives `andi v0,v1,0xff` (4 bytes).  Retail's SImode copy is not
+ *   C-reachable here by type: a QI/HI pseudo widening never simplifies to a
+ *   bare move (nonzero_bits punts on the paradoxical subreg), and every
+ *   same-block SI copy spelling (`final = active; if (final)`, copy-back into
+ *   computed_active, identical single-insn arms) is combine-folded back to a
+ *   direct test — all verified flat at 401 instructions.
+ * Tool budget spent: rtlguide, rtldump (cse/combine/loop dumps read),
+ * regalloc.py, 3 guided-autorules budgets (two applied wins), one bounded
+ * 420 s permuter run (its only exact-length winner, output-260-1, was the
+ * identical-arm fence transplanted above; the lower-proxy candidates were
+ * length-broken and rejected by the authoritative full-link rescore).
  */
 void ActivateHumans(void)
 {
@@ -106,7 +139,7 @@ void ActivateHumans(void)
     VECTOR camera;
     VECTOR query;
     VECTOR work;
-    s32 active;
+    s8 active;
     s32 initial_active;
     s32 computed_active;
     s32 distance;
@@ -143,16 +176,31 @@ void ActivateHumans(void)
         if ((s16)n < 3)
         {
             n = 3;
+            i = 0;
+            stage_hi = (StageCharType *)0x80090000;
+        }
+        else
+        {
+            if (target)
+            {
+                i = 0;
+                stage_hi = (StageCharType *)0x80090000;
+            }
+            else
+            {
+                i = 0;
+                stage_hi = (StageCharType *)0x80090000;
+            }
         }
     }
     else
     {
         n = 6;
+        i = 0;
+        stage_hi = (StageCharType *)0x80090000;
     }
 
-    i = 0;
-    stage_char = StageChar;
-    stage_hi = (StageCharType *)0x80090000;
+    stage_char = (StageCharType *)((u8 *)stage_hi - 0x1924);
     D_80097F44 = n;
     D_80097F42 = 0;
 human_loop:
@@ -161,10 +209,14 @@ human_loop:
         return;
     }
     human = HumanGroup[(s16)i];
-    if (human == target)
-    {
-        goto next_human;
-    }
+    do {
+      do {
+        if (human == target)
+        {
+            goto next_human;
+        }
+      } while (0);
+    } while (0);
 
     distance = GetVectorDistance(human->locate, &camera);
     if (distance >= 17001)
