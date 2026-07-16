@@ -283,15 +283,27 @@ void AddEnemy(void)
             {
                 j = 0;
                 human_type = HumanData[i].type;
+                /* goto-loop (a real do-while's notes would let loop.c hoist
+                 * the stage_slot arithmetic that retail recomputes each
+                 * iteration).  next_j is assigned AFTER the type test and
+                 * both exit arms update j, so jump1's common-code hoist
+                 * puts the single j=next_j move between the sentinel load
+                 * and the branch: next_j stays block-local, lreg hands it
+                 * v0 with the address temp in v1 (a next_j spanning the
+                 * type branch goes to greg and lands the pair swapped),
+                 * and dbr fills both delay slots as retail. */
 add_enemy_stage_scan:
                 stage_slot = stage + 1;
                 stage_kinds = ADD_ENEMY_STAGE_KINDS;
-                next_j = j + 1;
                 if (stage_kinds[j] == human_type)
                     goto add_enemy_stage_scan_done;
-                j = next_j;
+                next_j = j + 1;
                 if (stage_kinds[next_j] != -1)
+                {
+                    j = next_j;
                     goto add_enemy_stage_scan;
+                }
+                j = next_j;
 add_enemy_stage_scan_done:
 
                 if (stage_kinds[j] != -1)
@@ -301,13 +313,38 @@ add_enemy_stage_scan_done:
                     if (weapon_entry->wid != -1)
                     {
                         human_weapon_id = HumanData[i].wepid;
-                        /* The equal arms create a CFG join between the guard
-                         * and scan.  jump2 erases the branch, while the join
-                         * prevents CSE of retail's second wid load. */
-                        if (i != 0)
+                        /* Three interlocking pieces recover retail's cursor
+                         * init (`move v1,t0` after the wepid load, reload
+                         * kept):
+                         *  - jump1's diamond transform always hoists the
+                         *    ELSE copy above the branch; the empty loop-note
+                         *    barrier then stops sched1 from floating that
+                         *    copy above the wepid chain (floated, the
+                         *    cursor's range covers the chain temps and
+                         *    cursor/wepid rotate onto a0/a1 instead of
+                         *    retail's v1/a0);
+                         *  - the arms must LOOK unequal (weapon_entry vs
+                         *    weapon_base — the same value) or jump1 deletes
+                         *    the conditional copy as redundant, the join
+                         *    label dies, and cse folds the wid reload into
+                         *    a copy of the guard value;
+                         *  - the multi-pred join label makes cse drop its
+                         *    table, keeping retail's second wid load.
+                         * jump2 erases the branch and the arm copy once
+                         * regalloc has made them byte-identical.
+                         * The test must be `count` — an s32 already homed in
+                         * a callee-saved reg (plain bnez, no temp).  `i != 0`
+                         * would reuse the chain's (s16)i temp and extend v1's
+                         * hard liveness over the cursor/wepid births, which
+                         * is exactly the conflict that rotated them onto
+                         * a0/a1. */
+                        do
+                        {
+                        } while (0);
+                        if (count != 0)
                             weapon_scan = weapon_entry;
                         else
-                            weapon_scan = weapon_entry;
+                            weapon_scan = weapon_base;
                         weapon_id = weapon_scan->wid;
 add_enemy_weapon_scan:
                         if (weapon_id == human_weapon_id)
