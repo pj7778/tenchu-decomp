@@ -44,10 +44,9 @@
 /*
  * STATUS: NON_MATCHING — complete pure-C reconstruction at the exact target
  * extent (1152 bytes / 288 instructions) and exact 0x810 frame.  The guarded
- * draft has 183 differing bytes, fuzzy 87.50, with 44 raw-aligned residual
- * lines in 28 blocks (21 structural lines in 14 blocks).  The retail stack
- * plan is also exact: names at sp+0x18, ItemName at sp+0x590, output VECTOR at
- * sp+0x7c0, and the zeroed blood VECTOR at sp+0x7d0.
+ * draft has 161 differing bytes (down from 183).  The retail stack plan is
+ * exact: names at sp+0x18, ItemName at sp+0x590, output VECTOR at sp+0x7c0,
+ * and the zeroed blood VECTOR at sp+0x7d0.
  *
  * Explicit top-tested stage-kind, weapon, and think scans recover retail's
  * loop rotation.  StageAppearance and WeaponModel remain in t1/t0 and spill
@@ -56,12 +55,39 @@
  * i/s4 across both menu scans, names_offset/type in s7, and count/x in s5.
  * Narrow single-trip fences steer those live ranges but emit no instructions.
  *
- * The residual is now mostly local register choice and scheduling: early base
- * setup order, v0/v1 and a0/a1 scan temporaries, the ThinkDB high-half base,
- * swapped think-menu argument setup, the OR/sign-extension transient, and the
- * s16 BreedLife type conversion.  Attempts to remove the think cast, fold the
- * stage slot, narrow the weapon id, or eliminate the weapon CFG join either
- * changed the exact extent or broadened the residual and remain rejected.
+ * Closed this pass (-22 bytes): (1) the two ItemName cancel/type stores use
+ * the ARRAY_REF `ItemName[count]`, not the `item[count]` pointer deref, so the
+ * `addu` is base-first as retail's; (2) the whole think-scan guard is wrapped
+ * in one do{}while(0) that walls off a local-alloc copy propagation; (3) the
+ * think menu emits `menu_char` before `think_item`, landing them in $a2/$a1.
+ *
+ * Remaining residual is register/schedule ties, all investigated:
+ *  - Think representation (the OR transient, leSetEnemy `(s16)think` move, and
+ *    the BreedLife narrow) is config A: `think` narrowed at assignment.  Retail
+ *    is config B: `think` FULL, narrowed per-use, with an OR-temp `move s2,v0`
+ *    in the update.  Reaching B needs the names_offset/type split so combine's
+ *    num_sign_bit_copies elides BreedLife's narrow — but that split drops one
+ *    insn only the update copy-move restores, and that copy-move is an
+ *    un-forceable OR-temp coalescing tie (five spellings + a bounded permuter
+ *    run all coalesced).  A and B are the only length-valid think configs.
+ *  - Stage-scan `next_j` is a $v0/$v1 swap (greg hard-conflict).  next_j is
+ *    s16 (retail `sll 0x10`); declaring it s8 nets -2 via an allocation
+ *    coincidence but emits a wrong char-width `sll 0x18` — rejected.
+ *  - Weapon-scan CFG-join `weapon_scan` hard-conflicts with $v1; human_weapon_id
+ *    sits in $a1 vs retail $a0.  ThinkDB %hi wants a persistent callee-saved
+ *    $s8 (global conversion gets the shape but rotates the base to $s1, +8).
+ *    Preheader hoist order and the names_offset/format `%lo` are sched1 ties.
+ *
+ * BreedLife dependency (recorded, not acted on): the BreedLife-arg0 `move a0,s7`
+ * (no narrow) is NOT a BreedLife-signature issue — arg0 is `short` (PSX.SYM) and
+ * that is correct.  It is intrinsic to AddEnemy: retail's single-assignment
+ * (s16)-cast `type` local lets combine drop the narrow.  No cross-TU constraint
+ * on the BreedLife lane.
+ *
+ * Rejected (do not repeat): removing the think cast in isolation, folding the
+ * stage slot, narrowing the weapon id, eliminating the weapon CFG join, the
+ * s8-next_j allocation hack, and menu_base[count]->ItemName[count] (recomputes
+ * the base, +2).
  */
 
 #ifndef NON_MATCHING
@@ -329,10 +355,10 @@ add_enemy_weapon_scan_done:
     }
 
     item = ItemName;
-    item[count].choice_name = D_80097D50;
-    item[count].choice_number = -1;
+    ItemName[count].choice_name = D_80097D50;
+    ItemName[count].choice_number = -1;
     count++;
-    item[count].choice_name = 0;
+    ItemName[count].choice_name = 0;
     /* The selection reuses type's original s7 live range. */
     names_offset = (s16)AdtSelect(D_80013FA8, item, 0);
     if (names_offset == -1)
@@ -347,24 +373,33 @@ add_enemy_weapon_scan_done:
         count = 0;
         /* Reusing the first scan's i range restores retail's s4 assignment. */
         ADD_ENEMY_FENCE_16(i = count);
-        if (think_base[0].name != 0)
+        /* Wrapping the guard in a single do{}while(0) walls off a copy the
+         * local allocator would otherwise propagate through the think scan,
+         * restoring retail's register choices there (zero-code fence). */
+        do
         {
-            think_item = menu_base;
-            ADD_ENEMY_FENCE_6(menu_char = (s16)category + 0x31);
-add_enemy_think_scan:
-            if (count >= 70)
-                goto add_enemy_think_scan_done;
-            if (menu_char == think_base[i].name[0])
+            if (think_base[0].name != 0)
             {
-                think_item->choice_name = (char *)think_base[i].name;
-                think_item->choice_number = think_base[i].value;
-                think_item++;
-                count++;
+                /* Retail emits menu_char (the compared constant) before the
+                 * think_item cursor, which lands them in $a2/$a1 as the
+                 * target does. */
+                ADD_ENEMY_FENCE_6(menu_char = (s16)category + 0x31);
+                think_item = menu_base;
+add_enemy_think_scan:
+                if (count >= 70)
+                    goto add_enemy_think_scan_done;
+                if (menu_char == think_base[i].name[0])
+                {
+                    think_item->choice_name = (char *)think_base[i].name;
+                    think_item->choice_number = think_base[i].value;
+                    think_item++;
+                    count++;
+                }
+                i++;
+                if (think_base[i].name != 0)
+                    goto add_enemy_think_scan;
             }
-            i++;
-            if (think_base[i].name != 0)
-                goto add_enemy_think_scan;
-        }
+        } while (0);
 add_enemy_think_scan_done:
         ADD_ENEMY_FENCE_10(menu_base[count].choice_name = 0);
         ADD_ENEMY_FENCE_10(
