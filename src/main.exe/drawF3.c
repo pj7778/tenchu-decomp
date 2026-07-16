@@ -127,7 +127,7 @@ loop:
         if ((flag & mask) == (code = 0))
         {
             gte_nclip_raw();
-            gte_stsz3(r0, r1, r2);
+            gte_stsz3r(r0, r1, r2);
             ot_slot = (u_long *)((int)r0 + (int)r1);
             ot_slot = (u_long *)((int)ot_slot + (int)r2);
             half = (u_long)ot_slot >> 2;

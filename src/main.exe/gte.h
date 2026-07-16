@@ -48,6 +48,11 @@
 /* Store MAC0 (C2 data reg 24, e.g. the NCLIP winding result) to memory. */
 #define gte_stopz(mem) __asm__ volatile("swc2\t$24, 0(%0)" : : "r"(mem))
 
+/* Store SZ1/SZ2/SZ3 (C2 data regs 17/18/19) to three separate pointers. */
+#define gte_stsz3(r0, r1, r2)                                                  \
+    __asm__ volatile("swc2\t$17, 0(%0);swc2\t$18, 0(%1);swc2\t$19, 0(%2)"      \
+                     : : "r"(r0), "r"(r1), "r"(r2))
+
 /* Store SZ0/SZ1/SZ2/SZ3 (C2 data regs 16/17/18/19) to four separate pointers. */
 #define gte_stsz4(a, b, c, d)                                                  \
     __asm__ volatile("swc2\t$16, 0(%0);swc2\t$17, 0(%1);"                      \
@@ -57,8 +62,12 @@
 /* Read the FLAG control register (C2 control reg 31) into a CPU register. */
 #define gte_stflg(r) __asm__ volatile("cfc2\t%0, $31" : "=r"(r))
 
-/* Read SZ1/SZ2/SZ3 (C2 data regs 17/18/19) into CPU registers. */
-#define gte_stsz3(r0, r1, r2)                                                  \
+/* Read SZ1/SZ2/SZ3 (C2 data regs 17/18/19) into CPU REGISTERS.
+ * `gte_stsz3` proper is the memory-store form above (that is what INLINE_N.H's
+ * `st` prefix means, and FUN_80057b80's target proves it with `swc2 $17..$19`).
+ * This mfc2 sibling is a reconstruction helper for drawF3's OTZ average and is
+ * NOT a standard INLINE_N.H name — hence the distinct `r` suffix. */
+#define gte_stsz3r(r0, r1, r2)                                                 \
     __asm__ volatile("mfc2\t%0, $17;mfc2\t%1, $18;mfc2\t%2, $19"               \
                      : "=r"(r0), "=r"(r1), "=r"(r2))
 
