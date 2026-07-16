@@ -252,10 +252,7 @@ rope_done:;
         {
             return;
         }
-        do
-        {
-            human = Me_MOTION_C;
-        } while (0);
+        human = Me_MOTION_C;
         motID = 0x402;
         mmp->mask = -2;
         attrib = *(u16 *)&human->attrib;

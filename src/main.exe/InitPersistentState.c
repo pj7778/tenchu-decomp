@@ -54,8 +54,7 @@ s32 InitPersistentState(void)
     if ((pg->chr & 0xfe) != 0 || 10 < pg->stage) {
         memset((void *)0x80010000, 0, 0xe70);
         magic = 0x19981110;
-        do {
-        } while (0);
+        
         fill = 0xfe;
         i = 0x1f;
         stockp = (u8 *)(0x80010000 | i);

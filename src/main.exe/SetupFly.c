@@ -157,14 +157,8 @@ skip_default:
         len = len + 0xfff;
     }
     yh = len >> 12;
-    do
-    {
-        do
-        {
-            midx = (fly[0] + fly[3]) / 2;
+    midx = (fly[0] + fly[3]) / 2;
             v8 = yw << 1;
-        } while (0);
-    } while (0);
     if (0 < v8)
     {
         len = midx + (rand() % v8 - yw);

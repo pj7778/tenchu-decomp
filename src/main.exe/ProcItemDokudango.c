@@ -184,10 +184,7 @@ void ProcItemDokudango(tag_TItem *item)
                 {
                     if (i < Humans)
                     {
-                        do
-                        {
-                            candidate = *group;
-                        } while (0);
+                        candidate = *group;
                         if (candidate->life > 0 &&
                             candidate->motion->mid != 0x100 &&
                             (candidate->attribute & 0x80) == 0)
@@ -242,9 +239,7 @@ set_target:
             if (ownerlen < 500)
             {
                 PARAM_ITEM_USE drop;
-                do
-                {
-                    drop.type = item->type;
+                drop.type = item->type;
                     drop.user = item->owner;
                     drop.start.vx = item->locate->locate.coord.t[0];
                     drop.start.vy = item->locate->locate.coord.t[1];
@@ -252,7 +247,6 @@ set_target:
                     drop.end.vx = 0;
                     drop.end.vy = 0;
                     drop.end.vz = 0;
-                } while (0);
                 if (item->proc != 0)
                 {
                     item->mode = 0xff;

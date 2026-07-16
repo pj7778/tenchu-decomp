@@ -70,23 +70,19 @@ void FUN_80056910(SpriteGridType *g, u16 dir)
     g->sp.attribute = flags;
     g->sp.attribute = flags | (0 < signedDir ? 0x60000000 : 0x50000000);
     sp = &g->sp;
-    do {
-        shade = __builtin_abs((s32)signedDir);
+    shade = __builtin_abs((s32)signedDir);
         sp->b = (u8)shade;
         sp->g = (u8)shade;
         sp->r = (u8)shade;
-    } while (0);
     initial_h = sp->h;
     sp->y = -height;
     if (-height <= height + initial_h) {
         do {
             sp->x = -width;
-            do {
-                while (sp->x <= width) {
+            while (sp->x <= width) {
                     GsSortSprite(sp, OTablePt, 1);
                     sp->x = sp->x + sp->w;
                 }
-            } while (0);
             sp->y = sp->y + sp->h;
             h = sp->h;
         } while (sp->y <= height + h);

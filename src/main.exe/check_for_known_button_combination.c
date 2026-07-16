@@ -37,13 +37,7 @@ s16 check_for_known_button_combination(u16 buttons, s16 newly_pressed)
             i--;
         } while (i > 0);
         guard_entry = SPECIAL_BUTTON_COMBINATIONS_PTR[0];
-        do {
-            do {
-                do {
-                    RECENTLY_PRESSED_BUTTONS[0] = buttons;
-                } while (0);
-            } while (0);
-        } while (0);
+        RECENTLY_PRESSED_BUTTONS[0] = buttons;
         if (guard_entry != NULL) {
             outer_end = 0xffff;
             combination_index = 0;
@@ -61,8 +55,7 @@ s16 check_for_known_button_combination(u16 buttons, s16 newly_pressed)
                 pattern = pattern_start;
                 history = RECENTLY_PRESSED_BUTTONS;
                 do {
-                    do {
-                    } while (0);
+                    
                     if ((u16)*pattern != *history) {
                         offset = i << 1;
                         goto compare_end;

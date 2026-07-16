@@ -100,7 +100,7 @@ VECTOR *GetAreaMapPassage(unsigned long *area, VECTOR *pos, SVECTOR *vect, short
         initial = 100;
     }
     count = initial;
-    do { } while (0);
+    
     for (;;)
     {
         y[0] = GetAreaMapLevel(area, cv.vx, cv.vy, cv.vz, 0);

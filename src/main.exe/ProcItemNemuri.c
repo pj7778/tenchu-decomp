@@ -203,34 +203,16 @@ void ProcItemNemuri(tag_TItem *item)
         }
         if (bleed_n != 0)
         {
-            do
-            {
-                do
-                {
-                    do
-                    {
-                        env = 0x6e0000;
+            env = 0x6e0000;
                         env |= 0x6e6e;
-                    } while (0);
-                } while (0);
-            } while (0);
             item->locate->locate.coord.t[0] +=
                 ((param_napalm *)item->param)->vec.vx;
             bleed_range = 300;
         }
         else
         {
-            do
-            {
-                do
-                {
-                    do
-                    {
-                        env = 0x6e0000;
+            env = 0x6e0000;
                         env |= 0x6e6e;
-                    } while (0);
-                } while (0);
-            } while (0);
             item->locate->locate.coord.t[0] +=
                 ((param_napalm *)item->param)->vec.vx;
             bleed_range = 300;

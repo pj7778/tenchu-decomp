@@ -95,10 +95,7 @@ void FUN_800515b0(GsSPRITE *sprite, s32 time, s32 x, s32 y, s32 drawColon)
     sprite->x = x;
     value = time % 10;
     signedValue = (s16)value;
-    do
-    {
-        sprite->y = y;
-    } while (0);
+    sprite->y = y;
     if (signedValue < 0)
     {
         value = -signedValue;

@@ -248,12 +248,12 @@ void ProcItemNingyo(tag_TItem *item)
 
 dispose:
         do {
-            do { do { do {
+            do {
                 if (item->proc == 0)
                 {
                     return;
                 }
-            } while (0); } while (0); } while (0);
+            } while (0);
             item->mode = ff;
             item->proc(item);
         } while (0);
@@ -420,13 +420,10 @@ draw_mode0:
                     scratch.vectors.pos.vz = conflict->position.vz;
                     scratch.vectors.v = scratch.vectors.pos;
                     vx = -ConflictDistance.vx;
-                    do
-                    {
-                        if (vx < 0)
+                    if (vx < 0)
                         {
                             vx += 15;
                         }
-                    } while (0);
                     shifted_vx = vx >> 4;
                     vz = -ConflictDistance.vz;
                     if (vz < 0)

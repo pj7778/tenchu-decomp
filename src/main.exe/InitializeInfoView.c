@@ -128,10 +128,7 @@ loop1:
     {
         scale2 = 0x3000;
         attr2 = 0x1C;
-        do
-        {
-            base2 = ItemImage;
-        } while (0);
+        base2 = ItemImage;
         piVar3 = base2 + iVar4;
     loop2:
         pGVar1 = GetImage(0xF);

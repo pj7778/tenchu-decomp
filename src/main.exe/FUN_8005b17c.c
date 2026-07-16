@@ -101,17 +101,9 @@ s32 FUN_8005b17c(s32 page, s32 pad)
 
     y = 0;
     text = D_80097D40;
-    do
-    {
-        if (*text != 0)
+    if (*text != 0)
         {
-            do
-            {
-                do
-                {
-                    scan = text;
-                } while (0);
-            } while (0);
+            scan = text;
             do
             {
                 while (*scan++ != 0)
@@ -120,11 +112,7 @@ s32 FUN_8005b17c(s32 page, s32 pad)
                 y++;
             } while (*scan != 0);
         }
-    } while (0);
-    do
-    {
-        y = (y * -0x10) / 2;
-    } while (0);
+    y = (y * -0x10) / 2;
 
     n = 0;
     while (*text != 0)

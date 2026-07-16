@@ -147,8 +147,7 @@ short SetCommand(PADtype *pad, short cmd)
         one = 1;
         if (found) {
             args = entry + 1;
-            do {
-                n = 0;
+            n = 0;
                 while (args[n] != 0xFFFF) {
                     n++;
                 }
@@ -161,7 +160,6 @@ short SetCommand(PADtype *pad, short cmd)
                 }
                 pad->time = one;
                 return (s16)args[0];
-            } while (0);
         }
         i++;
     }

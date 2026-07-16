@@ -59,8 +59,7 @@ ScoreResult *calculate_score(ScoreStats *stats, s16 stage)
 
     hidden = stats->hidden_finds;
     spotted = 400;
-    do {
-    } while (0);
+    
     if (hidden != 0)
     {
         spotted = 300;
