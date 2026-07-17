@@ -44,7 +44,108 @@
 /*
  * STATUS: NON_MATCHING — complete pure-C reconstruction at the exact target
  * extent (1152 bytes / 288 instructions) and exact 0x810 frame.  The guarded
- * draft has 42 differing bytes (183 -> 161 -> 125 -> 81 -> 72 -> 52 -> 42).
+ * draft has 35 differing bytes (183 -> 161 -> 125 -> 81 -> 72 -> 52 -> 42 -> 35).
+ *
+ * ROUND 9 (-7): cluster (C) was TWO INDEPENDENT HALVES, not one.  The brief's
+ * "the $a0/$a1 swap at 0x830-0x85c is downstream of which name the cursor init
+ * reads" is FALSE and cost three rounds.  Byte-account before believing it:
+ *   - the $a0/$a1 swap (7 of C's 8 bytes) is a plain allocno_compare
+ *     inequality between think_item (p101) and the ThinkDB cursor (p276);
+ *   - only 0x81c's 1 remaining byte is the $s0/$s1 name question.
+ * MIPS defines NO REG_ALLOC_ORDER, so find_reg walks hard regs NUMERICALLY and
+ * the FIRST-allocated of two conflicting allocnos wins the lower register.
+ * p101 and p276 conflict with each other and NEITHER conflicts with hard reg 4
+ * or 5 (read `;; 101 conflicts:` / `;; 276 conflicts:` in .greg) — so both can
+ * hold $a0 and ORDER alone decides.  Target: cursor=$a0, think_item=$a1.
+ *
+ * ROUND 9's ROOT CAUSE — **a MEGA-FENCE**, the mega-pseudo mistake one level up
+ * and the direct analogue of the FENCE_10/_6 shared-macro problem round 8 fixed:
+ * the depth-19 fence sat on `think_item = item`, a statement whose DEST is
+ * think_item and whose SOURCE is item.  Round 6 tuned that ONE depth to give
+ * `item` 27 refs and never noticed it ALSO launched think_item to the TOP of
+ * the allocation order (34 refs -> 80952, above p276's 45000).  One site,
+ * two allocnos, incompatible requirements.  **A fence weights every allocno the
+ * statement MENTIONS, not just the one you are aiming at — check the source
+ * operands too, and read the whole `;; N regs to allocate:` order line, not
+ * just your target's priority.**
+ *
+ * ROUND 9's METHOD — an EXACT ref model, not a sweep.  flow.c adds loop_depth
+ * per REG mention, so every count is predictable.  With G = guard-fence depth,
+ * W = pre-loop block-wrap depth, d1 = `think_item = item` fence, F = `i = count`
+ * fence, C = `category = 0` fence (live lengths from .greg):
+ *     p276 (cursor)     = 3(2+G)            / 6
+ *     p101 (think_item) = 4(2+G) + (2+G+d1) / 21
+ *     p99  (item)       = 4(1+W) + 1 + (2+G+d1) / 71
+ *     p80  (count)      = 38 + 4W + 3G      / 177
+ *     p82  (i)          = 19 + F  + 3G      / 134
+ *     p90  (category)   = 13 + C  + G       / 54
+ *     p270 (ThinkDB lo_sum) = 1 + 2(2+G)    / 104
+ *     p81  (type)       = 4 + W             / 76
+ *     p265 (high ThinkDB)   = 4 + G         / 106
+ *     p89 (think) = 26/62 = 16774 and p100 (menu_base) = 25/51 = 19607 are fixed.
+ * priority = floor_log2(refs)*refs/live_length*10000 (global.c allocno_compare).
+ * Every one of these reproduces ALL SIX measured configurations exactly; they
+ * were FITTED to measurements, so re-fit rather than trust them if the source
+ * changes.  The constraints that must hold simultaneously:
+ *     p101 < p276                     (cursor takes $a0, think_item $a1)
+ *     p99 > p90 > p82 > p80           (item $s1, category $s3, i $s4, count $s5)
+ *     p90 < p89 (16774)               (think keeps $s2)
+ *     p270 > p81 > p265               (lo_sum $s6, type $s7, high(ThinkDB) $fp)
+ * A brute-force search over (G,W,d1,F,C) gives exactly 6 solutions, all G=2.
+ * Round 9 uses **G=2, W=2, d1=11** (F=16, C=6 unchanged from round 6).
+ *
+ * ROUND 9's TWO NEW REUSABLE FENCE RULES (both measured, both general):
+ *  - **BLOCK-WRAP.**  A fence is a sched1 barrier, so fencing ONE statement
+ *    inside a densely sched1-interleaved block SPLITS the region and RELOCATES
+ *    it.  Measured: a fence on `item = ItemName` alone pins it to the top of its
+ *    region (0x7a8 -> 0x798) and costs +19 bytes — and every one of the three
+ *    pre-loop sites that mention `item` does this, because sched interleaves all
+ *    four statements there.  Wrapping the WHOLE block in ONE fence is instead
+ *    region-NEUTRAL (one region in, one region out) and moves nothing: it buys
+ *    the weights for free.  That is what W does.
+ *  - **DEEPENING AN EXISTING FENCE IS FREE; ADDING A NEW ONE IS NOT.**  A deeper
+ *    fence at a site that already has one adds no new barrier — only weight.
+ *    That is why G (the guard fence, already present at depth 1) is the safe
+ *    dial and a brand-new fence anywhere in the pre-loop block is not.
+ *
+ * ROUND 9 CORRECTS THE BRIEF ON (C)'s CONTRADICTION — it is STRONGER, not
+ * weaker, than round 8 thought, and the round-9 lead is a dead end.
+ * `reg_in_basic_block_p` (loop.c:1066, READ IT) has a SECOND test that every
+ * previous round missed: after the `REGNO_FIRST_UID (regno) != INSN_UID (insn)`
+ * check it walks forward from the set and returns 0 at the first CODE_LABEL,
+ * BARRIER, or non-last-use JUMP_INSN — i.e. **the reg's LAST use must be in the
+ * SAME basic block as the set**.  So for a menu_base read at 0x81c BOTH
+ * directions are dead, not one:
+ *   - set AFTER 0x81c  -> REGNO_FIRST_UID fails (the read is the first mention);
+ *   - set BEFORE 0x81c -> the last use (the AdtSelect arg at 0x894) is past the
+ *     scan's CODE_LABELs, so the basic-block test fails.
+ * The brief's round-9 lead is REAL but INSUFFICIENT: `reg_scan` does run once at
+ * loop_optimize:392, before the `for (i = max_loop_num-1; i >= 0; i--)` at :438
+ * (verified in the pinned source), so REGNO_FIRST_UID is never refreshed between
+ * loops — but no post-reg_scan pass can author the 0x81c read anyway.  cse2 is
+ * the only candidate (it is what rewrites 0x7f8's hoist into `move s0,s1`) and
+ * it CANNOT: cse resets its table at every CODE_LABEL (`new_basic_block`), and
+ * 0x81c sits after loop 2's top label, in a different cse block from the
+ * preheader where reg100 == fp+1424 is known.  That is exactly why round 5's
+ * `think_item = ItemName` rematerialised `addiu a1,sp,1424` instead.
+ * **Do not spend another round on 0x81c's last byte via loop.c or cse2.**
+ *
+ * ROUND 9 ON (A), for the next round: (A) is a movable DISCOVERY-ORDER problem
+ * and the mechanism is now understood.  Target [SA][-1][HD][WM][giv] vs ours
+ * [SA][WM][-1][HD][giv].  Ours has BOTH `kind_base = StageAppearance` and
+ * `weapon_base = WeaponModel` as PRE-LOOP statements, so they are emitted in
+ * source order BEFORE the hoists (hoists use emit_insn_before(loop_start)).
+ * The target's WM lands AFTER the hoists, so the target's WM is a MOVABLE
+ * discovered at its first use — and loop 1's body would discover exactly
+ * SA -> -1 -> HD -> WM, the target's order.  **The blocker is OURS, not loop.c:**
+ * `weapon_base` is REASSIGNED by the `blood.call_spill[]` volatile hack, so
+ * n_times_set != 1 and loop.c can never make it a movable (loop.c:708 requires
+ * `n_times_set[REGNO (SET_DEST (set))] == 1`).  Retail's WeaponModel/
+ * StageAppearance spills at sp+0x7e0/0x7e4 are exactly where the ALLOCATOR's
+ * caller-save would put them, so retail almost certainly has no such hack.
+ * The round-10 experiment: delete the call_spill hack, let caller-save do it,
+ * and relocate `weapon_base = WeaponModel` into the loop body below the
+ * HumanData use.  Untried — it is a real restructure, not a dial.
  *
  * ROUND 6 (-10): loop 2's preheader ORDER, carrier, base and type are now ALL
  * EXACT.  Three things had to be true at once; each alone measured worse:
@@ -217,7 +318,11 @@
  * source.  Round 6's cluster table summed to 48, not 42, and its per-cluster
  * counts were each wrong; it also claimed "0x81c is now exact" when 0x81c is
  * in the diff.  Byte-account with matchdiff before trusting any of this.
- * The REAL residual (verified: 14+6+8+2+12 = 42, so this is the whole of it):
+ * The residual AS OF ROUND 9 (re-byte-accounted per instruction after the -7:
+ * 14+6+1+2+12 = 35, so this is the whole of it).  (C) was 8 and is now 1:
+ * 0x830/0x834/0x84c/0x850/0x858/0x85c are GONE and 0x81c is down to one byte.
+ * The round-7 text below is kept for its (A)/(B)/(D)/(E) diagnoses; its (C)
+ * entry and its "8 bytes" are superseded by the ROUND 9 block at the top.
  *   (A) 14 bytes, 0x5d4-0x5e0 (4 insns): loop-1 preheader ORDER.  Target
  *       [SA][-1][HD][WM][giv]; ours [SA][WM][-1][HD][giv].  Only the
  *       WeaponModel base pair is out of place.  Registers IDENTICAL.
@@ -826,16 +931,23 @@ add_enemy_weapon_scan_done:
 #undef ADD_ENEMY_STAGE_KINDS
     }
 
-    item = ItemName;
-    ItemName[count].choice_name = D_80097D50;
-    ItemName[count].choice_number = -1;
-    count++;
-    ItemName[count].choice_name = 0;
-    /* `type` is its OWN single-assignment local, not a reuse of the names
-     * cursor's range: one sign-extended reaching def lets combine's
-     * num_sign_bit_copies elide BreedLife's arg0 narrow.  The allocator still
-     * lands it in retail's s7 because the two ranges are disjoint. */
-    type = (s16)AdtSelect(D_80013FA8, item, 0);
+    /* fence depth 2 (BLOCK-WRAP).  This wraps the WHOLE pre-loop region in
+     * ONE fence rather than any single statement.  sched1 therefore still
+     * sees exactly ONE region here and nothing moves; fencing any single
+     * statement in this block splits the region and relocates it (measured:
+     * `item = ItemName` alone moves 0x7a8 -> 0x798, +19 bytes). */
+    do { do {
+        item = ItemName;
+        ItemName[count].choice_name = D_80097D50;
+        ItemName[count].choice_number = -1;
+        count++;
+        ItemName[count].choice_name = 0;
+        /* `type` is its OWN single-assignment local, not a reuse of the names
+         * cursor's range: one sign-extended reaching def lets combine's
+         * num_sign_bit_copies elide BreedLife's arg0 narrow.  The allocator still
+         * lands it in retail's s7 because the two ranges are disjoint. */
+        type = (s16)AdtSelect(D_80013FA8, item, 0);
+    } while (0); } while (0);
     if (type == -1)
         return;
 
@@ -863,6 +975,7 @@ add_enemy_weapon_scan_done:
         /* Wrapping the guard in a single do{}while(0) walls off a copy the
          * local allocator would otherwise propagate through the think scan,
          * restoring retail's register choices there (zero-code fence). */
+        do {
         do
         {
             if (ThinkDB[0].name != 0)
@@ -876,16 +989,14 @@ add_enemy_weapon_scan_done:
                     menu_char = (s16)category + 0x31;
                 } while (0); } while (0); } while (0); } while (0); } while (0); 
                 } while (0);
-                /* fence depth 19 */
-                do { do { do { do { do { 
-                do { do { do { do { do { 
-                do { do { do { do { do { 
-                do { do { do { do { 
+                /* fence depth 11 */
+                do { do { do { do { do {
+                do { do { do { do { do {
+                do {
                     think_item = item;
-                } while (0); } while (0); } while (0); } while (0); } while (0); 
-                } while (0); } while (0); } while (0); } while (0); } while (0); 
-                } while (0); } while (0); } while (0); } while (0); } while (0); 
-                } while (0); } while (0); } while (0); } while (0);
+                } while (0); } while (0); } while (0); } while (0); } while (0);
+                } while (0); } while (0); } while (0); } while (0); } while (0);
+                } while (0);
 add_enemy_think_scan:
                 if (count >= 70)
                     goto add_enemy_think_scan_done;
@@ -900,6 +1011,7 @@ add_enemy_think_scan:
                 if (ThinkDB[i].name != 0)
                     goto add_enemy_think_scan;
             }
+        } while (0);
         } while (0);
 add_enemy_think_scan_done:
         menu_base = ItemName;

@@ -540,6 +540,21 @@ function already byte-matches on current `master`.
   AddEnemy lane lost real time to a self-diagnosed "build-dep gap" that turned
   out to be Shake being correct. Check the dispositions or the `.o` timestamp,
   not the byte count alone.
+- **Briefs on the hard functions are now 6-for-6 REFUTED, and that is the process
+  working — but stop asserting a cause.** AddEnemy round 9 is the sharpest case:
+  the brief said "the $a0/$a1 swap is downstream of that one choice", and cluster C
+  was in fact two INDEPENDENT halves (7 bytes and 1 byte). Three rounds went into
+  the 1-byte half on the strength of that sentence. A brief must hand over
+  EVIDENCE and OPEN QUESTIONS, never a conclusion — and must say which parts are
+  measured vs. inferred, because lanes reasonably trust the framing more than the
+  numbers.
+- **Suspect our own scaffolding before the compiler.** AddEnemy's biggest remaining
+  cluster is blocked by a `volatile` spill hack THIS PROJECT added: it reassigns
+  `weapon_base`, so `n_times_set != 1` and loop.c can never make it a movable.
+  Retail's spill slots sit exactly where the allocator's own caller-save would put
+  them, which suggests retail has no such hack. Fences, volatile hacks and call
+  aliases are reconstruction DEBT; when a pass "refuses" to do something, check
+  whether our own scaffolding is what forbids it.
 - **A tool that can silently measure the STUB is the worst bug class in this repo.**
   Three instances now: `reghist` built the stub and reported "every register matches
   exactly" (a vacuous truth that tells an agent no lever remains); `matchdiff -n`

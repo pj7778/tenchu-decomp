@@ -5902,6 +5902,12 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
 - **Whether loop.c hoists a set: read the THREE disjuncts, they are independent.**
   loop.c:691-703 moves a set if (1) it is used only in the set's own basic block
   (`reg_in_basic_block_p`), OR (2) `!REG_USERVAR_P(SET_DEST(set)) &&
+
+**Correction (AddEnemy round 9):** `reg_in_basic_block_p` (loop.c:1066) has a
+SECOND test that several rounds missed — the reg's LAST USE must also be in the
+set's basic block, not just the set. Any contradiction derived from this rule is
+therefore STRONGER than it first appears (AddEnemy's cluster C is dead in both
+directions, not one).
   !REG_LOOP_TEST_P(...)`, OR (3) the set is guaranteed executed once the loop
   starts. Two useful consequences, and they pull in opposite directions:
   - A named base under a conditional and used in ANOTHER block fails all three,
@@ -6331,6 +6337,38 @@ where it is equally valid and finds scaffolding years earlier.
   its three "weighting fences" measured inert once the decomposition was right.
   `tools/reghist.py` now prints an OPCODES DIFFER banner before any register
   verdict; heed it, and byte-account by instruction ENCODING, not register delta.
+### A fence weights EVERY allocno the statement mentions — not just your target
+
+**This cost AddEnemy three rounds and 7 bytes.** A depth-19 fence on
+`think_item = item` was tuned in round 6 to give the SOURCE (`item`) 27 refs. It
+also gave the DEST (`think_item`) 34 refs -> priority 80952, launching it to the
+TOP of the allocation order (above the cursor's 45000) and handing it `$a0`. One
+site, two allocnos, incompatible requirements — and nobody looked at the dest for
+three rounds. Fixed with G=2, W=2, d1=11.
+
+**Check the source operands, and read the WHOLE `;; N regs to allocate:` order
+line in `.greg`, not just your target's priority.** A fence is a blunt instrument:
+every allocno the statement mentions gets the weight.
+
+### BLOCK-WRAP: fence the whole block, not one statement inside it
+
+A fence is a sched1 barrier, so fencing ONE statement inside a densely
+sched1-interleaved block **splits the region and relocates it**. Measured on
+AddEnemy: fencing `item = ItemName` alone moved the block 0x7a8 -> 0x798 and cost
+**+19 bytes** — and all three candidate sites did the same. **Wrapping the WHOLE
+block in ONE fence is region-neutral and buys the weights for free.**
+
+Corollary: **deepening an EXISTING fence is free; adding a NEW one is not.** A
+deeper fence at a site that already has one adds no new barrier, only weight. So
+prefer to deepen what is already there.
+
+### MIPS defines no REG_ALLOC_ORDER: of two conflicting allocnos, first-allocated wins the LOWER register
+
+`find_reg` walks the hard registers numerically. So before treating a caller-saved
+swap (`$a0` vs `$a1`) as a preference or priority question, **check
+`;; N conflicts:` for hard regs 4/5**: if neither allocno conflicts with them, the
+outcome is pure `allocno_compare` ORDER, and the lever is priority, not preference.
+
 ### Two measured facts about the weighting fence
 
 * **Its NOTES do not count toward `reg_live_length`.** Measured on ControlHumanoid:
