@@ -394,6 +394,27 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   fallthrough can never fill an inline `if (c) return 0;` guard's slot (it is
   already a SEQUENCE) — what leads the SKIP LABEL decides (StickonCheck's header
   carries the four-guard control experiment).
+- **`fill_simple_delay_slots`' backward scan (reorg.c:3064-3110) rejects only
+  insns touching the BRANCH'S OWN OPERANDS, and takes the first survivor.** So
+  if exactly ONE independent instruction is reachable in that block, it is stolen
+  **wherever you put it textually** — moving it is not a lever, and a
+  `do{}while(0)` fence does not help because NOTEs return 0 from `stop_search_p`
+  (the scan walks straight through). ActITEM proved this across 9 source-shape
+  variants (4 statement positions, a fence, an if/else duplication, a De Morgan
+  merge): every alternative regressed or mismatched length. **If your draft fills
+  a slot the target leaves as a bare `nop`, count the independent candidates in
+  the block before trying to reposition anything** — `reghist` shows this as a
+  `+1 move / −1 nop` structural signature, not a register tie.
+- **A value-redundant reassignment hoisted out of a conditional forces two
+  coalescing pseudos apart — and then becomes reorg's favourite delay-slot bait.**
+  gcc 2.8.1 has NO coalescing pass; `global_conflicts` computes conflicts from
+  real simultaneous liveness, not source spelling. So if the target keeps in two
+  registers what your draft coalesces onto one, and the variables don't naturally
+  overlap, writing an otherwise-redundant `x = 0;` *outside* the conditional at a
+  point where the other pseudo is still live creates a genuine conflict and
+  separates them (ActITEM: 26 → 10 bytes). The caveat is the rule above — that
+  newly freestanding insn may now be the only independent candidate near a branch,
+  and will be stolen into its slot.
 - **`mostly_true_jump` scans BACKWARD from the branch target over NOTES ONLY**;
   `NOTE_INSN_LOOP_BEG` → returns 2 (mostly-taken) → reorg raids the TARGET
   thread first (+1 COPY of the merge block's leader, label redirected); predicted

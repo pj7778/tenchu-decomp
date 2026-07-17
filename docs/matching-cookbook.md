@@ -1449,6 +1449,18 @@ re-check cheaply before honoring them:
   one bounded permuter pass before any RTL archaeology on a same-length
   residual; the ladder's autorules → permuter → RTL order stands even when a
   checkpoint's confident prose primes you to distrust re-running.
+- **A permuter WIN can move a shared statement into ONE arm — that is a silent
+  BEHAVIOUR CHANGE, not a valid duplication.** ActITEM's candidate relocated
+  `motMODE = 1;` into only the `else` arm, skipping it on the true path. The
+  honest form that also matched retail was DUPLICATING it into BOTH arms —
+  `if(c){A;shared;} else {B;shared;}` is semantically identical to
+  `if(c)A; else B; shared;` and can compile differently, because the target
+  computes the shared value independently per arm (once via the if-arm's own
+  delay slot). **When a shared post-if/else statement does not match, try
+  duplicating into both arms before relocating into one** — and reject any
+  candidate that only moves it. (Clean autorules candidate: for a statement
+  immediately following a two-armed if/else with no intervening use, try
+  shared-into-both-arms and keep if the diff shrinks.)
 - **A permuter WIN can be a STRUCTURAL regression — read the BRANCH DISPLACEMENTS
   in the new diff, not just the byte count.** AddEnemy's fresh run beat its base
   26 vs 27 (killing a "PERMUTER-IMMUNE" claim), and the win was a trap: the whole

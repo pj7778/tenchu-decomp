@@ -364,6 +364,15 @@ def main():
 
     addr, size = func(name)
     split = is_jump_table(addr, size)
+
+    # PRINT THE EXISTING PARK STATUS. triage.parked() already returns the file's own
+    # STATUS line, and the brief-writer threw it away: I hand-wrote "ActITEM has no C
+    # at all yet -- you are drafting it from scratch" for a function that had carried
+    # a full NON_MATCHING draft at 26/572 for two days. The lane caught it from the
+    # file and ignored my brief, which is the only reason the round was not wasted.
+    # "Does a draft already exist, and what does its header claim?" is a lookup, not
+    # something a brief-writer should reconstruct by eye.
+    status = reason if reason and "handwritten-asm CANONICAL" not in reason else None
     near = nearest_matched(name)
     fam, header, famnote = family(name)
 
@@ -393,6 +402,17 @@ def main():
     P = []
     P.append(f"You are a matcher agent for the Tenchu PS1 decomp. Your ONE "
              f"function: **{name}** @ {addr:#010x} ({size} bytes).")
+    if status:
+        P.append(f"\n**THIS FUNCTION IS ALREADY PARKED — a draft exists. Read "
+                 f"src/main.exe/{name}.c BEFORE anything else, and pick up from its "
+                 f"banked checkpoint; do NOT re-derive it.** Its own STATUS line says:\n"
+                 f"    {status}\n"
+                 f"Treat that as a HYPOTHESIS, not a fact — park prose has been wrong "
+                 f"in every direction here (a 'failed attempt' that was a sibling's "
+                 f"winning technique; a negative measured with another variable pinned; "
+                 f"a permuter-immune claim whose search had crashed). But it is the "
+                 f"starting state, and any task text that contradicts it is stale: "
+                 f"trust the FILE over the brief.")
     if near:
         P.append(f"Nearest matched (worked examples to imitate): {examples}.")
     if fam:

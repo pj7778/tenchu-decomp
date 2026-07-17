@@ -29,12 +29,41 @@
 /*
  * ActITEM (0x80026074) — trigger motion-timed item use and return to idle.
  *
- * STATUS: NON_MATCHING — full guarded semantic reconstruction. The draft has
- * the exact 572-byte extent with only 26 differing bytes and fuzzy 90.21 (up
- * from the comments-only scaffold's 21.68); all three calls and physical CFG
- * counts match. The residual is a flag/count register-allocation tie plus a
- * two-instruction tail scheduling swap. Build with `NON_MATCHING=ActITEM
- * ./Build`. On a full match, delete the guards and the _jtbl array.
+ * STATUS: NON_MATCHING — 2 of 572 bytes differ (down from an earlier
+ * checkpoint's 26; all three calls and physical CFG counts match). Build
+ * with `NON_MATCHING=ActITEM ./Build`. On a full match, delete the guards
+ * and the _jtbl array.
+ *
+ * The residual is ONE instruction at target 0x80026134: target leaves the
+ * `beq item_type,4,<merge>` guard's delay slot as a bare `nop`; our draft
+ * fills it with `move $a1,$0` (the `flag = 0;` below, hoisted into the
+ * slot by reorg). Root-caused by reading gcc-2.8.1's own reorg.c
+ * (fill_simple_delay_slots' backward scan, reorg.c:3064-3110): the scan
+ * walks back from the branch past every insn that touches its operands
+ * (v0/v1) and takes the first one that doesn't — `flag = 0;` is the only
+ * such insn reachable in this block, so it is ALWAYS stolen, wherever it
+ * is placed. Confirmed empirically across 9 source shapes (declaration
+ * order, 4 different statement positions for `flag = 0;` including
+ * inside only one arm of the StagePlayer check, a `do{}while(0)` fence —
+ * regressed the allocation via ref-weighting, an explicit if/else
+ * duplicating `flag = 1` — reintroduced eager delay-slot duplication
+ * instead, and a De Morgan `&&` merge — cc1 folds it into a range check
+ * cc1 never uses): every alternative either regressed or produced a
+ * length mismatch; this is the best of the family. Two bounded permuter
+ * runs (tools/permute.py, stop-on-zero) and three autorules sweeps found
+ * nothing better; the second permuter run's own authoritative rescore
+ * confirmed this exact source as the best of everything it tried.
+ *
+ * The other half of this fix: `flag`/`mode`/`count` (case 2) now land in
+ * $a1/$a0/$a2 exactly like the target (previously coalesced $a1 into
+ * $a0.) `flag = 0;` right after `item_type = mode;` is not a dead
+ * statement — cc1 schedules it to execute while `mode`'s pseudo is still
+ * live (immediately after the StagePlayer merge, per
+ * `tools/rtldump.py ActITEM --trace <uid>` across all 15 passes), which
+ * is what forces `flag` and `mode` into separate hard registers; deleting
+ * it collapses them back onto one register (regresses to 26 bytes). See
+ * docs/matching-cookbook.md, "TWO REGISTERS FOR ONE VALUE MEANS THE
+ * ORIGINAL HAD TWO VARIABLES" and "gcc-2.8.1 has NO coalescing pass".
  */
 
 #ifndef NON_MATCHING
@@ -104,9 +133,9 @@ void ActITEM(void)
         if (Me_MOTION_C == StagePlayer)
             mode = SelectedItem;
         item_type = mode;
+        flag = 0;
         if (item_type != ITEM_FIRE)
         {
-            flag = 0;
             if (item_type != ITEM_SMOKE)
                 break;
         }
@@ -147,10 +176,15 @@ void ActITEM(void)
         if (Me_MOTION_C == StagePlayer)
             SetCameraMode(CMODE_NORMAL);
         if (Me_MOTION_C->attribute & 0x40)
+        {
             motID = 0x501;
+            motMODE = 1;
+        }
         else
+        {
             motID = 0;
-        motMODE = 1;
+            motMODE = 1;
+        }
     }
 }
 
