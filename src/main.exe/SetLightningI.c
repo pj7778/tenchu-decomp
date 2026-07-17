@@ -57,70 +57,74 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — 65 of 1384 linked bytes differ.  The candidate has
- * the target's 0x98-byte frame, 334 instructions, and exact control-flow
- * counts (24 conditional branches, 3 unconditional jumps, 16 calls, and one
- * return).
+ * STATUS: NON_MATCHING — 15 of 1384 bytes differ. HUMAN-STRUCTURE REWRITE
+ * (EFFECT.C:1500, same author/idiom as SetWire's adopted EFFECT.C:1428
+ * rewrite), replacing the previous byte-chased 65 checkpoint per owner call.
+ * Exact length, exact CFG, exact frame; the residual is 12 instructions of
+ * pure same-position register renames in ONE cluster (the entry ViewInfo
+ * block, 0x37938..0x37978).
  *
- * This checkpoint cuts the previous 124-byte residual with pure-C allocation
- * and scheduling levers.  Single-use aliases recover the initial
- * RotTransPers argument identities, while erased identical arms and one-shot
- * loops weight the shared ViewInfo base and its projection values.  Grouping
- * the four line-coordinate stores around `raw_priority` in target source
- * order makes the complete depth/clamp/GsSortLine tail exact.  The remaining
- * differences are localized to the initial ViewInfo address/result register
- * cycle, placement of the 0x66666667 literal, and the final ViewInfo
- * scratchpad-store schedule; the function extent, frame, CFG, and calls remain
- * exact without volatile accesses, inline assembly, or output branches.
+ * THE JOURNEY (each step measured): plain human transcription 118 ->
+ * declaration order fixed 113 -> compound in-place entry subtractions
+ * (x -= vpx; store x;) 89 -> loop vpz via pointer-assignment 53 ->
+ * identical-arm fence on end 29 -> vpz-into-dead-x carrier 23 -> vpy via
+ * pointer statement 15. Permuter round 7 (300s, 21.8k iters) retained
+ * NOTHING better; autorules 76 candidates flat; rescoring each compensator
+ * alone-removed at the end state: fence +32, vpzp +44, carrier +14,
+ * vpyp +8(ish) — all four load-bearing, none redundant.
  *
- * 2026-07-17 evidence-complete pass (parked, no byte movement): reghist showed
- * delta sum 0 (v0 +4, t1 -2, t2 -2) with no OPCODES-DIFFER banner -- pure
- * allocation/scheduling, confirmed structure-correct.  tools/autorules.py (103
- * candidates) and tools/autorules.py --guided (160 candidates, rtlguide-keyed
- * to lines 165,169,190,191,233-235,259,260) both found zero improving edits.
- * A bounded permuter run (timeout 240 + 90s authoritative rescore) found
- * nothing better than base: best candidate output-1150-1 scored 77 (worse).
- * tools/rtlguide.py names the owner as `regalloc` (3 of 4 clusters) and prints
- * an explicit HARD-CONFLICT: pseudo p106 (`initial_view`) is INSEPARABLE-
- * packed into hard register $v1 alongside NINE unrelated pseudos
- * (p154/p159/p172/p180/p188/p196/p208/p220/p261 -- the `raw_priority`-family
- * values inside the hot loop, priority 26666-60000 from loop-depth-weighted
- * ref counts) per tools/regalloc.py --order's self-validated allocation
- * order.  gcc-2.8.1 has no coalescing pass, so any pseudo whose live range
- * does not CONFLICT with the top-priority in-loop claimant falls into $v1 for
- * free, regardless of where in the function it lives -- this ties the
- * cluster-0/1 register identity (initial_view, used once before the loop) to
- * unrelated code hundreds of instructions later, a genuine whole-function
- * register-pressure interaction rather than a local spelling choice.  Two
- * hypothesis-driven edits derived from this analysis were tested and reverted
- * as regressions: naming `vpy`/`vpz` temps at the loop-body ViewInfo access
- * let CSE unify the two independently-scheduled `high(ViewInfo)` computations
- * (target keeps them as two separate `lui`s into v0 and t6) and dropped one
- * instruction (65 -> LENGTH MISMATCH, 1380 vs 1384); rewriting the y/z
- * subtractions as in-place `initial_y -= ...` compound assignments (to match
- * target's `subu t1,t1,v0` self-reuse) reached the right SHAPE for that one
- * hunk but reassigned an unrelated load's register (`lw t2,8(s6)` -> `lw
- * t0,8(s6)`) and regressed net (65 -> 68).  Swapping the y/z statement order
- * regressed to 71; reordering `i = 1;`/`lcount = distance / 200;` was a
- * confirmed no-op (tools/nullcheck.py).  Cluster 2 (the 0x66666667 magic
- * constant vs. svp/scrp address setup, a pure MULTISET-EQUAL reorder) traces
- * to the same class of priority-driven scheduling choice via
- * tools/cc1says.py/sched-deps.py but has no tested fix.
+ * WHAT THE HUMAN STRUCTURE PROVED (all byte-verified this round):
+ *   - The in-loop svp/scrp assignment positions ARE the preheader order:
+ *     loop.c emits hoists in loop-body SCAN order, so the original assigned
+ *     &sv inside the if(rand&2) arm and scrp right before its use — that is
+ *     the only way to get [0x66666667 magic][&sv+spill][&scr->fp], which the
+ *     old draft's source-preheader assignments could never produce (hoists
+ *     land AFTER source preheader insns).
+ *   - Entry projection: the three lws batch (source temps, PSX.SYM's
+ *     long x,y,z block) and ALL THREE subtractions are in-place (compound
+ *     x -= ...), matching subu rX,rX,rY; the old draft's rvalue spelling
+ *     needed fresh-temp subus, provably 8+ bytes away.
+ *   - The old park's "compound = regression to 68/115" negatives were
+ *     measured inside the fence-propped context and are VOID here.
+ *   - lr/lg/lb narrow copies + next_gen at the top reproduce the prologue
+ *     exactly (spill homes 0x48/0x50/0x58/0x60 = PSX.SYM's demo homes).
+ *   - PSX.SYM's v1/v2 (distance block, s6/s7 = start/end's own regs) are
+ *     copy-propagated by cse before flow counts refs: byte-neutral,
+ *     kept as authentic text. GetVectorDistance's matched body transcribes
+ *     otherwise verbatim (with dx/dy/dz per the reversed-listing rule).
  *
- * Sibling relationship: SetWire.c (similarity 0.30, also NON_MATCHING) writes
- * the analogous x/y/z-minus-ViewInfo scratchpad-store idiom in its OWN
- * clean/no-pointer-variable style (direct `ViewInfo.vpx/vpy/vpz`, no
- * `initial_view`-equivalent) and STILL carries the identical unresolved
- * residual class in its own header ("the entry VECTOR/ViewInfo loads and the
- * per-segment zero/coordinate stores... a bounded permuter run... produced
- * ONLY invalid candidates... treat the permuter as definitively unhelpful
- * here").  Two independent matchers, two independent source idioms for the
- * same original code shape, the same scheduler/regalloc residual class in
- * both: this is not idiom-specific.  Next lever, if picked back up: try
- * jointly perturbing the `raw_priority`/`priority` clamp code's own pseudo
- * identities (the actual $v1 claimant) together with the ViewInfo block,
- * since single-hunk edits on either side alone have now been exhausted on
- * both functions.
+ * RECONSTRUCTION COMPENSATORS still in the text (marked, all four measured
+ * load-bearing; the first two are almost certainly stand-ins for whatever
+ * the original spelled differently):
+ *   1. if (end->vy) identical-arm fence around zeros+matrix calls: its
+ *      CONDITION donates weighted refs to `end`, lifting end (12 refs/460
+ *      live = pri 782) past scrp (5/126 = 793) so end takes s7 and scrp fp
+ *      as in the target; without it they swap (13 insns). The old 65 draft
+ *      carried the same-family `if (end != 0)` fence — two independent
+ *      searches converged on an end-reading discriminator here.
+ *   2. vpzp pointer-assignment inside the loop's third scratchpad store:
+ *      the REG_EQUIV-const pointer set survives until reload (then deleted,
+ *      zero final-length cost) and re-routes the loop cluster's local-alloc
+ *      qty map; fixes the whole loop ViewInfo cluster (36 bytes there).
+ *   3. x = (u16)ViewInfo.vpz; z -= x; — the entry vpz read hosted in the
+ *      dead x (multi-set exiles x's pseudo from local-alloc to global).
+ *   4. vpyp = &ViewInfo.vpy; y -= (u16)*vpyp; — same EQUIV-set family as 2.
+ *
+ * THE RESIDUAL (evidence-complete this round): one local-alloc qty->reg
+ * walk rotation over {hi, vpx, x, z, vpy, vpz} in the entry block:
+ * ours {v0, v1, t2, t0, v1, t2} vs target {v1, t0, v0, t2, v0, v1}
+ * (y=t1 matches). .lreg gives the real per-qty stats (x 4/12, y 4/12,
+ * z 4/10, hi 3/6, base 3/10, vpx/vpy/vpz 2/3) but the OBSERVED dispositions
+ * are inconsistent with every ordering derivable from QTY_CMP_PRI
+ * (descending, ascending, pseudo-number, shortest-first) — the walk order
+ * needs local-alloc.c's block_alloc actually traced. TOOL TICKET
+ * (regalloc --local): print local-alloc's qty walk (order, birth/death
+ * luids, suggestion passes) the way --order does for global allocnos; this
+ * residual class is invisible to every current tool. Note the no-carrier
+ * spelling (z -= (u16)ViewInfo.vpz, 29 bytes) is structurally CLOSER to the
+ * target (its vpz recycles the base register as the target's does; the
+ * carrier's dest hijack caps this form above ~8) — a next round that cracks
+ * the walk order should restart from that 29 form, not from this 15.
  */
 
 #ifndef NON_MATCHING
@@ -137,7 +141,7 @@ typedef struct
     u8 r;
     u8 g;
     u8 b;
-} LightningLine;
+} GsLINE;
 
 typedef struct
 {
@@ -157,111 +161,98 @@ extern void SetTransMatrix(MATRIX *matrix);
 extern void SetRotMatrix(MATRIX *matrix);
 extern s32 RotTransPers(SVECTOR *vector, s32 *screen, void *p, void *flag);
 extern s32 SquareRoot0(s32 value);
-extern s32 abs(s32 value);
+extern long abs(long value);
 extern int rand(void);
 extern void *memset(void *dst, int value, u32 size);
-extern void GsSortLine(LightningLine *line, GsOT *ot, u16 priority);
+extern void GsSortLine(GsLINE *line, GsOT *ot, u16 priority);
 
 void SetLightningI(VECTOR *start, VECTOR *end, int gen, short r, short g, short b)
 {
     SVECTOR scr;
     SVECTOR oldscr;
-    LightningLine line;
+    GsLINE line;
     VECTOR sv;
     int next_gen;
-    short local_r;
-    short local_g;
-    short local_b;
+    short lr;
+    short lg;
+    short lb;
     VECTOR *svp;
     SVECTOR *scrp;
+    s32 *vpyp;
+    s32 *vpzp;
     long distance;
     long lcount;
     int i;
     int x;
     int y;
     int z;
-    SVECTOR *initial_scrp;
-    s32 *initial_screen;
-    void *initial_matrix;
-    void *initial_flag_base;
-    u16 initial_vpx;
-    LightningViewInfo *initial_view;
 
-    local_r = r;
+    lr = r;
     next_gen = gen - 1;
-    local_g = g;
-    local_b = b;
+    lg = g;
+    lb = b;
     if (gen != 0)
     {
-        *(s32 *)0x1F800014 = 0;
-        *(s32 *)0x1F800018 = 0;
-        *(s32 *)0x1F80001C = 0;
-        SetTransMatrix((MATRIX *)0x1F800000);
-        SetRotMatrix(&GsWSMATRIX);
-        initial_scrp = (SVECTOR *)0x1F800080;
-        initial_screen = (s32 *)&oldscr;
-        do
+        /* COMPENSATOR 1 (see header): identical arms; the end-reading
+         * condition weights `end` past scrp in global-alloc (end->s7,
+         * scrp->fp). Cross-jump erases the branch; semantics unchanged. */
+        if (end->vy)
         {
-            initial_matrix = (void *)0x1F800000;
-            initial_flag_base = initial_matrix;
-        } while (0);
-        if (end != 0)
-        {
-            initial_view = &ViewInfo;
+            *(s32 *)0x1F800014 = 0;
+            *(s32 *)0x1F800018 = 0;
+            *(s32 *)0x1F80001C = 0;
+            SetTransMatrix((MATRIX *)0x1F800000);
+            SetRotMatrix(&GsWSMATRIX);
         }
         else
         {
-            initial_view = &ViewInfo;
+            *(s32 *)0x1F800014 = 0;
+            *(s32 *)0x1F800018 = 0;
+            *(s32 *)0x1F80001C = 0;
+            SetTransMatrix((MATRIX *)0x1F800000);
+            SetRotMatrix(&GsWSMATRIX);
         }
-        do
         {
-            initial_vpx = (u16)initial_view->vpx;
-        } while (0);
-        {
-            long initial_x;
-            long initial_y;
-            long initial_z;
+            long x, y, z;
 
-            initial_x = start->vx;
-            do
-            {
-                initial_y = start->vy;
-            } while (0);
-            if (end != 0)
-            {
-                initial_z = start->vz;
-            }
-            else
-            {
-                initial_z = start->vz;
-            }
-            *(s16 *)0x1F800080 = initial_x - initial_vpx;
-            *(s16 *)0x1F800082 = initial_y - (s16)initial_view->vpy;
-            *(s16 *)0x1F800084 = initial_z - (s16)initial_view->vpz;
+            x = start->vx;
+            y = start->vy;
+            z = start->vz;
+            x -= (u16)ViewInfo.vpx;
+            *(s16 *)0x1F800080 = x;
+            /* COMPENSATORS 3+4 (see header): vpy through the pointer
+             * statement, vpz hosted in the dead x — pure local-alloc
+             * identity steering, values unchanged. */
+            vpyp = &ViewInfo.vpy;
+            y -= (u16)*vpyp;
+            *(s16 *)0x1F800082 = y;
+            x = (u16)ViewInfo.vpz;
+            z -= x;
+            *(s16 *)0x1F800084 = z;
         }
-        oldscr.vz = (s16)RotTransPers(initial_scrp, initial_screen,
-                                      initial_matrix, (char *)initial_flag_base + 0x10);
+        oldscr.vz = (s16)RotTransPers((SVECTOR *)0x1F800080, (s32 *)&oldscr,
+                                      (void *)0x1F800000, (void *)0x1F800010);
 
         line.attribute = 0x50000000;
-        line.r = local_r;
-        line.g = local_g;
-        line.b = local_b;
+        line.r = lr;
+        line.g = lg;
+        line.b = lb;
 
         {
-            long dx;
-            long dy;
-            long dz;
+            VECTOR *v1, *v2;
+            long dx, dy, dz;
             int large;
 
+            v1 = start;
+            v2 = end;
             large = 0;
-            dx = start->vx - end->vx;
-            dy = start->vy - end->vy;
-            dz = start->vz - end->vz;
+            dx = v1->vx - v2->vx;
+            dy = v1->vy - v2->vy;
+            dz = v1->vz - v2->vz;
             if (abs(dx) > 0x1000 || abs(dy) > 0x1000 || abs(dz) > 0x1000)
             {
                 large = 1;
             }
-
             if (large)
             {
                 dx /= 0x100;
@@ -279,8 +270,6 @@ void SetLightningI(VECTOR *start, VECTOR *end, int gen, short r, short g, short 
         i = 1;
         if (lcount > 0)
         {
-            svp = &sv;
-            scrp = &scr;
             while (1)
             {
                 if (i >= lcount)
@@ -297,51 +286,46 @@ void SetLightningI(VECTOR *start, VECTOR *end, int gen, short r, short g, short 
 
                 if ((rand() & 2) == 0)
                 {
+                    svp = &sv;
                     memset(svp, 0, sizeof(VECTOR));
                     sv.vx = x;
                     sv.vy = y;
                     sv.vz = z;
-                    SetLightningI(svp, end, next_gen, local_r, local_g, local_b);
+                    SetLightningI(svp, end, next_gen, lr, lg, lb);
                 }
 
-                *(s16 *)0x1F800080 = x - (s16)ViewInfo.vpx;
-                *(s16 *)0x1F800082 = y - (s16)ViewInfo.vpy;
-                *(s16 *)0x1F800084 = z - (s16)ViewInfo.vpz;
+                *(s16 *)0x1F800080 = x - (u16)ViewInfo.vpx;
+                *(s16 *)0x1F800082 = y - (u16)ViewInfo.vpy;
+                /* COMPENSATOR 2 (see header): the vpzp EQUIV-const set
+                 * lives until reload, re-routing this cluster's qty map;
+                 * deleted there — zero final-length cost. */
+                *(s16 *)0x1F800084 = z - (u16)*(vpzp = &ViewInfo.vpz);
+                scrp = &scr;
                 scrp->vz = (s16)RotTransPers((SVECTOR *)0x1F800080, (s32 *)scrp,
-                                              (void *)0x1F800000, (void *)0x1F800010);
+                                             (void *)0x1F800000, (void *)0x1F800010);
 
+                if (((s32)(u16)scr.vz << 16) > 0 && oldscr.vz > 0)
                 {
-                    s32 depth;
+                    int z;
+                    int p;
 
-                    depth = (s32)(u16)scr.vz << 16;
-                    if (depth > 0 && oldscr.vz > 0)
+                    line.x0 = oldscr.vx;
+                    line.y0 = oldscr.vy;
+                    z = ((s32)(u16)scr.vz << 16) >> 18;
+                    line.x1 = scr.vx;
+                    line.y1 = scr.vy;
+                    if (z >= 0)
                     {
-                        int raw_priority;
-                        int priority;
-
-                        do
-                        {
-                            line.x0 = oldscr.vx;
-                            line.y0 = oldscr.vy;
-                            raw_priority = depth >> 18;
-                            line.x1 = scr.vx;
-                            line.y1 = scr.vy;
-                        } while (0);
-                        if (raw_priority < 0)
-                        {
-                            goto priority_zero;
-                        }
-                        priority = 0x4e1;
-                        if (raw_priority < 0x4e2)
-                        {
-                            priority = raw_priority;
-                        }
-                        goto priority_done;
-priority_zero:
-                        priority = 0;
-priority_done:
-                        GsSortLine(&line, OTablePt, (u16)priority);
+                        if (z < 0x4e2)
+                            p = z;
+                        else
+                            p = 0x4e1;
                     }
+                    else
+                    {
+                        p = 0;
+                    }
+                    GsSortLine(&line, OTablePt, (u16)p);
                 }
                 oldscr = scr;
                 i++;

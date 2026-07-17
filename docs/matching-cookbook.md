@@ -202,7 +202,10 @@ Look up what the authors wrote before drafting anything.
   with nothing better behind it is not a reason to regress. And test fence
   clusters as SUBSETS, not singletons: FUN_800519bc's three position-carriers act
   as one dial (removing any one flips the same s1/s2 tie), which a one-at-a-time
-  sweep misreads.
+  sweep misreads. And a fence you KEEP can still be tuned via its CONDITION:
+  reading a different pseudo in an identical-arm fence's discriminator reorders
+  `find_reg` hundreds of insns away (SetLightningI moved an `end`-vs-`scrp` race
+  for `s7` that way).
 - **Prototypes/globals**: `reference/psxsym-protos.h` beats Ghidra/m2c
   inference; `reference/psxsym-globals.h` beats inventing layouts.
   **TU-mates are contiguous** (`reference/psxsym-tu-map.tsv`) — pins rodata

@@ -159,6 +159,25 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
 
 ## loop.c
 
+- **Preheader hoist ORDER is the loop-body SCAN order of the hoisted sets**
+  (`move_movables` emits in `scan_loop` discovery order), and hoists land AFTER any
+  insn the source already put in the preheader. **So a target preheader with a
+  hoisted CONSTANT before pointer assignments proves those pointers were assigned
+  IN-LOOP, at their use sites** — a pre-loop assignment is the unreachable state.
+  This read the human structure straight off the target for SetLightningI (65->15)
+  and start_demo_.
+- **A `p = &Global.field` pointer set with a REG_EQUIV const note costs ZERO final
+  instructions** — reload deletes it — **yet it shifts local-alloc quantity spans
+  while it exists.** That makes it a legal, byte-free register-STEERING lever for a
+  local-alloc rotation residual: introduce the `&Global.field` local to move the
+  qty walk without adding an instruction (SetLightningI). It is the benign cousin
+  of the mega-pseudo split.
+- **A whole-function `+1` cascade of caller-saved temp choices is ONE defect, not
+  N.** reload's spill-register pick is a FUNCTION-WIDE usage census
+  (`order_regs_for_reload`), so one divergent cluster shifts every downstream temp
+  by one register. Fix the single divergent site and the whole tail snaps into
+  place — do not chase the downstream temps individually (SetLightningI, and the
+  DecodeTMD family's param_1/$a0 cascade was the same shape).
 - **The hoist gate**: `threshold * savings * lifetime >= insn_count`,
   `threshold0 = (loop_has_call ? 1 : 2) * (1 + n_non_fixed_regs)` = 29 here,
   **decaying by 3 per movable already moved** (loop.c:1640, 1728). A
