@@ -41,7 +41,7 @@ ungraceful exit cannot strand a speculative rewrite in the checked-in file.
 SIGTERM/SIGHUP also tear down the active build process group, and on Linux a
 parent-death signal prevents a command frontend from orphaning autorules.
 """
-import argparse, glob, hashlib, itertools, os, re, signal, subprocess, sys, tempfile
+import argparse, glob, hashlib, itertools, os, re, signal, subprocess, sys, tempfile, time
 import proclife
 from contextlib import contextmanager
 
@@ -8511,7 +8511,7 @@ def greedy_search(path, original, name, partial, rules, base, once=False,
 
 
 def beam_search(path, original, name, partial, rules, base, width, depth,
-                allow_regress, budget, shape=(None, None)):
+                allow_regress, budget, shape=(None, None), deadline=None):
     """Bounded multi-edit search that retains neutral enabling transformations.
 
     The old greedy loop cannot discover `loop-fence A` (same byte score)
@@ -8526,6 +8526,7 @@ def beam_search(path, original, name, partial, rules, base, width, depth,
     cache = {}
     tried = 0
     exhausted = False
+    timed_out = False
     for level in range(1, depth + 1):
         children = []
         print(f"  -- beam depth {level}/{depth}, {len(frontier)} state(s) --")
@@ -8536,6 +8537,17 @@ def beam_search(path, original, name, partial, rules, base, width, depth,
                     continue
                 seen.add(digest)
                 if tried >= budget:
+                    exhausted = True
+                    break
+                if deadline is not None and time.monotonic() > deadline:
+                    # WALL-CLOCK STOP so this tool always returns IN-BAND. A guided
+                    # sweep is ~160 full builds; left unbounded it blows the harness
+                    # tool cap, gets auto-backgrounded, and an agent that then ends
+                    # its turn "waiting for the notification" NEVER WAKES (a finished
+                    # agent cannot be resumed by a background task). Three lanes died
+                    # exactly that way. Returning the best-so-far keeps the search
+                    # useful and the agent alive.
+                    timed_out = True
                     exhausted = True
                     break
                 write(path, new_text.split("\n"))
@@ -8578,6 +8590,13 @@ def beam_search(path, original, name, partial, rules, base, width, depth,
             hashlib.sha1(s["text"].encode()).hexdigest(),
         ))
         frontier = children[:width]
+    if timed_out:
+        print(f"  *** AUTORULES DEADLINE HIT — stopped after {tried} candidate(s) to "
+              f"stay in-band. ***")
+        print(f"  This is NOT 'no improving edit exists': the sweep was CUT SHORT. "
+              f"Raise it")
+        print(f"  with AUTORULES_DEADLINE_SECONDS=<n> and re-run if you need the full "
+              f"beam.")
     if tried >= budget:
         print(f"  (candidate budget {budget} reached)")
     if best["score"] >= start and not best["match"]:
@@ -8725,9 +8744,13 @@ def main():
     # an improving result is accepted below.
     with staged_candidate(name, original) as candidate_path:
         if beam:
+            # A guided beam is ~160 builds; bound it by wall-clock so it always
+            # returns before the harness auto-backgrounds it (see beam_search).
+            secs = float(os.environ.get("AUTORULES_DEADLINE_SECONDS", "420"))
             cur_text, base, match, applied = beam_search(
                 candidate_path, original, name, partial, rules, base, beam, args.depth,
                 allow_regress, args.budget, (lo, lt),
+                deadline=time.monotonic() + secs,
             )
         else:
             cur_text, base, match, applied = greedy_search(

@@ -140,7 +140,17 @@ run it in the FOREGROUND (blocking, inside the single `timeout ... bash -c '...'
 its exit returns control to you directly. Waiting on it out-of-band has repeatedly
 stalled agents across many turns for no gain, and there is NO other agent and NO sub-agent
 involved: you are one matcher working alone in your own worktree. A bounded run that
-plateaus is a PARK signal, not a reason to wait. If the permuter prints an improved
+plateaus is a PARK signal, not a reason to wait.
+
+**The SAME rule applies to `tools/autorules.py --guided`, and it is the one that keeps
+killing lanes.** A guided sweep is ~160 full builds; three lanes ran it, it exceeded
+their Bash timeout, the harness auto-backgrounded it, and they ended their turn
+"waiting for the notification" — which NEVER ARRIVES for a finished agent, wasting the
+whole round (one burned 463k tokens). It now SELF-BOUNDS at 420 s
+(`AUTORULES_DEADLINE_SECONDS`, prints `AUTORULES DEADLINE HIT` if it stops early), so
+you never need to background it: run it in the FOREGROUND with the Bash tool's own
+timeout at 600000, exactly like the permuter. If ANY tool would run long, set the Bash
+timeout high and block on it — do not background-and-wait, ever. If the permuter prints an improved
 candidate, re-verify it with `tools/matchdiff.py` before believing it (its score
 ignores stack-slot placement), and READ its diff for moved/dropped `goto`s that
 land after an unconditional jump: a dead-code relocation compiles cleanly and
