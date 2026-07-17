@@ -81,20 +81,60 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetWire", SetWire);
  * long; the clamp and all three coordinate accumulators now match exactly.
  *
  * The only remaining residuals are the two camera-relative scratchpad
- * scheduling islands: the entry VECTOR/ViewInfo loads and the per-segment
- * zero/coordinate stores.  The identical-arm assignment below emits no branch
- * but supplies the temporary CFG boundary needed for the closest entry
- * schedule.  DrawBleed documents the same cc1 list-scheduler limitation;
- * changing the recovered long coordinate types or low-half ViewInfo reads is
- * not an open spelling fix.
+ * scheduling islands, 35 bytes each: the entry VECTOR/ViewInfo loads
+ * (clusters at 0x800372f0..0x80037368) and the per-segment zero/coordinate
+ * stores (0x800376c4..0x80037700).
  *
- * 2026-07-16 second pass (interrupted before its final report): a bounded
- * permuter run over this scheduling residual produced ONLY invalid
- * candidates — invented if/else CFG fences that make unconditional calls
- * conditional (breaking the exact 22-branch inventory) and dead-variable
- * noise (ecount=dz, x^0, comma-expressions, dropped u16 casts). Treat the
- * permuter as definitively unhelpful here; no source improvement was found
- * before the session was interrupted.
+ * 2026-07-17 third pass — MECHANISM PINNED, and two earlier claims corrected.
+ * Refute anything below in one command; every number is `NON_MATCHING=SetWire
+ * ./Build` then `tools/matchdiff.py -n SetWire`.
+ *
+ * `tools/reghist.py SetWire`: delta sum ZERO, only v0/v1/a1/a2 differ (+2/+2/
+ * -2/-2). The variable decomposition already matches the target; the residual
+ * is EMISSION POSITION, not structure. `tools/sched-deps.py SetWire --pass
+ * sched2 --verdicts` names it exactly: entry block 0 is 18 insns that ALL tie
+ * at priority 1, resolved by 9 potential_hazard swaps. In sched2 there is no
+ * bump path (adjust_priority is gated on reload_completed == 0), so among
+ * floor insns the order is class-then-LUID, i.e. the order they ENTER sched2.
+ *
+ * CORRECTION 1 — the identical-arm fence below is NOT original; it is a
+ * scoring hack, and a known-wrong one. It is load-bearing (removing it costs
+ * 70 -> 80), but sched2 shows block 0 ENDS at the fence's jump (insn 25),
+ * which strands `lui %hi(ViewInfo)` (insn 58) in block 3. Retail schedules
+ * that lui at 0x800372f0, in among the prologue saves (`addu $s4,$a2,$zero` /
+ * lui / `sw $ra,0x74($sp)`), which is only possible if the ViewInfo reference
+ * and the prologue share ONE block. Per the cookbook's fence corollary, the
+ * target therefore refutes any fence here. The fence-free draft (80 bytes)
+ * places that lui at 0x800372f0 CORRECTLY and is the structurally honest
+ * base; it loses only because sched2 then drags lhu+addiu up with it and
+ * scatters the start-> loads. Whoever closes this should probably start from
+ * the 80 and fight sched2, not from this 70.
+ *
+ * CORRECTION 2 — "the permuter is definitively unhelpful" was written by an
+ * INTERRUPTED session and overstates its evidence. A fresh bounded foreground
+ * run (`timeout 240 tools/permute.py SetWire -- --stop-on-zero -j4`) confirms
+ * no win: authoritative best 82 vs this base's 70. BUT its own base.c does not
+ * round-trip this draft — the rescore prints `291357 / 1004 / 1492 base.c`
+ * where the draft on disk is 1488 bytes / 70 differing. The permuter searched
+ * from a degraded import and never explored this draft's neighborhood, so its
+ * negative is a statement about that import, not about this source.
+ *
+ * Measured levers (all real edits; tools/nullcheck.py exit 0):
+ *   - The fence's CONDITION OPERAND selects the entry load order, because the
+ *     value feeding the branch is pulled into block 0 first. `if (initial_y)`
+ *     -> lw 4/0/8(s3) = 70 (wrong order, better score). `if (initial_x)` ->
+ *     lw 0/4/8(s3) = 71, which is the TARGET's order (v0/a1/a2 homes still
+ *     differ). 70 is banked as the better number; 71 is the better shape.
+ *   - The per-segment store order below (0x18,0x1C,0x14 then x,z,y) is TUNED
+ *     to produce the target's emitted order and must not be "fixed" to look
+ *     sequential: rewriting it to 0x14,0x18,0x1C then x,y,z costs 70 -> 76.
+ *     Retail's asm reads sequential (sh 0x20/0x22/0x24 at 0x800376ec..0x80037708)
+ *     but that is the SCHEDULER's output, not the statement order — do not
+ *     read source order off emitted asm here.
+ *   - tools/autorules.py: 147 candidates, no improving edit. Note its
+ *     `fence-unwrap` rule is SELECTED but generates ZERO candidates against
+ *     this file — it matches do{}while(0), not identical-arm if/else — so the
+ *     fence above is NOT covered by the mechanical sweep.
  */
 
 typedef struct

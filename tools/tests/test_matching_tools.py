@@ -5469,6 +5469,45 @@ class BuildConfigurationTests(unittest.TestCase):
         )
         self.assertNotIn("-mno-split-addresses", permute.cc_flags_for("Other"))
 
+    def test_permute_cc_flags_match_build(self):
+        """permute must compile the SAME PROGRAM the build does.
+
+        `-fno-builtin` is a cc1 flag. It sat in permute's CPP list — where it does
+        nothing — while Build.hs had already learned this and moved it to ccFlags
+        ("This lived in cppFlags for a long time, where it did nothing"). The mirror
+        never got the fix, so every permuter run searched a different program:
+        builtins enabled in the search, disabled in the build. Measured on SetWire,
+        the callee-saved register assignment differed outright, and permute's rescore
+        printed 291357/1004/1492 for a base.c whose draft is 1488 bytes at 70.
+
+        GP_EXTERNS and ccExtraFlags each had a mirror test; the FLAG LISTS did not,
+        which is exactly why this one drifted and the others didn't.
+        """
+        import re
+        path = os.path.join(os.path.dirname(TOOLS), "shake", "src", "Build.hs")
+        with open(path) as f:
+            build = f.read()
+
+        def haskell_list(name):
+            block = build.split(f"{name} =\n  [", 1)[1].split("\n  ]", 1)[0]
+            # strip Haskell line comments so prose cannot masquerade as a flag
+            block = re.sub(r"--[^\n]*", "", block)
+            return re.findall(r'"([^"]+)"', block)
+
+        # cc1 flags must match exactly, in order: they ARE the codegen.
+        self.assertEqual(haskell_list("ccFlags"), permute.CC_FLAGS,
+                         "permute.CC_FLAGS has drifted from Build.hs ccFlags — the "
+                         "permuter is searching a different program than the build")
+        # cpp flags: permute adds its own -I for the split sources, so compare the
+        # build's list as a SUBSEQUENCE rather than for equality.
+        cpp_build = haskell_list("cppFlags")
+        missing = [f for f in cpp_build if f not in permute.CPP]
+        self.assertEqual(missing, [],
+                         f"permute.CPP is missing Build.hs cppFlags entries: {missing}")
+        # And nothing that belongs to cc1 may hide in the cpp list again.
+        self.assertNotIn("-fno-builtin", permute.CPP,
+                         "-fno-builtin is a cc1 flag; in CPP it silently does nothing")
+
     def test_gp_extern_table_matches_build(self):
         path = os.path.join(os.path.dirname(TOOLS), "shake", "src", "Build.hs")
         with open(path) as f:

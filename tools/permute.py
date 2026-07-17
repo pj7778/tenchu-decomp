@@ -46,13 +46,23 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 
 # Kept in sync with shake/src/Build.hs.
-CPP = ("mipsel-unknown-linux-gnu-cpp -Iinclude -undef -Wall -lang-c -fno-builtin "
+CPP = ("mipsel-unknown-linux-gnu-cpp -Iinclude -undef -Wall -lang-c "
        "-gstabs -Dmips -D__GNUC__=2 -D__OPTIMIZE__ -D__mips__ -D__mips -Dpsx "
        "-D__psx__ -D__psx -D_PSYQ -D__EXTENSIONS__ -D_MIPSEL -D_LANGUAGE_C "
        "-DLANGUAGE_C -DHACKS -I src/main.exe").split()
-CC_FLAGS = ("-mcpu=3000 -quiet -G8 -w -O2 -funsigned-char -fpeephole -ffunction-cse "
-            "-fpcc-struct-return -fcommon -fverbose-asm -fgnu-linker -mgas "
-            "-msoft-float").split()
+# `-fno-builtin` belongs to cc1, NOT cpp -- cc1 decides whether abs() inlines.
+# Build.hs already learned this ("This lived in cppFlags for a long time, where it
+# did nothing") and moved it; THIS MIRROR NEVER GOT THE FIX, so every permuter run
+# compiled a DIFFERENT PROGRAM than the build: builtins enabled here, disabled
+# there. Measured on SetWire: same insn count, different callee-saved register
+# assignment outright, and permute's own rescore printed `291357 / 1004 / 1492` for
+# base.c against a draft that is 1488 bytes at 70 differing. A search from that base
+# never explores the real draft's neighbourhood, so "the permuter found nothing" on
+# such a function was worth nothing. 82 source files mention a builtin-expandable
+# call. test_permute_cc_flags_match_build now pins this.
+CC_FLAGS = ("-mcpu=3000 -quiet -fno-builtin -G8 -w -O2 -funsigned-char -fpeephole "
+            "-ffunction-cse -fpcc-struct-return -fcommon -fverbose-asm -fgnu-linker "
+            "-mgas -msoft-float").split()
 # Stock PsyQ objects can use different cc1 defaults from the game TUs. Keep
 # this table in sync with Build.hs's ccExtraFlags so every candidate is scored
 # with the flags that produced the authoritative build object.
