@@ -89,6 +89,16 @@ wait on.** Always wrap it: `nix develop --command bash -c 'timeout 240 tools/per
 Set the Bash TOOL CALL's own timeout parameter WELL above the inner `timeout` (e.g.
 600000 ms).
 
+*This is not a style preference, and here is what it costs. A PAD_init lane
+backgrounded its run, ended its turn saying it would resume when the run notified,
+and then TERMINATED — background tasks do not wake a finished agent. It had spent
+314k tokens. Its permuter was still alive in its worktree afterwards and had already
+found a candidate at **3 whole-image bytes against a base of 26**; the orchestrator
+read the log the lane never saw, reproduced it, and matched the function (and its
+near-clone) from that candidate. **The lane did the work, found the answer, and threw
+it away by waiting for it.** If you background it you will not be there when it
+answers.*
+
 **The inner `timeout` bounds the SEARCH, not the tool** — on SIGTERM permute rescores
 what the search retained, one FULL LINK per candidate. That used to be unbounded and
 made the whole wrapper unusable: one lane watched it alive at 526 s under a 420 s
