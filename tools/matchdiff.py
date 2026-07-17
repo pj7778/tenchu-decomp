@@ -9,6 +9,7 @@ Usage:
   tools/matchdiff.py ProcItemKusuri            # ./Build first, then compare
   tools/matchdiff.py ProcItemKusuri -n         # skip the build (reuse last)
   tools/matchdiff.py ProcItemKusuri --max 60   # show up to 60 differing insns
+  tools/matchdiff.py ProcItemKusuri --clusters # per-cluster INSNS *and* BYTES
 
 The function's address comes from config/symbols.main.exe.txt; its size is the
 distance to the next symbol (same slot logic as mkmod). Exit status: 0 on a
@@ -204,11 +205,108 @@ def disasm(data, off, size, base):
     return r
 
 
+
+
+def _mnemonic(text):
+    """The mnemonic from disasm()'s "<hexword>   <mn>  <operands>" rendering.
+
+    NOT `text.split()[0]` -- that is the 8-hex-digit ENCODING, which differs for
+    every instruction in the diff by definition, so classifying on it labels
+    everything "opcode". (Caught by fault-checking against a 1-insn/2-byte cluster:
+    a 2-byte diff cannot be an opcode change.)
+    """
+    parts = text.split()
+    if parts and len(parts[0]) == 8 and all(c in "0123456789abcdef" for c in parts[0]):
+        parts = parts[1:]
+    return parts[0] if parts else "?"
+
+
+def _no_target(text):
+    """Strip a trailing branch/jump target so a RETARGET is detectable."""
+    return re.sub(r"0x[0-9a-f]+\s*$", "", text).strip()
+
+
+def report_clusters(name, bad_insns, diffs, off, addr, o_dis, m_dis, gap):
+    """Group the residual into clusters, reporting INSNS *and* BYTES for each.
+
+    Exists because every round byte-accounts by hand and two failure modes recur:
+      * **units**: a cluster table was carried through THREE briefs as BYTES when its
+        numbers were INSTRUCTIONS (~3x off — a "16-byte" cluster was really 63). Both
+        units are printed here, always, with the header saying which is which.
+      * **truncation**: `--max 40` silently hid rows and a lane built a byte-account
+        from what remained (12 clusters/160B; the truth was 23/239). This path never
+        truncates.
+
+    A cluster is a run of differing instructions separated by at most `gap` matching
+    ones. That is a HEURISTIC about causes, not a partition of the residual — fixing
+    one allocation has collapsed three "separate" clusters at once — so the header
+    says so rather than letting the table imply independence.
+    """
+    if not bad_insns:
+        print(f"{name}: no differing instructions")
+        return 0
+    groups, cur = [], [bad_insns[0]]
+    for a in bad_insns[1:]:
+        if (a - cur[-1]) // 4 - 1 > gap:
+            groups.append(cur)
+            cur = [a]
+        else:
+            cur.append(a)
+    groups.append(cur)
+
+    byte_addrs = {addr + (i - off) for i in diffs}
+    print(f"{name}: {len(groups)} clusters, {len(bad_insns)} differing INSNS, "
+          f"{len(diffs)} differing BYTES")
+    print("  (INSNS and BYTES are different units — an insn-vs-byte mix-up survived "
+          "three briefs.")
+    print("   A register-field-only diff is 1 byte in a 4-byte insn. Clusters are a "
+          "HYPOTHESIS about")
+    print("   causes, NOT a partition: fixing one allocation has collapsed three "
+          "'separate' clusters.)")
+    print()
+    print(f"  {'#':>3} {'range':>21} {'insns':>6} {'bytes':>6}  kind")
+    for i, g in enumerate(groups):
+        lo, hi = g[0], g[-1]
+        nb = sum(1 for b in byte_addrs if lo <= b < hi + 4)
+        kinds = set()
+        for a in g:
+            tgt, ours_ = o_dis.get(a, "?"), m_dis.get(a, "?")
+            if tgt == "?" or ours_ == "?":
+                kinds.add("absent")
+                continue
+            # disasm() yields "<hexword>   <mnemonic>  <operands>", so the FIRST
+            # field is the encoding, not the opcode. Splitting on [0] made every
+            # differing insn look like an opcode change -- the hex ALWAYS differs,
+            # that is why it is in the diff. Classify on the MNEMONIC.
+            tm, om = _mnemonic(tgt), _mnemonic(ours_)
+            if tm != om:
+                kinds.add("opcode")
+            elif _no_target(tgt) == _no_target(ours_):
+                kinds.add("branch-retarget")
+            else:
+                kinds.add("operands")
+        kind = "+".join(sorted(kinds))
+        print(f"  {i:>3} {lo:#010x}..{hi + 4:#010x} {len(g):>6} {nb:>6}  {kind}")
+    print()
+    print("  `branch-retarget` = same opcode, DIFFERENT target — the signature of a "
+          "RELOCATED BLOCK.")
+    print("  asmdiff HIDES those by default (it normalises the address); one was 44 "
+          "of 48 bytes.")
+    return 1
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("name")
     ap.add_argument("-n", "--no-build", action="store_true",
                     help="skip ./Build, compare the existing build")
+    ap.add_argument("--clusters", nargs="?", type=int, const=3, default=None,
+                    metavar="GAP",
+                    help="group the residual into clusters and report INSNS and BYTES "
+                         "for each (GAP = max matching insns inside one cluster, "
+                         "default 3). Byte-accounting is mandated every round and "
+                         "hand-rolled every round; an insn-vs-byte mix-up survived "
+                         "THREE briefs (a '16-byte' cluster was really 63).")
     ap.add_argument("--max", type=int, default=40,
                     help="max differing instructions to print")
     args = ap.parse_args()
@@ -295,6 +393,11 @@ def main():
     o_dis = disasm(orig, off, size, addr)
     m_dis = disasm(ours, off, size, addr)
     bad_insns = sorted({addr + ((i - off) & ~3) for i in diffs})
+
+    if args.clusters is not None:
+        return report_clusters(args.name, bad_insns, diffs, off, addr,
+                               o_dis, m_dis, args.clusters)
+
     print(f"{'addr':10} {'TARGET':48} OURS")
     for i, a in enumerate(bad_insns):
         if i >= args.max:
