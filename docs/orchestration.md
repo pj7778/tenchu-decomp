@@ -566,6 +566,11 @@ function already byte-matches on current `master`.
   brief that summarized it". **Check `length ours N vs target N` before calling
   anything surplus, and use `--context`** — which exists for this and which I did not
   run.
+- **THREE briefs tonight were built from a truncated `asmdiff | head -N` and all three
+  mis-stated the residual** (PadProc 4x under, CreateHumanoid called an interleave
+  "surplus instructions", DrawBleed missed an entirely different operation at
+  0x80034440: `lhu v0,4(v1)` vs `lw v0,4(s1)`). The pattern is mine, not the lanes'.
+  **Pipe the whole diff and run `--context`, or say the excerpt is an excerpt.**
 - **Never quote a TRUNCATED tool head as a byte-account.** I built PadProc's brief
   from `asmdiff | head -9` and presented 4 diff lines as the residual; the real one is
   18 differing instructions across TWO `mflo` sites. The lane called it a 4x

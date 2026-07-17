@@ -6740,6 +6740,37 @@ immediately proved the fence was not doing what the park claimed.
 `tools/rtldump.py <Name> --src <variant>` dumps a scratch variant without touching
 the tracked file; use it to falsify, not just to describe.
 
+### An empty branch delay slot is a SYMPTOM — read the block LEADER, not the branch
+
+**reorg can only steal the merge block's FIRST insn, and loads are ineligible
+(`dslot=yes`). Which insn LEADS is decided by sched1, long before reorg runs.** So a
+`nop` where the target has a real insn usually means your block leads with a load and
+the target's leads with arithmetic — a **sched1** fact, not a reorg one.
+
+**Before applying ANY reorg rule, dump `.flow` vs `.sched`.** If the pre-sched RTL
+order ALREADY matches the target, the delay slot is not the problem: sched1's sink is,
+and the lever is **priority** (chain length, a barrier), not the guard's shape.
+DrawBleed's `.flow` order matches retail exactly and sched1 then drags `dy`/`dz`
+top-to-bottom to shorten their live ranges — every reorg rule in its brief was
+correctly stated and irrelevant.
+
+**Corollary: "moving a statement produced byte-identical output" does NOT prove source
+order is irrelevant.** sched1 overrides source order WITHIN a basic block. It means the
+lever must change sched1's PRIORITY, not the statement's position — a prior round read
+that byte-identical result as informative when it was expected.
+
+**And byte-account before calling a fill "one cause":** DrawBleed's fill shifts
+nothing (the `nop` and the `lui` are both 4 bytes at the same address). Its
+`0x3fc`-vs-`0x3f8` branch target is reorg **copying** the `lui` past a 2-use label
+(`own_target=0`) and redirecting both jumps.
+
+### A constant-folded struct-pointer cast is NOT the flat scratchpad idiom
+
+`((MATRIX *)0x1F800000)->t[0] = 0` makes cc1 **CSE the base into a register across the
+stores**, collapsing the per-store `lui at,0x1f80` — measured 496 vs 532 on DrawBleed.
+This extends DrawTarget.c's "not a shared cached pointer local" note to **constant**
+casts: the address being a compile-time constant does not stop cse from caching it.
+
 ### An empty `do{}while(0)` at the END of an `if` body flips reorg's branch prediction — at ZERO instruction cost
 
 **A guard whose body is one instruction short or long, with a plausible delay slot,

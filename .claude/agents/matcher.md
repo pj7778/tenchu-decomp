@@ -85,10 +85,20 @@ the baseline source on SIGTERM/SIGHUP; after any abnormal exit, verify `git diff
 and rebuild before continuing.
 
 **Run the permuter SYNCHRONOUSLY and bounded — never as a background task you then
-wait on.** Always wrap it: `nix develop --command bash -c 'timeout 420 tools/permute.py <Name> -- --stop-on-zero -j4'`.
-Set the Bash TOOL CALL's own timeout parameter ABOVE the inner `timeout` (e.g.
-480000 ms) — otherwise the harness's default 120 s tool timeout auto-backgrounds
-the call, which is exactly the antipattern this rule exists to prevent.
+wait on.** Always wrap it: `nix develop --command bash -c 'timeout 300 tools/permute.py <Name> -- --stop-on-zero -j4'`.
+Set the Bash TOOL CALL's own timeout parameter WELL above the inner `timeout` (e.g.
+600000 ms).
+
+**Budget generously, because the inner `timeout` bounds the SEARCH, not the tool.**
+On SIGTERM permute deliberately rescores what the search retained — which runs
+BUILDS — so the process legitimately lives past its own timeout. A lane set
+`timeout 420` under a 480 s tool timeout, watched it still alive at 526 s, and the
+harness backgrounded the call: the exact antipattern this rule exists to prevent.
+`nix develop`'s startup is charged to the tool timeout but not the inner one, which
+eats the margin too. 300 inner / 600 tool leaves room for both.
+
+**Do not `pkill -f "tools/permute.py <Name>"`** — the pattern SELF-MATCHES the
+invoking shell and kills your own bash (a lane exited 144 that way). Kill by PID.
 It either finds a zero and prints it, or the timeout ends it and you move on. Do
 NOT spawn it in the background and end your turn "waiting for the permuter", and do
 NOT use a Monitor / background-wait / sleep-until tool to watch a permuter process —

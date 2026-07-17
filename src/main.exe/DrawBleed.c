@@ -105,33 +105,88 @@
  *    `--expand-div` (Build.hs maspsxGpExterns' `extra` list + permute.py's
  *    MASPSX_EXTRA), same as DrawSprite/DrawSpriteXYZ/FUN_8003a148.
  *
- * RESIDUAL (47 bytes, same class as DrawHinoko's own parked residual): the
- * target's SCHEDULER hoists `ViewInfo`'s `%hi` materialization (`lui
- * v1,%hi(ViewInfo)`) all the way into the FIRST branch's (`mode==0` test)
- * delay slot, and `pos.vy`/`pos.vz`'s FULL-WORD loads right after `time`'s
- * own reload — both well before their own statement's source position —
- * while this draft's schedule keeps them near their point of use. Confirmed
- * NOT a source-order issue: moving the `dy=pos.vy;dz=pos.vz;` statements
- * earlier in the C (before `time -= 1`) produced BYTE-IDENTICAL output,
- * proving cc1's list scheduler, not source position, decides how far to
- * hoist an independent load — same mechanism DrawHinoko.c's own residual
- * documents (a read hoisted far from its write, right instruction SET,
- * wrong SLOT). Also confirmed the LOAD WIDTH lever separately: `pos.vx/vy/vz`
- * (VECTOR, `long` fields) must be captured into plain `s32` temps (`dx`,
- * `dy`, `dz`) BEFORE the narrowing scratchpad store, or cc1's "narrowing
- * store" optimization narrows the LOAD itself to `lhu` (a valid modular-
- * arithmetic transform for the truncated subtraction, but 4 bytes short of
- * the target's `lw`) — the temps fixed the WIDTH; only the hoist DISTANCE
- * remains open. Tried and rejected: an explicit `TViewInfo *vp = &ViewInfo;`
- * declared at the very top (to bias the scheduler toward an early `lui`) —
- * this over-hoisted `%hi(ViewInfo)` even further (before the prologue's own
- * `sw ra`!) and regressed to 128 differing bytes; reverted. `tools/autorules.py`
- * found one real win (`pri: s32->s16`, 1004->48 differing bytes) already
- * applied; no further mechanical win. One bounded `tools/permute.py` run
- * (~300 s, `-j4 --stop-on-zero`) plateaued around score 175-760 with a
- * consistently high (100+) "errors" count that never reached 0 — consistent
- * with the cookbook's characterization: this divergence is chosen by a
- * later RTL pass (scheduling) the permuter's C-AST mutations cannot reach.
+ * RESIDUAL (47 bytes). The whole residual is ONE clean MIRROR SWAP of two
+ * load pairs — the instruction MULTISET is identical, only which pair is
+ * scheduled early differs:
+ *
+ *              TARGET                          OURS
+ *   0x3f8  lui v1,%hi(ViewInfo)            lbu v0,27(s1)      (time)
+ *   0x3fc  lbu v0,27(s1)                   lui a2,%hi(ViewInfo)
+ *   0x400  lw a1,4(s1)  \ pos.vy/vz        addiu/sb           (time)
+ *   0x404  lw a2,8(s1)  /  EARLY -> a1,a2
+ *   0x414  lhu a3,vpx / addiu &ViewInfo    lhu a1,4(a2) \ ViewInfo.vpy/vpz
+ *   0x418                                  lhu a2,8(a2) /  EARLY -> a1,a2
+ *   0x440  lhu v0,4(v1) \ ViewInfo         lw v0,4(s1)  \ pos.vy/vz
+ *   0x444  lhu v1,8(v1) /  LATE -> v0,v1   lw v1,8(s1)  /  LATE -> v0,v1
+ *
+ * Whichever pair loads first wins a1/a2; the loser gets v0/v1. PSX.SYM is
+ * decisive that the target's pair is the RIGHT one: it records `long y` in
+ * $a1 and `long z` in $a2, and the target's `lw a1,4(s1)`/`lw a2,8(s1)` put
+ * pos.vy/vz in exactly those homes. Ours puts ViewInfo there.
+ *
+ * MECHANISM (proved from the RTL, `tools/rtldump.py DrawBleed --pass
+ * flow,sched`) — it is sched1, the PRE-register-allocation scheduler:
+ *   .flow  (before sched1): LABEL, 79 dy, 82 dz, 85 lbu time, 89 sb, 92 dx,
+ *                           111 lui, 112, 114
+ *   .sched (after  sched1): LABEL, 85 lbu time, 89 sb, 111 lui, 92 dx, 114,
+ *                           112, 79 dy, 82 dz
+ * sched1 drags `dy`/`dz` from the TOP of the merge block to the BOTTOM. That
+ * shortens their live ranges, so the allocator hands them v0/v1 instead of
+ * a1/a2 (greg dispositions: `84 in 2  85 in 3`), and the `lui` loses the
+ * block-leader slot to `lbu`.
+ *
+ * The EMPTY DELAY SLOT IS A SYMPTOM, NOT THE CAUSE — do not chase it. reorg
+ * can only steal the merge block's LEADER; the target's leader is `lui`
+ * (arithmetic, eligible) so it gets stolen, ours is `lbu` (a LOAD, `dslot=yes`,
+ * ineligible per mips.md's define_delay) so reorg finds nothing and emits nop.
+ * Which insn leads the block is sched1's call, made long before reorg runs.
+ * Note also that the fill SHIFTS NOTHING: the `nop` and the `lui` are both 4
+ * bytes at 0x8003439c. The target's 0x3fc-vs-0x3f8 branch target is reorg
+ * COPYING the `lui` (the label has 2 uses -> own_target=0) and redirecting
+ * both jumps past the copy; the copy at 0x800343f8 must survive because the
+ * `pos+=vec` fallthrough path clobbers v1.
+ *
+ * The `.flow` RTL order ALREADY MATCHES the target, so expand/cse/combine are
+ * all doing the right thing and the C statement order is NOT the lever — this
+ * is why a previous round's "moving dy/dz earlier produced byte-identical
+ * output" is EXPECTED rather than informative: sched1 overrides source order
+ * within a basic block. The lever must change sched1's PRIORITY (chain length
+ * or a block/barrier boundary), not the statement position.
+ *
+ * The demo twin (`tools/siblingdiff.py DrawBleed --demo`, demo @ 0x8002e67c)
+ * emits this schedule IDENTICALLY (105/133 insns identical; the only deltas
+ * are ViewInfo's address 0x801d vs 0x800c and the scratchpad base 0x80 vs
+ * 0x20). So the target's schedule is a stable property of the ORIGINAL source
+ * across two independent builds, not a fluke — a source form that produces it
+ * exists and has not been found yet.
+ *
+ * LOAD WIDTH is separately settled and must not be regressed: `pos.vx/vy/vz`
+ * (VECTOR, `long`) must be captured into plain `s32` temps BEFORE the
+ * narrowing scratchpad store, or cc1 narrows the LOAD itself to `lhu` (valid
+ * for the truncated subtraction, but the target uses `lw`).
+ *
+ * MEASURED and rejected this round (all rebuilt + re-measured; the draft sits
+ * on a narrow 532-byte ridge and every neighbour collapses):
+ *   - struct-typed scratchpad `((MATRIX *)0x1F800000)->t[0]` /
+ *     `((SVECTOR *)0x1F800020)->vx`  -> 496 (cc1 CSEs the struct base into a
+ *     register across the stores, collapsing the per-store `lui at,0x1f80`;
+ *     this is what DrawTarget.c's header means by "NOT a shared cached
+ *     MATRIX/SVECTOR pointer local" — a CONSTANT-folded struct cast
+ *     collapses the same way).
+ *   - statement reorders: time-first/y,z,x | x,y,z-then-time |
+ *     time-first/x,y,z                     -> 512 each
+ *   - x/y/z hold the DIFFERENCES instead of the raw positions -> 512
+ *   - dropping the `(short)` casts on the ViewInfo reads      -> 512
+ *   - `volatile` scratchpad stores (a sched1 barrier; the target's schedule
+ *     IS "source order preserved relative to the scratchpad stores"):
+ *     all six volatile -> 536 (+1 insn); only the 3 zero stores -> 524;
+ *     only the 3 coordinate stores -> 524. Closest non-baseline result, and
+ *     non-monotonic — worth another look, but no form found that lands 532.
+ *   - `tools/autorules.py`: no improving edit among 32 candidates.
+ *   - `tools/permute.py` bounded run: 39687 iterations, never reached 0
+ *     (best proxy scores 405-1325, 517+ accumulated errors). Consistent with
+ *     the mechanism above — the choice is made by sched1's priority model,
+ *     which the permuter's C-AST mutations do not address.
  */
 typedef struct
 {
