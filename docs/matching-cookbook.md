@@ -6374,6 +6374,20 @@ and the background assumption that cross-jumping merged the five `return 0` bloc
 `.jump` shows it never did, so all five guards reach reorg with identical RTL and the
 divergence cannot be a source-shape difference between them.
 
+### A park's "already at the priority floor" claim is worth re-reading — it is often inverted
+
+AddEnemy's cluster (E) was parked for five rounds on the claim that the CamState
+`high` "already has priority 1 — the floor", so no lever could demote it. The
+`.sched` dump says the **reverse**: the high HEADS a ~7-deep chain to the `jal`,
+while `move a0,s7` (LOG_LINKS `(nil)`, one USE below it) **is** the floor. That
+inversion explains why both the fence and a 420 s permuter run failed — **they were
+aimed at a tie that does not exist.** Retail emits the lowest-height insn before the
+highest, which no statement reorder reaches.
+
+The park stands; its reason was backwards. **When a park says "X is already at the
+floor", read the LOG_LINKS: a value that heads a long dependence chain is at the
+CEILING, not the floor** — and the next round should attack HEIGHT, not order.
+
 ### A returning guard's delay slot is won by SOURCE POSITION, not by a fence
 
 If the target fills a guard's delay slot with a cheap independent assignment and
@@ -6389,18 +6403,35 @@ the guard, not inside it.**
 Free when the variable is dead on the else path: **no fence, no loop-depth weight**.
 (AddEnemy round 11, -6 bytes.)
 
-### `array[i]` and `pointer[i]` produce OPPOSITE `addu` operand order
+### An `addu` operand swap is a DECLARED-TYPE question — and the obvious fix is DEAD ON ARRIVAL
 
-Same C syntax, different tree, and it is worth checking before you call an operand
-swap a regalloc tie:
-* An **ARRAY_REF** expands via `get_inner_reference` as
+Same C syntax, different tree:
+* an **ARRAY_REF** expands via `get_inner_reference` as
   `gen_rtx (PLUS, ptr_mode, XEXP (op0, 0), force_reg (ptr_mode, offset_rtx))` —
-  **base-first by construction**.
-* A **pointer index** builds `INDIRECT_REF(PLUS_EXPR(ptr, idx*size))` and comes out
+  **base-first by construction**;
+* a **pointer index** builds `INDIRECT_REF(PLUS_EXPR(ptr, idx*size))` and comes out
   **index-first**.
 
-**Check the base's DECLARED TYPE.** (AddEnemy's `addu v0,s0,v0` vs our
-`addu v0,v0,s0` is exactly this shape.)
+**But knowing that is not enough, and the first version of this rule stopped there —
+which steers you straight into the one cast that cannot work.** `c-typeck.c:1406`
+builds an ARRAY_REF only when the indexed operand has ARRAY_TYPE **AND**:
+
+```c
+  if (TREE_CODE (TREE_TYPE (array)) == ARRAY_TYPE
+      && TREE_CODE (array) != INDIRECT_REF)
+```
+
+So a pointer-to-array cast — `(*(T (*)[70])p)[i]` — **is** an INDIRECT_REF, fails
+the gate, and falls through to the same index-first arithmetic. Dead on arrival.
+
+**Use a COMPONENT_REF instead.** It is not an INDIRECT_REF and can still have
+ARRAY_TYPE, so a **one-field wrapper struct** — `((Wrap *)p)->a[i]` — passes both
+tests: `get_inner_reference` expands it base-first while the inner reference stays
+the bare pointer REG, giving `PLUS(base_reg, offset)` with **no frame-address
+rematerialisation**. Reach for this whenever an array respelling would otherwise
+rematerialise `addiu ...,sp,K`. `mark_addressable` is harmless here: on a
+COMPONENT_REF it walks to operand 0 (`c-typeck.c:3365`) and an INDIRECT_REF hits the
+permissive default. (AddEnemy cluster D, -2 bytes.)
 
 ### A load's freedom is decided by its ADDRESS KIND — not by `/s`
 

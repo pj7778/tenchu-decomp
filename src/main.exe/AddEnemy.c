@@ -44,8 +44,56 @@
 /*
  * STATUS: NON_MATCHING — complete pure-C reconstruction at the exact target
  * extent (1152 bytes / 288 instructions) and exact 0x810 frame.  The guarded
- * draft has 29 differing bytes
- * (183 -> 161 -> 125 -> 81 -> 72 -> 52 -> 42 -> 35 -> 29).
+ * draft has 27 differing bytes
+ * (183 -> 161 -> 125 -> 81 -> 72 -> 52 -> 42 -> 35 -> 29 -> 27).
+ *
+ * ROUND 12 (-2): CLUSTER (D) CLOSED.  Byte accounting of the 27 that remain,
+ * re-measured per instruction this round (matchdiff, not inherited):
+ *     (A) 14B  0x5d4-0x5e0  loop-1 preheader ORDER   — barred, needs E3
+ *     (C)  1B  0x81c        `move a1,s0` vs `,s1`    — barred (loop.c/cse2)
+ *     (E) 12B  0x8dc-0x8e4  `move a0,s7` position    — barred, see below
+ *
+ * (1) **(D) FELL TO AN ARRAY_REF CARRIER.**  Round 11 identified the cause
+ *     (ARRAY_REF expands base-first via get_inner_reference; a pointer index
+ *     builds INDIRECT_REF(PLUS_EXPR(ptr,idx*size)) and comes out index-first)
+ *     but parked it as "not yet spendable", because `ItemName[count]` here
+ *     rematerialises `addiu ...,sp,1424` (+1 insn) — cse2 resets its table at
+ *     .L8005B880 — and asked for "a form that keeps the menu_base REG as the
+ *     base while taking the ARRAY_REF path".  That form exists.  READ
+ *     c-typeck.c:1406 (gcc-2.8.1 in the nix store), which gates ARRAY_REF on
+ *         TREE_CODE (TREE_TYPE (array)) == ARRAY_TYPE
+ *         && TREE_CODE (array) != INDIRECT_REF
+ *     Two consequences, and the second is the win:
+ *      - the OBVIOUS construct is DEAD ON ARRIVAL.  A pointer-to-array cast,
+ *        `(*(debug_menu_choice (*)[70])menu_base)[count]`, makes `array` an
+ *        INDIRECT_REF, fails the second test, and falls through to the SAME
+ *        index-first pointer arithmetic.  Do not spend a build on it.
+ *      - a COMPONENT_REF is NOT an INDIRECT_REF and can still have ARRAY_TYPE.
+ *        `((AddEnemyMenuArray *)menu_base)->a[count]` therefore passes BOTH
+ *        tests and builds a real ARRAY_REF, while its inner reference is still
+ *        the bare `menu_base` REG — so expand_expr emits
+ *        PLUS(menu_base_reg, offset) (base-first, retail's order) with NO
+ *        frame-address rematerialisation.  mark_addressable is harmless here:
+ *        on a COMPONENT_REF it walks to operand 0 (c-typeck.c:3365) and an
+ *        INDIRECT_REF hits the permissive default.
+ *
+ * (2) **ROUND 7's MECHANISM FOR (E) IS INVERTED — the park survives, the
+ *     reason does not.**  Round 7 wrote "the CamState `high` (insn 1607)
+ *     already has priority 1 — the floor".  MEASURED from our own .sched dump
+ *     this round: the CamState high (now insn 1460) has LOG_LINKS (nil) but
+ *     HEADS a ~7-deep chain 1460 -> 1461 -> 1463 -> 1465 -> {1468,1471,1474,
+ *     1477} -> 1492 -> jal, i.e. the HIGHEST height in the block.  It is
+ *         (insn 1488 ... (set (reg:SI 4 a0) (reg/v:SI 81)) ... (nil) (nil))
+ *     — `move a0,s7` — that sits at the floor: LOG_LINKS (nil) and exactly one
+ *     insn below it (the jal's USE).  sched emits height DESC: our own sched1
+ *     output puts the chain first and pulls 1488 up only as far as the first
+ *     load-use slot.  Retail emits the LOWEST-height insn BEFORE the highest —
+ *     anti-priority — so (E) is not reachable by reordering the exit-block
+ *     statements at all.  It needs `a0 = type` to CARRY REAL HEIGHT, which a
+ *     call-arg reg move (expand_call emits it after every arg is evaluated,
+ *     one USE at the jal) structurally cannot.  This is why the fence and the
+ *     permuter both failed: they were aimed at a tie that does not exist.
+ *     Whoever reopens (E) must attack the CHAIN's height or a0's, not order.
  *
  * ROUND 11 (-6): CLUSTER (B) CLOSED.  **AND THE ROUND-10 CHARTER FOR (A) WAS
  * A CATEGORY ERROR — (A) IS NOT A REGISTER TIE IN THIS DRAFT AT ALL.**
@@ -892,6 +940,18 @@ typedef struct
     u32 call_spill[2];
 } AddEnemyBloodScratch;
 
+/* An ARRAY_REF carrier (see the (D) note at the top).  c-typeck.c:1406 builds
+ * an ARRAY_REF only when the indexed operand has ARRAY_TYPE *and* is not an
+ * INDIRECT_REF, so `(*(debug_menu_choice (*)[70])p)[i]` cannot reach that path
+ * -- but `((AddEnemyMenuArray *)p)->a[i]` can: a COMPONENT_REF with ARRAY_TYPE
+ * passes both tests, and its inner reference is still the bare pointer REG, so
+ * expand_expr emits `PLUS(base_reg, offset)` -- base first -- without
+ * rematerialising the frame address. */
+typedef struct
+{
+    debug_menu_choice a[70];
+} AddEnemyMenuArray;
+
 extern AddEnemyHumanData HumanData[63];
 extern AddEnemyWeaponModel WeaponModel[41];
 extern s16 *StageAppearance[];
@@ -1193,7 +1253,7 @@ add_enemy_think_scan_done:
         /* fence depth 10 */
         do { do { do { do { do { 
         do { do { do { do { do { 
-            menu_base[count].choice_name = 0;
+            ((AddEnemyMenuArray *)menu_base)->a[count].choice_name = 0;
         } while (0); } while (0); } while (0); } while (0); } while (0); 
         } while (0); } while (0); } while (0); } while (0); } while (0);
         /* fence depth 10 */

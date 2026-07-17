@@ -557,6 +557,16 @@ function already byte-matches on current `master`.
   `dslot`/`length` eligibility and `LABEL_NUSES` per branch target, and said outright
   "that table IS the whole answer here". An `asmdiff`/`rtldump` annotation would make
   StickonCheck's entire analysis one call.
+- **Do not tell a lane master has a fix before you have COMMITTED it.** I sent a
+  rule correction saying "master now has the fixed version, `git merge --ff-only
+  master`" — between harvesting and committing. Master was still at the lane's own
+  base; it checked, found nothing to merge, and correctly used the message as
+  guidance only. Commit first, then message, and cite the SHA you actually created.
+- **A rule that names a MECHANISM must also name what the mechanism FORBIDS.** The
+  `addu` operand-order rule named the ARRAY_REF/INDIRECT_REF tree distinction and
+  stopped — so its obvious fix (`(*(T (*)[70])p)[i]`) is precisely the one construct
+  the gate rejects. A rule that explains a difference without naming the dead ends
+  costs a lane the round it saves.
 - **A rule with a DIRECTION must say so, or it gets applied backwards.** The
   LOOP_BEG prediction flip matched LoadTIMpack (which wanted the +1 copy) and is
   exactly wrong for StickonCheck (which needs to PREVENT a target-thread steal) — I
