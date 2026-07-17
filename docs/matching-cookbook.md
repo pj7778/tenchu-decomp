@@ -892,6 +892,15 @@ The identity canon — the cheapest questions on the board, asked in order:
    block locals (BIS's shared `j`). But do NOT fuse two locals just to chase a
    demo register — disjoint ranges land together anyway, and the fused
    multi-def local blocks `num_sign_bit_copies` (AddEnemy's names_offset/type).
+   **The INVERSE bites when YOU reuse one name across mutually-exclusive
+   branches**: a single `sentinel`/`voice`/`end_marker` local shared between two
+   `if`/loop arms can force a REAL conflict with an unrelated pseudo if any one of
+   its uses keeps it live past the target's actual lifetime in that arm. `.greg`'s
+   `N conflicts:` list shows the false conflict outright. Give each arm its OWN
+   local even if PSX.SYM or an earlier round named them the same — splitting
+   collapsed 3 clusters in one edit (PlayVoice 9→4). **PSX.SYM naming two things
+   the same is a nested-block SCOPE hint, not licence to share one pseudo across
+   disjoint branches.**
 5. **Split shared pseudos as a PRIORITY lever** — splitting demotes each half
    superlinearly (ControlHumanoid's magnitude 24615 → 10000/14285/14285, last
    7 bytes). A plain COPY cannot split an allocno (cse folds it back — a

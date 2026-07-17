@@ -126,27 +126,67 @@ static inline void BuildVoiceLocation(CdlLOC *loc, u8 min, u8 sec)
  *    would collapse into one).
  *
  * STATUS: NON_MATCHING — exact target extent (756 bytes / 189 instructions),
- * 14 differing linked bytes and fuzzy 95.77 (from 120 bytes / 73.54). The raw
- * aligned residual is 10 lines in 8 blocks; the structural-only view is 5
- * lines in 4 blocks.
+ * 4 differing linked bytes (down from a banked 14; matchdiff --clusters: 2
+ * clusters, both pure register-operand swaps, 0 length/opcode diffs).
  *
  * PSX.SYM lists two distinct nested `min`/`sec` pairs. Giving each
  * BuildVoiceLocation call its own block scope, while keeping the volume clamp
  * in an `s32`, fixes the saved-register cycle and makes the complete playback
  * tail exact. The high-ID search keeps separate current and peek-next pointer
- * identities through a jump2-erased equal-arm copy. The language search uses
- * the same split for cursor versus result, with a second defined equal-arm
- * donor to retain its 0xff carrier. An explicit `fallback_hit` label parks the
- * retail two-instruction success trampoline after the high-ID loop; moving the
- * fallback id reload into the rotated loop restores its otherwise redundant
- * first load and exact extent.
+ * identities through a jump2-erased equal-arm copy.
  *
- * The remaining gap is three coupled allocation/scheduling islands: the two
- * local table bases exchange s0/s1 (and therefore the two following v0/v1
- * loads), the language loop's correct a1/v1 setup moves are reversed, and the
- * fallback base uses a0/v1 where retail uses a1/v1 after first reserving a0 for
- * 0xff. A bounded donor search plus a 160-candidate loop-weight composition
- * sweep found no exact-length result below 14 bytes.
+ * Two fixes closed 14 -> 4 (both confirmed with tools/regalloc.py, not
+ * guessed): (1) naming the language-search loop's exit sentinel
+ * (`end_marker = 0xff;` local instead of the literal `0xff` in
+ * `while (voice_id != 0xff)`) fixed the emission order of the cached
+ * sentinel vs. the `cursor = voice` copy — matches a live permuter find,
+ * ported by delta not score, from a bounded run (RESULT.md's
+ * `output-50-1`): 14 -> 10 bytes. (2) The SAME reused `end_marker` local,
+ * shared with the fallback search (`D_80012CBC`), was forced to CONFLICT
+ * with `voice` in regalloc.py's `.greg` dump (`82 conflicts: ... 88`) —
+ * `voice`'s pseudo is read every iteration of the CHOSEN_LANGUAGE loop by
+ * its nested `if (voice != 0)` fence, so it stays live well past where the
+ * target's `a0` copy of it actually dies, and the reused sentinel pseudo
+ * (live across BOTH loops) is born inside that extended range. That false
+ * conflict exiled the sentinel out of `voice`'s register in the fallback
+ * loop too, cascading into the a0/a1 swap there. Giving the fallback search
+ * its own `fallback`/`fallback_end` locals (declared, never read by the
+ * other two branches) removes the shared pseudo and the false conflict
+ * outright — collapsed 3 clusters in one edit: 9 -> 4 bytes, exactly the
+ * "fixing one allocation collapses several clusters" pattern.
+ *
+ * The remaining 4 bytes are ONE allocation-priority tie, fully diagnosed but
+ * not closed at the C level. `tools/regalloc.py PlayVoice --compare 95 96`:
+ * both pseudos are the (fp+24)/(fp+40) base addresses for indexing
+ * `filenames[CHOSEN_LANGUAGE]` / `tables.entry[CHOSEN_LANGUAGE]`, both
+ * computed eagerly at function entry (before the `id>=100` test — confirmed
+ * in the `.lreg` dump, insns 28/30, unconditional), both cross the same 2
+ * calls, refs=2/2, but live_insns 10 vs 7 — filenames' base (p95, ->s1) needs
+ * "+1 weighted ref" to outrank tables' base (p96, ->s0) and swap into s0,
+ * matching target. No preference donors exist for s0 or s1 (`--prefer
+ * 16`/`--prefer 17`: none). Tried and refuted: swapping the two statements'
+ * order (birth/death insns for both pseudos are IDENTICAL either way — cc1
+ * hoists both addresses to function entry regardless of which consuming
+ * statement comes first, confirmed via regalloc.py before/after); moving
+ * `tables = D_800134E0;` next to its use inside the branch instead of at
+ * entry (breaks length, -4 bytes — the unconditional early copy is itself
+ * load-bearing, matching the target's own eager behavior); writing
+ * `filenames` via 4 sequential element stores instead of an aggregate
+ * initializer (breaks length badly, -36 bytes — the aggregate-copy shape is
+ * load-bearing too); a `do{}while(0)` ref-weight fence around just the
+ * `FileName = filenames[...]` statement and an identical-arm fence around
+ * the same (cookbook §3.10's ref-weight dial) both overshot and changed the
+ * residual's SHAPE for the worse (10 and 14 bytes, with an actual
+ * instruction reorder, not just a register swap) rather than landing the
+ * precise +1. Two independent bounded foreground permuter runs (one at the
+ * 14-byte baseline, one at this 4-byte baseline; `--stop-on-zero -j4`,
+ * ~22000 iterations each) found nothing better than what's already applied.
+ * This is a below-the-obvious-C-level register-priority tie in the sense of
+ * the cookbook's §2 sub-C ladder: named lever (regalloc.py's exact priority
+ * arithmetic), tool-diagnosed root cause, natural respellings tried and
+ * either neutral or length-breaking, permuter exhausted twice. A future
+ * round with RTL-level `.greg`/`.lreg` surgery (not just C respelling) is
+ * the only named lever left untried.
  */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PlayVoice", PlayVoice);
@@ -160,6 +200,9 @@ void PlayVoice(int id)
     TVoiceTable *cursor;
     TVoiceTable *next;
     u8 voice_id;
+    int end_marker;
+    TVoiceTable *fallback;
+    int fallback_end;
     u8 *filenames[4] = {
         D_80097CA0,
         D_80097CA4,
@@ -223,6 +266,7 @@ void PlayVoice(int id)
         loc = 0;
         if (voice->id != 0xff)
         {
+            end_marker = 0xff;
             cursor = voice;
             do
             {
@@ -248,16 +292,17 @@ void PlayVoice(int id)
                 cursor++;
                 voice_id = cursor->id;
                 loc = 0;
-            } while (voice_id != 0xff);
+            } while (voice_id != end_marker);
         }
     }
 found:
     if (loc == 0)
     {
-        voice = D_80012CBC;
-        if (voice->id != 0xff)
+        fallback = D_80012CBC;
+        if (fallback->id != 0xff)
         {
-            cursor = voice;
+            fallback_end = 0xff;
+            cursor = fallback;
             do
             {
                 voice_id = cursor->id;
@@ -266,7 +311,7 @@ found:
                     goto fallback_hit;
                 }
                 cursor++;
-            } while (cursor->id != 0xff);
+            } while (cursor->id != fallback_end);
         }
         loc = 0;
     found2:
