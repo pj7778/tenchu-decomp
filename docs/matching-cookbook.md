@@ -6046,6 +6046,15 @@ retail). The "unexplained frame gap = unused aggregate" rule applied to main.
   loop.c:691-703 moves a set if (1) it is used only in the set's own basic block
   (`reg_in_basic_block_p`), OR (2) `!REG_USERVAR_P(SET_DEST(set)) &&
 
+**Correction (AddEnemy round 10): `loop.c:697-708` is TWO gates, not one.**
+Gate 1 is the cases (1)/(2)/(3) DISJUNCTION (`reg_in_basic_block_p` /
+`!REG_USERVAR_P` / `!maybe_never`); gate 2 is
+`invariant_p && (n_times_set == 1 || consec_sets_invariant_p) && !trap`. So citing
+`n_times_set == 1` as a bare REQUIREMENT is wrong — it is a disjunct — and a NAMED
+user variable usually dies at gate 1 anyway, making gate 2 the wrong thing to argue
+about. (A brief asserted the `n_times_set` version and a lane spent a round
+disproving it.)
+
 **Correction (AddEnemy round 9):** `reg_in_basic_block_p` (loop.c:1066) has a
 SECOND test that several rounds missed — the reg's LAST USE must also be in the
 set's basic block, not just the set. Any contradiction derived from this rule is
@@ -6480,6 +6489,39 @@ where it is equally valid and finds scaffolding years earlier.
   its three "weighting fences" measured inert once the decomposition was right.
   `tools/reghist.py` now prints an OPCODES DIFFER banner before any register
   verdict; heed it, and byte-account by instruction ENCODING, not register delta.
+### A hand-written range-split that models caller-save is LOAD-BEARING, not removable debt
+
+**caller-save.c only engages when `find_reg` has ALREADY FAILED to find a
+callee-saved register.** So deleting a hand-written spill model does NOT hand the
+job back to the compiler: the value simply wins a callee-saved register and the
+spill pair silently disappears. Measured on AddEnemy — deleting the
+`blood.call_spill[]` hack entirely gives **-4 insns**, `$fp`/`$s7` for the bases,
+mask unchanged, and **no sw/lw around the call at all**. There was nothing for
+caller-save to do.
+
+**Check whether the allocator has any REASON to spill before removing a spill
+model.** This is the counterweight to "suspect our own scaffolding": scaffolding
+that models a real allocator behaviour is load-bearing, and only scaffolding that
+FORBIDS one is debt.
+
+### Frame arithmetic identifies the compiler's own spill slots
+
+Sum the declared locals, add the saved-reg block, and compare with the target's
+frame. **A residue that is an exact multiple of 4 is caller-save/reload slots the
+allocator added** — and it tells you HOW MANY the ORIGINAL source's allocator
+spilled. AddEnemy: no-hack locals end at 0x7e0; retail's frame 0x810 = 0x7e0 + **8**
++ 40, while the no-hack build measures 0x808 = 0x7e0 + **0** + 40. That 8 is exactly
+two compiler caller-save slots, so retail's allocator DID spill two values — which
+our hand-written model was imitating.
+
+**This is independent of where a hand-written scratch struct happens to land, and
+that matters: slot coincidence with a struct you sized yourself is CIRCULAR
+evidence.** AddEnemy's "retail spills to sp+0x7e0/0x7e4, byte-identical slots"
+survived five rounds as settled fact before anyone noticed round 5 had sized the
+struct to make the slots land there. A second, non-circular signature: retail saves
+`$t1` **in the jal delay slot** and restores in **reverse order** at block end — no
+source-level store is emitted that way.
+
 ### A fence weights EVERY allocno the statement mentions — not just your target
 
 **This cost AddEnemy three rounds and 7 bytes.** A depth-19 fence on

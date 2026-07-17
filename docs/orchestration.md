@@ -540,6 +540,15 @@ function already byte-matches on current `master`.
   AddEnemy lane lost real time to a self-diagnosed "build-dep gap" that turned
   out to be Shake being correct. Check the dispositions or the `.o` timestamp,
   not the byte count alone.
+- **A false "measured" fact propagated through FIVE rounds. Re-measure inherited
+  claims that a round is about to rest on.** AddEnemy's round 5 recorded "with the
+  hack deleted, gcc spilled them on its own to sp+0x7e0/sp+0x7e4 — byte-identical
+  slots"; five rounds quoted it as settled, three briefs built on it, and round 10
+  finally ran the experiment: gcc spills NOTHING. Worse, the supporting evidence was
+  CIRCULAR — round 5 had sized the struct so those slots would land there. Rules:
+  a STATUS/brief claim must name the round that measured it, and a lane must
+  RE-MEASURE any inherited fact its plan depends on. "Measured in round 5" is a
+  citation, not a proof.
 - **Briefs on the hard functions are now 6-for-6 REFUTED, and that is the process
   working — but stop asserting a cause.** AddEnemy round 9 is the sharpest case:
   the brief said "the $a0/$a1 swap is downstream of that one choice", and cluster C

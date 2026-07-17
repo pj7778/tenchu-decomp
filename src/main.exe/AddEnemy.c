@@ -46,6 +46,87 @@
  * extent (1152 bytes / 288 instructions) and exact 0x810 frame.  The guarded
  * draft has 35 differing bytes (183 -> 161 -> 125 -> 81 -> 72 -> 52 -> 42 -> 35).
  *
+ * ROUND 10 (+-0): THE ROUND-9 LEAD ON (A) IS REFUTED BY MEASUREMENT, but the
+ * SHAPE of retail's loop-1 is now PROVED rather than inferred.  Read this before
+ * touching the call_spill hack again.
+ *
+ * (1) **THE HACK IS LOAD-BEARING.  "Delete it and let caller-save do it" FAILS.**
+ *     MEASURED (E1b: both volatile if/else pairs, both stores, and the
+ *     `call_spill[2]` field deleted; `blood` a plain VECTOR; nothing else
+ *     touched): LENGTH 1136 (-4 insns), frame 0x808.  gcc does NOT caller-save
+ *     the bases — it hands them CALLEE-SAVED regs (`addiu $fp,$2,%lo(
+ *     StageAppearance)` / `addiu $23,$2,%lo(WeaponModel)`, i.e. $fp and $s7),
+ *     the mask stays 0xc0ff0000, and there is no sw/lw around sprintf at all.
+ *     This also REFUTES an inherited round-5 claim that has been quoted as
+ *     settled fact for five rounds: "With `blood.call_spill[]` deleted entirely,
+ *     gcc spilled them on its own to sp+0x7e0/sp+0x7e4 — byte-identical slots."
+ *     It does not.  It spills NOTHING.  Do not re-derive this.
+ *
+ * (2) **RETAIL NEVERTHELESS HAS NO HACK — now proved two independent ways, not
+ *     inferred from slot coincidence** (the old argument was circular: round 5
+ *     SIZED the struct so its slots would land on 0x7e0/0x7e4).
+ *      - FRAME ARITHMETIC.  No-hack user locals end at 0x7e0 (names 0x18 +1400,
+ *        ItemName 0x590 +560, pos 0x7c0 +16, blood VECTOR 0x7d0 +16).  Retail's
+ *        saved regs start at 0x7e8 and its frame is 0x810 = 0x7e0 + 8 + 40.
+ *        That 8 is exactly TWO compiler-allocated caller-save slots.  E1b's
+ *        measured 0x808 = 0x7e0 + 0 + 40 is the same sum with ZERO slots.
+ *      - CALLER-SAVE SIGNATURE.  Retail: `sw $t0,0x7E0($sp)` / `jal sprintf` /
+ *        `sw $t1,0x7E4($sp)` — the second save sits IN THE JAL DELAY SLOT — and
+ *        the restores `lw $t1,0x7E4` / `lw $t0,0x7E0` come at the block END in
+ *        REVERSE order.  No source store is ever emitted that way; that is
+ *        caller-save.c + dbr.  Retail's t0/t1 are genuinely allocator spills.
+ *
+ * (3) **THE RETAIL SHAPE IS REACHABLE AND MEASURED — and it is NOT a near-win.**
+ *     E3 = direct refs (`StageAppearance[stage_slot]`, `WeaponModel[weapon]`,
+ *     direct guard `if (WeaponModel[0].wid != -1)`), no named base vars, no hack,
+ *     KEEPING rounds 6-9's fences and the if/else cursor.  MEASURED: LENGTH 1144
+ *     (-2), frame 0x810 (retail's), and the loop-1 preheader is retail's EXACT
+ *     seven insns in retail's EXACT order —
+ *         lui/addiu SA -> $t0 ; li -1 ; addiu HD ; lui/addiu WM -> $fp ; giv
+ *     i.e. [SA][-1][HD][WM][giv].  (A)'s ORDER falls out for free, and ONE base
+ *     is already correctly caller-saved: `sw $8,2016($sp)` (0x7e0) IN THE JAL
+ *     DELAY SLOT, reloaded after — retail's mechanism, reproduced.
+ *     E3 SUPERSEDES round 5's recorded "direct refs AND a direct guard = 1136
+ *     (-4)": with rounds 6-9's fences kept it is 1144 (-2), two insns better.
+ *     **BUT `tools/asmdiff.py` scores E3 at 107 residual lines in 49 blocks vs
+ *     this checkpoint's 10 lines in 8 blocks.**  Fixing (A)'s order rotates the
+ *     WHOLE loop-1 allocation.  E3 is not 2 insns from a match; it is a
+ *     different, much worse point that happens to have the right preheader.
+ *     Do NOT adopt E3 as a checkpoint on the strength of its order alone.
+ *
+ * (4) **WHY E3 IS 2 INSNS SHORT — exact, from `tools/regalloc.py`.**  Retail
+ *     caller-saves BOTH bases (4 insns: 2 sw + 2 lw); E3 caller-saves ONE.  The
+ *     two lowest-priority allocnos are
+ *         p128 (SA base): 5 refs / 200 insns -> 500  -> $t0  (lost, caller-saved)
+ *         p181 (WM base): 5 refs / 192 insns -> 520  -> $fp  (took the LAST free
+ *                                                             callee-saved reg)
+ *     Eight allocnos fill $s0-$s7, p181 takes $fp, p128 gets nothing.  Retail
+ *     has NINE allocnos above the bases (s0=HumanData entry, s1=buffer,
+ *     s2=weapon, s3=j, s4=i, s5=count, s6=-1, s7=names giv, fp=HumanData base),
+ *     so BOTH bases lose and — because allocation is priority DESC — the higher
+ *     one (WM) takes $t0 and SA takes $t1, which is retail's exact pairing.
+ *     **The whole of (A) therefore reduces to: find ONE more loop-1 allocno with
+ *     priority > 520 that takes $fp.**  Note retail's `weapon`/`j` do NOT cross
+ *     sprintf (checked: no $s2/$s3 between the jal and .L8005B76C) — they simply
+ *     WIN callee-saved regs, so "make something cross the call" is not obviously
+ *     the lever.  E3 also carries an allocno retail lacks: p182 (6/194 -> 618)
+ *     is a live `%hi(WeaponModel)` CARRIER in $s7, reused later; retail
+ *     rematerialises its `lui` into a throwaway $v0 instead.
+ *
+ * (5) ROUND 9's loop.c citation is IMPRECISE (the conclusion survives).  :708 is
+ *     NOT a bare `n_times_set == 1` requirement — it is a DISJUNCTION,
+ *     `n_times_set[...] == 1 || consec_sets_invariant_p (...)`, and it is the
+ *     SECOND of two gates (the first is the cases (1)/(2)/(3) disjunction at
+ *     :697-703).  Our hack still fails it (3 non-consecutive sets, and a
+ *     volatile read is not invariant), and a named `weapon_base` independently
+ *     fails gate 1 — which is why round 5's measured "`weapon_base = WeaponModel`
+ *     written in the body: 1124 (-7)" happens, and why THE ROUND-9/10 BRIEF'S
+ *     "relocate `weapon_base = WeaponModel` into the loop body" CANNOT WORK for a
+ *     NAMED variable at any position: at the body top case (3) would need
+ *     !maybe_never but it is then discovered FIRST (wrong order), and anywhere
+ *     below the HumanData use maybe_never is already 1.  Only a compiler TEMP
+ *     (case (2)) can be the movable — i.e. only E3.
+ *
  * ROUND 9 (-7): cluster (C) was TWO INDEPENDENT HALVES, not one.  The brief's
  * "the $a0/$a1 swap at 0x830-0x85c is downstream of which name the cursor init
  * reads" is FALSE and cost three rounds.  Byte-account before believing it:
@@ -146,6 +227,12 @@
  * The round-10 experiment: delete the call_spill hack, let caller-save do it,
  * and relocate `weapon_base = WeaponModel` into the loop body below the
  * HumanData use.  Untried — it is a real restructure, not a dial.
+ * >>> ROUND 10 RAN IT: **REFUTED, both halves.**  Deleting the hack does not let
+ * caller-save do anything (1136, bases -> $fp/$s7, no spill at all), and a
+ * relocated NAMED `weapon_base` fails loop.c's FIRST gate at any position (1124).
+ * The mechanism above is right that our hack blocks the movable; it is wrong that
+ * removing it is sufficient.  Only a compiler TEMP can be the movable — see the
+ * ROUND 10 block at the top of this comment for E3 and the exact remaining gap.
  *
  * ROUND 6 (-10): loop 2's preheader ORDER, carrier, base and type are now ALL
  * EXACT.  Three things had to be true at once; each alone measured worse:
