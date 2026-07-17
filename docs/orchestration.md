@@ -579,6 +579,16 @@ function already byte-matches on current `master`.
   "surplus instructions", DrawBleed missed an entirely different operation at
   0x80034440: `lhu v0,4(v1)` vs `lw v0,4(s1)`). The pattern is mine, not the lanes'.
   **Pipe the whole diff and run `--context`, or say the excerpt is an excerpt.**
+- **A tool asserted a claim its OWN output disproved, on the same screen.**
+  `schedtrace` printed "Nothing can lift them: MIPS defines no ADJUST_PRIORITY, so an
+  insn with LOG_LINKS (nil) is at 1 unconditionally" — while printing
+  `ready list at T-2: 288 (3) 291 (7f000001)` a few lines above. 0x7f000001 is
+  LAUNCH_PRIORITY. The macro was never the gate (sched.c gates `adjust_priority` on
+  `reload_completed == 0`), the claim was mine, I folded it into the cookbook too, and
+  it cost a full round. **A tool that both PRINTS evidence and ASSERTS a conclusion must
+  derive the conclusion FROM the evidence it prints — not from what I believed while
+  writing it.** schedtrace now reads the post-bump priority out of the ready lists and
+  names every bumped insn.
 - **A rule I built and named as THE lever had never once run.** `binop-operand-seed`
   emitted its temp as a DECLARATION at the seed site — a C89 parse error under cc1 2.8.1
   — so every candidate it ever produced scored `invalid`. A lane reported all 13 failing

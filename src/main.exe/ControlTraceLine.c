@@ -87,15 +87,76 @@
  *     0x8002915c  T `lh v0,10(v1)`    O `lh v1,10(v1)`
  *     0x80029160  T `lhu v1,10(v1)`   O `li v0,-1`
  *     0x80029164  T `bne v0,a0,..`    O `bne v1,v0,..`
- * The target hoists `li a0,-1` into the load-use slot of `lhu v0,0(s2)` at
- * 0x80029134, which frees the slot our `li v0,-1` occupies for the second
- * (`lhu`) load. `tools/schedtrace.py` shows why this is hard: the `li -1`
- * (insn 286) has LOG_LINKS (nil), so it sits at priority 1 - the FLOOR -
- * where "max_priority = 1 is the initialiser and MIPS defines no
- * ADJUST_PRIORITY", and floor insns are ordered by LUID alone. So its
- * schedule position is a pure source-POSITION lever, not a priority one, and
- * the compare that materialises it must stay last (it is the branch). Tried
- * and MEASURED (all rebuilt + matchdiff'd, none is a no-op unless noted):
+ *
+ * REFUTED 3 (this round, by measurement) - the "floor / LUID" framing above,
+ * and `tools/schedtrace.py`'s OWN SUMMARY LINE, are both WRONG. schedtrace
+ * prints "N insn(s) at priority 1 (the floor). Nothing can lift them:
+ * max_priority = 1 is the initialiser and MIPS defines no ADJUST_PRIORITY, so
+ * an insn with LOG_LINKS (nil) is at 1 unconditionally." That claim is refuted
+ * by schedtrace's own ready lists. For our `li -1`:
+ *     ;; insn[ 291]: priority =    1, ref_count =    1     <- the TABLE
+ *     ;; ready list at T-2: 288 (3) 291 (7f000001), now 291 288
+ * The li's priority is 1 in the table but 0x7f000001 = LAUNCH_PRIORITY in the
+ * READY LIST: sched1's generic `adjust_priority` (sched.c) bumps it AT LAUNCH
+ * TIME. MIPS defining no ADJUST_PRIORITY macro does not disable it. So the li
+ * NEVER competes at the floor, LUID is irrelevant, and it is not a
+ * source-POSITION lever. That is why round 1's `s32 endmark = -1;` "early
+ * LUID" arm did nothing: it was never a LUID problem. Read the priority in the
+ * `ready list at T-k:` lines, NOT the `;; insn[N]:` table.
+ *
+ * THE REAL MECHANISM (verified 6/6 in this function's own RTL). sched1's
+ * `adjust_priority` -> `birthing_insn_p` fires iff the pattern is a
+ * `(set (REG) ...)` whose dest is live and has REG_N_SETS == 1 (set EXACTLY
+ * ONCE in the whole function); it is then bumped to LAUNCH_PRIORITY. sched's
+ * walk is BACKWARD (T-1 is the LAST insn of the block), so a bumped insn is
+ * picked FIRST in the walk and lands as LATE as possible - cc1 deliberately
+ * shortening the new value's live range. Controls, all in this function:
+ *   - insn 11  `(set (reg/v:SI 81) (mem))`      = `trcl`, 1 set  -> 1 -> 7f000001
+ *   - insn 14  `(set (reg/v:HI 87) (const_int 4096))` = `pad`, many sets -> stays 1
+ *       (structurally IDENTICAL to our `li -1`; REG_N_SETS is the ONLY difference)
+ *   - insn 112 `(set (reg:SI 4 a0) ...)`        hard reg        -> stays 1
+ *   - the `or`, `(set (subreg:SI (reg/v:HI 87) 0) ...)` -> SUBREG dest is NEVER
+ *     birthing (priority 3) - which is exactly why the `or` wins T-2.
+ *
+ * THE HOIST IS REACHABLE - PROVEN. Give the -1 a pseudo with REG_N_SETS >= 2
+ * by reusing an existing multiply-set local (`s32 a0; a0 = t; ... a0 = -1;`):
+ * the li is then NOT bumped, drops to the floor, and sched places it at
+ * EXACTLY the target's slot - `0x80029134 li a1,-1` where we had the `nop`.
+ * The two-load spelling comes with it. So the `li` half is SOLVED.
+ *
+ * WHY IT STILL DOES NOT MATCH (measured with `tools/regalloc.py --order`).
+ * The reuse merges two live ranges into ONE allocno, whose live length jumps
+ * 7 -> 18 and whose allocation priority falls to 5555, so it is allocated 7th:
+ *     #  pseudo  reg refs live priority
+ *     4    p90   a0    4   11     7272
+ *     5   p135   a0    3    5     6000
+ *     6    p91   a1    5   18     5555   <- the merged `a0` local
+ * By then a0 is taken, so it gets a1 and `t` takes a0. The ladder is then a
+ * pure a0<->a1 swap (+8B) and block 18 a v0<->v1 swap (which also flips the
+ * two loads, since the 2nd load must clobber its own base). Net 508. The two
+ * requirements are CONTRADICTORY under every reuse spelling:
+ *   - REG_N_SETS >= 2 needs a SECOND set, which must live in another block
+ *     (two sets in straight-line block 18 -> the first is dead -> flow deletes
+ *     it -> back to 1 set), and
+ *   - a second set in another block lengthens the allocno -> it loses hard a0.
+ * Every local was checked for the register fit; only the `a0` local lives in
+ * hard a0. `absdeg`->v0, `d32`->v1, `t`/`degree`->a1, `dist`->s6, `ang`->v0,
+ * `roty`->s0. None can hold the -1 in a0. regalloc.py --order confirms p91 is
+ * not reachable by priority. The target's -1 is its OWN pseudo with (by this
+ * model) REG_N_SETS != 1, and no natural C spelling found produces that
+ * without merging a live range. THAT is the open question - not the LUID.
+ *
+ * Also tried and MEASURED this round (rebuilt + matchdiff'd each):
+ *   - `turn = human->turn;` as a named local, then `turn = -1;` reused for the
+ *     sentinel: the -1 DOES land in hard a0 AND hoists correctly. But the very
+ *     same non-birthing property floats `lh a0,6(s5)` out of the ladder
+ *     (0x800290c8 -> 0x800290c0). 504 bytes but 142 differ. The mechanism cuts
+ *     both ways: the -1 must be non-birthing while the `turn` load must stay
+ *     birthing. Do not retry without solving that.
+ *   - swapping the two reads (`pad |= X;` BEFORE the sign-extend read): 512.
+ *     Confirms REFUTED 1's combine rule - the sign-extend read must be FIRST,
+ *     because added_sets_2 retains i2 (the `lhu`) at i2's position, so the
+ *     retained load is ALWAYS emitted before the fused `lh`.
  *   - `pad |= (u16)...pad;` to force a zero_extend: NO-OP (tools/nullcheck.py
  *     exit 1) - cc1 erases a same-width HImode->HImode cast. Do not retry.
  *   - store `trcl->index = idx` moved BETWEEN the two reads: real, and it
@@ -105,15 +166,14 @@
  *     sched1 PINS the store between the loads, while the target's store is
  *     at 0x8002913c above both. So that is not the original's mechanism.
  *   - `s32 endmark = -1;` at the block head to give the constant an early
- *     LUID: no change (still 508).
+ *     LUID: no change (still 508). Now EXPLAINED: never a LUID problem.
  *   - two bounded permuter runs (300s, -j4): plateaued 10 -> 9. The 9-byte
  *     candidate is not obviously better structurally; not applied.
  * NOTE the two-load version (`pad = pad | trcl->point[idx].pad;` here) is
  * STRUCTURALLY correct but 508 bytes, because the un-hoisted `li` costs the
  * slot; the committed 10-byte variant instead CSEs both reads into one `lh`
  * (semantically identical - `or` only uses the low 16 bits) to hold the
- * length. If you fix the `li` hoist, restore the two-load spelling: those
- * two edits are +1 and -1 and should land the match together.
+ * length. Those two edits are +1 and -1 and must land together.
  *
  * autorules WARNING: do not run it from a length-mismatched baseline. Its
  * greedy score treats "restored the length" as a win regardless of

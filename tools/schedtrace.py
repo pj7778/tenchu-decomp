@@ -149,17 +149,42 @@ def main():
         for ln in ready:
             print("  " + ln.strip())
 
+    # The TABLE is NOT what the scheduler used. sched1's adjust_priority bumps a
+    # BIRTHING insn to LAUNCH_PRIORITY (0x7f000001) at LAUNCH TIME, so an insn the
+    # table lists at 1 can be picked first. This tool used to assert the opposite
+    # ("nothing can lift them; MIPS defines no ADJUST_PRIORITY") -- refuted by the
+    # ready lists THIS SAME TOOL PRINTS, and it misled a whole round. The macro was
+    # never the gate: sched.c's adjust_priority is gated on `reload_completed == 0`,
+    # and birthing_insn_p returns `REG_N_SETS(i) == 1` for a live (set (REG) ...).
+    bumped = sorted({int(m) for ln in ready
+                     for m in re.findall(r"(\d+) \(7f000001\)", ln)})
     floor = [r for r in rows if r[1] == 1]
     print()
-    print(f"schedtrace: {len(floor)} insn(s) at priority 1 (the floor). Nothing can "
-          "lift them:")
-    print("  max_priority = 1 is the initialiser and MIPS defines no "
-          "ADJUST_PRIORITY, so an insn")
-    print("  with LOG_LINKS (nil) is at 1 unconditionally. If two insns you care "
-          "about are BOTH")
-    print("  at 1, the order is decided by LUID DESC alone — see "
-          "docs/matching-cookbook.md,")
-    print('  "priority() is DEPTH-FROM-TOP, not height-to-bottom".')
+    print(f"schedtrace: {len(floor)} insn(s) show priority 1 in the TABLE — but the "
+          "table is NOT")
+    print("  what the scheduler used. sched1's `adjust_priority` bumps a BIRTHING "
+          "insn to")
+    print("  LAUNCH_PRIORITY (0x7f000001) at LAUNCH TIME. **Read the priority in the "
+          "`ready")
+    print("  list at T-k:` lines above, not this table** — that distinction cost a "
+          "full round.")
+    if bumped:
+        print(f"  BUMPED to LAUNCH_PRIORITY here: {' '.join('insn ' + str(b) for b in bumped[:12])}")
+        print("  Those never compete at the floor, so 'ordered by LUID' is false for "
+              "them.")
+    else:
+        print("  (no insn was bumped in this function's ready lists)")
+    print("  `birthing_insn_p` (sched.c:2499) fires iff the pattern is "
+          "`(set (REG) ...)` with a")
+    print("  LIVE dest and **REG_N_SETS == 1** — set exactly once in the whole "
+          "function. A")
+    print("  `(set (SUBREG ...) ...)` dest — what a compound assignment to a `short` "
+          "local")
+    print("  produces — is NEVER birthing. sched walks BACKWARD, so a bumped insn is "
+          "picked")
+    print("  FIRST and lands as LATE as possible (cc1 shortening the new live range).")
+    print("  It is gated on `reload_completed == 0`, NOT on the target defining "
+          "ADJUST_PRIORITY.")
     return 0
 
 

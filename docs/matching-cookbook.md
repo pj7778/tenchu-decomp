@@ -6664,9 +6664,16 @@ because the error is the lesson.)**
 
 `priority()` (`sched.c:1452`) initialises `max_priority = 1` and raises it only by
 walking **LOG_LINKS — which are PRODUCERS**. So it measures **depth from the top of
-the block**, and an insn with `LOG_LINKS (nil)` has priority **exactly 1**,
-unconditionally. MIPS defines no `ADJUST_PRIORITY`. **Nothing can lift it.** So
-"attack the insn's HEIGHT" asks for what the code forbids.
+the block**.
+
+**CORRECTION — this section previously said "an insn with `LOG_LINKS (nil)` has
+priority exactly 1, unconditionally; MIPS defines no `ADJUST_PRIORITY`; nothing can
+lift it". That is WRONG, and `schedtrace` asserted it too while PRINTING the
+counter-evidence.** It cost a full round. See the next section: sched1's
+`adjust_priority` bumps a BIRTHING insn to `LAUNCH_PRIORITY` (0x7f000001) **at launch
+time**, and it is gated on `reload_completed == 0`, **not** on the target defining an
+`ADJUST_PRIORITY` macro. **The `;; insn[N]: priority = P` TABLE IS NOT WHAT THE
+SCHEDULER USED — read the priority in the `;; ready list at T-k:` lines.**
 
 **"Heads a long chain" describes `ref_count`/`INSN_DEPEND` — CONSUMERS — which is a
 different column and does not feed priority.** Confusing the two is what happened
@@ -6680,6 +6687,38 @@ metric runs the other way. AddEnemy's measured trace is `1, 1, 1, 2, 3, 4` downw
 own `;; insn[NNNN]: priority = P, ref_count = R` lines (`sched.c:3686` — 250 of them
 on AddEnemy) with each insn's RTL, and flags the floor. **Never hand-derive a
 priority the dump prints verbatim.**
+
+### sched1 BUMPS a birthing insn to LAUNCH_PRIORITY — the priority TABLE is not what it used
+
+**`adjust_priority` (sched.c:2535) raises an insn to `LAUNCH_PRIORITY` (0x7f000001) iff
+`birthing_insn_p` (sched.c:2499)**: the pattern is `(set (REG) ...)`, the dest is LIVE,
+and **`REG_N_SETS(dest) == 1`** — set exactly once in the whole function. It is gated on
+`reload_completed == 0`, **NOT** on the target defining an `ADJUST_PRIORITY` macro.
+
+**So the `;; insn[N]: priority = P` table is NOT what the scheduler used.** Read the
+priority in the `;; ready list at T-k:` lines:
+
+```
+;; insn[ 291]: priority =    1, ref_count =    1          <- the TABLE says floor
+;; ready list at T-2: 288 (3) 291 (7f000001), now 291 288  <- what it ACTUALLY used
+```
+
+A brief concluded "priority 1, the floor, ordered by LUID alone" about an insn that
+**never competes at the floor**. `tools/schedtrace.py` now names every bumped insn.
+
+**The clinching control** (6/6 in ControlTraceLine's own RTL): insn 14,
+`(set (reg/v:HI 87) (const_int 4096))`, is structurally identical to a `li -1` and
+STAYS at priority 1 — because its dest is set many times.
+
+Consequences:
+* **sched walks BACKWARD (`T-1` = LAST)**, so a bumped insn is picked FIRST and lands as
+  **LATE as possible** — cc1 shortening the new value's live range.
+* **A `(set (SUBREG ...) ...)` dest is NEVER birthing** — and that is what any compound
+  assignment to a `short` local produces.
+* **To move a single-set constant/load EARLIER, give its pseudo a SECOND set** by reusing
+  a multiply-set local. But that merges two live ranges into one allocno (ControlTraceLine:
+  live 7 -> 18, priority -> 5555, allocated 7th) and can cost it its hard register —
+  **check `tools/regalloc.py --order` first.**
 
 ### A hard-register argument move is a PERMANENT scheduling floor — park on sight
 
