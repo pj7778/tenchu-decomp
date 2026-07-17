@@ -32,10 +32,13 @@
  *     extern struct tag_TItem items[30];
  * END PSX.SYM */
 
-/* STATUS: NON_MATCHING — 11 of 1076 bytes differ (10 insns, all in loop 1).
+/* STATUS: NON_MATCHING — 9 of 1076 bytes differ (8 insns, all in loop 1).
+ * (ROUND 3 improved this from 11/1076 -- see that section. ROUND 1/2 below
+ * describe the ORIGINAL 3-way rotation as first found; read ROUND 3 for the
+ * current, simpler 2-way shape and what actually moved.)
  *
- * Exact instruction sequence; the ONLY residual is a 3-cycle register
- * rotation in the bitmap-fill loop:
+ * Exact instruction sequence; the ORIGINAL residual (ROUND 1/2) was a 3-cycle
+ * register rotation in the bitmap-fill loop:
  *     col (inner var)  ours $a1  <->  target $t0
  *     bits             ours $t1  <->  target $a1
  *     fill_white       ours $t0  <->  target $t1
@@ -163,6 +166,115 @@
  * framing could exist), but the priority-race framing itself is no longer
  * an open question -- only a from-scratch alternate decomposition remains
  * unexplored, and it risks the already-exact instruction sequence.
+ *
+ * ROUND 3 (11 -> 9; base re-verified 11/1076 before starting). The trigger:
+ * master fixed permute.py's cc1 invocation today -- `-fno-builtin` had been in
+ * its CPP list (where it does nothing) and absent from CC_FLAGS, so every
+ * permuter run before today's fix compiled WITH builtins enabled while the
+ * real build (and this function calls `memset`, a builtin-expandable name)
+ * compiles WITHOUT them. Both of ROUND 2's permuter negatives (300s, 240s)
+ * were against that wrong program and are VOID. A fresh bounded run on the
+ * corrected permuter was genuinely warranted, and it found a real win:
+ *   - `timeout 240 tools/permute.py SetupTelop -- --stop-on-zero -j4`:
+ *     authoritative full-link rescore found output-40-1/source.c at 9/9/1076
+ *     (vs base.c 11/11/1076). The candidate is pycparser-reprinted (all
+ *     declarations re-split, 2-space indent) so the raw diff is ~100 lines of
+ *     formatting noise; the SEMANTIC delta vs base.c is exactly two edits:
+ *       (a) `n += 2; if (telop[n] == 0) break;` -> `if ((telop[n]==0)&0xFFFFu)`
+ *       (b) tail: `TelopP.u3 = final_u; TelopP.u1 = final_u;` ->
+ *           `TelopP.u3 = (north = final_u); TelopP.u1 = north;` (routes the
+ *           SECOND read through the already-dead outline-loop local `north`
+ *           instead of re-reading `final_u`).
+ *   - Isolated each edit by hand-porting into the real source (not the
+ *     permuter's own score) and re-measuring with matchdiff on a full
+ *     rebuild: (a) ALONE is a no-op, still 11 (the AND is a value no-op --
+ *     `bool & 0xFFFF` never changes bit 0 -- and this cc1 folds it away
+ *     completely; length stayed 1076 both ways, confirming no real `andi` was
+ *     emitted). (b) ALONE reaches 9 -- the whole win is the `north` reuse.
+ *     Ported cleanly (no pycparser artifacts) and confirmed via
+ *     `NON_MATCHING=SetupTelop ./Build` + `tools/matchdiff.py -n`: 9/9/1076.
+ *   - Tried a cleaner human alternative before adopting the odd-looking
+ *     `north` reuse: chained assignment `TelopP.u3 = TelopP.u1 = final_u;`.
+ *     Measured WORSE (13, and it also reverses the u3/u1 store order vs
+ *     target) -- old cc1 does not evaluate a chained assignment as "read the
+ *     RHS once, write both fields"; rejected per the cookbook's "worse byte
+ *     count adopted" rule (docs/matching-cookbook.md, human-source lever).
+ *   - Tried a FRESH temp instead of reusing `north` (`s32 final_u2 = final_u;
+ *     TelopP.u3 = final_u2; TelopP.u1 = final_u2;`, a brand-new never-before-
+ *     seen pseudo). This reproduces the ORIGINAL 11-byte 3-way rotation
+ *     EXACTLY (same addresses, same registers) -- i.e. a fresh temp is a
+ *     complete no-op for this lever. This sharpens cookbook §3.9's existing
+ *     "reusing a dead named local for the operand" rule with a measured
+ *     negative control: the win requires reusing an EXISTING, previously-live
+ *     pseudo specifically (gcc-2.8.1 has no coalescing pass, so a copy
+ *     between two non-conflicting allocnos can let one inherit bookkeeping/
+ *     pressure the other already carries; a same-shaped copy into a pseudo
+ *     that never existed before carries none of that).
+ *   - Mechanism (via regalloc.py --order + ground-truth .combine RTL, not
+ *     guessed): the `north` reuse resolves fill_white cleanly to $t1 (two
+ *     whole instructions -- the `li t1,0x7fff` and `sh t1,0(v0)` -- now match
+ *     target byte-for-byte), collapsing the OLD 3-way col/bits/fill_white
+ *     rotation into a CLEAN 2-way col<->bits swap. This happens through
+ *     GLOBAL register-pressure bookkeeping: the new tail code introduces one
+ *     new short-lived, high-priority allocno (9 refs / 3 live -> priority
+ *     90000, pref=$t0 -- confirmed via `.combine`'s insn 882/886/891 at C
+ *     lines 380-381, i.e. genuinely this new code, not a pre-existing
+ *     pseudo), and its presence in the global qsort order changes which
+ *     registers are already-taken by the time fill_white is colored, even
+ *     though fill_white's own textual position (deep in loop 1, long before
+ *     the tail) never moves. Loop 1 itself is untouched instruction-for-
+ *     instruction (confirmed: rebuilt asm for the col/bits/font/v region is
+ *     byte-identical before and after this edit).
+ *   - RE-SEEDED the permuter from the new 9-byte checkpoint (protocol: a
+ *     shrunk residual opens a neighbourhood the old search never saw):
+ *     `timeout 240 tools/permute.py SetupTelop -- --stop-on-zero -j4` again,
+ *     18686 iterations, authoritative rescore still base.c at 9/9/1076. No
+ *     further improvement in this bounded window.
+ *   - tools/autorules.py, re-run fresh on the 9-byte state: 0 of 63 improving
+ *     candidates.
+ *   - tools/autorules.py --guided, re-run fresh: 0 of 160 compiled candidates
+ *     (self-bounded budget reached, not the 420s deadline).
+ *   - tools/regalloc.py SetupTelop --compare 179 87 --enclosed-refs 3
+ *     (bits=p179 vs font=p87), re-run on the NEW 9-byte draft: reports the
+ *     IDENTICAL "+5 weighted ref(s)" gap, and --order shows col=p86 (16/30,
+ *     21333), font=p87 (19/43, 17674), v=p85 (35/111, 15765), bits=p179
+ *     (7/19, 7368) all UNCHANGED to the integer from ROUND 2's numbers. This
+ *     independently confirms loop 1's own internal tournament math is
+ *     completely untouched by the tail fix -- the fill_white win was entirely
+ *     a global-pressure side effect, not a change to the col/font/bits/v
+ *     sub-problem, which remains exactly the hard tournament ROUND 2 proved.
+ *   - tools/rtlguide.py on the new state names the two remaining hunks'
+ *     locals as "u,north" for the $t0->$a1 direction -- this is a MISLEAD;
+ *     ground-truth `.combine` tracing (grep the pre-allocation RTL for the
+ *     pseudo feeding the `srav` at C line 307, insn 368: `(ashiftrt (reg 179)
+ *     (reg 168))`) shows it is bits (reg 179, fed directly into the srav) and
+ *     its sign-extension companion, NOT the source-level locals `u` or
+ *     `north` (neither is even in scope at that point in the loop -- `u` is
+ *     uninitialized until after this loop closes, `north` isn't touched until
+ *     the tail). rtlguide's local-name attribution can mislabel an anonymous
+ *     compiler-synthesized sign-extension temp; its structural HARD-CONFLICT
+ *     signal is still sound, just cite priority numbers over its names when
+ *     they don't match a plausible live variable. Also identified the
+ *     "p92" it names as the hard-conflict partner: that IS the new `north`-
+ *     reuse pseudo this round introduced (confirmed via `.combine`), and it
+ *     does NOT conflict with col (disjoint live ranges, checked against the
+ *     `;; 86 conflicts:` list) -- col's actual blocker remains bits itself,
+ *     via the real, unavoidable 4-clique conflict ROUND 2 already established.
+ *
+ * Net: a genuine, verified 11->9 improvement banked (the `north`-reuse tail
+ * edit, cookbook §3.9's dead-local-reuse lever, now with a measured negative
+ * control proving a fresh temp does NOT reproduce it). The remaining col-vs-
+ * bits 2-way swap is the SAME hard-pinned tournament ROUND 2 proved needs +5
+ * weighted refs with no free source, now independently reconfirmed on the
+ * post-fix draft via both the regalloc.py tool AND a hand ground-truth RTL
+ * trace (this round), with the same "not proven mathematically impossible,
+ * but no lever found" verdict. Re-seeded permuter, fresh plain + guided
+ * autorules all agree. Next lane: the only unexplored thread is a from-
+ * scratch alternate decomposition of the col/bits sub-expressions themselves
+ * (not ref-shedding, not permuting) -- ROUND 2's "third contender ~6666"
+ * loose thread is believed MOOT (it was about the old 3-way t0<->t1 puzzle,
+ * which this round's fix resolved by a different mechanism), but was not
+ * re-chased to confirm.
  */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupTelop", SetupTelop);
@@ -377,8 +489,8 @@ void SetupTelop(u8 *telop, short line)
         TelopP.u0 = 0;
         TelopP.v1 = final_v;
         TelopP.v0 = final_v;
-        TelopP.u3 = final_u;
-        TelopP.u1 = final_u;
+        TelopP.u3 = (north = final_u);
+        TelopP.u1 = north;
         TelopP.v3 = final_v2;
         TelopP.v2 = final_v2;
         TelopP.tpage = GetTPage(2, 0, 0x300,

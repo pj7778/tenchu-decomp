@@ -932,6 +932,9 @@ The identity canon — the cheapest questions on the board, asked in order:
    byte-identical `numY` for `NumberImage.y = 0x64` only paid off declared at the
    FUNCTION TOP — at point-of-use or inside a fence it measured strictly worse.
    When porting this class, sweep the DECLARATION POINT, not only the presence.
+   And the reuse must be of an ALREADY-LIVE, now-dead pseudo — a FRESH temp of
+   identical shape does NOT reproduce the effect (SetupTelop 11→9 with `north`
+   reused, no change with a fresh temp; empirical control).
 5. **Split shared pseudos as a PRIORITY lever** — splitting demotes each half
    superlinearly (ControlHumanoid's magnitude 24615 → 10000/14285/14285, last
    7 bytes). A plain COPY cannot split an allocno (cse folds it back — a

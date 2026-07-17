@@ -5469,6 +5469,39 @@ class BuildConfigurationTests(unittest.TestCase):
         )
         self.assertNotIn("-mno-split-addresses", permute.cc_flags_for("Other"))
 
+    def test_no_tool_puts_fno_builtin_in_cpp(self):
+        """`-fno-builtin` is a cc1 flag; in a CPP list it silently does nothing.
+
+        This bug shipped in permute.py and AGAIN in regalloc.py --raw — each computed
+        allocation/search for a DIFFERENT program than the build on any function calling
+        a builtin-expandable name (abs/memset/...). It changes real codegen (SetupTelop's
+        .greg differs with the flag). Two tools is a pattern, so this guards EVERY tool
+        module that carries a cc1-pipeline flag list: the flag must live in the cc1 list
+        (CC_FLAGS), never in CPP. Catches the third tool before it ships.
+        """
+        import importlib
+        checked = []
+        for mod_name in ("permute", "regalloc"):
+            m = importlib.import_module(mod_name)
+            cpp = getattr(m, "CPP", None)
+            if cpp is None:
+                continue
+            self.assertNotIn(
+                "-fno-builtin", cpp,
+                f"{mod_name}.CPP contains -fno-builtin — it is a cc1 flag and does "
+                f"NOTHING in cpp; move it to the CC_FLAGS list or the tool searches a "
+                f"different program than the build")
+            # If the module compiles with cc1 at all, the flag must be in its cc1 list.
+            cc = getattr(m, "CC_FLAGS", None)
+            if cc is not None:
+                self.assertIn(
+                    "-fno-builtin", cc,
+                    f"{mod_name}.CC_FLAGS is missing -fno-builtin — the build has it "
+                    f"(shake/src/Build.hs ccFlags); without it abs()/memset() inline "
+                    f"and this tool models a different program")
+                checked.append(mod_name)
+        self.assertTrue(checked, "no tool CC_FLAGS lists were checked — test is vacuous")
+
     def test_permute_cc_flags_match_build(self):
         """permute must compile the SAME PROGRAM the build does.
 

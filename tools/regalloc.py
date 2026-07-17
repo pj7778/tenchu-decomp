@@ -52,14 +52,19 @@ SRC = "src/main.exe"
 
 # The build's own cpp + cc1 invocation (mirrors permute.py / Build.hs so the
 # allocation matches the real object exactly).
-CPP = ("mipsel-unknown-linux-gnu-cpp -Iinclude -undef -Wall -lang-c -fno-builtin "
+CPP = ("mipsel-unknown-linux-gnu-cpp -Iinclude -undef -Wall -lang-c "
        "-gstabs -Dmips -D__GNUC__=2 -D__OPTIMIZE__ -D__mips__ -D__mips -Dpsx "
        "-D__psx__ -D__psx -D_PSYQ -D__EXTENSIONS__ -D_MIPSEL -D_LANGUAGE_C "
        "-DLANGUAGE_C -DHACKS -I src/main.exe").split()
 CC = "cc1-281"
-CC_FLAGS = ("-mcpu=3000 -quiet -G8 -w -O2 -funsigned-char -fpeephole -ffunction-cse "
-            "-fpcc-struct-return -fcommon -fverbose-asm -fgnu-linker -mgas "
-            "-msoft-float").split()
+# `-fno-builtin` is a cc1 flag, NOT cpp. It sat in CPP (doing nothing) here just as it
+# did in permute.py before today's fix -- so `--raw` on a builtin-calling function
+# (abs/memset/...) computed allocation for a DIFFERENT program than the build. SetupTelop
+# calls memset and surfaced it. Same one-line move; the default path already delegates to
+# rtldump.compile_rtl, which had it right, so only --raw was affected.
+CC_FLAGS = ("-mcpu=3000 -quiet -fno-builtin -G8 -w -O2 -funsigned-char -fpeephole "
+            "-ffunction-cse -fpcc-struct-return -fcommon -fverbose-asm -fgnu-linker "
+            "-mgas -msoft-float").split()
 
 # MIPS o32 register classes + number->name.
 CALLER = set("v0 v1 a0 a1 a2 a3 t0 t1 t2 t3 t4 t5 t6 t7 t8 t9".split())
