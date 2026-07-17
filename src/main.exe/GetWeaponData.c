@@ -35,25 +35,6 @@
  * END PSX.SYM */
 
 /*
- * STATUS: NON_MATCHING — exact target extent (500 bytes / 125 instructions),
- * 32 differing bytes, fuzzy 92.00. Moving the WeaponDB search behind an
- * inline pointer/formal barrier separates its loop counter from the table
- * base and removes the old evacuation move; that entire first search now
- * matches byte-for-byte. The same treatment plus distinct `table`/`models`
- * aliases and a zero-code identical-arm fence recovers the second search's
- * target extent and base materialisation.
- *
- * The residual is confined to the second (WeaponModel) search's initial
- * compare schedule. The target tests row zero against -1 before copying the
- * table base and materialising `wid`; this compiler keeps the source while-
- * condition's `wid` comparison first. Writing an explicit sentinel precheck
- * lets cc1 prove away the rotated loop tail and makes the function six
- * instructions short, while returning a row pointer adds saved-register
- * pressure and makes it three instructions long. Keep this exact-length
- * checkpoint until a precheck spelling preserves the duplicated tail.
- */
-
-/*
  * GetWeaponData (0x8002a290, 0x1f4 bytes) — two independent sentinel-
  * terminated linear searches feeding into `human`:
  *  1. WeaponDB[].ilup1.pad (SVECTOR's pad field, repurposed as an id) ==
@@ -72,23 +53,37 @@
  * "narrowing use reads even a signed global with lhu" rule) — reflected
  * here as a `short` local, matching PSX.SYM's `reg $s2 short wep`.
  *
- * Matching notes (docs/matching-cookbook.md):
- *  - Each search uses a `short i` (not `int`, per PSX.SYM) — the narrow
- *    counter SUPPRESSES loop.c's strength reduction (Loops: "a
- *    short loop counter suppresses loop.c's strength reduction"), so the
- *    target recomputes `&WeaponDB[i]`/`&WeaponModel[i]` from scratch each
- *    iteration (sign-extend refused into the scale) instead of walking a
- *    pointer — matches plain re-indexed `WeaponDB[i]`/`WeaponModel[i]`
- *    with NO named temp for the compared field (an explicit temp, as
- *    SetupCharacterParameter's `int idx` search needed, is wrong here:
- *    it would make cc1 hoist the loop's first-iteration test into an
- *    extra branch — that trick is specific to the `int` biv/giv case).
+ * Both searches share the SAME idiom, matching PSX.SYM's single `reg $a0
+ * short i` (one counter, not one per search): `while (Table[i].sentinel_field
+ * != -1) { if (Table[i].key == wid) { ...; break; } i++; }` — the loop's
+ * OWN controlling test is the -1 sentinel (duplicated at entry and at the
+ * bottom by loop rotation); the `wid` compare is the inner break, never the
+ * while-condition. Getting these two roles backwards (testing `wid` as the
+ * while-condition, `-1` as the inner break) still reaches the exact target
+ * LENGTH but materialises `wid` before the entry sentinel test instead of
+ * after, a 32-byte residual confined to the second search's opening
+ * instructions.
+ *
+ * The second search additionally needs its post-loop found-check
+ * (`WeaponModel[i].wid != -1`) INLINE in GetWeaponData rather than behind a
+ * helper function that returns `i` — with a real call/return boundary in the
+ * way, cc1's jump optimizer cannot thread the loop's entry test (which is
+ * RTL-identical to the post-loop check when `i` is still 0) straight through
+ * to the shared "not found" label the way it does when both tests are
+ * visible in one flat function; it instead re-lands inside the loop-exit
+ * merge and recomputes `&WeaponModel[i]`, which is both longer and wrong.
+ * The first search doesn't need this — it has no post-loop check, so a
+ * `static inline` helper (FindWeaponId) reaches the target fine; only the
+ * second search's helper had to be flattened into GetWeaponData itself.
+ *
+ * `wep` narrows to `short w` once at entry (PSX.SYM's `reg $s2 short wep` —
+ * a repeated name over the `int wep` parameter, i.e. a storage-class split,
+ * not a second source declaration: a literal `short wep = (short)wep;`
+ * would self-reference its own uninitialized declarator in C). `base`
+ * (OrnamentType *) stays live in $v0 across the `human->weapon[w] = base;`
+ * store so GsInitCoordinate2's second argument (`&base->locate`, offset 0)
+ * reads it directly instead of reloading through human->weapon[w].
  */
-
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/GetWeaponData", GetWeaponData);
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/GetWeaponData", load_weapon_model__override__prt_8002a418_aee7b64a);
-#else /* NON_MATCHING */
 
 typedef struct
 {
@@ -136,30 +131,12 @@ static inline void FindWeaponId(Humanoid *human, s16 wid, s16 wpid)
     }
 }
 
-static inline s16 FindWeaponModel(WeaponModelType *models, s16 wid)
-{
-    s16 i;
-
-    i = 0;
-    while (models[i].wid != wid)
-    {
-        if (models[i].wid == -1)
-        {
-            break;
-        }
-        i++;
-    }
-    return i;
-}
-
 void GetWeaponData(Humanoid *human, s16 body, s16 wid, s16 wpid, int wep)
 {
     s16 w;
     s16 i;
     u8 name[100];
     OrnamentType *base;
-    WeaponModelType *models;
-    WeaponModelType *table;
 
     w = (s16)wep;
     if (wpid >= 0)
@@ -169,24 +146,25 @@ void GetWeaponData(Humanoid *human, s16 body, s16 wid, s16 wpid, int wep)
 
     if (w >= 0)
     {
-        table = WeaponModel;
-        if (wid != 0)
-            models = table;
-        else
-            models = table;
-        i = FindWeaponModel(table, wid);
-        if (models[i].wid != -1)
+        i = 0;
+        while (WeaponModel[i].wid != -1)
         {
-            if (models[i].model == 0)
+            if (WeaponModel[i].wid == wid)
             {
-                sprintf(name, D_800117EC, D_800117F8, models[i].name);
-                models[i].model = FileRead(name);
+                break;
             }
-            base = LoadOrnament(models[i].model);
+            i++;
+        }
+        if (WeaponModel[i].wid != -1)
+        {
+            if (WeaponModel[i].model == 0)
+            {
+                sprintf(name, D_800117EC, D_800117F8, WeaponModel[i].name);
+                WeaponModel[i].model = FileRead(name);
+            }
+            base = LoadOrnament(WeaponModel[i].model);
             human->weapon[w] = base;
             GsInitCoordinate2((GsCOORDINATE2 *)human->model->object[body], &base->locate);
         }
     }
 }
-
-#endif /* NON_MATCHING */

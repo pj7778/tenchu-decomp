@@ -396,6 +396,28 @@ negated. Everything else here is corollaries:
   test: drop the outer if (KillHumanoid/GetHumanoid).
   **TOOL TICKET (redundant-entry-guard autorule)**: drop/add the outer if, both
   directions, byte-scored.
+- **A sentinel-terminated search that ALSO seeks a value: the SENTINEL test is
+  the `while`, the VALUE test is the inner `if(...)break;` — never the reverse.**
+  `while (T[i].sentinel != -1) { if (T[i].key == wid) break; i++; }`. Swapping the
+  two roles keeps the SAME instruction count but reorders which value is
+  materialized before the loop's first test — a same-length residual confined to
+  the loop's opening insns (GetWeaponData 32→36 when reversed). This is a
+  read-the-target-as-source fix: the entry-duplicated test names which comparison
+  the human put in the `while`.
+- **Cross-jump threading of a loop's entry test past a textually-identical
+  POST-loop check needs both tests in the SAME function's RTL** (`thread_jumps`,
+  jump.c:4360). When a search's entry-duplicated `T[0].sentinel != -1` is
+  RTL-identical to a post-loop `if (T[i].sentinel != -1)` found-check on the same
+  counter, cc1 threads the entry branch straight past both to their shared
+  failure label. Factoring the loop into a `static inline` helper that RETURNS the
+  index — caller does the found-check — BLOCKS this even under full inlining: the
+  call/return-value boundary keeps the two tests out of one RTL stream, so the
+  entry branch lands in the loop-exit merge and recomputes the indexed address
+  (extra wrong insns). Fix: write the loop AND its post-loop check in one flat
+  function scope. GetWeaponData matched at 0 this way, and PSX.SYM confirmed it —
+  ONE `reg $a0 short i`, not one per search. (A search with NO post-loop check
+  matches fine as a helper; it is specifically the redundant-test threading that
+  needs flat visibility.)
 - **switch vs ladder**: a dispatcher that RELOADS its variable (two `lbu`) and
   compares signed (`slti`) is a real `switch` (fresh index load, balanced tree);
   a ladder CSEs one load and compares `sltiu` (ProcItemDokudango). Case bodies
