@@ -540,6 +540,19 @@ function already byte-matches on current `master`.
   AddEnemy lane lost real time to a self-diagnosed "build-dep gap" that turned
   out to be Shake being correct. Check the dispositions or the `.o` timestamp,
   not the byte count alone.
+- **Read the matched SIBLING's source, not a park's description of it.**
+  FUN_80018f00's header recorded cbAccess's identical-arm CSE fence as one of
+  "cbAccess's FAILED attempts" — it is the thing that made cbAccess MATCH. Once the
+  sibling was read directly, the function matched first try, and the park's detailed
+  `.greg` escalation turned out to be real work aimed at a lever that was never
+  available. `tools/findsimilar.py <Name>` ranks the nearest matched functions;
+  OPEN them. A park's characterisation of a neighbour's technique can be exactly
+  inverted.
+- **A park's dilemma is often a lever-allocation error, not a wall.** "All six
+  orders gave correct length XOR correct slots, never both" was true and the wrong
+  conclusion: declaration order was doing two jobs, and one of them (slot placement)
+  is DETERMINED arithmetic, not a search. When two constraints fight over one lever,
+  find a second lever for the constraint that has one.
 - **A false "measured" fact propagated through FIVE rounds. Re-measure inherited
   claims that a round is about to rest on.** AddEnemy's round 5 recorded "with the
   hack deleted, gcc spilled them on its own to sp+0x7e0/sp+0x7e4 — byte-identical
