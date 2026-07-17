@@ -1059,9 +1059,17 @@ fence whose depth sweep is FLAT is not a fence — delete it (AddEnemy's
   impossible; use a chained assignment (`a = p->f = call();`) which yields the
   value with NO load (GetAreaMapVector; also recovered `subu` operand order).
 - **cse1 vs cse2**: cse1 stops at labels and LOOP_END; cse2 crosses notes with
-  a wider block and can fold BACK a copy cse1 kept — when `.cse` and `.cse2`
-  disagree about a register, the fix is a real multi-predecessor join, not
-  another fence (GetAreaMapVector's park, in its header).
+  a wider block and can fold BACK a copy cse1 kept — a real mechanism, but a
+  cautionary one: GetAreaMapVector's 20-byte park was "explained" by it in
+  detail and then matched by a dead-store POSITION move + fence removal that a
+  fresh permuter run found in minutes (§4's worked example).
+- **A local written but never subsequently read is a POSITION lever**: the
+  write is dead in value yet gives cc1 a live write to the pseudo at that
+  program point, and the site is a FREE VARIABLE — sweep other reachable
+  points, including inside a later loop body, before assuming the textually
+  natural (symmetric) site (GetAreaMapVector 20→0). Nuance: a dead CONSTANT
+  assignment gets folded/propagated away and steers nothing; a dead register
+  copy from a live variable survives.
 - **Never infer pre-jump2 structure OR allocation from final asm** — cross-jump
   runs after both cse and allocation; impossible-looking co-located store/reload
   pairs were two arms; "register cycles" can be merged-tail artifacts. A store
@@ -1426,10 +1434,26 @@ re-check cheaply before honoring them:
   mechanism read as a wall; parks have been dissolved by the ternary join
   (FUN_8004d6d4), the label position (DrawClip), the carve (BreedLife), and a
   stale claim surviving a function's own match (LoadSI).
-- **Write negatives falsifiably**: "with Z fixed at W" — a negative measured
-  while another factor was wrong is a NULL EXPERIMENT, not a refutation
-  (DrawClip's under-powered A/B warned three rounds away from the fix;
-  §0's joint-scoring rule is the same lesson in reverse).
+- **Write negatives falsifiably**: "X failed WITH Z fixed at W" — a negative
+  measured while another free variable was held fixed is a statement about the
+  PAIR, never about the lever. The worked example: GetAreaMapVector's park
+  recorded "dropping the fence: 548 but 45 — the fence is the only reason the
+  copy survives"; measured with a dead store pinned at its original site. Move
+  the store and dropping the fence is free — it MATCHED (2026-07-17).
+  DrawClip's under-powered A/B is the same class; §0's joint-scoring rule is
+  the lesson in reverse.
+- **A stale permuter negative is not evidence.** GetAreaMapVector's header
+  claimed a ~26k-candidate flat run; a FRESH run on the IDENTICAL source found
+  the 8-byte win immediately and the fence removal on iteration 1 — tooling
+  and RNG both move between rounds (permute now full-link rescores). Re-run
+  one bounded permuter pass before any RTL archaeology on a same-length
+  residual; the ladder's autorules → permuter → RTL order stands even when a
+  checkpoint's confident prose primes you to distrust re-running.
+- **A length-neutral residual refuses control-flow fixes by arithmetic**: pure
+  register tie + pure reorder with no missing/extra insns means a new branch
+  (≥8 bytes on MIPS) converts a small tie into a strictly worse length
+  mismatch — the byte budget kills such "untried directions" without a build
+  (GetAreaMapVector's own).
 - **A "failed" attempt can be the original source**: SetBleedsDir's 13-byte
   state was a local optimum AWAY from the original; the sibling's C — recorded
   as a failed attempt worth 19 bytes — was the answer. Diff parked drafts
