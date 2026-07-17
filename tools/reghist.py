@@ -183,6 +183,29 @@ def main():
     copies = sum(1 for _a, t in target if t.split()[0] == "move")
     copies += sum(1 for _a, t in candidate if t.split()[0] == "move")
 
+    def order_redirect():
+        """Say what a matching histogram POSITIVELY implies, not just what it rules out.
+
+        This tool used to stop at "the decomposition already matches the target" —
+        true, and it reads as *nothing to do here*. A register-tie framing then
+        survived MULTIPLE rounds on AddEnemy against a draft whose registers already
+        equalled retail's: the residual was pure emission ORDER, which a histogram
+        cannot see at all, and 20 of its 35 bytes were ordering questions no round
+        had attacked. State the redirect out loud.
+        """
+        print("         That is NOT 'nothing to do' — a histogram is BLIND TO ORDER. "
+              "If the")
+        print("         registers and opcodes both match, the residual is EMISSION "
+              "POSITION")
+        print("         (scheduling / delay slots / statement order), and that is "
+              "where to look:")
+        print(f"           tools/asmdiff.py {name}     <- content-aligned; flags "
+              "MOVED instructions")
+        print("         See docs/matching-cookbook.md — \"A load can NEVER hoist "
+              "past a struct")
+        print("         store\" and \"A returning guard's delay slot is won by "
+              "SOURCE POSITION\".")
+
     def rename_caveat():
         if not copies:
             return
@@ -200,9 +223,7 @@ def main():
     if not shown:
         print("reghist: every allocatable register matches the target exactly.")
         if not op_delta:
-            print("         Probably no mega-pseudo and no splitting lever — the "
-                  "residual is likely")
-            print("         allocation/scheduling rather than decomposition.")
+            order_redirect()
             rename_caveat()
         return 0
     print(f"reghist: {len(shown)} register(s) differ; delta sum {total:+d}")
@@ -211,6 +232,7 @@ def main():
               "instructions,")
         print("         which would mean the variable decomposition already "
               "matches the target.")
+        order_redirect()
         rename_caveat()
     elif total == 0:
         print("         Sum ZERO, but the OPCODES differ (above) — this is NOT "

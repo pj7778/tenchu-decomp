@@ -553,6 +553,20 @@ function already byte-matches on current `master`.
   conclusion: declaration order was doing two jobs, and one of them (slot placement)
   is DETERMINED arithmetic, not a search. When two constraints fight over one lever,
   find a second lever for the constraint that has one.
+- **RE-PRICE THE RESIDUAL EVERY ROUND. Rounds 5-10 on AddEnemy all spent
+  themselves on cluster A while 20 of 35 bytes were ordering questions NO round had
+  attacked.** A byte-account is a snapshot, not a standing truth: the clusters move
+  as the draft changes, and a brief that inherits last round's priorities inherits
+  last round's blind spot. Round 11 re-priced first, found the unattacked 20, and
+  took 6 of them.
+- **I pasted round 10's E3 analysis onto a draft that is not E3 — one round after
+  folding round 10's lesson that "a citation is not a proof".** The charter ("find
+  one loop-1 allocno with priority > 520") was a CATEGORY ERROR: our preheader
+  already emitted every one of retail's registers, so there was no tie to break at
+  all, and the residual was pure emission ORDER. Before writing a brief around a
+  quantitative lead, **check the lead still describes the CURRENT draft** — quoting
+  a prior round's dump numbers at a changed file is the same error the prior round
+  warned about, one level up.
 - **A false "measured" fact propagated through FIVE rounds. Re-measure inherited
   claims that a round is about to rest on.** AddEnemy's round 5 recorded "with the
   hack deleted, gcc spilled them on its own to sp+0x7e0/sp+0x7e4 — byte-identical

@@ -6341,6 +6341,34 @@ tried moving the fenced seed so its `LOOP_BEG/END` notes no longer abut the stor
 and fence placement generally: every variant landed on an identical 4632 vs the 4636
 carve — a LENGTH MISMATCH, a hard regression, not a tunable trade.
 
+### A returning guard's delay slot is won by SOURCE POSITION, not by a fence
+
+If the target fills a guard's delay slot with a cheap independent assignment and
+starts the if-body with the fallthrough's first chain, **put that assignment ABOVE
+the guard, not inside it.**
+
+* **Inside**, it is just another candidate for the block's first slot and loses to a
+  longer chain on sched2 priority — `rank_for_schedule` is priority-dominant
+  (AddEnemy: `j = 0` at height 1 vs the `HumanData[i].type` chain at height 7).
+* **Above**, `fill_simple_delay_slots`' backward scan takes an insn from before the
+  branch that the branch does not depend on.
+
+Free when the variable is dead on the else path: **no fence, no loop-depth weight**.
+(AddEnemy round 11, -6 bytes.)
+
+### `array[i]` and `pointer[i]` produce OPPOSITE `addu` operand order
+
+Same C syntax, different tree, and it is worth checking before you call an operand
+swap a regalloc tie:
+* An **ARRAY_REF** expands via `get_inner_reference` as
+  `gen_rtx (PLUS, ptr_mode, XEXP (op0, 0), force_reg (ptr_mode, offset_rtx))` —
+  **base-first by construction**.
+* A **pointer index** builds `INDIRECT_REF(PLUS_EXPR(ptr, idx*size))` and comes out
+  **index-first**.
+
+**Check the base's DECLARED TYPE.** (AddEnemy's `addu v0,s0,v0` vs our
+`addu v0,v0,s0` is exactly this shape.)
+
 ### A load can NEVER hoist past a struct store — if retail's load looks hoisted, the STORE sank
 
 **This inverts an entire class of reasoning, and it matched FUN_8003944c.**

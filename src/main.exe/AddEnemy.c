@@ -44,7 +44,85 @@
 /*
  * STATUS: NON_MATCHING — complete pure-C reconstruction at the exact target
  * extent (1152 bytes / 288 instructions) and exact 0x810 frame.  The guarded
- * draft has 35 differing bytes (183 -> 161 -> 125 -> 81 -> 72 -> 52 -> 42 -> 35).
+ * draft has 29 differing bytes
+ * (183 -> 161 -> 125 -> 81 -> 72 -> 52 -> 42 -> 35 -> 29).
+ *
+ * ROUND 11 (-6): CLUSTER (B) CLOSED.  **AND THE ROUND-10 CHARTER FOR (A) WAS
+ * A CATEGORY ERROR — (A) IS NOT A REGISTER TIE IN THIS DRAFT AT ALL.**
+ *
+ * (0) **RE-MEASURE, AGAIN.**  Round 10's headline lesson ("a measured fact
+ *     survived five rounds and was false") recursed onto round 10 itself.  Its
+ *     charter — "find ONE more loop-1 allocno with priority > 520 so both bases
+ *     fall out of $s0-$s7 and priority-DESC hands WM $t0 / SA $t1" — describes
+ *     **E3's** allocation, not this checkpoint's.  MEASURED (objdump, this file):
+ *     our preheader already emits SA -> $t1, WM -> $t0, -1 -> $s6,
+ *     HumanData -> $fp.  **Every register in (A) ALREADY equals retail's.**
+ *     The 14 bytes are pure EMISSION ORDER:
+ *         ours   [SA][WM][-1][HD]      target [SA][-1][HD][WM]
+ *     Do not re-derive the allocno arithmetic; there is no tie to break.
+ *
+ * (1) **(A) IS A MOVABLE-DISCOVERY-ORDER PROBLEM — round 9 had it right.**
+ *     Hoists are emitted with emit_insn_before(loop_start), i.e. AFTER every
+ *     pre-loop statement.  Ours makes SA *and* WM pre-loop statements, so both
+ *     precede the -1/HD hoists.  Retail's WM lands after them, so retail's WM
+ *     IS a movable.  Verified against the pinned loop.c (:691-703): gate 1 is a
+ *     three-case disjunction, and `weapon_base` fails all three —
+ *     REG_USERVAR_P kills case (2); loop 1's `count >= 70` break puts a
+ *     conditional jump at the body top so maybe_never == 1 kills case (3); and
+ *     it is live across basic blocks, killing case (1)'s reg_in_basic_block_p.
+ *     Only a compiler TEMP can be the movable — i.e. only E3.  (A) therefore
+ *     still costs the E3 restructure; E3 remains 107 residual lines in 49
+ *     blocks vs this checkpoint's 8 lines in 7.  Not a dial.
+ *
+ * (2) **(B) CLOSED (-6) — a returning guard's delay slot is won by SOURCE
+ *     POSITION, not by a fence.**  Target fills `beq $v0,$s6,.L8005B76C`'s
+ *     delay slot with `j = 0` and starts the if-body with the (s16)i extend;
+ *     ours had them swapped.  `j = 0` sat INSIDE the `if`, where it competes
+ *     with the HumanData[i].type chain for the block's first slot and loses on
+ *     sched2 priority (height 1 vs 7 — sched.c rank_for_schedule is
+ *     priority-dominant).  Hoisting `j = 0` ABOVE the `if` hands it to dbr's
+ *     BACKWARD scan (fill_simple_delay_slots takes an insn from before the
+ *     branch that the branch does not depend on), and the if-body then starts
+ *     with the sll.  Zero weight change: same loop depth, no new fence, and j
+ *     is dead on the else path so it is semantically free.
+ *
+ * (3) **(E) (12B) IS PERMUTER-IMMUNE AND FENCE-IMMUNE — do not spend a fence
+ *     on it.**  `.L8005B8DC` wants [a0=type][lui CamState][addiu CamState][lw];
+ *     we emit [lui][addiu][a0=type][lw].  Same regs, same fillers, one insn
+ *     misplaced.  `a0 = type` is a call-argument reg move, which expand_call
+ *     emits AFTER all argument evaluation — so it is LUID-LAST and lowest
+ *     priority.  A fence cannot help: loop notes only PREVENT motion
+ *     (sched_analyze_insn adds anti-deps both ways), they cannot pull a
+ *     LUID-last insn earlier.  A bounded permuter run (420s, -j4) did not beat
+ *     the base.  Retail must be reaching this via a priority/LUID difference
+ *     not yet identified; do not re-run the permuter on it.
+ *
+ * (4) **(D) (2B) IS THE ARRAY_REF-vs-POINTER OPERAND-ORDER SPLIT — identified,
+ *     not yet spendable.**  Target `addu $v0,$s0,$v0` (base+index); ours
+ *     `addu $v0,$v0,$s0`.  In OUR OWN .combine, all three `ItemName[count]`
+ *     sites are base-first (insn 340 `(plus (reg 223) (reg 222))`, insns
+ *     437/465 `(plus (reg/v 99) (reg 245/256))`) and all match retail, while
+ *     the one pointer site `menu_base[count]` is index-first (insn 1189
+ *     `(plus (reg 307) (reg/v 100))`).  Cause: `ItemName[count]` on an ARRAY
+ *     builds an ARRAY_REF, expanded via get_inner_reference as
+ *     `gen_rtx (PLUS, ptr_mode, XEXP (op0, 0), force_reg (ptr_mode,
+ *     offset_rtx))` — base first by construction; `menu_base[count]` on a
+ *     POINTER builds INDIRECT_REF(PLUS_EXPR(ptr, idx*size)) and comes out
+ *     index-first.  Same C syntax, different tree, different addu order.
+ *     Swapping to `ItemName[count]` here is NOT free: cse2 resets its table at
+ *     .L8005B880, so the array form rematerialises `addiu ...,sp,1424` (+1
+ *     insn, wrong length) instead of reusing $s0.  Needs a form that keeps the
+ *     menu_base REG as the base while taking the ARRAY_REF path.
+ *
+ * (5) (C)'s last byte at 0x81c stands where round 9 left it: retail inits the
+ *     think cursor from menu_base ($s0), we use item ($s1).  Round 9's
+ *     reg_in_basic_block_p argument kills both directions for a menu_base READ
+ *     at 0x81c.  NOT re-opened this round.  One untried angle is recorded: the
+ *     set could reach loop.c gate 1 via case (3) instead of case (1) if
+ *     `menu_base = ItemName` were placed where maybe_never == 0 (before loop
+ *     2's first conditional jump) — but that requires a named temp for
+ *     `ThinkDB[0].name` to keep the ThinkDB base discovered FIRST, or the
+ *     preheader order [ThinkDB high][ThinkDB lo_sum][menu_base] inverts.
  *
  * ROUND 10 (+-0): THE ROUND-9 LEAD ON (A) IS REFUTED BY MEASUREMENT, but the
  * SHAPE of retail's loop-1 is now PROVED rather than inferred.  Read this before
@@ -902,9 +980,19 @@ void AddEnemy(void)
             /* Keep the stage+1 slot named: folding it into the array access
              * rotates the following scan away from retail's CFG. */
             stage_slot = stage + 1;
+            /* `j = 0` MUST stay ABOVE this guard (round 11, -6 bytes).  Retail
+             * fills the guard's delay slot with it and starts the if-body with
+             * the (s16)i extend.  Inside the `if` it is just another candidate
+             * for the block's first slot and loses to the HumanData[i].type
+             * chain on sched2 priority (height 1 vs 7).  Above the guard it is
+             * instead picked up by dbr's BACKWARD scan
+             * (fill_simple_delay_slots takes an insn from before the branch
+             * that the branch does not depend on).  j is dead on the else path,
+             * so this is semantically free, and it costs no fence and no
+             * loop-depth weight. */
+            j = 0;
             if (ADD_ENEMY_STAGE_KINDS[0] != -1)
             {
-                j = 0;
                 human_type = HumanData[i].type;
                 /* goto-loop (a real do-while's notes would let loop.c hoist
                  * the stage_slot arithmetic that retail recomputes each
