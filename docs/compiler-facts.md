@@ -256,6 +256,26 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   identity, or the interference graph (AddEnemy's `category = 0` fence: order
   flipped exactly as computed, zero bytes moved).
 
+- **`.greg`'s conflict dump is the STATIC interference graph, printed BEFORE
+  coloring** (`dump_conflicts`, global.c:555 — the line before the
+  `for (i = 0; i < max_allocno; i++)` allocation loop). So a register absent from
+  an allocno's printed conflict list can still be UNAVAILABLE at coloring time,
+  via a THIRD allocno that conflicts with both and got there first. **"Not in my
+  conflict list" is not "available to me"** — check transitive roommates
+  (SetupTelop: `fill_white` conflicts only with `v`, yet lands on `$t0` because of
+  who took the rest).
+- **When K mutually-conflicting allocnos compete for K same-class registers,
+  assignment is a TOURNAMENT, not K independent questions.** The Nth-ranked member
+  of the clique takes the Nth register, so demoting the current #1 to free its
+  register for a desired #4 does not work in isolation — the freed slot goes to
+  whoever is next-highest. Simulate or `--compare` the FULL resulting order before
+  spending a round on a weighting edit (SetupTelop: col/font/bits/v are a 4-clique;
+  dropping `col` alone misfires and hands `$a1` to `font`).
+- **`find_reg`'s preference machinery can only promote a pseudo to a register that
+  is ALREADY outside its excluded set** (global.c:900-1037) — it can never override
+  a real conflict. A value crossing zero calls carries no preferences and gets
+  nothing from this lever.
+
 ## reload
 
 - **WHICH reload entry point handles a spilled pseudo is decided by how the C

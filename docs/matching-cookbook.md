@@ -1473,6 +1473,18 @@ re-check cheaply before honoring them:
   candidate that only moves it. (Clean autorules candidate: for a statement
   immediately following a two-armed if/else with no intervening use, try
   shared-into-both-arms and keep if the diff shrinks.)
+- **BISECT a permuter winner — it carries dead weight.** CameraDirection's
+  candidate wrapped nearly the whole function body in a fence; hand-bisecting it
+  down showed only the vDif tail needed wrapping, for the same 7 bytes. And the
+  narrower cuts were not merely worse but WRONG-LENGTH (864/868 vs 860), which is
+  how you find the load-bearing span rather than guessing it.
+- **A seed's lever may be an EXISTING dead local, not a fresh temp.**
+  CameraDirection went 17→12 by naming an extern read through an
+  already-declared, by-then-dead local (`y = ViewInfo.vrx;` then using `y`) —
+  giving the subtraction the right birth point. autorules' `binop-operand-seed`
+  tried that exact site and scored nothing, because it synthesises a FRESH temp.
+  When a seed rule reports no win, try each already-declared local of matching
+  type that is dead at that point before concluding the lever is absent.
 - **A permuter WIN can be a STRUCTURAL regression — read the BRANCH DISPLACEMENTS
   in the new diff, not just the byte count.** AddEnemy's fresh run beat its base
   26 vs 27 (killing a "PERMUTER-IMMUNE" claim), and the win was a trap: the whole

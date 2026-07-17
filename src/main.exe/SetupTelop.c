@@ -77,6 +77,92 @@
  *     flips the operand order.
  *   - tools/autorules.py: no improving edit among 73 candidates.
  *   - tools/permute.py, bounded 300s -j4 --stop-on-zero: no improvement.
+ *
+ * ROUND 2 (base re-verified: 11/1076, matches this file's STATUS exactly).
+ * Re-ran the ladder end to end (reghist, autorules, ONE bounded permuter,
+ * cc1says, regalloc --order/--compare, rtlguide, autorules --guided) and
+ * closed the "premise is wrong" gap the previous park flagged, without
+ * finding a lever:
+ *   - reghist: delta sum 0, only $a1/$t0 counts differ (+4/-4) -- confirms
+ *     pure-rotation, not a mega-pseudo; consistent with the diagnosis above.
+ *   - tools/autorules.py: re-run fresh, 0 of 63 (ruleset has not grown a
+ *     lever for this shape since the last park).
+ *   - tools/autorules.py --guided (rtlguide's mechanical search, which adds
+ *     regalloc-specific rules absent from the plain sweep -- loop-fence,
+ *     nested-loop-fence, paired-loop-fence, disjoint-local-alias,
+ *     allocation-donor-fence, deferred-global-capture, shared-result-return):
+ *     0 of 160 compiled candidates.
+ *   - tools/permute.py, bounded 240s -j4 --stop-on-zero: 17831 iterations,
+ *     authoritative rescore still base.c at 11/11/1076. Two independent
+ *     bounded runs (this one and the prior 300s run) now agree: not
+ *     permuter-reachable, not a crashed/short search either.
+ *   - THE CONFLICT GRAPH (dump_conflicts, global.c:1666-1676, printed BEFORE
+ *     coloring -- the STATIC interference graph, not a priority number):
+ *     col/font/bits/v mutually conflict (a full 4-clique), but fill_white
+ *     conflicts with v ONLY -- it does NOT conflict with col, font, or bits.
+ *     This means fill_white's own register is decided entirely by ITS OTHER
+ *     roommates-of-roommates (p197/p196/p193 block a0-a3 for it indirectly;
+ *     p98 or a LOCAL pseudo blocks $t0), never by a direct fight with
+ *     col/font/bits. It also means the required order is a strict
+ *     tournament over the 4-clique -- bits, font, v, col MUST be colored in
+ *     that exact relative order to land (a1,a2,a3,t0), full stop; there is
+ *     no partial-order slack to exploit.
+ *   - regalloc.py --compare/--between (independent confirmation of the
+ *     priority-table arithmetic above, via the tool rather than by hand):
+ *     `p179 > p87` needs +5 weighted refs (matches "n_refs >= 12" exactly).
+ *     `p85 > p86` (i.e. col dropping below v) needs col to shed only 1
+ *     weighted ref (16->15 crosses the floor_log2 4->3 cliff, 21333->15000).
+ *     But shedding col ALONE is insufficient and moves the WRONG variable
+ *     into $a1: with col demoted, font becomes first-processed in the
+ *     4-clique and takes $a1 itself (verified by hand-simulating the
+ *     4-clique in priority order) -- bits, font and col do not have
+ *     independent levers; only the bits-vs-font gap actually gates the
+ *     rotation, and font can shed at most ~2 refs (19->17, priority 15813)
+ *     before it would drop below v and swap ITS OWN register with v's --
+ *     so the effective combined budget is still ~+5 weighted refs, however
+ *     split. Given loop 1's instructions are already exact, every such
+ *     mention is forced by a real instruction (flow.c:1969/2404: REG_N_REFS
+ *     += loop_depth per actual SET/USE rtx in the final RTL) -- there is no
+ *     "free" mention CSE won't fold away before reg-scan runs.
+ *   - find_reg's preference mechanism (global.c:900-1037, read via
+ *     tools/ccsrc.py rather than recalled): `hard_reg_copy_preferences` /
+ *     `hard_reg_preferences` can only PROMOTE a pseudo to a DIFFERENT
+ *     register that is already outside `used` (i.e. still legitimately
+ *     available to it) -- it can never override a real conflict-based
+ *     exclusion. bits has zero recorded preferences (no "179 preferences:"
+ *     line in the raw .greg dump), consistent with crossing 0 calls in loop
+ *     1. This closes off preference-based promotion as a second lever, not
+ *     just the priority-race one the previous park already ruled out.
+ *   - Retested the ONE verified lever (dropping `final_u = fill_white`) with
+ *     a CLEAN substitution (`*pixel = fill_white;` directly, not leaving
+ *     final_u read uninitialized) to make sure the prior 11->33 wasn't an
+ *     artifact of a botched edit: reproduces 11->33 exactly. Reading the
+ *     allocation after this edit shows the mechanism is NOT what the prior
+ *     note guessed -- fill_white does not cleanly move to $t1; instead bits
+ *     and fill_white COLLAPSE onto the SAME register ($t0, legally, since
+ *     they don't conflict), col is still wrong in $a1, and a new 12-insn/
+ *     16-byte cluster opens at the GetTPage tail (0x800575e8-0x80057628)
+ *     where final_u's other, unrelated use lives. Confirms this edit is a
+ *     genuine dead end, not a near-miss.
+ *   - tools/rtlguide.py surfaces one loose thread for the next lane: its
+ *     register-goal summary for $t0<->$t1 lists THREE priority figures
+ *     (9500, 6750, 6666), not the two accounted for above (fill_white=9500,
+ *     the unrelated p98=6750) -- there is a third contender at priority
+ *     ~6666 this park has not identified (likely a LOCAL allocno under
+ *     local-alloc's different quantity-ordering formula, e.g. a roommate of
+ *     p356/t0, since global-alloc's 25-allocno table has no entry at 6666).
+ *     Not chased further this round; may or may not matter to the rotation.
+ *
+ * Net: two independently-run lanes, via different methods (hand priority
+ * arithmetic vs tool-driven conflict-graph + preference-mechanism reading),
+ * now agree the bits-vs-font ordering is the single gating constraint, that
+ * closing it costs ~5 weighted refs with no free source of them, and that
+ * neither the plain nor guided mechanical sweep nor two bounded permuter
+ * runs (300s, 240s) find a way around it. Still park-worthy, not proven
+ * mathematically impossible (a restructuring outside this park's 5-variable
+ * framing could exist), but the priority-race framing itself is no longer
+ * an open question -- only a from-scratch alternate decomposition remains
+ * unexplored, and it risks the already-exact instruction sequence.
  */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupTelop", SetupTelop);
