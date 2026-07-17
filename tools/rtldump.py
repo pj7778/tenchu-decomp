@@ -98,8 +98,15 @@ DEFAULT_PASSES = ["greg", "lreg", "jump", "combine"]
 # `/tmp` rather than gettempdir(): it must be stable ACROSS invocations for a
 # two-variant RTL comparison to be possible at all, and every nix-shell tmpdir
 # lives under it anyway. CLAUDE_SCRATCH still overrides.
-SCRATCH = os.environ.get("CLAUDE_SCRATCH") or os.path.join(
-    "/tmp", "tenchu-rtldump-" + hashlib.sha1(ROOT.encode()).hexdigest()[:10],
+#  3. The ROOT hash was then applied only when CLAUDE_SCRATCH was UNSET -- and
+#     agents ALWAYS have it set, pointing at the SHARED scratchpad. So the
+#     isolation never applied in the one situation it existed for: a lane found
+#     two OTHER lanes' stale `mission_score_screen.i.sched` dumps there and said a
+#     smaller model would have read one as its own. The hash is now appended
+#     UNCONDITIONALLY -- CLAUDE_SCRATCH chooses the location, never the isolation.
+SCRATCH = os.path.join(
+    os.environ.get("CLAUDE_SCRATCH") or "/tmp",
+    "tenchu-rtldump-" + hashlib.sha1(ROOT.encode()).hexdigest()[:10],
 )
 
 

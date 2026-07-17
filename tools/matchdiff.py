@@ -298,7 +298,14 @@ def main():
     print(f"{'addr':10} {'TARGET':48} OURS")
     for i, a in enumerate(bad_insns):
         if i >= args.max:
-            print(f"... (+{len(bad_insns) - i} more)")
+            # Say the CONSEQUENCE, not just the count. A lane read "+N more" and
+            # still built a byte-account from the visible rows -- 12 clusters/160B
+            # where the truth was 23/239 -- and only caught it via --max 400.
+            hidden = len(bad_insns) - i
+            print(f"... (+{hidden} more differing instructions HIDDEN — this view "
+                  f"is TRUNCATED at --max {args.max})")
+            print(f"    A byte-account or cluster count from this output will be "
+                  f"WRONG. Re-run with --max {len(bad_insns)}.")
             break
         print(f"{a:#x} {o_dis.get(a, '?'):48} {m_dis.get(a, '?')}")
     return 1

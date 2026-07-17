@@ -638,6 +638,11 @@ function already byte-matches on current `master`.
   mechanical, both byte-safe, both matched a function by hand tonight: hoist a store
   duplicated in both if/else arms into a single post-if statement (and its inverse);
   replace a pre-loaded compare local with the direct expression.
+- **A stale WARNING is as costly as a stale fact.** I told round 13 the cluster table
+  was "wrong twice over" — but round 12 had already fixed it, and the lane spent effort
+  re-deriving what was already correct (76 insns / 239 bytes / 23 clusters, rows summing
+  exactly). Corrections expire too; re-check a warning against the current file before
+  repeating it.
 - **RE-PRICE THE RESIDUAL EVERY ROUND. Rounds 5-10 on AddEnemy all spent
   themselves on cluster A while 20 of 35 bytes were ordering questions NO round had
   attacked.** A byte-account is a snapshot, not a standing truth: the clusters move
@@ -699,13 +704,26 @@ function already byte-matches on current `master`.
   structure. It now hedges when `move` copies are present. When adding a heuristic
   verdict to a tool, write down what it CANNOT distinguish, in the output, next to
   the verdict.
-- **My own fix introduced the failure it was preventing.** rtldump's dump dir was
+- **Three tools silently reported the wrong thing, all fixed together, all the same
+  class.** (1) `autorules` scores every candidate through a source override, so it
+  left the LAST CANDIDATE's image on disk while writing the real source — `matchdiff
+  -n` straight after a sweep read the wrong build and produced a spurious LENGTH
+  MISMATCH. It now rebuilds before exiting. (2) `matchdiff` truncated at `--max 40`
+  and printed only "+N more"; a lane built a byte-account from the visible rows (12
+  clusters/160 B where the truth was 23/239). It now states the CONSEQUENCE. (3)
+  rtldump's isolation — see below. **When a tool ends, the world it leaves behind is
+  part of its output.**
+- **My own fix introduced the failure it was preventing, TWICE.** rtldump's dump dir was
   shared across agents (a lane nearly read a sibling's stale `.greg`), so I keyed it to
   the worktree via `tempfile.gettempdir()` — which reads TMPDIR, and **`nix develop`
   mints a fresh TMPDIR per invocation.** The path then changed every run: a lane
   captured one, reused it, silently diffed two EMPTY files and got a clean
-  "IDENTICAL". Now anchored to a fixed base. **A path used to compare two runs must be
-  stable ACROSS runs — verify that by printing it twice, not by reasoning about it.**
+  "IDENTICAL". Then the ROOT hash was applied only when CLAUDE_SCRATCH was UNSET — and
+  agents ALWAYS have it set, to the SHARED scratchpad, so the isolation never applied
+  in the one case it existed for; a lane found two OTHER lanes' stale `.sched` dumps
+  there. **A path used to compare two runs must be stable ACROSS runs, and isolation
+  must not be optional — verify by printing it twice and by testing the env the agents
+  actually run in, not the one you tested in.**
 - **A tool that can silently measure the STUB is the worst bug class in this repo.**
   Three instances now: `reghist` built the stub and reported "every register matches
   exactly" (a vacuous truth that tells an agent no lever remains); `matchdiff -n`

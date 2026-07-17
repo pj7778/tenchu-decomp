@@ -8694,6 +8694,16 @@ def main():
     else:
         atomic_write(path, cur_text)
         print(f"wrote {path}")
+
+    # Every candidate is scored through a SOURCE OVERRIDE, so the image left on
+    # disk is the LAST CANDIDATE's -- not the source we just wrote. `matchdiff -n`
+    # straight after a sweep therefore reads the wrong build: a lane got a
+    # spurious LENGTH MISMATCH at 4640 that way and had to diagnose it. Rebuild
+    # from the real source so the image and the source agree before we exit.
+    final_ok, final_bytes, _lines, _len = score(name, partial)
+    state = "MATCH" if final_ok else f"{final_bytes} differing"
+    print(f"rebuilt from {path}: {state} — the image now matches the source on "
+          "disk, so `matchdiff -n` is safe")
     return 0 if match else 1
 
 

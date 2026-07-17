@@ -6526,6 +6526,19 @@ and it changes the load from a free `(mem (symbol_ref))` into a scheduler-chaine
 `(mem (lo_sum ...))`. `autorules` sweeps this as `extern scalar->unknown-array`.
 (PadProc: 2 bytes, fully automatic.)
 
+### An empty `do{}while(0)` fence is NOT a local device — judge it on the FULL cluster list
+
+Its `LOOP_BEG`/`LOOP_END` notes participate in **loop.c's GLOBAL numbering**, so
+removing one can create new diffs **thousands of bytes away in code that currently
+matches**.
+
+**Never judge a fence edit by the TOTAL alone.** mission_score_screen: removing the
+L839 fence fixes a rotation EXACTLY — 8 insns align, that cluster goes 10 -> 2 — while
+costing 17 new differing insns ~3.5 KB away at 0x80055938/0x80055b38. The net was +7,
+and dismissing it on the total nearly cost the round's only real finding: **the fence
+is doing two independent jobs at once.** Re-scan every cluster after a fence edit; a
++7 total hid a -27 local win plus +34 of distant collateral.
+
 ### An identical-arm fence's real effect can be REFERENCE COUNTING, not the CFG boundary
 
 **Before deleting a fence, check what it is actually buying.** A fence whose arms

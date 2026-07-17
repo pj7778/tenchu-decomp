@@ -8,6 +8,55 @@
  * STATUS: NON_MATCHING -- 239 of 4636 bytes differ (was 254; 330; 346; 401;
  * 413; 433; 437; 476; 498; 525; 1266).  76 differing instructions.
  *
+ * 2026-07-17 round-13 (Opus) -- NO byte change (239 HELD).  Round 12's lever is
+ * EXHAUSTED, and the two "rotation" clusters are now ONE located mechanism.
+ * Everything below is measured; 8 candidate edits, all regressions, all reverted.
+ *
+ * - THE binop-operand-seed RULE IS SPENT.  autorules' full sweep now carries it
+ *   (both directions) and reports "no improving edit among 333 candidates" (round
+ *   12 saw 251; the 82 new candidates ARE the new rule).  `binop-operand-seed
+ *   left _seed_i L1671` REGRESSES 239->260, which independently confirms round
+ *   12's seed is already applied in the correct direction.  Do not re-sweep.
+ * - ROUND 12's BYTE-ACCOUNT IS CORRECT.  Independently re-derived from a fresh
+ *   image: 76 insns / 239 bytes / 23 clusters, and the table's rows sum exactly
+ *   (63+38+35+27+21+10+27+8+6+4 = 239).  The "the table is wrong" warning applied
+ *   to rounds <=11 (which quoted INSN counts); round 12 already fixed it.  Note
+ *   bytes != 4*insns -- a register-field-only diff is 1 byte, not 4.
+ * - THE 35B "LoadTIMAndFree rotation" AND THE 10B "entry rotation" ARE THE SAME
+ *   MECHANISM, not two clusters.  Both are a hard-register ARGUMENT COPY that the
+ *   target places at the EARLIEST LEGAL SLOT -- immediately after the PRECEDING
+ *   call (which clobbers a0) -- while our sched1 sinks it to just before its
+ *   CONSUMING call.  Located in the RTL, not guessed: uid 150
+ *   `(set (reg:SI 4 a0) (reg/v:SI 80))` sits at index 12 of the InitSprite ->
+ *   LoadTIMAndFree block; the target needs index 1.  sched1 ALREADY hoists it
+ *   from 24 to 12 and then stops dead at the fence's LOOP notes (index 9-10).
+ *   At the entry site the same copy (`move a0,s0`, calculate_score's arg) loses
+ *   the same race and reorg then steals it for the jal delay slot, where the
+ *   target has `li s3,128`.
+ * - THE L839 EMPTY FENCE DOES TWO INDEPENDENT JOBS -- this is why it looks like a
+ *   local optimum and why every variant regresses:
+ *     (local)  its LOOP notes pin `brightness = rankColour` from hoisting;
+ *     (global) the same notes hold loop.c's numbering for TWO DISTANT SITES.
+ *   REMOVING IT FIXES THE ROTATION: all 8 insns from `lw v0,24(sp)` through
+ *   `sh v0,6(s0)` align EXACTLY (cluster 10 insns -> 2).  But it creates 17 NEW
+ *   differing insns at 0x80055938 (8) and 0x80055b38 (9) -- ~3.5KB away, in code
+ *   that MATCHES at baseline.  Net 239 -> 246.  With the fence gone the top slot
+ *   is won by `brightness` (`move a1,s3`), NOT by the a0 copy, so the a0 hoist is
+ *   not merely blocked -- it also loses the priority race once unblocked.
+ * - REFUTED (measured, reverted; do not retry): fence removed = 246; fence moved
+ *   ABOVE the attribute chain = 266 (and the a0 copy does NOT hoist -- that
+ *   placement buys nothing); fence moved BELOW LoadTIMAndFree as loop-count
+ *   compensation = 246 (bit-identical to plain removal, i.e. a no-op there);
+ *   `rankColour = 128` sunk after calculate_score = 319.
+ * - FOR ROUND 14: the question is now sharp and singular -- "what makes the a0
+ *   arg copy outrank `brightness` for the slot right after the preceding call?"
+ *   Both tie on sched priority (both have the consuming call as their dependent);
+ *   the a0 copy has the HIGHEST uid, so a UID tie-break places it last.  Worth
+ *   reading sched.c's rank_for_schedule cost model for whether the a0 copy's TRUE
+ *   dep should outrank brightness's, and whether a spelling that gives brightness
+ *   an in-block reader (or removes its free-float) hands the slot back.  Do NOT
+ *   spend it on fence placement -- that search is exhausted.
+ *
  * 2026-07-17 round-12 (Opus) -- 254 -> 239 via a NEW REUSABLE RULE: the
  * OPERAND-BIRTH ORDER lever.  The SV32 enemies/bosses v1/a0 mirror is CLOSED.
  *
