@@ -185,6 +185,24 @@ Look up what the authors wrote before drafting anything.
   the human base for the next round even at a small byte cost. `siblingdiff --demo`
   can even show the author editing the source between builds (SetWire's `abs`
   changed from builtin to a called flag-setting form demo→retail).
+- **NOT every fence is scaffolding — there are THREE cases and conflating them
+  damages both directions.** Before deleting a `do{}while(0)`, classify it:
+  (a) **a MATCHED SIBLING'S MACRO** — grep the TU's `.h` and `.c` `#define`s for
+  the fence body; if it is `DRAW_SCORE_NUMBER` or similar, it is the author's own
+  code and STAYS (mission_score_screen: ~20 of 24 fences). (b) **A REPLACEABLE
+  byte-chase** — the fence props up bytes AND a genuinely better, more complete
+  human structure exists to replace it (SetWire's identical-arm fence: the target
+  refutes it, and the human spelling reproduces the island). Adopt the human base
+  even at a worse byte count. (c) **A BARE load-bearing fence** — no macro backs
+  it, no better structure is on offer, and unwrapping it (test with `autorules`'
+  `fence-unwrap`, which sweeps each singly) measurably regresses. **KEEP it**:
+  measured necessity, not macro provenance, decides (StageEndScreen's 4-nest at
+  L423 scores 202→227 unwrapped; FUN_800519bc's 5 fences, no macro, cost 87→91..1012).
+  **The "adopt the worse byte count" move is ONLY for case (b)** — a bare fence
+  with nothing better behind it is not a reason to regress. And test fence
+  clusters as SUBSETS, not singletons: FUN_800519bc's three position-carriers act
+  as one dial (removing any one flips the same s1/s2 tie), which a one-at-a-time
+  sweep misreads.
 - **Prototypes/globals**: `reference/psxsym-protos.h` beats Ghidra/m2c
   inference; `reference/psxsym-globals.h` beats inventing layouts.
   **TU-mates are contiguous** (`reference/psxsym-tu-map.tsv`) — pins rodata

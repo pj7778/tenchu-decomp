@@ -84,7 +84,70 @@
  * search because a lower-numbered register is always free first. No source lever
  * was found this round to make t0 the winner; a future attempt should look for
  * what makes v0/v1/a2 UNAVAILABLE at those points in target (extend some other
- * value's live range to occupy them), not try to prefer t0 directly. */
+ * value's live range to occupy them), not try to prefer t0 directly.
+ * ROUND 3 (the 5 do{}while(0) fences audited one at a time — which are real,
+ * which are ours): a macro search across every header AND every .c file's own
+ * local #define in src/main.exe found NO function-like macro anywhere whose
+ * body matches any of the 5 — the only do{}while(0)-shaped macros in this TU
+ * family are DRAW_SCORE_NUMBER/DRAW_SCORE_COLON (mission_score_screen.c,
+ * StageEndScreen.c), unrelated in shape and purpose. So none of the 5 are
+ * macro hygiene by the letter of that test. Measured anyway, per-fence,
+ * BOTH by hand (rebuilt+remeasured, one fence unwrapped at a time and in
+ * combination) AND by `tools/autorules.py`'s independent `fence-unwrap` rule
+ * (both agree exactly):
+ *   - outer strip `do{ if(counter>=0){...} }while(0)` (L290): unwrapping it
+ *     alone scores 87->1012 (autorules) — a de facto length mismatch, same
+ *     conclusion as round 1's "length mismatch without it", now with an exact
+ *     number. It wraps a REAL conditional block, not a bare statement — a
+ *     plausible genuine "skip the rest of this case without goto" idiom. KEEP.
+ *   - the three position-carrier wrappers around `position = signed_width -
+ *     position;` (L307/L309/L311, nested 3 deep): unwrapping ANY ONE of them
+ *     — even the innermost alone, even with the other two still wrapping it —
+ *     scores 87->91, and unwrapping any subset (one, two, or all three) never
+ *     scores worse OR better than 91: it is ONE dial, not three. Depth 3
+ *     keeps tpage_value in s2 and signed_width in s1 (matching target);
+ *     dropping below depth 3 flips the pair to s1/s2 swapped — a genuine
+ *     local-alloc QTY_CMP_PRI tie, not a scheduling-order tie (the flat and
+ *     fenced forms emit the IDENTICAL instruction sequence, only two register
+ *     assignments swap).
+ *   - `do{ sprite.tpage = tpage_result; }while(0)` (L318): unwrapped alone,
+ *     87->93 — the single costliest fence, autorules-confirmed. Unwrapped
+ *     TOGETHER with the other three (full flatten to 5 plain statements),
+ *     the total is still only 91, i.e. its individual cost is absorbed once
+ *     the other three are also gone (not additive — same 91 floor either way).
+ *   CORRECTION to round 1: "the nested position-carrier fences (regress to
+ *   100)" was measured against an earlier intermediate state of this file and
+ *   is stale; the correct, freshly-measured number against the CURRENT source
+ *   is 91 (any subset of the three) or 93 (tpage alone), never 100.
+ *   A genuinely different, non-fence, non-flatten restructuring was also
+ *   tried: folding the whole computation into one expression close to
+ *   Ghidra's natural rendering (`xbase_value = stack.xbase; position =
+ *   xbase_value - (signed_width - position) * 8; sprite.tpage =
+ *   tpage_result;`) — this is WORSE (105), refuting the hypothesis that the
+ *   5-statement decomposition through a reused `position` carrier is itself
+ *   the byte-chased part; that decomposition is closer to target than the
+ *   more "natural" single-expression alternative.
+ *   PRECEDENT (same TU family): StageEndScreen.c has the identical pattern —
+ *   `best_x = 0x80010000;` wrapped in FOUR nested do{}while(0) (its L498-510)
+ *   with the comment "Preserve the target allocator weight for this reused
+ *   identity", and its own STATUS header states verbatim: "The four nested
+ *   do{}while(0) ... are LOAD-BEARING, measured: autorules' fence-unwrap
+ *   scores each at 202->227. They are not scaffolding; do not remove them."
+ *   That is this project's own established standard for exactly this
+ *   situation: once a genuine macro search comes up empty, MEASURED
+ *   NECESSITY — not textual macro provenance — decides whether a fence
+ *   stays. This is NOT the SetWire / mission_score_screen situation (a worse
+ *   byte count adopted because a genuinely BETTER, more complete alternative
+ *   structure was found): here every alternative tried (flatten in every
+ *   combination, single-expression fold) was strictly WORSE with no
+ *   compensating gain in plausibility — there is no suppressed better
+ *   structure to prefer, only an unresolved register-coloring tie the fences
+ *   currently paper over. VERDICT: keep all 5 fences.
+ *   Re-confirmed fresh: `tools/autorules.py` unguided (73 candidates,
+ *   including all 5 fence-unwrap candidates individually) finds no improving
+ *   edit; a bounded fresh permuter run (240s search + rescore, base score
+ *   1095) never beats its own base score, consistent with round 2's
+ *   16457-iteration run. No orphaned permuter state left behind. */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_800519bc", FUN_800519bc);
 #else
