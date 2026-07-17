@@ -948,10 +948,33 @@ def main():
     # session so a kill here cannot leave permuter workers behind.
     interrupted = False
     rc = 0
+    # WATCH THE PERMUTER'S OUTPUT FOR A CRASH. The sanity compile above only proves
+    # OUR base.c builds; the permuter then PARSES and REGENERATES that C, and its
+    # rewritten source can fail to compile even though ours is fine. When that
+    # happens the permuter searches ZERO candidates and exits quietly -- and this
+    # tool used to sail on and print "authoritative best -> base.c", which reads as
+    # "searched and found nothing". SetupSpline's park recorded exactly that as
+    # "a further bounded permuter run also plateaued at 12"; it was never a
+    # negative result, it was a crash. A false permuter-immune verdict is expensive:
+    # it sends the next lane into RTL archaeology on a search that never ran.
+    crashes = []
+    CRASH_MARKERS = (
+        "Unable to compile",              # the permuter's own base compile failed
+        "does not contain any function",  # its parser rejected the source outright
+        "Not able to compile",
+    )
     try:
         with proclife.interruption_handlers("permute"):
-            proc = proclife.owned_popen(["permuter.py", work, *rest])
+            proc = proclife.owned_popen(["permuter.py", work, *rest],
+                                        stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True)
             try:
+                # Echo as it goes -- do not swallow the permuter's own progress.
+                for line in proc.stdout:
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                    if any(marker in line for marker in CRASH_MARKERS):
+                        crashes.append(line.strip())
                 rc = proc.wait()
             except BaseException:
                 proclife.terminate_process_group(proc)
@@ -960,6 +983,28 @@ def main():
         interrupted = True
         rc = 143
         print(f"\npermute: {stop} — rescoring what the search already retained…")
+
+    if crashes:
+        # Refuse LOUDLY rather than report the base as a result.
+        sys.exit(
+            f"\npermute: *** THE PERMUTER NEVER SEARCHED {name}. ***\n"
+            + "".join(f"         {line}\n" for line in crashes[:4])
+            + "         Our base.c compiles (the sanity build above passed) — the\n"
+              "         permuter's own parse/REGENERATE round-trip produced C that\n"
+              "         does not compile, so it evaluated ZERO candidates.\n"
+              "\n"
+              "         **THIS IS NOT A NEGATIVE RESULT.** Do NOT record 'the permuter\n"
+              "         found nothing' or 'permuter-immune' for this function — the\n"
+              "         search did not run. SetupSpline carried exactly that false\n"
+              "         verdict in its park header.\n"
+              "\n"
+              "         Usual cause: a construct the permuter's C parser mangles\n"
+              "         (casts to/from struct types, compound literals, inline asm).\n"
+              "         Look at the reported line in .shake/permuter/"
+            + f"{name}/base.c,\n"
+              "         and see docs/gte-policy.md for the gte.h class, which is\n"
+              "         refused up front. Escalate to tools/rtldump.py + the\n"
+              "         cookbook's RTL escalation method instead.")
 
     wins = sorted(glob.glob(os.path.join(work, "output-0-*", "source.c")))
     if wins:
