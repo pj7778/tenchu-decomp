@@ -13,6 +13,18 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
 
 ## Front end / trees
 
+- **`*(&x) = v` does NOT stack-force `x`** in this cc1 — the `*&` fold beats
+  `mark_addressable`, so `x` stays a register candidate (measured: frame shrank 8
+  bytes on SetWire when a `*&`-spelled out-param stopped forcing its local). A
+  macro out-parameter reconstruction that must genuinely address a local needs a
+  REAL pointer local (`T *rxp = &rx;`), not the `*&` spelling.
+- **Power-of-2 division emits by DESTINATION**: rvalue `/K` on a fresh temp in an
+  expression (`t*t/0x1000`, accumulator sums) emits the IN-PLACE
+  `bgez; addiu 0xFFF; sra` shape, while a store-back `/K` on a user variable
+  (`dx /= 0x100;`) emits the copy-in-delay-slot shape. Both are reachable from
+  plain human `/ONE` spellings — pick the one whose destination matches the target
+  (SetWire).
+
 - **Enum struct fields are 4 bytes** (no `-fshort-enums`) — a raw enum-typedef
   field silently shifts every later field; repo convention is
   `u16 name; // enum X` (character_state). An enum-typed dispatch parameter

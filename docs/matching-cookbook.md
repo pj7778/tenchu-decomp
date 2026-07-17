@@ -169,6 +169,22 @@ Look up what the authors wrote before drafting anything.
   `tools/access.py`); a repeated local name is a nested-block scope — and
   therefore a lifetime-boundary hint (PlayVoice's two `min`/`sec` pairs;
   AttackControl's two `enemy`s); `.NNNfake` struct tags were per-TU.
+  **PSX.SYM lists a block's locals in REVERSE declaration order** — a listed
+  `dz, dy, dx` means the source declared `long dx, dy, dz;`. Block scalars get
+  pseudos AT DECLARATION, so transcribing the listed order verbatim swaps register
+  roles (measured s0/s1 flip on SetWire). Reverse each block's list before writing
+  it.
+- **The human structure can be the RIGHT base even when it scores WORSE**, because
+  a byte-chased draft is a local optimum away from the source and can be a dead
+  end. SetWire from EFFECT.C:1428's own 23 declarations measured 85 vs a banked
+  70 — but the 70's fake-fence 10 bytes were unreachable-from-C (the target
+  refutes the fence), while the human 80 reproduced the entire t/Q/R interpolation
+  island byte-for-byte from plain `t = one - i*0x1000/lcount; Q = t*2; R =
+  t*t/0x1000; ...` where the byte-chased draft needed 8 temps and dead-carrier
+  reuse. When PSX.SYM gives you the declarations, WRITE THEM, measure, and prefer
+  the human base for the next round even at a small byte cost. `siblingdiff --demo`
+  can even show the author editing the source between builds (SetWire's `abs`
+  changed from builtin to a called flag-setting form demo→retail).
 - **Prototypes/globals**: `reference/psxsym-protos.h` beats Ghidra/m2c
   inference; `reference/psxsym-globals.h` beats inventing layouts.
   **TU-mates are contiguous** (`reference/psxsym-tu-map.tsv`) — pins rodata
