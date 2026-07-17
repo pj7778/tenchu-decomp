@@ -346,6 +346,18 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   `(7f000001)`). **It is SCHED1-ONLY** — both it (2540) and `birthing_insn_p`
   (2504) are gated on `reload_completed == 0`. The macro `ADJUST_PRIORITY` is
   undefined on MIPS and that is IRRELEVANT: the bump is in the FUNCTION.
+- **The birthing bump can only reach an insn that is somebody's PRODUCER inside
+  the block.** `adjust_priority(prev)` is called from exactly one place —
+  `schedule_insn`'s loop over `LOG_LINKS(insn)` (**sched.c:2631**) — so an insn
+  that nothing in the block depends on is never passed to it and is **never
+  bumped, whatever its REG_N_SETS**. The tell is printed: **`ref_count = 0`** in
+  the `;; insn[N]` table means no `INSN_DEPEND`, i.e. live-out with no consumer
+  here. Worked example: StageEndScreen's `(set (reg/v:SI 95) (const_int 82))` —
+  `priority = 1, ref_count = 0`, bumped 0 times across 650 bumps elsewhere in the
+  same function. **So "can this constant be lifted off the floor?" is answered by
+  ref_count BEFORE REG_N_SETS**; a live-out constant with no in-block use is
+  unreachable by this lever, and giving it a consumer means changing what the C
+  does with it.
 - **`birthing_insn_p` (2499) fires iff `(set (REG) …)`, dest live,
   `REG_N_SETS(dest) == 1`.** A `(set (SUBREG …) …)` dest is never birthing (every
   compound assignment to a short local). A re-assigned local (`REG_N_SETS != 1`)

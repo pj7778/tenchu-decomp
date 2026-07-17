@@ -81,10 +81,21 @@ prints exactly this set (it defaults to `--scope game`):
         ...
           48 100.0%  FUN_8001b174
 
-    **The top 4 are 42% of everything left; the bottom 10 are ~2%.** All four are
-    94-97% exact, and each has ONE dominant cluster (StageEndScreen's cluster 2 alone
-    is 169 of its 203 bytes). Chasing 4- and 9-byte parks on 500-byte functions ranks
-    by probability and ignores the prize — a 20-100x error in expected bytes.
+    **The top 4 are 42% of everything left; the bottom 10 are ~2%.** Chasing 4- and
+    9-byte parks on 500-byte functions ranks by probability and ignores the prize.
+
+    **But `--by-value` is the OPPOSITE error if taken alone: it assumes
+    crackability.** The counter being all-or-nothing cuts both ways — a 6084-byte
+    function pays 6084 at residual 0 and **NOTHING at residual 1**. So the real
+    ranking is `size x P(crack)`, and neither pure ordering is it. Worked example, the
+    day it was added: StageEndScreen's cluster 2 turned out to be ONE instruction
+    (`addiu s7,zero,0x52`) emitted early, displacing 46 slots by +4 — 168 of its 202
+    bytes — and it is unreachable, because the insn has `ref_count = 0` (nothing in
+    the block consumes it) so `adjust_priority` is never called on it and the birthing
+    bump cannot lift it off priority 1. If that holds, StageEndScreen's 6084 bytes are
+    not collectable at any price, and the prize ranking should move to
+    `mission_score_screen` (4636) or `FUN_80057b80` (3796, residual 8). **Read the
+    dominant cluster's mechanism before spending a round on size alone.**
   * **33 parked drafts** — each root-caused in its own `.c` header, closest at 1-10
     residual bytes. Residuals are overwhelmingly sub-C (allocation / scheduling /
     reload ties), which is why the tooling investment has overtaken target-picking as

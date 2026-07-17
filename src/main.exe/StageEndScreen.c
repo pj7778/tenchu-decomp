@@ -18,7 +18,7 @@
 /*
  * STATUS: NON_MATCHING — complete pure-C reconstruction with the exact target
  * length (6084 bytes / 1521 instructions), 0xf0-byte frame, 81 conditional
- * branches, 15 jumps, and 70 calls.  matchdiff reports 203 differing bytes
+ * branches, 15 jumps, and 70 calls.  matchdiff reports 202 differing bytes
  * and fuzz-score reports 98.16%; the raw aligned residual is 33 lines in 17
  * blocks (16 structural lines in 6 blocks).  The final digit allocation and
  * terminal layout-loop register family now follow the target.  The residual
@@ -32,9 +32,12 @@
  *  1. ~140 of the 203 bytes are ONE cluster: our li s7,82 (current_x) hoists
  *     into the div-magic's slot at 0x800536bc while retail keeps it in the
  *     RANK_ARCHIVE FileRead delay slot — a one-instruction shift over ~45
- *     instructions. .sched proves a pure priority-1 tie broken by
- *     pre-scheduling LUID; the CSE/LICM-hoisted magic's LUID is fixed at the
- *     preheader dominator, so no source statement order can flip it.
+ *     instructions. .sched proves a pure priority-1 tie.
+ *     [2026-07-17 round 4: the tie is REAL but this item's stated MECHANISM
+ *     was WRONG and is retracted — see round 4 §1. There is no "CSE/LICM
+ *     hoist" of insn 559 and no "preheader dominator" pinning its LUID: the
+ *     .combine chain puts insn 559 at its plain source position. The
+ *     conclusion (source order cannot flip it) survives; the reason does not.]
  *  2. Stage scan {a3,a1,a0}<->{a0,a2,a1} rename: regalloc HARD-CONFLICT
  *     (stage_index prefers a0, target wants a3).
  *  3. number_1 subtraction: 3-way coloring permutation (x-const 40 in v0 vs
@@ -96,6 +99,78 @@
  *     re-schedules the sub-block for a net loss. Do not re-run either fence.
  *  D. The rewritten permuter (bounded 420s, -j4, --stop-on-zero) is still
  *     flat at 203 — re-confirmed against the current tool, not the old one.
+ *
+ * 2026-07-17 round 4 — now 202. autorules found ONE real edit
+ * (`sprite->r = sprite->g = 0x80`, assignment-chain merge L454: 203->202).
+ * The rest of the round went to cluster 2, and it CLOSED the question of
+ * whether cluster 2 is source-reachable. It is not. Evidence, first-hand:
+ *
+ *  1. SIZE OF THE PRIZE, exactly. Cluster 2 is not "~45 instructions of
+ *     scheduling"; it is ONE instruction. Decoding both images: ours puts
+ *     `addiu s7,zero,0x52` at 0x800536bc, where retail has `lui s4,0x6666`.
+ *     From there ours is target+4 for 46 slots and RE-SYNCS at 0x8005378c.
+ *     168 of the 202 bytes are that single displacement. Retail's copy sits
+ *     in the `jal FileRead` delay slot at 0x80053774; ours, already spent,
+ *     forces reorg to fill that slot with `li s5,127` instead, which is the
+ *     whole tail of the cluster (the sw/move swap at 0x80053780..0x80053788).
+ *     Fix the placement and the cluster collapses entirely.
+ *
+ *  2. RETRACTION of the 2026-07-16 item 1 mechanism. That item said the
+ *     magic is CSE/LICM-hoisted and its LUID "fixed at the preheader
+ *     dominator". Both halves are false. In .combine (the chain sched1
+ *     actually reads) insn 559 `(set (reg/v:SI 95) (const_int 82))` sits at
+ *     line 1475 — immediately after call_insn 552, i.e. exactly where the C
+ *     statement is. Nothing hoisted it. The div magic (uid 4204/4205) is not
+ *     in .combine at all. The park reached a TRUE conclusion from a FALSE
+ *     mechanism, which is why it also mispredicted the reason moves fail.
+ *
+ *  3. WHY SOURCE MOVES ARE NO-OPS — now proven, not observed. Moving
+ *     `current_x = 0x52` to the loop preheader gives BYTE-IDENTICAL codegen
+ *     (tools/nullcheck.py exit 1). Reason: the pick order among priority-1
+ *     insns only changes if the move crosses another priority-1 insn, and the
+ *     next one above 559 is uid 4186 at chain 1725 — loop.c's hoisted
+ *     `(set (reg:SI 323) (const_int 10))`, sitting in the loop preheader
+ *     between call_insn 658 (_PlayMusic) and (note 660 NOTE_INSN_LOOP_BEG).
+ *     Every position between 1475 and ~1710 is the same pick. Do not re-run
+ *     any move of current_x that stays inside block 17.
+ *
+ *  4. THE PRIORITY LEVER DOES NOT EXIST FOR THIS INSN — the load-bearing new
+ *     fact. A priority-1 insn cannot reach retail's slot, so the only way out
+ *     would be to raise 559's priority. sched-deps.py's §2848 verdict (from
+ *     cc1's own tables): "Priority rises only via a cost!=1 producer
+ *     (sched.c:1521), so the lever is what FEEDS the insn — e.g. sourcing it
+ *     from a load rather than a register." `addiu s7,zero,0x52` is a bare
+ *     constant: it HAS no producer, and any source form that gives it one
+ *     stops being `li`. Its priority is pinned at 1 by its own shape.
+ *     Corollary — two levers that look adjacent are already known-backwards
+ *     and must not be tried: class (rank_for_schedule gives class 3, the
+ *     maximum, to anything independent or cost-1, so a cost!=1 dep sorts you
+ *     LATER) and potential_hazard (a SYMPTOM of the tie, not a lever).
+ *
+ *  5. MEASURED DEAD END, new: manufacturing an anti-dependence by giving
+ *     current_x a first life as the PSTATE pointer (`current_x = 0x80010000`
+ *     feeding the RS_ARCHIVE FileRead's [0x5e] read, so that `current_x =
+ *     0x52` would carry a WAR dep) is a LITERAL NO-OP — byte-identical 202,
+ *     verified after a real relink. cse1 constant-propagates the literal
+ *     pointer and the def dies before it can carry a dependence. This is also
+ *     positive evidence the current single-pointer reconstruction is RIGHT:
+ *     retail reads both archive tables' language byte through the SAME base
+ *     (`lbu v0,%lo(CHOSEN_LANGUAGE)(s5)` at 0x80053724 AND 0x8005375c), so
+ *     there is exactly one pointer pseudo, and best_x's dual life is real.
+ *
+ *  6. NOT A MEGA-PSEUDO, re-confirmed by a stronger check than round 3's
+ *     histogram: retail's s7 is written ONCE (0x80053774) and read 5 times
+ *     (`sh s7,0x4(s2)`), matching our 5 current_x call sites exactly. There
+ *     is no earlier identity to split off, and none to merge in.
+ *
+ *  7. The four nested do{}while(0) at L423-L429 are LOAD-BEARING, measured:
+ *     autorules' fence-unwrap scores each at 202->227. They are not
+ *     scaffolding; do not remove them.
+ *
+ * Round 4 verdict: cluster 2 is a sched1 priority-1 tie whose ONLY documented
+ * lever (a cost!=1 producer) is unreachable for a constant-materialising insn.
+ * Unless a NEW pass-level lever appears, the remaining honest target is the
+ * 34 bytes OUTSIDE cluster 2, not the 168 inside it.
  */
 
 #ifndef NON_MATCHING
@@ -451,8 +526,7 @@ void StageEndScreen(void)
             sprite->attribute |= 0x50000000;
             sprite->x = -0x8c;
             sprite->y = -0x28;
-            sprite->r = 0x80;
-            sprite->g = 0x80;
+            sprite->r = sprite->g = 0x80;
             sprite->b = 0x80;
             sprite->mx = sprite->w >> 1;
             sprite->my = sprite->h >> 1;
