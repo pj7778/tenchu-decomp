@@ -28,6 +28,12 @@
 /* Load the RGB/code word (C2 data reg 6) from memory. */
 #define gte_ldrgb(mem) __asm__ volatile("lwc2\t$6, %0" : : "m"(mem))
 
+/* Load a value into IR0 (C2 data reg 8) — the interpolation factor consumed
+ * by DPCS/DPCT/INTPL. Verbatim from the real PsyQ SDK's INLINE_C.H, which
+ * names this `gte_lddp` (it is the general "load DP" mover for the
+ * depth-cueing pipeline, not specific to one command). */
+#define gte_lddp(r) __asm__ volatile("mtc2\t%0, $8" : : "r"(r))
+
 /* Store RGB2 (C2 data reg 22, the last depth-cued colour) to memory. */
 #define gte_strgb(mem) __asm__ volatile("swc2\t$22, %0" : "=m"(mem))
 
@@ -35,6 +41,16 @@
  * three screen-XY fields (offsets 8/0xC/0x10). */
 #define gte_stsxy3_f3(p)                                                       \
     __asm__ volatile("swc2\t$12, 8(%0);swc2\t$13, 0xC(%0);swc2\t$14, 0x10(%0)" \
+                     : : "r"(p))
+
+/* Store SXY0/SXY1/SXY2 (C2 data regs 12/13/14) into a POLY_GT3 packet's
+ * three screen-XY fields (offsets 8/0x14/0x20). Verbatim from the real PsyQ
+ * SDK's INLINE_C.H (this SDK revision's INLINE_N.H equivalent) — Ghidra's
+ * decompile of FUN_80059ff4/FUN_8005a3cc already guessed this exact name
+ * from the offset pattern, confirming it against the extracted psyq4.5
+ * headers rather than inventing a name. */
+#define gte_stsxy3_gt3(p)                                                     \
+    __asm__ volatile("swc2\t$12, 8(%0);swc2\t$13, 0x14(%0);swc2\t$14, 0x20(%0)" \
                      : : "r"(p))
 
 /* Store SXY0/SXY1/SXY2 (C2 data regs 12/13/14) to three separate pointers. */
