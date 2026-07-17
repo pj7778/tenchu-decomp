@@ -98,11 +98,75 @@ extern void GsSetWorkBase(void *workBase);
  *     Statement order is the one class that does move bytes (it changes the
  *     pre-RA RTL order regalloc sees, which sched2 later normalizes) — this
  *     direction is simply wrong. That is where a future round should dig.
- *   - autorules.py: no improving edit among 45 candidates. NB all 13
- *     `binop-operand-seed` candidates reported `invalid`, so the operand-birth
- *     sweep never actually ran on this function (tooling gap, reported).
- *   - bounded permuter run: no verdict (overran its budget under CPU
- *     contention from a concurrent lane); an earlier run found nothing.
+ *
+ * ROUND 2 (2026-07-18): re-verified baseline (34, matches this file and the
+ * whole image) and re-ran the full ladder fresh, since round 1's
+ * binop-operand-seed candidates were compiled against a since-fixed C89 bug
+ * (48eba95) and its permuter run predated -fno-builtin reaching the search
+ * in this same session (d02da20). Both re-runs, done properly this time,
+ * agree with round 1's conclusion — recorded here so round 3 does not repeat
+ * either:
+ *   - reghist.py: delta sum +0 across 5 differing registers (v0 -4, a0 +11,
+ *     a1 +2, a2 -7, a3 -2) — confirms pure rename/rotation, no structural fix
+ *     on offer.
+ *   - autorules.py (plain): 32 candidates now compile (the binop-operand-seed
+ *     fix landed), including both operands at L138/L139 — still no improving
+ *     edit. The round-1 "tooling gap" is closed; it was not hiding a win here.
+ *   - tools/rtlguide.py: independently reaches round 1's hand-derived
+ *     conclusion and sharpens it — "owner: regalloc" and explicit
+ *     `HARD-CONFLICT` lines: "$a0 -> $v0 x4: locals duration,b ... target
+ *     hard-conflicts p84,p87" and "$a1 -> $v1 x4: locals elapsed ... target
+ *     hard-conflicts p83". Priority/weighting is PROVABLY insufficient, not
+ *     just empirically stuck.
+ *   - autorules.py --guided (rtlguide-directed, beam depth 2, every rule the
+ *     tool listed as relevant to lines 139-177, 160 compiled candidates): no
+ *     improving path.
+ *   - ONE bounded FOREGROUND permuter run (240s search + authoritative
+ *     rescore, done AFTER confirming -fno-builtin is active in both
+ *     Build.hs and permute.py): retained 7 candidates at 31/32/32/33/33/34
+ *     (base)/37 whole-image bytes. Best-looking candidate (31) is a REAL
+ *     score improvement but PROVEN NOT ADOPTABLE: every retained candidate
+ *     is the same mutation family — reuse `duration` as a mutable scratch
+ *     for case 2's `g` quotient before computing `b`, e.g. `duration =
+ *     (elapsed*unk1)/duration; g = duration; b = (elapsed*unk2)/duration;`
+ *     (or the unk2-first variant). The target's raw asm disproves this
+ *     directly: `$a2` (duration) is written EXACTLY ONCE, at 0x800362f0
+ *     (`subu a2,a0,v0`), and READ seven times across all six divisions
+ *     (0x80036340/8003636c/80036398 for case 0, 0x8003645c/80036488/800364b4
+ *     for case 2) with NO other write to `$a2` anywhere in the function —
+ *     `grep -n '\$a2' FUN_80036284.s` confirms it. Any source that
+ *     reassigns `duration` before the third division cannot reproduce that
+ *     dependency chain; the lower whole-image score is register-pressure
+ *     fallout elsewhere in the function, not progress toward the target's
+ *     shape (the runbook's "state that scores better while being further
+ *     from the target's shape" class). Do not re-permute this function
+ *     expecting a different family — the local search space is currently
+ *     dominated by this one trap; a future attempt should seed the permuter
+ *     away from case 2's `g`/`duration` statements or just distrust any
+ *     candidate touching them.
+ *   - Manual `.greg` RTL trace (raw dump, not just regalloc.py's summary)
+ *     explains mechanically why THIS draft lands duration/pz where it does:
+ *     p84 (duration) is processed at allocation position #6, immediately
+ *     after the six same-priority (15000) mult/div product/quotient temps
+ *     (positions 0-5), none of which claim v0 or a0 in this draft — so a0 is
+ *     p84's first numerically-free register (v0/v1 excluded by direct
+ *     conflict). p85 (pz) is processed at #11; by then a0 (p84,p87) and a1
+ *     (p83/elapsed) are both taken and both conflict with p85, so it falls
+ *     through to a2. The open thread: the target's OWN six per-channel
+ *     temps spread differently — case 0's r lands in $a0, case 2's r in
+ *     $a1, both cases' b in $v0 (read straight off the target asm: mflo a0
+ *     @0x80036350, mflo a1 @0x8003646c, mflo v0 @0x800363a8/0x800364c4) —
+ *     versus this draft's six temps landing in v1/v1/t4/v1/v1/a3 (all
+ *     avoiding v0 and a0 entirely). WHAT excludes v0 from all six of this
+ *     draft's temps when the target only partially excludes it is the
+ *     as-yet-unresolved root cause upstream of the duration/pz swap this
+ *     file has focused on; round 1's `p85 vs p84 priority` framing was a
+ *     downstream symptom, not the cause. A future round should chase THAT
+ *     question (why $v0 is unavailable to the first of the six mult/div
+ *     temps here — cc1says shows it happens inside the `Spilling reg
+ *     8/9/10/11/64/65` HI/LO/MD_REGS sub-pass, before the general GR_REGS
+ *     allocation even starts) rather than re-deriving the pz/duration
+ *     priority math, which is now settled twice.
  *
  * Keep this pure-C draft guarded; do not replace the residual with inline asm.
  */

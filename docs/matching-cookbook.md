@@ -1593,6 +1593,17 @@ re-check cheaply before honoring them:
   priority sink), 12→8 (a temp-before-intervening-read capture) — both verified by
   porting the semantic delta, never by score. (This does NOT license
   background-and-wait; each run is still one foreground bounded call.)
+- **A permuter candidate that REASSIGNS a value used as a divisor/operand across
+  several later insns is disqualified — regardless of score — if the target writes
+  that hard register ONCE.** One grep settles it: `grep -c '\$aN' <Name>.s` on the
+  target. If the divisor register is written once and read N times with no other
+  write, any candidate that reassigns the source variable before the Nth read
+  cannot reproduce the target's dependency chain, and its lower whole-image score
+  is register-pressure fallout elsewhere, not progress. FUN_80036284 disqualified
+  5 of 7 retained candidates this way in one grep (they all reused `duration` as a
+  scratch for case 2's quotient; the target's `$a2` is written once at 0x800362f0
+  and read 7×). This is the concrete form of "verify a win, never adopt a score"
+  for a divide-heavy residual.
 - **"An alias copy survives only if it CONFLICTS with its source" is a diagnosis,
   NOT a recipe.** It reads like "make the source dead after the copy and the copy
   coalesces away for free" — but the conflict exists BECAUSE both values are

@@ -128,8 +128,13 @@ escalates SIGTERM to SIGKILL across the whole session, so even grandchildren tha
 explicitly ignore SIGTERM are reaped and the pipe closes — measured teardown ~2 s for
 exactly that shape. Piping is still worth avoiding because `tail` hides the progress you
 want to read, so prefer `> /tmp/p.log 2>&1` then read the file — but do not expect it to
-change your budget. And note piping `tools/nullcheck.py` into `tail` is a real bug: it
-replaces the exit code with tail's, and the exit code IS that tool's output.*
+change your budget. **`| tee logfile` IS a pipe** — use `> logfile 2>&1`, not tee: one
+lane's `tee`-piped permuter run returned only at the 600 s hard cap although its
+RESULT.md was on disk at ~5 min (mechanism unconfirmed — the fake-permuter repro exits
+cleanly through tee, so do NOT treat "tee hangs" as an established fact; the point is
+`> file` sidesteps the whole question and costs nothing). And note piping
+`tools/nullcheck.py` into `tail` is a real bug: it replaces the exit code with tail's,
+and the exit code IS that tool's output.*
 
 **Do not `pkill -f "tools/permute.py <Name>"`** — the pattern SELF-MATCHES the
 invoking shell and kills your own bash (a lane exited 144 that way). Kill by PID.
