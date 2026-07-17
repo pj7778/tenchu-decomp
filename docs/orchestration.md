@@ -656,6 +656,21 @@ function already byte-matches on current `master`.
   re-deriving what was already correct (76 insns / 239 bytes / 23 clusters, rows summing
   exactly). Corrections expire too; re-check a warning against the current file before
   repeating it.
+- **A park's STATUS number is a claim from the round that wrote it, and several are
+  badly stale — do not select targets from them.** DrawSnow's header said 203; it
+  measures **14**. SetBleedsDir and SetupTelop, both never touched, measure **13** and
+  **11**. Selecting on STATUS text would have skipped all three as far from done.
+  **Rank with `config/fuzzy.main.exe.tsv` (free, no builds) and confirm with a real
+  `matchdiff`.** The top of that ranking is where the cheap wins are:
+
+      99.79%  FUN_80057b80    98.17%  SetBleedsDir    97.81%  GetAreaMapVector
+      98.61%  AddEnemy        98.16%  StageEndScreen  96.28%  SetupTelop
+
+- **RE-SCREEN EVERY PARK WHEN A TOOL'S BLIND SPOT IS FOUND.** `asmdiff` hid branch
+  retargets by default; the moment that surfaced, a sweep found DrawClip (2 hidden) and
+  ControlTraceLine (4) carrying the same signature that turned out to be 44 of
+  DrawModelArchive's 48 bytes. **A tool bug does not just cost the lane that hit it — it
+  silently invalidates every park written while it was live.**
 - **RE-PRICE THE RESIDUAL EVERY ROUND. Rounds 5-10 on AddEnemy all spent
   themselves on cluster A while 20 of 35 bytes were ordering questions NO round had
   attacked.** A byte-account is a snapshot, not a standing truth: the clusters move
