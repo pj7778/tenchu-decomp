@@ -2787,6 +2787,14 @@ park note read those exact lines and concluded "not reachable from this source
 shape"; it was two variables all along, and the function matched once they were
 split. This is the cheapest question on the board and it is almost never asked.
 
+**It does NOT run BACKWARDS into a fix.** gcc-2.8.1 has no coalescing pass, and
+`global_conflicts` processes `REG_DEAD` before `mark_reg_store` — so a value that dies
+AT the op never conflicts with its consumer, and both allocnos merge onto one register
+**no matter how you spell them**. `regalloc.py`'s own INSEPARABLE line says exactly
+this; a brief of mine claimed the opposite and a lane had to point out that **the brief
+and the tool contradicted each other.** Reading two registers off the target tells you
+the original had two variables; it does not tell you that writing two will produce them.
+
 The converse trap: do NOT infer that same-register-at-both-sites means one
 variable. AttackBowControl's `idx` is `$v0` at both target sites, and re-sharing it
 REGRESSED 15 -> 17. **Disjoint halves simply fall back onto the same free
@@ -2809,6 +2817,13 @@ last 7 bytes fell to exactly this (1576/1576, nothing else changed):
 Once `direction` colours first it takes its own `$v1`, each split half then finds
 `regs_someone_prefers` EMPTY, and every fallback scan lands on `$a0` — and because
 the sites are disjoint, all three share it.
+
+**A plain COPY cannot split a global allocno — that is a guaranteed no-op.**
+`u32 d0 = duration;` per case is folded by cse1 back onto `duration` **before
+`global_alloc` ever sees two allocnos** (`nullcheck`: IDENTICAL codegen). The split only
+bites when each half holds a genuinely **different computed value** — ControlHumanoid's
+three `abs` results, AttackBowControl's two table pointers. Do not spend a round copying
+a value to itself.
 
 **If a half collapses into ONE basic block, `local_alloc` claims it before
 `global_alloc` ever sees it.** Whether that is fatal depends on where the target
@@ -6604,7 +6619,14 @@ already weighted; the validation above confirms it). `floor_log2` is a **step**,
 ref can swing a score (16 refs -> 21333 vs 15 -> 15000).
 
 **INSEPARABLE / LOCAL-ONLY do NOT gate this class.** They can pass cleanly while the
-round is still unwinnable — SetupTelop's did (d487683). The priority table is the gate.
+round is still unwinnable — SetupTelop's did (d487683).
+
+**But "the priority table IS the gate" is NOT universal either — I over-generalised
+that from ONE function and a lane refuted it.** On FUN_80036284 the priority table is
+*identical* on both sides: the allocation ORDER matches, and the divergence lives in
+`find_reg`'s exclusion set / pre-RA insn order instead. **`--order` prints cc1's order
+AND ours, so checking is one command** — and a matching order means the lever is
+somewhere else entirely, not in re-weighting.
 
 ### START HERE ON ANY SUB-C RESIDUAL: `tools/cc1says.py <Name>` — cc1 narrates its own decisions
 

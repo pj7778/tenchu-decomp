@@ -54,17 +54,57 @@ extern void *GsGetWorkBase(void);
 extern void GsSetWorkBase(void *workBase);
 
 /*
- * STATUS: NON_MATCHING — exact target length and control flow; 34 of 728
- * bytes differ, all in one caller-register allocation cascade. The target
- * keeps the interval end in a0 and the duration in a2; this draft assigns
- * those two live values to a2/a0. That swap then rotates the six division
- * results, but no operation, branch, stack slot, call, or instruction count
- * differs. Direct color-field assignments were 24 bytes too long because
- * each expanded divu needed an mflo hazard nop; computing the three channel
- * quotients first and grouping the stores restores the exact 0x2d8-byte
- * shape. rtlguide/autorules found no improving mechanical rule, and a late
- * bounded permuter run found no full-link improvement. Keep this pure-C
- * draft guarded; do not replace the residual with inline assembly.
+ * STATUS: NON_MATCHING — 34 of 728 bytes differ. Exact target length (170
+ * insns), exact instruction sequence, exact stack/calls/branches. Every
+ * differing byte is a register FIELD in one a0/a2 rotation: the target holds
+ * the interval end (param->pz) in a0 and the duration in a2; this draft
+ * holds them in a2/a0. That single swap cascades into the six division
+ * results, because each quotient lands on whichever register pz/duration
+ * just vacated. Direct color-field assignments were 24 bytes too long (each
+ * expanded divu needed an mflo hazard nop); computing the three channel
+ * quotients first and grouping the stores restores the exact 0x2d8 shape.
+ *
+ * The PRIORITY TABLE IS NOT THE LEVER — measured, not assumed:
+ *   regalloc.py --order:  p84 duration refs=14 live=30 -> 14000 (alloc #6, a0)
+ *                         p85 pz       refs= 4 live=16 ->  5000 (alloc #11, a2)
+ *   regalloc.py --compare 85 84: "p85 > p84: needs +4 weighted ref(s)".
+ * That +4 is unreachable, and the target did not do it that way:
+ *   - duration's refs are 14 in the TARGET too — countable in its own asm:
+ *     1 def (subu a2,a0,v0) + 12 (six divu/bnez pairs) + 1 (subu v1,a2,a1).
+ *     Identical to p84's printed refs, so the two tables agree on refs.
+ *   - pz has 3 mentions on BOTH sides (lw / subu / sltu). For pz to outrank
+ *     duration it needs floor_log2(4)*4/live*10000 > 14000, i.e. live <= 5.
+ *     In the target's own asm pz is def'd at 0x800362e4 and last used at
+ *     0x8003631c — 14 insns apart, and FURTHER apart pre-reorg (reorg stole
+ *     that sltu into the dispatch delay slot from case 2's block). So the
+ *     target's pz live range is >= 14 and can never reach <= 5.
+ * Conclusion: allocation ORDER is the same on both sides; the divergence is
+ * in find_reg's exclusion set / pre-RA insn order, not in the qsort order.
+ * Do not spend another round on re-weighting pz.
+ *
+ * Levers TRIED and MEASURED (nullcheck.py verdict in brackets):
+ *   - separate `remaining = duration - elapsed` local  [NO-OP, identical hash]
+ *     The "two registers = two variables" reading fails here: gcc-2.8.1 has
+ *     no coalescing pass, and global_conflicts processes REG_DEAD notes
+ *     BEFORE mark_reg_store, so `elapsed` dies AT the subu, never conflicts
+ *     with `remaining`, and the two allocnos merge onto one hard register.
+ *   - per-site split of duration (`u32 d0 = duration;` per case)  [NO-OP]
+ *     cse1 folds the copy back onto `duration` before global_alloc sees two
+ *     allocnos. A copy-based split of a GLOBAL allocno cannot demote it.
+ *   - explicit `end = param->pz` local hoisted for case 2        [NO-OP]
+ *   - guard moved before the `duration - elapsed` producer       [NO-OP]
+ *   - mode read last / mid / switch on param->unk10 directly     [34, no change]
+ *   - duration computed before elapsed                    [REAL, 34 -> 70]
+ *     Statement order is the one class that does move bytes (it changes the
+ *     pre-RA RTL order regalloc sees, which sched2 later normalizes) — this
+ *     direction is simply wrong. That is where a future round should dig.
+ *   - autorules.py: no improving edit among 45 candidates. NB all 13
+ *     `binop-operand-seed` candidates reported `invalid`, so the operand-birth
+ *     sweep never actually ran on this function (tooling gap, reported).
+ *   - bounded permuter run: no verdict (overran its budget under CPU
+ *     contention from a concurrent lane); an earlier run found nothing.
+ *
+ * Keep this pure-C draft guarded; do not replace the residual with inline asm.
  */
 
 #ifndef NON_MATCHING

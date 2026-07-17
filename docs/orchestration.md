@@ -579,6 +579,13 @@ function already byte-matches on current `master`.
   "surplus instructions", DrawBleed missed an entirely different operation at
   0x80034440: `lhu v0,4(v1)` vs `lw v0,4(s1)`). The pattern is mine, not the lanes'.
   **Pipe the whole diff and run `--context`, or say the excerpt is an excerpt.**
+- **A rule I built and named as THE lever had never once run.** `binop-operand-seed`
+  emitted its temp as a DECLARATION at the seed site — a C89 parse error under cc1 2.8.1
+  — so every candidate it ever produced scored `invalid`. A lane reported all 13 failing
+  and called it "a silent gap". I had hit the identical trap building `copy-seed`, tested
+  for it, and added a guard there; the lesson did not carry across. **When a sweep
+  reports 0 wins, check that its candidates COMPILE before concluding the residual is not
+  mechanical** — and when fixing a bug in one rule, grep the others for the same shape.
 - **I pasted a tool's REFUSAL MESSAGE into two briefs under a heading claiming it was
   data.** I ran `matchdiff --clusters -n` after a `./Build check` had relinked the stub;
   the guard correctly refused, and I pasted the refusal under "### The FULL cluster

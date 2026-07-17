@@ -808,25 +808,27 @@ def rule_copy_seed(text, name, span):
 
 
 def rule_binop_operand_seed(text, name, span):
-    """Seed a binop's RIGHT operand into a preceding local: `x = A op B;` ->
-    `t = B; x = A op t;` (and the mirror for the left operand).
+    """Seed a binop's operand into a preceding local: `x = A op B;` ->
+    `t = B; x = A op t;` (and the mirror), with `t` DECLARED AT BLOCK TOP.
 
-    **Operand-birth order decides local_alloc's colours.** `expand` emits a binary
-    op's operand loads LEFT-TO-RIGHT, so the LEFT operand's pseudo is always born
-    first and is therefore the LONGER-lived quantity. local_alloc colours quantities
-    SHORTEST-LIVED-FIRST, so the RIGHT operand is always coloured first and takes the
-    LOWER hard register. When the target has the opposite assignment (left operand in
-    the lower register), naming the RIGHT operand in a PRECEDING statement births it
-    first, inverts the two lifetimes, and flips the colours — the copy coalesces away.
+    **Operand-BIRTH order decides local_alloc's colours.** `expand` emits a binary
+    op's operand loads LEFT-TO-RIGHT, so the LEFT operand's pseudo is born first and
+    is the LONGER-lived quantity. local_alloc colours SHORTEST-LIVED-FIRST, so the
+    RIGHT operand is coloured first and takes the LOWER hard register. Naming the
+    RIGHT operand in a PRECEDING statement births it first, inverts the lifetimes,
+    and flips the colours; the copy coalesces away. Worth 15 bytes on
+    mission_score_screen (8 insns fixed, zero new diffs).
 
-    Worth 15 bytes on mission_score_screen (8 instructions fixed, zero new diffs):
-    `bosses = stats.stageBosses; signedValue = (stats.stageEnemies - bosses);`
+    **The declaration MUST go at the top of the block, not at the seed site.** cc1
+    2.8.1 is C89: a declaration after a statement is `parse error before 's32'`. The
+    first version of this rule emitted `s32 _seed_x = B;` inline and EVERY candidate
+    it ever produced was uncompilable — a lane reported all 13 scoring `invalid`,
+    which meant this sweep had never once run. (`rule_copy_seed` hit the identical
+    trap and was fixed; the lesson did not carry across, so it is written here now.)
 
-    `rule_copy_seed` does NOT cover this: its pattern is `x = E(y)` — one variable,
-    substituted into its own expression. This is two distinct operands, and the seed
-    must be a DEDICATED LOCAL sitting exactly between the preceding statement and the
-    op (a global as the temp measured a no-op; moving the seed one statement earlier
-    or fencing it both cost +4 and a LENGTH MISMATCH).
+    The seed must also be a DEDICATED LOCAL sitting exactly between the preceding
+    statement and the op: a global as the temp measured a no-op, and moving the seed
+    one statement earlier or fencing it each cost +4 and a LENGTH MISMATCH.
     """
     data = text.encode()
     body = _func_body(data, name, _byte_span(text, span))
@@ -844,7 +846,6 @@ def rule_binop_operand_seed(text, name, span):
         lhs = asg.child_by_field_name("left")
         if val is None or lhs is None:
             continue
-        # Unwrap one layer of parens so `x = (A - B);` is eligible too.
         inner = val
         while inner.type == "parenthesized_expression" and inner.named_child_count:
             inner = inner.named_children[0]
@@ -854,30 +855,48 @@ def rule_binop_operand_seed(text, name, span):
         right = inner.child_by_field_name("right")
         if left is None or right is None:
             continue
+
+        # The seed's DECLARATION goes after the enclosing block's last declaration;
+        # only the ASSIGNMENT goes at the site. Anything else is a C89 parse error.
+        block = st.parent
+        while block is not None and block.type != "compound_statement":
+            block = block.parent
+        if block is None:
+            continue
+        decls = [c for c in block.named_children if c.type == "declaration"]
+        if not decls:
+            continue          # nowhere C89-legal to declare
+        last_decl = decls[-1]
+        if last_decl.end_byte > st.start_byte:
+            continue          # the op sits inside the declaration group
+
+        dls = data.rfind(b"\n", 0, last_decl.start_byte) + 1
+        decl_indent = data[dls:last_decl.start_byte]
         ls = data.rfind(b"\n", 0, st.start_byte) + 1
         indent = data[ls:st.start_byte]
-        if indent.strip():
+        if indent.strip() or decl_indent.strip():
             continue
         vid = _txt(data, lhs)
         for tag, operand in (("right", right), ("left", left)):
-            # Only a side-effect-free operand may be hoisted above the other.
             if _find(operand, ("call_expression", "assignment_expression",
                                "update_expression")):
                 continue
             otext = _txt(data, operand)
             if otext == vid or not otext.strip():
                 continue
-            # A bare literal has no pseudo to birth -- seeding it is a no-op.
             if operand.type in ("number_literal", "char_literal"):
                 continue
             temp = b"_seed_" + re.sub(rb"[^A-Za-z0-9]", b"_", otext)[:20]
             head = _txt(data, st)[:operand.start_byte - st.start_byte]
             tail = _txt(data, st)[operand.end_byte - st.start_byte:]
-            stmt = (b"s32 " + temp + b" = " + otext + b";\n" + indent
-                    + head + temp + tail)
+            stmt = (temp + b" = " + otext + b";\n" + indent + head + temp + tail)
+            # Splice the LATER edit first so the earlier offsets stay valid.
+            out = splice(data, st.start_byte, st.end_byte, stmt)
+            out = splice(out, last_decl.end_byte, last_decl.end_byte,
+                         b"\n" + decl_indent + b"s32 " + temp + b";")
             yield (f"binop-operand-seed {tag} {temp.decode()} "
                    f"L{_line(data, st.start_byte)}",
-                   splice(data, st.start_byte, st.end_byte, stmt).decode())
+                   out.decode())
 
 
 def rule_call_result_split(text, name, span):
