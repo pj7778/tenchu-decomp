@@ -461,8 +461,11 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   schedule insns within basic blocks, before local_alloc"*; sched2 is after global).
   So source ORDER among independent loads in a straight-line block is fixed by sched1
   and never reaches local-alloc's priority computation — statement/declaration reorders
-  there are codegen no-ops (DrawHinoko: three respellings byte-identical). Generalises
-  the "sched1 runs before reload" note.
+  there can be codegen no-ops (three DrawHinoko micro-respellings were). This does not
+  prove a source-order floor: restoring DrawHinoko's larger human statement graph
+  (time, acceleration, scale, then position x/y/z) changed dependencies and quantity
+  identities and matched the function. Generalises the "sched1 runs before reload"
+  note, but only for the graph actually inspected.
 - **Both schedulers are BACKWARD list schedulers**: T-1 is the block's LAST slot,
   filled first — an insn picked earlier lands LATER. "Emit first" = "lose the
   ranking". **T is NOT an address index**: `clock += stalls` (3747) skips T

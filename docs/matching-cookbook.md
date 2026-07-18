@@ -1799,16 +1799,18 @@ re-check cheaply before honoring them:
   the register swap resolved as a side effect of removing the extra definition
   sites (13→0, one edit). A "register tie" next to an opcode diff is often a
   symptom of the same structural cause, not a separate lever.
-- **A field read-and-stored as ONE statement between unrelated byte stores comes
-  out 1 INSTRUCTION SHORT.** If the target's tail writes several unrelated byte
-  fields (r/g/b) between a field's READ and its STORE, and your draft does that
-  field as one direct `dst->f = src->f;` positioned at the store, cc1 fills an
-  early load-delay slot with the r/g/b stores instead of leaving the target's bare
-  `nop` — you emit them one insn too early and finish exactly 1 short. Fix: split
-  the field into its OWN named local, read EARLY / store LATE (DrawHinoko, from the
-  matched sibling DrawSmoke's proven Sprite3D-tail idiom; DrawExplosion too). This
-  is a source-shape fix for a 1-short residual, not a scheduling tie — and it is the
-  human spelling, since the sibling's own header documents it.
+- **A field read-and-stored as ONE statement must be positioned by its READ, not
+  necessarily its STORE.** If the target's tail writes unrelated byte fields
+  (r/g/b) between a field's load and store, putting a direct
+  `dst->f = src->f;` after those byte stores reads the field too late and can make
+  the function one instruction short. Two human shapes can express the target:
+  a named local read early/stored late (DrawSmoke/DrawExplosion), or the direct
+  assignment itself written before the byte stores. DrawHinoko proves the latter:
+  sched1 keeps the load at the assignment and reorg moves its store into
+  UpdateCoordinate's delay slot, matching all bytes with no carrier and exactly
+  the locals in PSX.SYM. The old rule incorrectly named DrawHinoko as proof that a
+  local was required; its debug line table instead locates the direct rotation
+  statement before r/g/b.
 - **A branch delay slot the target fills with a leaf (`move sX,zero`) while yours
   fills with a REMAT-STORE: try the LITERAL at that site.** When your slot holds a
   store whose value is a reload-remat `li tN` (a spilled REG_EQUIV-const variable),
