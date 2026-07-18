@@ -1056,7 +1056,7 @@ extern char D_80097D50[];
 extern s32 AdtSelect(char *title, debug_menu_choice *menu, s32 mode);
 extern int sprintf(char *buf, char *fmt, ...);
 extern void *memset(void *s, int c, u32 n);
-extern s32 leSetEnemy(s32 type, s16 think, s32 x, s32 y, s32 z, s16 r);
+extern s32 leSetEnemy(s32 type, s16 think, s32 x, s32 y, s32 z, s32 r);
 extern Humanoid *BreedLife(s16 type, s32 x, s32 y, s32 z, s32 r);
 extern void SetBleeds(VECTOR *pos, short grange, short srange, short n,
                       int time, long col);
@@ -1101,6 +1101,7 @@ void AddEnemy(void)
     debug_menu_choice *item;
     debug_menu_choice *menu_base;
     debug_menu_choice *think_item;
+    AddEnemyThinkDB *think_base;
     char *buffer;
     char *format;
     char *human_name;
@@ -1283,6 +1284,8 @@ add_enemy_weapon_scan_done:
     } while (0);
     do
     {
+        think_base = ThinkDB;
+        menu_base = ItemName;
         count = 0;
         /* Reusing the first scan's i range restores retail's s4 assignment. */
         /* fence depth 16 */
@@ -1316,28 +1319,27 @@ add_enemy_weapon_scan_done:
                 do { do { do { do { do {
                 do { do { do { do { do {
                 do {
-                    think_item = item;
+                    think_item = menu_base;
                 } while (0); } while (0); } while (0); } while (0); } while (0);
                 } while (0); } while (0); } while (0); } while (0); } while (0);
                 } while (0);
 add_enemy_think_scan:
                 if (count >= 70)
                     goto add_enemy_think_scan_done;
-                if (menu_char == ThinkDB[i].name[0])
+                if (menu_char == think_base[i].name[0])
                 {
-                    think_item->choice_name = (char *)ThinkDB[i].name;
-                    think_item->choice_number = ThinkDB[i].value;
+                    think_item->choice_name = (char *)think_base[i].name;
+                    think_item->choice_number = think_base[i].value;
                     think_item++;
                     count++;
                 }
                 i++;
-                if (ThinkDB[i].name != 0)
+                if (think_base[i].name != 0)
                     goto add_enemy_think_scan;
             }
         } while (0);
         } while (0);
 add_enemy_think_scan_done:
-        menu_base = ItemName;
         /* fence depth 10 */
         do { do { do { do { do { 
         do { do { do { do { do { 
