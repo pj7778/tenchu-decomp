@@ -1103,6 +1103,17 @@ preference machinery, REG_N_DEATHS, reload round-robin). The craft:
   run found a 12-byte candidate two earlier "post-fix" rounds missed (they still
   searched the wrong program) — any permuter-plateau claim dated before the fix
   (CPP→CC_FLAGS) is void for a non-gte.h function; re-verify with a fresh run.
+- **A permuter `paramN = param` second-pointer-identity candidate: adopt-vs-reject
+  by the TARGET's register count, not the score.** Count the distinct pointer
+  registers the target's real code uses to dereference that value in the affected
+  block. If the target already uses only the pointers you have (no separate
+  register holding a second copy of the pointer), the alias is a coincidental
+  global-alloc perturbation — REJECT (DrawHinoko's `new_var`: target join block
+  dereferences only `a2`/`s0`, so a third pointer register is invented). Only if
+  the target genuinely materialises a second identity — a `move` of the pointer
+  into another callee-saved reg that LATER dereferences — does the alias reproduce
+  real structure, ADOPT (DrawBleed's `param2`: target has `move a2,s1`). Same
+  candidate SHAPE, opposite verdicts, decided by the target's registers.
 - **Priorities and windows**: ballast the winner-to-be by adding an insn inside
   its live range (hoist a one-arm constant into a pre-branch variable — free
   when the target materialises it anyway, SoundEx); prefer DEMOTING the winner
