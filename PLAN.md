@@ -81,10 +81,16 @@ Evidence it works, this session:
   `goto` loop as a WRONG FIX propping up damage it caused (it killed the loop-depth ref
   weighting), and the TU wanting `-fno-strength-reduce`. **FOUR of six now MATCHED:**
   FUN_80059ff4/FUN_8005a3cc AND the 1260-pair FUN_8005961c/FUN_80059b08 all -> **0**.
-  Only FUN_80058c70/FUN_80059008 remain at 26 (a sched2 prologue PARM-entry-copy LUID
-  tie — NOT proven-closed: one competitor is a body group and the target reaches the
-  order, so a LUID-lifting C construct must exist; the one documented open full-match
-  lever left in the game code, worth 2×920 bytes).
+  FUN_80058c70/FUN_80059008 now at **25** (26->25, Fable 2026-07-18): the prologue-leader
+  ROTATION — the park's entire documented residual — is SOLVED with human structure
+  (`cnt = param_4` counted down + `iVar2 = VWD0` moved between the two sh stores, opening
+  a one-tick sched1 ready-list BUBBLE that lifts the counter copy's LUID above the
+  leaders; the prior "cnt coalesces to a no-op" was a misdiagnosis). Ported to both twins.
+  The residual is now ONE local-alloc v0/v1 divide-chain color bit, PROVEN out of
+  single-statement reach (one may-alias-gated protectable tick, two claimants — the bubble
+  needs VWD0 compact, the color needs it stretched; full `.i.sched`/`.lreg` proof in
+  FUN_80058c70.c). A full match would need a non-single-statement (length-neutral
+  restructuring) insight; the rotation technique is banked in cookbook §3.13.
 
 The levers: PSX.SYM's `BEGIN PSX.SYM` block gives the authors' own declarations (names,
 types, nested-block scopes — list order is REVERSED per block); the matched sibling's
@@ -116,15 +122,16 @@ its wins are non-human seed-temp/no-op scaffolds (SetLightningI 12, FUN_80036284
 16/12, FUN_80058c70 22) — all correctly REJECTED per the human-source directive; the
 clean park is the honest state. The human-source discipline held in every lane.
 
-**The frontier has moved off "match more parks."** The remaining game-code full-match
-opportunities are: (1) FUN_80058c70/FUN_80059008 — the one documented open LUID-lift
-lever (2×920 bytes); (2) a fixed-permuter sweep of the few UNTESTED small non-gte.h
-parks (drawF3 5, DrawBleed 8, ControlTraceLine 10, FUN_800514d8 12, DrawHinoko 18,
-PlayVoice 4) to harvest any StageEndScreen-style human-plausible win. Beyond those,
-the ~35 remaining game functions are a genuine floor: matching is ~90% done and the
-tail is unreachable in this toolchain, so the productive frontier is a PHASE decision
-(accept the floor / reimplementation build / modding / glitch research), not more
-matching rounds.
+**The frontier has moved off "match more parks."** Both remaining leads were pursued to
+conclusion: (1) FUN_80058c70/FUN_80059008 — the "provably-solvable" lead — advanced 26->25
+(rotation solved with human structure, above), but its final v0/v1 bit is proven out of
+single-statement reach; a full match now needs a non-single-statement restructuring insight
+nobody has yet. (2) the fixed-permuter sweep of the last untested small non-gte.h parks
+(DrawBleed, ControlTraceLine, FUN_800514d8, DrawHinoko, PlayVoice) returned 0 matches — all
+floors (drawF3 is gte.h, permuter-ineligible). So EVERY game park is now a characterised
+sub-C floor: matching is ~90% done and the tail is unreachable in this toolchain. The
+productive frontier is a PHASE decision (accept the floor / reimplementation build / modding
+/ glitch research), not more matching rounds.
 
 ## Where the work actually is now (2026-07-18)
 
@@ -197,11 +204,12 @@ prints exactly this set (it defaults to `--scope game`):
     all sharing FUN_80058c70's recipe: **FUN_8005961c (1260), FUN_80059b08 (1260),
     FUN_80059ff4 (984), FUN_8005a3cc (984) are now MATCHED** (byte-verified 0 this
     session — the earlier "undrafted, never attempted" note was stale). Only
-    `FUN_80058c70` (920) and its twin `FUN_80059008` (920) remain, both PARKED @26
-    with the SAME residual (a sched2 prologue-leader ordering tie). **The 4 matched
-    siblings are the reference for the parked pair** — they reached zero on the same
-    recipe; diff the prologue-leader schedule against them, don't just read the
-    equally-stuck twin.
+    `FUN_80058c70` (920) and its twin `FUN_80059008` (920) remain, both at **25**
+    (26->25, prologue-leader rotation SOLVED — see the DecodeTMD note above). Their
+    shared residual is one local-alloc v0/v1 divide-chain color bit proven out of
+    single-statement reach; the 4 matched siblings have no `jal` in their loop so
+    they never grow the rotation leader and could not have referenced the fix — the
+    solution came from RTL archaeology on the pair itself.
   * Also present but hidden by `--max-size 2048`: **`start_demo_`** (2188) and
     **`mission_score_screen`** (4636). Raise the flag or they are invisible.
 
