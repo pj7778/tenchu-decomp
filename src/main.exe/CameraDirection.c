@@ -37,86 +37,6 @@
  *     extern struct GsRVIEW2 ViewInfo;
  * END PSX.SYM */
 
-/*
- * STATUS: NON_MATCHING — exact retail extent (860 bytes / 215 instructions)
- * with 7 differing linked bytes: 5 register-only instructions in two aligned
- * hunks, both inside the `target.vrx`/`r.vx` computation at 0x80031e98..
- * 0x80031ec4.  Calls and control flow match exactly (6 calls, 14 conditional
- * branches, 4 jumps, 1 return); every OTHER register in the function's 215
- * instructions matches target exactly (`reghist` delta sum 0, opcodes equal).
- *
- * Round history (each step permuter-found, then verified with matchdiff and
- * narrowed by hand):
- *   860 exact-length baseline -> 17 bytes: prior park (see git history for
- *     the original vx/vy/vz init-order and donor-pair reasoning).
- *   17 -> 12: `y = ViewInfo.vrx; vDif->vrx = (target.vrx - y) / 4;` — naming
- *     ViewInfo.vrx through the already-declared (and by this point dead) `y`
- *     local, instead of reading the extern inline, fixed the REORDER cluster:
- *     the `target.vrx - ViewInfo.vrx` subtraction now schedules immediately
- *     after target.vrx's first computation (matching retail) instead of
- *     after target.vpx.  Permuter round 1, candidate output-60-1.
- *   12 -> 7: wrapping the whole target-fields/vDif tail (`target.vrx = ...`
- *     through `vDif->vpz = ...`, i.e. everything from the first target.
- *     field assignment to the end of the function) in one do-while-0 fence.
- *     This is a pure QTY_CMP_PRI reweighting fence (no runtime effect: no
- *     break/continue/goto crosses it) — bisected by hand from the
- *     permuter's original candidate (which wrapped nearly the entire
- *     function body, including the DirectionRY clamp/sin/cos/RotateVectorS/
- *     CamLoc setup, all of which turned out to be dead weight: the same 7
- *     bytes hold with only the tail wrapped).  Narrower cuts were tried and
- *     both REGRESSED THE WHOLE-FUNCTION LENGTH (excluding the vDif-> stores
- *     from the fence but keeping target.* inside: 864 bytes; cutting further
- *     to fence only target.*: 868 bytes) — the vDif-> tail must stay inside
- *     the fence.  Permuter round 2, candidate output-30-1.
- *
- * The residual 7 bytes are a single LOCAL-ONLY quantity-INTERFERENCE tie
- * between r.vx (pseudo 220, wants target's $t0) and the `CamLoc.vx - r.vx`
- * temp that becomes target.vrx (pseudo 224, wants target's $v0) — our compile
- * has them the other way around ($v0 for r.vx, $t0 for the temp).
- *
- * `tools/regalloc.py --local` now prints and SELF-VALIDATES the block_alloc
- * walk against cc1's printed homes (this postdates the older note that "no
- * tool computes LOCAL qty arithmetic" — it does now).  The walk for block 17
- * (the target/vDif tail) shows the tie is NOT a plain priority flip:
- *     p220 r.vx           refs 6, live [8,20),  QTY_CMP_PRI 10000, home $v0
- *     p224 target.vrx     refs 8, live [14,50), QTY_CMP_PRI  6666, home $t0
- * plus two pri-40000, ~2-insn field pseudos p234 [32,34) / p239 [36,38) that
- * take $v0 FIRST.  p224 lives to index 50 (its second store — see below) and
- * therefore CONFLICTS p234/p239, so it can never land in $v0 no matter how it
- * is reweighted: outranking pri-40000 needs ~32 refs (unreachable), and p224
- * cannot avoid the conflict without dying before index 32.  r.vx (p220) does
- * NOT conflict p234/p239 (disjoint) so it freely shares $v0.  To match, p224
- * must die early (like retail, where target.vrx's $v0 is recycled into
- * target.vry one insn later); ours keeps it live because the vrx computation
- * is stored TWICE to sp+28 (the vrx donor is a real second `target.vrx =`
- * assignment; jump-opt keeps both across the /4 bias branch — `rtldump
- * --pass rtl,jump`: fp+28 mem-refs 2 -> 5).  But that second store is exactly
- * the +4 bytes that make the frame 860: removing it (or any donor) drops to
- * 856 (measured — same as the historical `sin = CamLoc.vx` -4).  So the donor
- * is load-bearing for LENGTH and simultaneously the cause of the tie; no
- * length-neutral respelling found this round splits those two effects.
- *
- * Rejected length experiments (each changes the compiled LENGTH):
- *   - `sin = CamLoc.vx;` before the real computation: 856 bytes (-4).
- *   - `cos = r.vx;` before the real computation: 848 bytes (-12).
- *   - dropping the vrx/vpx donors + the tail fence entirely: 856 bytes (-4).
- *   - `target.vrx = CamLoc.vx; target.vrx -= r.vx;` two-step: 864 bytes (+4).
- *
- * THREE bounded foreground permuter runs at this checkpoint have plateaued at
- * 7 with the authoritative full-link rescore keeping base.c best — the third
- * (this round) was AFTER the documented permuter `-fno-builtin` fix and still
- * found nothing, so the plateau is not a stale-tooling artifact.  Plain +
- * guided autorules (type-width, empty-loop-boundary, loop-fence, nested-loop-
- * fence, redundant-field-donor, fence-unwrap, cmp-swap, seed variants) and
- * swapping the donor order all confirmed no win below 7.  Genuine sub-C local-
- * alloc interference tie: only a find_reg / jump-store-dedup change (not a
- * source change) can move it.  Do not re-open with more surgical sessions.
- */
-
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/CameraDirection", CameraDirection);
-#else
-
 #include "item.h"
 
 typedef struct
@@ -158,22 +78,21 @@ void CameraDirection(Humanoid *pl, GsRVIEW2 *vDif)
     ModelArchiveType *mad;
     SVECTOR r;
     VECTOR CamLoc;
-    s32 sin;
-    s32 cos;
-    s32 y;
+    s32 rx;
+    s32 ry;
     s16 x;
-    s16 z;
+    s16 y;
 
     mad = pl->model;
-    GetPadXY(0, &x, &z);
+    GetPadXY(0, &x, &y);
     if (CamState.OldMode == 3) {
         x = x / 2;
-        z = z / 2;
+        y = y / 2;
     } else if ((CamState.Owner->pad.data & 4) == 0) {
         SetCameraMode(0);
     }
 
-    CamState.DirectionRX = CamState.DirectionRX - z;
+    CamState.DirectionRX = CamState.DirectionRX - y;
     CamState.DirectionRY = CamState.DirectionRY + x;
     if (CamState.DirectionRX >= 0x38F) {
         CamState.DirectionRX = 0x38E;
@@ -186,8 +105,8 @@ void CameraDirection(Humanoid *pl, GsRVIEW2 *vDif)
         CamState.DirectionRY = -0x400;
     }
 
-    sin = rsin(mad->rotate.vy) / 6;
-    cos = rcos(mad->rotate.vy) / 6;
+    rx = rsin(mad->rotate.vy) / 6;
+    ry = rcos(mad->rotate.vy) / 6;
     r.vx = 0;
     r.vy = 0;
     r.vz = 0x4B0;
@@ -200,58 +119,35 @@ void CameraDirection(Humanoid *pl, GsRVIEW2 *vDif)
     CamLoc.vy = mad->locate.coord.t[1] - 0x60E;
     CamLoc.vz = mad->locate.coord.t[2];
     FUN_80030644(&CamLoc, 1000);
-    CamLoc.vx -= sin;
-    /* A weight-free loop boundary preserves the retail load schedule. */
-    do {
-    } while (0);
-    CamLoc.vz -= cos;
-    y = r.vy;
-    if (y > 0) {
-        CamLoc.vy = CamLoc.vy - y;
+    CamLoc.vx -= rx;
+    CamLoc.vz -= ry;
+    if (r.vy > 0) {
+        CamLoc.vy -= r.vy;
     } else {
-        if (y < 0) {
-            y += 3;
-        }
-        CamLoc.vy = CamLoc.vy + (y >> 2);
+        CamLoc.vy += r.vy / 4;
     }
 
-    /* Weighting fence (permuter-found, round 2): birthing the target/vDif
-     * tail as one unit shifts local_alloc's quantity order enough to
-     * resolve r.vy and r.vz's allocation (now exact) and shrink r.vx vs the
-     * target.vrx temp from a 4-way rotation to a plain 2-way $v0/$t0 swap
-     * (STATUS header has the residual detail). Narrower boundaries
-     * (excluding the vDif-> stores) regressed the whole-function length by
-     * 4-8 bytes, so the vDif tail must stay inside. */
-    do {
     target.vrx = CamLoc.vx - r.vx;
-    target.vpx = CamLoc.vx + r.vx;
     target.vry = CamLoc.vy - r.vy;
     target.vrz = CamLoc.vz - r.vz;
     target.vpy = CamLoc.vy + r.vy;
     target.vpz = CamLoc.vz + r.vz;
-    /* Safe allocation donors: target is an unobserved automatic aggregate. */
     target.vpx = CamLoc.vx + r.vx;
-    target.vrx = CamLoc.vx - r.vx;
 
-    y = ViewInfo.vrx;
-    vDif->vrx = (target.vrx - y) / 4;
+    vDif->vrx = (target.vrx - ViewInfo.vrx) / 4;
     vDif->vry = (target.vry - ViewInfo.vry) / 4;
     vDif->vrz = (target.vrz - ViewInfo.vrz) / 4;
     vDif->vpx = (target.vpx - ViewInfo.vpx) / 8;
     vDif->vpy = (target.vpy - ViewInfo.vpy) / 8;
     vDif->vpz = (target.vpz - ViewInfo.vpz) / 8;
-    } while (0);
 }
-
-#endif
 
 // triage: MEDIUM — 215 insns, mul/div, 6 callees, ~0.05 to ProcItemTeleport
 // likely-relevant cookbook sections:
 //   - Dispatch: if/switch ladder — reload vs CSE, signed vs unsigned
 //   - Expressions: mult/div — magic-multiply constants, fold
 
-// Ghidra decompilation (reference — turn this into matching C,
-// then drop the INCLUDE_ASM above):
+// Ghidra decompilation (reference):
 //
 //
 // void CameraDirection(Humanoid *pl,GsRVIEW2 *vDif)
