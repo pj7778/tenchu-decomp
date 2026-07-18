@@ -15,6 +15,11 @@
  * END PSX.SYM */
 
 /*
+ * VALIDATED (2026-07-18): a fresh bounded permuter on the corrected -fno-builtin
+ * program confirms 25 is the floor (best candidate == base, 25/25/560). The old
+ * permuter negative is now validated on the right program; the 56-byte hand-rolled
+ * outer-loop experiment remains worse — do not re-run either.
+ *
  * STATUS: NON_MATCHING — exact target extent (560 bytes / 140 instructions),
  * 25 differing bytes, 6 clusters / 16 differing insns (all operands-kind;
  * `matchdiff --clusters` reports NO branch-retarget here).
