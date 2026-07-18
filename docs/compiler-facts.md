@@ -638,7 +638,12 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   own address (never partially absorbing the offset).
 - **Variable division needs maspsx `--expand-div`** to reproduce ASPSX's
   `break 7` (÷0) and, for signed div, `break 6` guards; `maspsxflags.py --write`
-  syncs it (with the gp lists) from the target asm.
+  syncs it (with the gp lists) from the target asm. **Those `break` guards are a
+  post-cc1 TEXT expansion of a single `div` RTL insn — cc1's allocator and
+  scheduler see ONE instruction, not basic-block boundaries.** So when reading
+  `.greg`/`.sched` liveness around a variable division, do not treat the guard
+  branches as CFG edges; the `mflo`/operands live-range is computed as if the div
+  were one insn (PadProc).
 - **maspsx `nop # DEBUG:` comment lines QUOTE instructions** — strip `#` to EOL
   before counting anything; in a gte.h function `swc2 $17,…` is COP2 reg 17, not
   `$s1`.

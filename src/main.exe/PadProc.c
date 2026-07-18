@@ -66,6 +66,19 @@
  *    global_alloc.  Their real and only job is to give `pad`/`shock` a SECOND
  *    ASSIGNMENT, which defeats sched1's birthing_insn_p sink.  See the
  *    residual analysis below before touching them.
+ *  - The attack arm's `shock` fence is NOT load-bearing (verified: pulling
+ *    `shock = D_8001005D[0];` out of the `pad` fence and placing it right
+ *    after, unconditional, is a byte-identical no-op per tools/nullcheck.py)
+ *    and is dropped here as the more honest spelling — retail's D_8001005D
+ *    read is genuinely unconditional in both arms, so gating it on
+ *    `product != 0` was always cosmetic scaffolding. The SAME move in the
+ *    release arm is NOT neutral (measured 30B and 37B in two positions,
+ *    both regressing bytes as far back as the function prologue's a2/a3
+ *    choice at 0x8001add0) — keep the release arm's `pad`+`shock` fence
+ *    paired.  This asymmetry is real, not an oversight: the two arms sit in
+ *    different places in the register-pressure graph (see `.greg` notes
+ *    below), so the same-looking fence is load-bearing in one and inert in
+ *    the other.
  *  - field8 (act1) is 0 in EVERY release-branch outcome (zero or nonzero
  *    D_8001005D) and only becomes 1 in the attack branch's nonzero case —
  *    easy to mis-transcribe as symmetric with field8=1 in both branches.
@@ -127,12 +140,105 @@
  * So the 28 bytes remain one coupled choice, but the coupling is NOT the
  * global_alloc a1 tie-break this file used to claim — it is REG_N_SETS: retail
  * wants pad to have two sets and two registers, and C gives you one or the
- * other.  The unexplored lever is a source shape where `pad` is not a variable
- * at all (retail's third PadPort address, motor_off's, lives in v0 and is
- * built from a `lui` parked in the blez delay slot — three distinct address
- * pseudos, which is what a no-`pad`-variable source would produce).  PSX.SYM
- * lists exactly ONE local for this function (`int ct`), which is evidence for
- * that shape and against the pad/product/shock locals this draft uses.
+ * other.
+ *
+ * ---- The "no `pad` variable at all" lever: EXPLORED THIS SESSION, CLOSED ----
+ *
+ * The previously-unexplored hypothesis was a source shape where `pad` is not
+ * a variable at all (retail's third PadPort address, motor_off's, lives in v0
+ * and is built from a `lui` parked in the blez delay slot — three distinct
+ * address pseudos, which is what a no-`pad`-variable source would produce).
+ * PSX.SYM lists exactly ONE local (`int ct`), which reads as evidence for
+ * that shape.  Tried three ways this session, all measured, none reaches 368:
+ *   - No pad/product/shock variables at all, `(PadProcPort *)PadPort` written
+ *     inline at each of the four field-store sites: 360B.  Cause: with the
+ *     lower register pressure (no named product/shock to compete for v0/v1),
+ *     local-alloc gives BOTH arms' pad pointer the same register (v0), so the
+ *     two now-identical `act1=0;act2=0;` tails cross-jump and the function
+ *     loses 2 insns — the exact `pad`-shared/jump2 failure mode already
+ *     proven above, reached from the opposite direction.
+ *   - `PadProcPort *pad` declared once per arm (single assignment, no fence),
+ *     `product`/`shock` inlined: 372B — reproduces the earlier-measured
+ *     "(none shared) 372" data point exactly (confirms inlining product/shock
+ *     changes nothing; the length is set by pad alone). Cause: same cross-jump
+ *     as above (both arms' pad lands in v1 this time, since with product's
+ *     mflo landing in v0 and the pad computation scheduled into the mult
+ *     shadow, v1 is whichever register the OTHER operand of the mult just
+ *     vacated — v1 in both arms here, v0 in target's attack arm, a fresh
+ *     register in target's release arm. Which register the mult's shadow
+ *     donates is decided by mflo's own destination choice, itself a tie).
+ *   - The matched sibling PadShock's own idiom for this exact situation
+ *     (`u8 *p = (u8*)&PadPort[...]; u8 *q = p;`, one copy per if/else arm) —
+ *     transplanted per PadProc arm: 392B.  Cause: `p`/`q` did NOT reliably
+ *     coalesce to one register (needed an explicit `move` in the attack arm,
+ *     cost 1 insn), and still landed both arms' base pointer in v1,
+ *     cross-jumping the same as above.
+ * All three are WORSE (wrong length) than the fenced 368/28, matching (not
+ * beating) the depth of the fence-removal sweep already recorded above. The
+ * "pad is not a variable" hypothesis is now closed, not unexplored: cc1
+ * always lands both arms' pad-pointer temp on the SAME low-pressure register
+ * when nothing else pins them apart, regardless of whether `pad` is spelled
+ * as a variable, an inline cast, or a sibling-style two-copy pair — the
+ * fence's REG_N_SETS!=1 trick is what keeps them apart, and that trick is
+ * exactly what forces the ONE-register outcome that the 16-byte reorder
+ * costs. There is no C spelling found that decouples "don't sink" from
+ * "two registers" for `pad` specifically.
+ *
+ * ---- Fresh permuter run (post -fno-builtin fix): one candidate, INVALID ----
+ *
+ * `timeout 240 tools/permute.py PadProc -- --stop-on-zero -j4` (bounded,
+ * foreground; all pre-fix runs are void per this session's brief) found
+ * output-165-1 at 24/24 whole-image bytes — better than 28.  Its only
+ * non-cosmetic delta (rest is comma-list/brace reformatting cc1 is inert to):
+ *   release = PadArrange.release;
+ *   product = release;             // NEW: donor copy through a dead local
+ *   ct += product;                  // (was: ct += release;)
+ *   ...
+ *   product = PadArrange.pow * ct;  // product's REAL reassignment
+ *   ...
+ *   ct = product / product;          // was: ct = product / release;  <- BUG
+ * This is NOT a valid transformation: by the final division `product` has
+ * already been overwritten by `PadArrange.pow * ct`, so `product / product`
+ * is `1` (or a div-by-zero trap) instead of the intended release-ramp
+ * quotient — a real behavior change, not a byte trick. Verified by porting
+ * only the safe half:
+ *   - `product = release; ct += product;` with the division left reading
+ *     `release` (correct): rebuilds to 28/28, BYTE-IDENTICAL to base
+ *     (tools/nullcheck.py confirms NO-OP — cse folds the donor copy away
+ *     once its target is provably a plain alias with no other use).
+ *   - Same donor trick through `shock` instead of `product` (also type- and
+ *     scope-compatible, also semantically safe since shock's real assignment
+ *     comes later): rebuilds to 360B (wrong length).
+ * Neither safe half reproduces the win; the 24-byte score is inseparable
+ * from the bug. Not portable. Rejected per the contract's "verify by
+ * porting the delta, never a score."
+ *
+ * ---- regalloc.py --local / --order / .greg (this session) ----
+ *
+ * `tools/regalloc.py PadProc --local` shows every LOCAL (block-confined)
+ * pseudo colouring to v0/v1 only — `pad`/`shock`/`release`/`attack` are not
+ * among them, i.e. they are global_alloc's problem, not local_alloc's,
+ * confirming the residual is correctly routed as a global-allocation
+ * question (`tools/regalloc.py PadProc --order`) even though the target
+ * is a single function's worth of straight-line arms.  `--order` plus
+ * `tools/cc1says.py PadProc`'s `.greg` block show WHY: the fences add real
+ * block boundaries (`if (product != 0) {...} else {...}`), and it is
+ * crossing THOSE boundaries — not the maspsx-only EXPAND_DIV branches,
+ * which cc1 never sees, they are a post-cc1 text expansion — that promotes
+ * `pad`/`shock`/the mult operands from local_alloc's block-confined
+ * quantities into global_alloc's 11-allocno conflict graph in the first
+ * place. Remove the fences (see above) and the promotion goes away, but so
+ * does the length. This is consistent with, not a refutation of, the
+ * REG_N_SETS mechanism above — it is the same fact from the allocator's
+ * side of the boundary rather than the scheduler's.
+ *
+ * Disposition: 28/368 is the floor found across the original fence sweep,
+ * this session's three pad-elimination variants, and one fresh bounded
+ * permuter run. Every avenue in the cookbook's router for a same-length
+ * register/reorder residual has been run (autorules: no improving edit;
+ * regalloc --local and --order; cc1says/.greg; a fresh permuter). Parking
+ * here rather than opening a new surgical-permuter session per the
+ * cookbook's sub-C early-stop guidance (§0.6).
  */
 
 extern void ComPad(int port, u8 *rxbuf);
@@ -187,13 +293,12 @@ void PadProc(void)
         if (product != 0)
         {
             pad = (PadProcPort *)PadPort;
-            shock = D_8001005D[0];
         }
         else
         {
             pad = (PadProcPort *)PadPort;
-            shock = D_8001005D[0];
         }
+        shock = D_8001005D[0];
         if (attack != 0)
         {
             ct = product / attack;
