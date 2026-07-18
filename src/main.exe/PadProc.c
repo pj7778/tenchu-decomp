@@ -82,6 +82,13 @@
  *  - field8 (act1) is 0 in EVERY release-branch outcome (zero or nonzero
  *    D_8001005D) and only becomes 1 in the attack branch's nonzero case —
  *    easy to mis-transcribe as symmetric with field8=1 in both branches.
+ *  - The attack arm's act1=1 store was previously wrapped in a THIRD fence
+ *    (`if (pad != 0) { pad->act1 = 1; } else { pad->act1 = 1; }`).  That fence
+ *    is INERT: removing it is byte-identical (28/28 whole-image, same diff),
+ *    because `pad` is a known-nonzero constant address so cc1's jump pass
+ *    folds the tautological branch away.  Dropped as scaffolding no human
+ *    wrote (it is not a REG_N_SETS fence — it stores, it does not assign a
+ *    register).  The `pad` fence and the div fence remain (both load-bearing).
  *
  * ---- The residual (28 bytes), measured and traced to cc1's own source ----
  *
@@ -232,12 +239,44 @@
  * REG_N_SETS mechanism above — it is the same fact from the allocator's
  * side of the boundary rather than the scheduler's.
  *
- * Disposition: 28/368 is the floor found across the original fence sweep,
- * this session's three pad-elimination variants, and one fresh bounded
- * permuter run. Every avenue in the cookbook's router for a same-length
- * register/reorder residual has been run (autorules: no improving edit;
- * regalloc --local and --order; cc1says/.greg; a fresh permuter). Parking
- * here rather than opening a new surgical-permuter session per the
+ * ---- Data-symbol re-audit (this session; the task's headline lead) ----
+ *
+ * The brief flagged `D_8001005D` as an "unknown data symbol" whose correct
+ * DECLARATION/TYPE might be the residual (a reachable class, not a register
+ * tie).  RESOLVED as MOOT — the declaration in this file is already optimal:
+ *   - The NAME is misleading but the address is right: D_8001005D resolves to
+ *     0x8001005d (undefined_symbols_auto: `D_8001005D = 0x8001005D`), and both
+ *     target loads (0x8001ae0c/0x8001ae8c `lui v0,%hi(D_8001005D)`, bytes
+ *     0x3C028001 = `lui v0,0x8001`) match.  The `lui v0,0x800c` at 0x8001ae00
+ *     that a byte-diff reader might blame on D_8001005D is %hi(PadPort)
+ *     (0x800be6d8 rounds up), NOT this symbol — do not chase it.
+ *   - The ARRAY form is load-bearing and correct: re-measured `extern u8
+ *     D_8001005D[]` = 28 vs scalar `extern u8 D_8001005D;` = 30 (matching the
+ *     original "was 30" note).  The sibling PadShock.c legitimately uses the
+ *     SCALAR form because it reads the byte in a condition (`D_8001005D != 0`),
+ *     not as an assigned lvalue — different context, different optimal decl.
+ *   - PadPort itself uses the extern-array `lui %hi + addiu %lo` form (target
+ *     0x8001ae00/0x8001ae08), which `(PadProcPort *)PadPort` already emits — it
+ *     is NOT a bare-`lui`-reused-as-base literal cast (cookbook §3.9), so the
+ *     literal-pointer-cast lever does not apply here.  No data-symbol change
+ *     can move the residual.
+ *
+ * ---- Independent re-verification (this session) ----
+ *
+ * Every park claim above was re-run from a fresh worktree and reproduced:
+ * autorules (no improving edit among 30 candidates), a fresh bounded permuter
+ * (best = the SAME invalid `release = product; ct = product/product` bug at
+ * 24B — behavior change, rejected), the clean no-fence human variant (372B),
+ * and function-scope `pad` (356B — cross-jumps even WITH the attack arm's
+ * `pad->act1 = shock` / release `= 0` tail asymmetry, because cc1 folds the
+ * known-zero `shock` in the else branch to `sb zero`, re-identifying the two
+ * tails).  The act1 fence was found inert and removed (see fence notes above).
+ *
+ * Disposition: 28/368 is the floor.  Confirmed across the original fence
+ * sweep, three pad-elimination variants, a function-scope+asymmetry test, and
+ * two independent bounded permuter runs.  Every avenue in the cookbook's
+ * router for a same-length register/reorder residual has been run (autorules,
+ * regalloc --local/--order, cc1says/.greg, permuter).  Parked per the
  * cookbook's sub-C early-stop guidance (§0.6).
  */
 
@@ -309,14 +348,7 @@ void PadProc(void)
         }
         if (shock != 0)
         {
-            if (pad != 0)
-            {
-                pad->act1 = 1;
-            }
-            else
-            {
-                pad->act1 = 1;
-            }
+            pad->act1 = 1;
             pad->act2 = ct;
         }
         else
