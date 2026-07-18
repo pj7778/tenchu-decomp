@@ -22,6 +22,37 @@
  * reuses the address register a3, we take t0.  Site 2's t0<->a3 is NOT an
  * independent difference — see the round-robin note below.
  *
+ * ---- ROUND 6: re-verified against the levers that POSTDATE rounds 1-5
+ *      (fixed-toolchain permuter, cookbook fence-classification) — verdict
+ *      UNCHANGED: CURRENT(9). ----
+ *
+ * 1. THE PERMUTER -fno-builtin BUG IS FIXED (it lived in CPP not CC_FLAGS, so
+ *    earlier runs searched a different program).  Re-ran the search RE-SEEDED
+ *    from this draft: `timeout 240 tools/permute.py AdtSelect -- --stop-on-zero
+ *    -j4`, 21684 iterations + authoritative full-link rescore -> 9/9/776,
+ *    best candidate is the unmodified base (empty semantic delta).  Several
+ *    iterations hit proxy score 30 (< base's proxy), but the full-link rescore
+ *    rejected every one.  The fix does not affect AdtSelect (it calls no
+ *    builtins), and the residual is genuinely permuter-immune, as rounds 3-5 said.
+ *
+ * 2. THE TWO do{}while(0) FENCES ARE COOKBOOK CASE (c) — BARE LOAD-BEARING,
+ *    KEEP.  Unwrapping is NOT a byte-chase that hides a better human structure:
+ *    removing BOTH (autorules fence-unwrap L412/L446, each +16) yields 37 bytes
+ *    that are ENTIRELY callee-saved register renames — selection s1<->s2,
+ *    count s3<->s4, trg/last/page shuffled among s1-s4 (the classic "same
+ *    s1/s2 tie" the cookbook §3.10 case-c/cluster note names).  The fences fix
+ *    the GLOBAL find_reg allocation; nothing more complete is behind them, so
+ *    the "adopt the worse byte count" move (case b only) does NOT apply.  They
+ *    do not touch the count-loop RELOAD tie (a3/t0 are allocate_reload_reg's
+ *    round-robin, not find_reg), so no fence tuning can close the 9.
+ *
+ * 3. The single-use `name` temp was removed (byte-NEUTRAL, 9->9): the site-1
+ *    deref is now the `if (menu->choice_name != 0)` count guard directly.  The
+ *    RTL is identical because combine always folded the temp — reg 93 below is
+ *    the loaded choice_name value of that guard, whether or not a C `name`
+ *    named it (measured: candidate with the temp is byte-for-byte the same).
+ *    PSX.SYM's prototype declares no such local, so this is the human spelling.
+ *
  * ---- WHY (verified line-by-line against the nix-pinned gcc-2.8.1 sources,
  *          and against the .greg RTL dump — see ROUND 3 correction below) ----
  *
@@ -371,7 +402,6 @@ s32 AdtSelect(char *title, debug_menu_choice *menu, s32 selection)
     u32 pad;
     short i;
     char *fmt;
-    char *name;
 
     do
     {
@@ -381,8 +411,7 @@ s32 AdtSelect(char *title, debug_menu_choice *menu, s32 selection)
         title = D_80014AFC;
 
     count = 0;
-    name = menu->choice_name;
-    if (name != 0)
+    if (menu->choice_name != 0)
     {
         p = menu;
         do
