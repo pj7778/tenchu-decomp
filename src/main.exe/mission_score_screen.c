@@ -5,10 +5,9 @@
 /*
  * Post-mission score/high-score screen (0x80054B48, 0x121C bytes).
  *
- * STATUS: NON_MATCHING -- 169 of 4636 bytes differ (round-17: permuter wins
- * verified + transcribed onto the round-16 human-structure base; the
- * byte-chased checkpoint before round 16 was 145, commit b9be819 -- that
- * draft and the full round 1-15 archaeology live in git history).
+ * STATUS: NON_MATCHING -- 187 of 4636 bytes differ (round-16 human-structure
+ * rewrite; the byte-chased checkpoint before it was 145, commit b9be819 --
+ * that draft and the full round 1-15 archaeology live in git history).
  *
  * ROUND-16 (Fable) -- THE HUMAN-STRUCTURE EXPERIMENT.  This file was
  * rewritten from scratch to the source shape the author demonstrably used
@@ -27,13 +26,13 @@
  *   (StageEnd's own copy is brace-style; two files, two macro revisions.)
  * - The two-layer fence depth is what makes the /10 magic outrank
  *   numberSprite for $s5 (decimal-loop mults at depth 5 vs ns's colon refs).
- * - topY = -0x47 is an ORDINARY pre-loop variable, the analogue of
- *   StageEnd's top_y.  It loses allocation (every callee-saved reg is
- *   claimed in the render loop), keeps a REG_EQUIV constant, and reload
- *   rematerialises it per use: that IS the target's li t0/t2 constant
- *   shape at the y=-0x47 sites.  (resultX was believed to be its x-side
- *   twin through round 16; round 17 refuted the variable form -- see
- *   below -- and the x=0x66 sites are literals now.)
+ * - topY = -0x47 and resultX = 0x66 are ORDINARY pre-loop variables, the
+ *   analogue of StageEnd's top_y/current_x/best_x.  They lose allocation
+ *   (every callee-saved reg is claimed in the render loop), keep REG_EQUIV
+ *   constants, and reload rematerialises them per use: that IS the target's
+ *   li t0/t1/t2 constant shape at the y=-0x47 and x=0x66 sites.  The old
+ *   draft's drawY carriers / fence-seeded x-groups were standing in for
+ *   two plain variables.
  * - ten = 10 lives per-site in the sign arms; numberSprite = &number is a
  *   block-local of the colon macro (+ fenced seed in draw-1, plain seed in
  *   draw-4): loop.c's movable chain then emits the target preheader
@@ -81,70 +80,17 @@
  * - Draw-1's fenced numberSprite seed (round-10: unfenced, cse re-canons
  *   the carrier's loop uses onto ns and deletes the copy).
  *
- * ROUND-17 (Fable) -- what moved 187 -> 169, and what it refuted:
- * - The permuter (post -fno-builtin fix; run with --force-early past the
- *   37-block preflight, verified by transcribing the SEMANTIC delta only)
- *   found both wins; every other delta in its candidates was dead noise
- *   (dummy labels, brightness+=0, 11*(2*i)) -- bisect before believing.
- * - x = 0x66 is a LITERAL at all four result-column sites (2/5/7/8); the
- *   resultX variable is DELETED (-12B).  Round-16's "resultX loses
- *   allocation and remats as li t1" was HALF right: the variable does give
- *   the target's li t1,102, but its x-store then reads a remat scratch,
- *   is the only reorg-movable insn before the bgez, and steals the delay
- *   slot that must hold `move s3,zero` (sites 5/7/8).  The literal
- *   serializes x through v0 (li v0,102/sh/li v0,-53/sh), which pins the
- *   store via the v0 anti-dep exactly like the matching literal sites
- *   (draw-3/6), and the slot comes out right.  Cost: li reg field v0-vs-t1
- *   + li/sh interleave, 9B x3 + 4B at draw-2 (was 11B x3 + 10B).  Both
- *   basins measured on top of round-17 state: variable 181, literal 169.
- *   topY STAYS a variable (sites 0/2; unchanged, still load-bearing).
- * - Draw-0's hand expansion drops the INNER macro do{}while(0) (plain
- *   brace instead, -6B: the head li/lbu order cluster).  The other sites
- *   keep the two-layer fence; draw-0 is a per-site macro revision like
- *   draw-1/draw-4 (autorules' fence-unwrap L494 called it "invalid"
- *   because of the label inside; the permuter proved it unwrappable).
- *
- * RESIDUAL AT 169:
- * - entry pair b84/b98 (8B): li s3,128-vs-move a0,s0 -- target lands the
- *   leaf li in calculate_score's jal slot, ours the arg copy.  Same
- *   sched2-group/reorg-steal family as everything below.
- * - bank main + pivot pairs (65B, clusters 2-8): CLOSED categorically at
- *   the C level -- round-17 re-derived round 9's verdict with the full
- *   mechanism: constant-last (addu sp,s1; addiu 96) into a pointer needs
- *   an EXPAND_SUM birth (INDIRECT_REF deref only -- expr.c:6214 sends all
- *   non-EXPAND_SUM pointer PLUS to binop = base-first; c-typeck.c
- *   3038/3047/3113 folds &*p, &a[i], AND &p->field0 back to the plain sum,
- *   so no C pointer value can be born constant-last), while the InitSprite
- *   ARG must read a pre-existing register (any arg expression births its
- *   own base-first pair; M-form measured +24B, plain-&arr[i] form loses
- *   the pivot recompute to cse, -16B).  Target needs main=constant-last
- *   AND arg-from-that-value: unreachable.  Do not respell.
- * - three ot sites (36B, lbu 14(s2) below the OTablePt lui/lw, ours above)
- *   + draw-1 head rotation (21B) + colon-2 tail move/sb (8B) + x-li sites
- *   (27B) + draw-2 li regs (4B): one systematic sched2 signature (ours
- *   sinks the free store/leaf, target keeps C order; reorg then steals a
- *   different insn).  sched-deps/schedtrace show our side is deterministic
- *   (equal-pri group + potential-hazard pick, sched.c:2687); the upstream
- *   input-order lever was not found by hand or by four bounded permuter
- *   runs (187->175->169->plateau->plateau).
- *
- * ROUND-17 NEGATIVES (measured; do not repeat):
- * - ot-site statement swap (`ot = OTablePt;` above `baseU = sprite->u;`
- *   at the three digit loops): nullcheck NO-OP -- that load order is
- *   scheduler-owned, source order is invisible.  Same for x/y store
- *   statement order at sites 5/7/8 (nullcheck NO-OP).
- * - entry pair by statement position: rankColour=128 after i=0 -> 171;
- *   before init_score_stats -> 208.  Current position is the best basin.
- * - draw-1 without the `bosses` temp (direct enemies-bosses subtract,
- *   chasing the target's lbu65-before-lbu64) -> 184; round-12's seed
- *   stands even though the target loads 65 first.
- * - resultX restored as a variable on the round-17 base -> 181 (see the
- *   li-t1-vs-slot tradeoff above; the two goals need one more upstream
- *   lever nobody has found).
- * - autorules 169: no win among 177; --guided: none among 157 (deadline
- *   cut, all tried were worse or neutral).  Byte-NEUTRAL fence-unwraps
- *   exist at some macro sites (L553/L557/L627/L724-class, and L721 at
- *   169) -- neutral, not adopted.
+ * RESIDUAL AT 187 (all present in some form in the 145 draft too):
+ * - entry pair b84/b98 (~7B): parked since round 15 (analysis in git).
+ * - bank main + pivot pairs (~76B): CLOSED categorically at the C level
+ *   (round 9 corpus oracle + expand/instantiate); do not respell.
+ * - draw-0 head li/lbu swap (~6B), window-A lbu-vs-lui/lw promotion at the
+ *   three ot sites (~21B), SV32 head rotation (~18B), draw-2 sh/sll/sra
+ *   rotation (~9B), x=102 sites 2-4 `move s3,zero` placement (~27B),
+ *   colon-2 tail move/sb swap (~5B): same-length scheduling ties; the
+ *   permuter refuses the residual as too broad (37 blocks > 32 -- the
+ *   closed bank pairs alone keep it there), autorules finds nothing among
+ *   174 candidates.
  */
 
 typedef struct
@@ -356,6 +302,7 @@ void mission_score_screen(void)
     u32 baseU;
     s32 insertedRank;
     s32 topY;
+    s32 resultX;
 
     tail.oldPad = 0;
     init_score_stats(&stats);
@@ -459,6 +406,7 @@ score_character_sprite_init_loop:
 
     tim = FileRead(TRN_SPRITE_PTRS[CHOSEN_LANGUAGE]);
     tail.background = FUN_8004f4f8(tim);
+    resultX = 0x66;
     vfree(tim);
 
     for (i = 0; i < 5; i++)
@@ -543,6 +491,7 @@ score_character_sprite_init_loop:
         do
         {
             sprite = &number;
+        do
         {
             s32 dividend;
             s32 remainder;
@@ -581,7 +530,7 @@ number_0:
                 quotient <<= 16;
                 sprite->u = baseU;
             } while (quotient != 0);
-        }
+        } while (0);
         } while (0);
         if (negative != 0)
         {
@@ -667,7 +616,7 @@ number_1:
         }
         }
         DRAW_SCORE_NUMBER(&number, result.field0, s16, 1, number_2,
-            0x66, topY);
+            resultX, topY);
 
         DRAW_SCORE_NUMBER(&number, stats.murders, s32, 0, number_3,
             0x16, -0x35);
@@ -732,15 +681,15 @@ number_4:
         }
         }
         DRAW_SCORE_NUMBER(&number, result.field2, s16, 0, number_5,
-            0x66, -0x35);
+            resultX, -0x35);
 
         DRAW_SCORE_NUMBER(&number, stats.findEnemies, s32, 0, number_6,
             0x23, -0x24);
         DRAW_SCORE_NUMBER(&number, result.field6, s16, 0, number_7,
-            0x66, -0x24);
+            resultX, -0x24);
 
         DRAW_SCORE_NUMBER(&number, result.score, s16, 0, number_8,
-            0x66, -0x12);
+            resultX, -0x12);
 
         if (result.grade == RANK_GRAND_MASTER)
         {
