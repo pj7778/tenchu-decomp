@@ -1038,6 +1038,24 @@ preference machinery, REG_N_DEATHS, reload round-robin). The craft:
   assignment into both arms so it can reuse the dead condition register
   (FUN_8001b2f4), or one function-scope local across mutually-exclusive arms to
   move the value from local- to global-alloc (ProcMiscPitfall).
+- **Containment kills the pressure lever.** Two mutually-conflicting allocnos
+  where one's live range STRICTLY CONTAINS the other's cannot be register-
+  separated by any conflict/pressure trick (adding a tail allocno that occupies
+  the wanted register, etc.) — their assignment is fixed purely by relative
+  priority, and the lower-priority one takes the higher-numbered register. A
+  global-pressure lever can only move an allocno whose conflicts are PARTIAL:
+  SetupTelop's fill_white conflicts with v ONLY (movable — the a1-pressure trick
+  worked), but `bits` is loop-invariant so loop.c hoists it and its range CONTAINS
+  col's, so col/bits are unseparable and col(21333) > bits(7368) pins col=`$a1`,
+  bits=`$t0`, full stop. Check containment (regalloc's live ranges) before
+  spending a round shifting a tie via pressure. And when such a tie forces a
+  dead-local-reuse CARRIER, prefer the semantically-correct previously-live local
+  over an arbitrary one — any previously-live local supplies the pressure, so
+  pick the human one (SetupTelop's `u` texture-coord, not the `north` pixel-local;
+  same bytes, faithful source). **`regalloc --local` does NOT list GLOBAL
+  allocnos** — if the residual registers are absent from its local homes, the tie
+  is GLOBAL; cross-check `--order` (SetupTelop's 4-clique read as "local" for
+  three rounds until --local's exclusion list proved it global).
 - **Local-alloc's conflict-free-window trap (the LOCAL analog of the hard-conflict
   rule above)**: a value born-and-dead inside ONE conflict-free window always
   takes the lowest free register (`find_reg` hands a conflict-free quantity the
