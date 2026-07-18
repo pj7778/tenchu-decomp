@@ -28,9 +28,13 @@
  * caller-save around the jal, t0=puVar5 spilled to 16(sp) and reloaded as the
  * call arg, a1=uVar3, v0/v1=the volatile parm reads). The residual is ONE
  * 7-insn rotation among the priority-1 prologue leaders (sw s4,48/move s4,a3
- * vs sw s0,32/lw s0,96/lui/lw HWD0/li 4): sched2's equal-priority
- * hazard/tick lattice picks our order; every source-order knob measured
- * byte-inert or worse (statement-position sweeps e1-e5/f1-f5/g1-g4).
+ * vs sw s0,32/lw s0,96/lui/lw HWD0/li 4). IDENTICAL residual and mechanism to
+ * the twin FUN_80058c70 — see FUN_80058c70.c's "THIS ROUND" block for the full
+ * RTL proof (pure INSN_LUID sched2 tie at T-34; param_4's a3-entry-copy, forced
+ * by the loop jal, is pinned below the *pkt=4/HWD0/pkt body leaders in .greg).
+ * The earlier "every source-order knob byte-inert" claim was WRONG: autorules
+ * finds `extern int HWD0[]` -> 22, rejected as a non-human local optimum. The
+ * permuter is a NON-LEVER here (gte.h inline asm, permute.py:985).
  *
  * WHAT UNLOCKED THE 620 PARK (each independently measured; the park's
  * "failed" singles were pair-negatives, cookbook §4):

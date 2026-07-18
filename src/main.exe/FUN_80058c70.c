@@ -12,16 +12,58 @@
  * (docs/gte-policy.md).
  *
  * STATUS: NON_MATCHING — 26 of 920 byte values differ (correct length,
- * 230/230 instructions; was parked at 620 for four rounds). Everything
- * semantic is exact: the whole loop, the store tail, the frame (72), every
- * register role (s0=pkt/param_7, s1=puVar4, s2=param_2, s3=local_38,
- * s4=param_4, s5=iVar3 via `move s5,v0`, s6/s7/s8=r0_00/r2/r1, a3=r0 with
- * caller-save around the jal, t0=puVar5 spilled to 16(sp) and reloaded as the
- * call arg, a1=uVar3, v0/v1=the volatile parm reads). The residual is ONE
- * 7-insn rotation among the priority-1 prologue leaders (sw s4,48/move s4,a3
- * vs sw s0,32/lw s0,96/lui/lw HWD0/li 4): sched2's equal-priority
- * hazard/tick lattice picks our order; every source-order knob measured
- * byte-inert or worse (statement-position sweeps e1-e5/f1-f5/g1-g4).
+ * 230/230 instructions). Everything semantic is exact: the whole loop, the
+ * store tail, the frame (72), every register role (s0=pkt/param_7, s1=puVar4,
+ * s2=param_2, s3=local_38, s4=param_4, s5=iVar3 via `move s5,v0`,
+ * s6/s7/s8=r0_00/r2/r1, a3=r0 with caller-save around the jal, t0=puVar5
+ * spilled). The residual is ONE 7-insn prologue-leader ROTATION: two ADJACENT
+ * groups, SWAPPED — s0-group [sw s0,32; lw s0,96(=pkt); lui/lw HWD0; li v0,4]
+ * and s4-group [sw s4,48; move s4,a3(=param_4)]. Target = s0-group first; ours
+ * = s4-group first.
+ *
+ * === THIS ROUND (RTL archaeology; permuter is a NON-LEVER — gte.h) ===========
+ * SAME CLASS AS FUN_80057b80 (this function's own CALLEE), which is parked at
+ * 8/3796 as a PROVEN-UNREACHABLE sched2 backward-scheduler LUID tie. The tie
+ * here is ONE printable sched2 pick — `.i.sched2` ready list at T-34:
+ *     ;; ready list at T-34: 25(1) 10(1) 6(1) 12(1) 22(1)   (12,22 block: loads)
+ *                             now 25 10 6   -> PICKS 25.  Target needs 10.
+ * uids: 25=`li v0,4`(*pkt=4), 10=`move s4,a3`(param_4 copy), 6=`move s2,a1`,
+ * 12=`lw s0,96`(pkt), 22=HWD0. All priority 1, class 3 (moves/consts, latency
+ * 1), no function unit -> pure INSN_LUID, DESCENDING. sched2 is BACKWARD, so the
+ * highest-LUID ready insn is picked and lands LAST; 25 (highest) lands below 10,
+ * so the s4-group emits FIRST = our rotation. To flip, move-s4 (uid10) must
+ * out-rank 25/22/12, i.e. LUID(move-s4) > LUID(body). But move-s4 is param_4's
+ * assign_parms ENTRY copy; the `.greg` chain is 6 -> 10 -> 12 -> ... -> 25, so
+ * LUID(10) < LUID(body) is pinned by the ABI: a3 is copied to a callee-saved reg
+ * AT ENTRY because the loop's jal to FUN_80057b80 forces param_4 off caller-saved
+ * a3. (The 5-param matched siblings FUN_80059ff4/5a3cc/5961c/59b08 have NO jal in
+ * their loop, keep the counter in a3/t-regs, never grow this leader, and so their
+ * sched2 cannot embody the fix — confirmed by reading their target prologues.)
+ *
+ * REFUTED this round (each measured on the real build):
+ *  - late loop counter `cnt=param_4; if(cnt) ... cnt--` -> cc1 COALESCES cnt into
+ *    the entry copy: NO-OP, still 26 (== FUN_80057b80 round 10(C)).
+ *  - narrow param_4 -> assign_parms deferral puts a TRUNCATION (sll/sra or andi)
+ *    in that slot, not the target's bare `move` (FUN_80057b80 round 8 proof).
+ *  - non-volatile param_5/param_6 -> LENGTH MISMATCH (+4): volatile is load-bearing.
+ *  - permuter -> REFUSES at permute.py:985 (gte.h inline asm; -fno-builtin fix is
+ *    irrelevant to this class). autorules --guided -> no improving path.
+ *
+ * autorules(default) DOES find `extern int HWD0[]`+`HWD0[0]` -> 22 (the earlier
+ * header's "every source-order knob byte-inert" claim was WRONG). REJECTED as a
+ * non-human local optimum: HWD0/VWD0 are plain adjacent int globals (0x800c6488/
+ * 0x800c648c, symbols.main.exe.txt); the array form breaks the target's fused
+ * `lui v1; lw v1,%lo(HWD0)(v1)` into a split `lui v0; ...; lw v1,..(v0)`
+ * (structurally FURTHER from target), and VWD0[] scores 1004 — a codegen accident,
+ * not the source type (human-source lever, docs owner directive).
+ *
+ * NOT CLOSED like FUN_80057b80 (whose two competitors were BOTH entry parm-copies,
+ * making declaration order rigid). HERE the competitor is a BODY group and the
+ * TARGET demonstrably reaches move-s4-after-body, so a C construct lifting the
+ * entry-copy's LUID past the body MUST exist in the original; it was not found.
+ * That single question — what makes param_4's a3-copy out-rank the *pkt=4 li4 in
+ * .greg's chain order — is the whole remaining lever.
+ * ============================================================================
  *
  * WHAT UNLOCKED THE 620 PARK (each independently measured; the park's
  * "failed" singles were pair-negatives, cookbook §4):
@@ -68,11 +110,10 @@
  *    loop.c runs before combine so the kill survives the rename) and the
  *    volatile read's birthing bump.
  *
- * Falsify the remaining 26: find a lever over the prologue leader order
- * [sw s4,48; move s4,a3] vs [sw s0,32; lw s0,96; lui/lw HWD0; li 4] — all
- * pri 1 in sched2, picked by potential_hazard + INSN_TICK; the parm-copy and
- * reload-save UIDs are compiler-fixed, so if a source knob exists it is
- * upstream of reload (frame/slot or pseudo-set changes), not statement order.
+ * Falsify the remaining 26: see the "THIS ROUND" block above — the tie is pure
+ * INSN_LUID in sched2 (NOT the potential_hazard/INSN_TICK an earlier header
+ * guessed), and the only lever is lifting param_4's a3-entry-copy LUID above the
+ * *pkt=4 / HWD0 / pkt-load body leaders in .greg's chain order.
  */
 
 extern int HWD0;
