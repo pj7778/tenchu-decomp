@@ -24,8 +24,31 @@
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_8001b174", FUN_8001b174);
 #else
-u8 FUN_8001b174(short arg0)
+// DO NOT EDIT THIS
+// add your version beneath it
+//
+// u8 FUN_8001b174(short arg0)
+// {
+//     return ((u8 *)&PadPort[arg0][0])[6];
+// }
+//
+//
+/* UPDATE: MATCHED asm-free (matchdiff: 0 differing bytes) — supersedes the
+ * STATUS block above; no inline-asm barrier is needed. Three mechanisms, all
+ * from GetPad.c:
+ *  - `no << 4` + the `pad & 3` second use of `pad` keeps combine from
+ *    refolding `(no<<4)>>4` back to the 2-shift sll16/sra16; the fused
+ *    sll16/sra12/sra4 extend survives. `pad & 3` folds to 0 (column 0), so it
+ *    costs no instruction — it exists only to keep `pad` multiply-used.
+ *  - the pointer temp `p` materialises the base once, AFTER the ×56 offset, so
+ *    lui/addiu land late (a direct `PadPort[..][..]` expr hoists them early,
+ *    or folds `+6` into `%hi(PadPort+6)` — both a few bytes off).
+ *  - `p[6]` emits `lbu 0x6(p)`; offset 6 is fAnalog / unk_2[2] low byte. */
+u8 FUN_8001b174(short no)
 {
-    return ((u8 *)&PadPort[arg0][0])[6];
+    u8 *p;
+    s32 pad = no << 4;
+    p = (u8 *)&PadPort[pad >> 4][pad & 3];
+    return p[6];
 }
 #endif
