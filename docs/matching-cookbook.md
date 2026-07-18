@@ -1596,6 +1596,16 @@ re-check cheaply before honoring them:
   priority sink), 12→8 (a temp-before-intervening-read capture) — both verified by
   porting the semantic delta, never by score. (This does NOT license
   background-and-wait; each run is still one foreground bounded call.)
+- **A branch delay slot the target fills with a leaf (`move sX,zero`) while yours
+  fills with a REMAT-STORE: try the LITERAL at that site.** When your slot holds a
+  store whose value is a reload-remat `li tN` (a spilled REG_EQUIV-const variable),
+  that store is the only reorg-movable insn before the branch and it steals the
+  slot the target reserves for the leaf. Spelling the value as a LITERAL at the
+  site serializes it through `v0`, the anti-dependence pins the store, and reorg
+  falls back to the target's fill (mission_score_screen `x = 0x66`, −12 bytes
+  across three sites). The tell: the matching sibling sites all use literals whose
+  stores are `v0`-blocked. This CONTRADICTS the usual "name a constant in a local"
+  seed — here the variable is the problem, the literal is the fix.
 - **A permuter candidate that REASSIGNS a value used as a divisor/operand across
   several later insns is disqualified — regardless of score — if the target writes
   that hard register ONCE.** One grep settles it: `grep -c '\$aN' <Name>.s` on the

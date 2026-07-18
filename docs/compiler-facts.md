@@ -58,6 +58,15 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   moves, bytes identical when the multiset already matched (nullcheck).
 - **expand evaluates a binary op's operands left-to-right**, so the LEFT operand's
   pseudo is born first and lives longer (binop-operand-seed's mechanism).
+- **A constant-last element address (`addu rX,sp,rIdx; addiu rX,rX,K`) can ONLY be
+  born from an INDIRECT_REF deref via EXPAND_SUM.** `expand_expr`'s PLUS
+  (expr.c:6216) sends every NON-EXPAND_SUM pointer sum to `binop` — base-first,
+  the `addiu` materialised FIRST — and c-typeck folds `&*p` (3038), `&a[i]`
+  (3047) and `&p->member0` (3113) back to the plain sum. So **no C pointer
+  variable, `&array[i]`, or call argument can be born constant-last**: if the
+  target's element pointer is constant-last AND feeds a call arg, that shape is
+  UNREACHABLE from C, not a tie to tune (mission_score_screen's bank pairs, 65
+  bytes, now closed WITH mechanism; the M-form measured +24, plain-index −16).
 - **EXPAND_SUM special-cases a mult-by-constant subterm inside an address** —
   it expands FIRST regardless of source order; a shift spelling or a named value
   temp preserves source order (`arr[a + b*c]`). `form_sum` sorts a CONSTANT term
