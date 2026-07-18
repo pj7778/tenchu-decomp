@@ -1197,7 +1197,14 @@ fence whose depth sweep is FLAT is not a fence — delete it (AddEnemy's
   in one function (Think3escape's three), scheduling-dependency injection
   (Think3firstattack's atomic pair with a width change), alias/base decoupling
   (SetupFly), raw/cache splits (`alias = cache = raw` + identical arms,
-  GetAreaMapVector, PlayVoice).
+  GetAreaMapVector, PlayVoice). The **identical-assignment arm**
+  (`if (cond) x = E; else x = E;`, same store both arms) is specifically a cse
+  STORE→LOAD FORWARDING barrier — the loop fence above cannot do this, but the
+  control-flow merge blocks cse from forwarding a statically-known stack value, so
+  the target's fresh `lw`/`sra` reload of a field cc1 could prove survives. Use it
+  (not a fence) when the target refetches a provable field; dropping it collapses
+  to reusing the source register and SHORTENS the function (FUN_800519bc: drop →
+  −2 insns / length mismatch).
 - **Donor variants** (all erased by jump2): `allocation-donor-fence` (duplicated
   assignment under an initialized/guard-proven discriminator — FUN_80033bc0,
   Think1target, AddEnemy's weapon_entry after removing invented base locals);
@@ -1516,6 +1523,20 @@ have matched SetBleedsDir unattended.
   that can follow a hoist — if you hand-spelled one, that's the bug (AddEnemy's
   `names_offset`). Recurring `$t`-register constants = a hoisted-then-SPILLED
   movable group (local_alloc can't produce that class).
+- **Array-index vs explicit-byte-offset biv is a LENGTH diagnostic.** When the
+  target re-materialises an array's base address INSIDE the loop (`lui/addiu SYM;
+  addu off,SYM; lw` per use) instead of hoisting it, the source must use an
+  explicit byte-offset biv — `*(T*)((u8*)Arr + s)`, `s += sizeof(elem)` — NOT
+  `Arr[i]`. loop.c combines the `Arr[i]` form's base+index into ONE
+  strength-reduced POINTER giv (init `p=&Arr` in the preheader, `lw 0(p)` at the
+  use), hoisting the base and deleting the per-iteration rematerialisation → the
+  draft is SHORTER than the target (PutItemList `Arr[i]`→484 vs required 504).
+  Check the biv/giv verdict in the raw `.i.loop` dump (`Cannot eliminate biv N` =
+  a real byte-offset biv survives; `giv not worth while`), which `cc1says`'
+  hoist table does not surface. Corollary: a demo local list that OMITS a loop-var
+  copy `t` can still require it — if the target recomputes a distinct loop-var
+  register from a callee-saved quotient each iteration (`v1=s0`), the source needs
+  the explicit `t=n` copy (500 vs 504 without it).
 - **Unbiased cursor + surviving counter**: goto backedge + explicit preheader
   caches in target order (UpdateItemState 293→0); put a hand-rolled loop's
   invariant computation INSIDE the inner if (outer-body placement lets reorg
