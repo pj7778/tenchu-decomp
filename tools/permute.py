@@ -749,6 +749,10 @@ def authoritative_rescore(name, work, csh):
                                        result["source"]))
     print("\npermute: authoritative full-link rescore "
           "(whole image / function window / .text):")
+    print("permute: (the per-iteration PROXY scores streamed above are a "
+          "relocatable-object heuristic and routinely diverge from — usually "
+          "far exceed — these authoritative byte counts; trust ONLY this "
+          "rescore, never the streamed proxy best.)")
     for result in valid[:20]:
         label = os.path.relpath(result["source"], work)
         print(f"  {result['whole']:6d} / {result['window']:5d} / "
