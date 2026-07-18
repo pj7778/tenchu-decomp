@@ -1607,6 +1607,21 @@ re-check cheaply before honoring them:
   priority sink), 12→8 (a temp-before-intervening-read capture) — both verified by
   porting the semantic delta, never by score. (This does NOT license
   background-and-wait; each run is still one foreground bounded call.)
+- **Physical duplication of an instruction at several addresses does NOT mean
+  lexical duplication in the source.** When a statement is reached by `goto` from
+  several arms, `fill_simple_delay_slots` copies the shared label's LEADING insn
+  into each arm's otherwise-empty jump delay slot (freed because that arm's own
+  real insn already sank into an earlier conditional branch's slot — safe on the
+  taken path when the target immediately overwrites the register). So writing the
+  shared computation out PER-ARM — even where cc1 legitimately constant-folds it —
+  is provably wrong once any other arm reaches the same test with a non-constant
+  value: write ONE statement and `goto` every arm to it. Read the raw target `.s`
+  before assuming physical == lexical (MIPS makes the delay slot the literal next
+  insn). And a park may FILE THIS WRONG: FUN_8005aba4's own STATUS called it a
+  `lui` fold PLUS an independent v0/v1 register swap — both were the ONE cause, and
+  the register swap resolved as a side effect of removing the extra definition
+  sites (13→0, one edit). A "register tie" next to an opcode diff is often a
+  symptom of the same structural cause, not a separate lever.
 - **A field read-and-stored as ONE statement between unrelated byte stores comes
   out 1 INSTRUCTION SHORT.** If the target's tail writes several unrelated byte
   fields (r/g/b) between a field's READ and its STORE, and your draft does that

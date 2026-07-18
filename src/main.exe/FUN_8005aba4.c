@@ -4,82 +4,34 @@
 /*
  * FUN_8005aba4 (0x8005aba4) — advance the memory-card state/message machine.
  *
- * STATUS: NON_MATCHING — the complete C reconstruction has the target's exact
- * 536-byte / 134-instruction extent, jump-table pool, calls, and linked-image
- * layout. Thirteen bytes remain across six aligned instructions: combine folds
- * two `(u16)next_state << 16` operations for the known value 0x28 into `lui`,
- * while the shared dynamic shift/test has the target's v0/v1 allocation
- * reversed. Keep the stub and its static jump-table pool until those sub-C
- * compiler ties are solved; the guarded draft builds with
- * `NON_MATCHING=FUN_8005aba4 ./Build`.
+ * `case 4` (ChkCard() dispatch) has FIVE origins that all need the same
+ * "is next_state == 0x28" shift+test. A prior draft wrote that test out
+ * TWICE — once after each of the two inner default: arms — reasoning that
+ * cc1 would fold `next_state = 0x28; shifted = (u32)(u16)next_state << 16;`
+ * into a `lui` there (which it does) and leave the genuine dynamic
+ * sll/sra only at the shared `card_state_shift:` label used by the other
+ * three origins. That measured 13 bytes off across 6 instructions.
+ *
+ * The target's raw asm shows this fold is wrong: ALL FIVE origins reach
+ * the SAME single `sll $v0,$s0,16 / sra $v0,$v0,16` — there is only ONE
+ * `next_state != 0x28` test in the source, reached by `goto` from every
+ * arm (including both defaults). The apparent "extra" sll/sra copies at
+ * two addresses are a pure reorg (delay-slot-fill) artifact: the two
+ * default arms' `addiu $s0,0x28` gets sunk into the PRECEDING beq's delay
+ * slot (the fallthrough continuation is safe to run on the taken path too,
+ * since the taken target immediately overwrites $s0), which leaves each
+ * default's own trailing unconditional `j card_state_shift` with an empty
+ * delay slot — reorg fills THAT with a duplicated copy of the jump
+ * target's first instruction (the shared `sll`) and retargets the jump
+ * to land just past it. Two lexical copies of the C statement produce
+ * three lexical instances feeding the fold; one shared C statement,
+ * reached by goto from all five arms, produces the target's exact
+ * three-physical-copy, zero-fold shape for free — plainer C, exact match.
+ * Lesson: when a "duplicated" instruction sequence appears at multiple
+ * addresses but every appearance is the delay slot of an unconditional
+ * jump to a common label, suspect reorg's delay-slot fill-from-target
+ * before suspecting the source has two copies of the statement.
  */
-
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", FUN_8005aba4);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__switchD);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_0);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_3);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_4);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_a);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_14);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_1e);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_25);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_1f);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_20);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_1);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_23);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_24);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_26);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_5a);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_b);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/FUN_8005aba4", switchD_8005abf0__caseD_5);
-
-/* jump-table pool @ 0x80013e34 (93 words; tables at 0x80013e34) — stub-only, one array because the object has one .rodata section; the draft's compiled switch emits its own. */
-static const u32 FUN_8005aba4_jtbl[93] = {
-    0x8005ABF8, 0x8005AD0C, 0x8005AD0C, 0x8005AC00,
-    0x8005AC0C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005ACAC, 0x8005AD84,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005ACB4, 0x8005AD84, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005ACBC, 0x8005ACF4,
-    0x8005AD04, 0x8005AD0C, 0x8005AD0C, 0x8005AD14,
-    0x8005AD6C, 0x8005ACEC, 0x8005AD74, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD8C, 0x8005AD8C,
-    0x8005AD8C, 0x8005AD8C, 0x8005AD7C, 0x8005AD84,
-    0x8005ACEC,
-};
-
-#else /* NON_MATCHING */
 
 extern s16 CardStateFlag;
 extern s16 CardRetryCount;
@@ -93,7 +45,6 @@ s32 FUN_8005aba4(s16 *state, u16 *message)
 {
     s32 cmd;
     s32 result;
-    u32 shifted_state;
     s16 card_status;
     s16 next_state;
     u16 next_message;
@@ -130,8 +81,7 @@ s32 FUN_8005aba4(s16 *state, u16 *message)
         case 1:
             goto card_status_one;
         }
-        shifted_state = (u32)(u16)next_state << 16;
-        goto card_state_test;
+        goto card_state_shift;
 
 card_status_ge_three:
         switch (card_status)
@@ -142,8 +92,7 @@ card_status_ge_three:
         case 4:
             goto card_status_four;
         }
-        shifted_state = (u32)(u16)next_state << 16;
-        goto card_state_test;
+        goto card_state_shift;
 
 card_status_one:
         next_state = 10;
@@ -156,9 +105,7 @@ card_status_four:
         next_state = 0x1e;
 
 card_state_shift:
-        shifted_state = (u32)(u16)next_state << 16;
-card_state_test:
-        if (((s32)shifted_state >> 16) != 0x28 && CardRetryCount++ < 3)
+        if (next_state != 0x28 && CardRetryCount++ < 3)
         {
             next_state = 4;
         }
@@ -244,5 +191,3 @@ increment_state:
     *message = next_message;
     return -1;
 }
-
-#endif /* NON_MATCHING */
