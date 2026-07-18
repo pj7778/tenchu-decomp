@@ -11,13 +11,39 @@
  * Compiled-style GTE function under the restricted gte.h policy
  * (docs/gte-policy.md).
  *
- * STATUS: NON_MATCHING — 25 of 920 byte values differ (correct length,
- * 230/230 instructions). Register roles: s0=pkt/param_7, s1=puVar4,
- * s2=param_2, s3=local_38, s4=cnt(=param_4), s5=iVar3 via `move s5,v0`,
- * s6/s7/s8=r0_00/r2/r1, a3=r0 with caller-save around the jal, t0=puVar5
- * spilled.
+ * STATUS: NON_MATCHING — 26 of 920 bytes differ (correct length, 230/230
+ * instructions). Register roles: s0=pkt/param_7, s1=puVar4, s2=param_2,
+ * s3=local_38, s4=param_4 (the loop counter, direct), s5=iVar3 via `move s5,v0`,
+ * s6/s7/s8=r0_00/r2/r1, a3=r0 with caller-save around the jal, t0=puVar5 spilled.
  *
- * === ROUND 3 (this round): the 26-park's 7-insn PROLOGUE ROTATION IS SOLVED —
+ * === THE HWD0/VWD0 COLOR BIT IS SOLVED (fresh-eyes rewrite, owner-directed) ===
+ * The whole divide region is now BYTE-IDENTICAL to the target. The fix is the
+ * NATURAL human order: read VWD0 BEFORE storing HWD0/2 (`iVar2 = VWD0;` sits
+ * between `local_38 = puVar5;` and the HWD0/2 store). That makes cc1 interleave
+ * VWD0's load into the HWD0/2 divide chain, stretching that qty's span so the
+ * li-'4' temp (score 10000) out-ranks it and takes v0 — exactly the target's
+ * iVar1(HWD0)=v1, '4'=v0. This REFUTES the prior "color proven irreconcilable":
+ * it was only irreconcilable *with the VWD0-late bubble*, a byte-chased hack.
+ * The counter is `param_4` counted down directly — the matched sibling
+ * FUN_80059ff4's exact form, no invented `cnt`.
+ *
+ * THE ONE REMAINING RESIDUAL: the prologue s4-group. `sw s4,48(sp); move s4,a3`
+ * (param_4's entry copy) is emitted at prologue position 2 (right after the s2
+ * copy); the target emits it at ~position 5, AFTER the s0-group (sw s0,32; lw
+ * s0,96=pkt) + HWD0 + li-4. Everything else — the loop, the color region, every
+ * field store — is byte-exact. The target defers param_4's copy (a low-frequency
+ * once-per-iteration counter) past the pkt load (needed immediately by *pkt=4);
+ * our sched2 tops it out.
+ *
+ * THE TRADE (why not yet 0): the color fix wants VWD0-early; the OLD rotation
+ * fix was the VWD0-late "bubble"; the two want VWD0 in opposite places
+ * (VWD0-late => 25, rotation ok/color wrong; VWD0-early => 26, color ok/rotation
+ * wrong). The target has BOTH, so a structure exists that defers the s4-copy
+ * WITHOUT the VWD0-late bubble. c70's beqz delay slot already matches the target,
+ * so this is a sched2 entry-copy PLACEMENT (not the sibling's reorg-delay-slot
+ * steal). ~12 multi-statement variants tried; color banked, rotation open.
+ *
+ * === PRIOR ROUND (superseded above; kept for the mechanism trail): =========
  * the old residual (s4-group [sw s4,48; move s4,a3] emitted before the s0-group
  * [sw s0,32; lw s0,96; lui/lw HWD0; li v0,4]) is now byte-exact via TWO source
  * changes, and the residual moved to a NEW, SMALLER, single-decision tie:
@@ -84,9 +110,37 @@
  * Span-stretch attempts (split `h = iVar1/2; iVar2 = VWD0; sh#1 = (short)h`
  * with fresh h / iVar1-self-update / iVar3-reuse) all re-broke the WINDOW
  * (26/26/43) — the stretch and the bubble compete for the same sched1 slots.
- * Next lane: find a source shape whose sched1 chain BOTH leaves the T-20-class
- * bubble for the cnt-copy AND interleaves one insn into [addu..sh#1] (span
- * >= 14 suids flips the coin); or trace find_free_reg/regs_live_at directly.
+ *
+ * PROVEN IRRECONCILABLE at single-statement reach (round 3 close-out; a
+ * 12-variant decoupling sweep under the color-good core all 26+ or LENGTH
+ * MISMATCH, plus the .i.sched gate analysis):
+ *   - The copy can only sink via a tick where it is ALONE-ready. Ticks are
+ *     filled by pri>=2 stores unless GATED: a store is unready until every
+ *     program-LATER may-alias load is placed (anti-dep, backward sched). The
+ *     one protectable tick (T-20) is created by the VWD0-lw's latency-2
+ *     launch, and it is empty ONLY when sh#1 and the *pkt=4 store are gated
+ *     BEHIND that same VWD0-lw, i.e. `iVar2 = VWD0` AFTER sh#1 in source.
+ *   - The color bit needs sh#1's sched1 slot at pos>=10 (div-qty span >= 16
+ *     -> 8750 < the '4' qty's 10000). sh#1 reaches pos 10 only UNGATED
+ *     (VWD0-lw program-before it) — and then sh#1 itself fills T-20 (V8
+ *     dump: sh#1 picked exactly T-20; the copy exiled to T-29 = the old
+ *     rotation). One tick, two claimants; every legal gate assignment hands
+ *     it to exactly one.
+ *   - The cascade anchor cannot shift: uVar3's lw is capped program-BELOW
+ *     every pkt-store by may-alias ordering (target bytes: lw 4(v0) before
+ *     li 150), so the uVar launch timing that positions the mid-region is
+ *     rigid, and the tick budget is fixed by the insn count.
+ *   - Fallbacks closed: ref-lowering the div qty must keep the addu-dividend
+ *     tie (target addu v1,v1,v0; tie loss measured = 21-byte build) — the
+ *     best legal reduction {iVar1,addu} scores EXACTLY 10000 = the '4' qty,
+ *     and qty_compare_1's tie-break (qty number asc = birth order) still
+ *     picks iVar1 first -> v0. Raising the '4' qty needs a third ref in a
+ *     2-suid span: no existing reader, any new one emits (+4), arithmetic
+ *     double-reads tree-fold, and dead exit reads are flow-deleted before
+ *     the REG_N_REFS recount (measured).
+ * A fix, if one exists, needs a construct OUTSIDE single-statement reorder
+ * (e.g. cc1 instrumentation to enumerate find_free_reg outcomes, or a
+ * different decomposition of the /2 chains that re-times the whole block).
  * ============================================================================
  *
  * WHAT UNLOCKED THE 620 PARK (each independently measured; the park's
@@ -134,10 +188,13 @@
  *    loop.c runs before combine so the kill survives the rename) and the
  *    volatile read's birthing bump.
  *
- * Falsify the remaining 25: see the "ROUND 3" block above — the window/LUID
- * story is CLOSED (cnt + the VWD0-late bubble); what's left is one local-alloc
- * v0/v1 qty-coloring decision in block 1 (iVar1-div qty vs the li-4 temp),
- * proven chain-order-sensitive but not yet reached from source.
+ * Falsify the remaining 26: the residual is now the s4-group prologue rotation
+ * ONLY (color solved, above). The lever is whatever source structure makes
+ * sched2 defer param_4's entry copy past the s0/HWD0/li-4 leaders while keeping
+ * VWD0-early. The matched sibling FUN_80059ff4 defers its own param_4 copy with
+ * `prim = work + 0x34` above the guard (its reorg delay-slot steal target) — the
+ * c70 analog did not transfer (c70's delay slot already matches), so this is a
+ * pure sched2 placement question, still open.
  */
 
 extern int HWD0;
@@ -167,15 +224,14 @@ u_long *FUN_80058c70(u_short *param_1, u_long param_2, u_long *param_3, int para
     SVECTOR *r2;
     SVECTOR *r1;
     u_long *local_38;
-    int cnt;
 
     pkt = param_7;
     iVar1 = HWD0;
     *pkt = 4;
     puVar5 = pkt + 0x38;
     local_38 = puVar5;
-    *(short *)(pkt + 0xd) = (short)(iVar1 / 2);
     iVar2 = VWD0;
+    *(short *)(pkt + 0xd) = (short)(iVar1 / 2);
     *(short *)((int)pkt + 0x36) = (short)(iVar2 / 2);
     uVar5 = param_6;
     uVar7 = param_5;
@@ -187,8 +243,7 @@ u_long *FUN_80058c70(u_short *param_1, u_long param_2, u_long *param_3, int para
     pkt[5] = (u_long)param_3;
     *(u_char *)((int)pkt + 0x53) = iVar4;
     pkt[4] = uVar3;
-    cnt = param_4;
-    if (cnt != 0) {
+    if (param_4 != 0) {
         r0 = (SVECTOR *)(pkt + 0x20);
         r1 = (SVECTOR *)(pkt + 0x26);
         r2 = (SVECTOR *)(pkt + 0x2c);
@@ -243,9 +298,9 @@ u_long *FUN_80058c70(u_short *param_1, u_long param_2, u_long *param_3, int para
                 *(short *)((int)pkt + 0x66) = *puVar4;
                 FUN_80057b80(puVar5, pkt, 0);
             }
-            cnt = cnt + -1;
+            param_4 = param_4 + -1;
             puVar4 = puVar4 + 0x16;
-        } while (cnt != 0);
+        } while (param_4 != 0);
     }
     return (u_long *)pkt[5];
 }

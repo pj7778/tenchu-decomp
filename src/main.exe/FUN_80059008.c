@@ -20,19 +20,16 @@
  * verbatim and was transferred wholesale; both land on the identical
  * 26-byte prologue-leader rotation.
  *
- * STATUS: NON_MATCHING — 25 of 920 byte values differ (was 26; correct length,
- * 230/230 instructions). The prologue-leader ROTATION is SOLVED — the twin
- * FUN_80058c70's fix ported verbatim: `cnt = param_4` loop counter (counted down
- * instead of the parameter) + `iVar2 = VWD0` moved between the two sh stores,
- * which opens the one-tick sched1 bubble that lifts the counter copy's LUID above
- * the *pkt=4/HWD0/pkt leaders. Register roles unchanged (s0=pkt, s1=puVar4,
- * s4=param_4/cnt, a3=r0 caller-saved around the jal, v0/v1=the volatile parm
- * reads). Residual = the IDENTICAL single local-alloc v0/v1 color bit in the
- * HWD0/VWD0 divide chain, PROVEN out of single-statement reach in FUN_80058c70.c
- * (one protectable tick T-20, two claimants: the bubble needs VWD0 compact, the
- * color needs it stretched into the div chain). See FUN_80058c70.c for the full
- * proof chain. The permuter is a NON-LEVER here (gte.h inline asm, permute.py:985);
- * autorules' `extern int HWD0[]` -> 22 is a rejected non-human local optimum.
+ * STATUS: NON_MATCHING — 26 of 920 bytes differ. The HWD0/VWD0 COLOR BIT IS
+ * SOLVED (the divide region is byte-identical to the target), via the twin
+ * FUN_80058c70's fresh-eyes fix ported verbatim: the NATURAL order `iVar2 = VWD0;`
+ * BEFORE the HWD0/2 store (VWD0-early) + `param_4` counted down directly (the
+ * matched sibling's form, no invented `cnt`). This refuted the prior "color
+ * irreconcilable" claim. The ONE remaining residual is the prologue s4-group
+ * rotation (`sw s4,48; move s4,a3` emitted ~5 insns too early) — a sched2
+ * entry-copy PLACEMENT, identical to c70's. See FUN_80058c70.c for the full
+ * account and the open lever. The permuter is a NON-LEVER here (gte.h,
+ * permute.py:985).
  *
  * WHAT UNLOCKED THE 620 PARK (each independently measured; the park's
  * "failed" singles were pair-negatives, cookbook §4):
@@ -79,11 +76,10 @@
  *    loop.c runs before combine so the kill survives the rename) and the
  *    volatile read's birthing bump.
  *
- * Falsify the remaining 26: find a lever over the prologue leader order
- * [sw s4,48; move s4,a3] vs [sw s0,32; lw s0,96; lui/lw HWD0; li 4] — all
- * pri 1 in sched2, picked by potential_hazard + INSN_TICK; the parm-copy and
- * reload-save UIDs are compiler-fixed, so if a source knob exists it is
- * upstream of reload (frame/slot or pseudo-set changes), not statement order.
+ * Falsify the remaining 26: the residual is the s4-group prologue rotation ONLY
+ * (color solved, above) — sched2 defers param_4's entry copy past the s0/HWD0/li-4
+ * leaders in the target but tops it out here. See FUN_80058c70.c's header for the
+ * full analysis and the open lever; the fix, when found, transfers verbatim.
  */
 
 extern int HWD0;
@@ -113,15 +109,14 @@ u_long *FUN_80059008(u_short *param_1, u_long param_2, u_long *param_3, int para
     SVECTOR *r2;
     SVECTOR *r1;
     u_long *local_38;
-    int cnt;
 
     pkt = param_7;
     iVar1 = HWD0;
     *pkt = 4;
     puVar5 = pkt + 0x38;
     local_38 = puVar5;
-    *(short *)(pkt + 0xd) = (short)(iVar1 / 2);
     iVar2 = VWD0;
+    *(short *)(pkt + 0xd) = (short)(iVar1 / 2);
     *(short *)((int)pkt + 0x36) = (short)(iVar2 / 2);
     uVar5 = param_6;
     uVar7 = param_5;
@@ -133,8 +128,7 @@ u_long *FUN_80059008(u_short *param_1, u_long param_2, u_long *param_3, int para
     pkt[5] = (u_long)param_3;
     *(u_char *)((int)pkt + 0x53) = iVar4;
     pkt[4] = uVar3;
-    cnt = param_4;
-    if (cnt != 0) {
+    if (param_4 != 0) {
         r0 = (SVECTOR *)(pkt + 0x20);
         r1 = (SVECTOR *)(pkt + 0x26);
         r2 = (SVECTOR *)(pkt + 0x2c);
@@ -189,9 +183,9 @@ u_long *FUN_80059008(u_short *param_1, u_long param_2, u_long *param_3, int para
                 *(short *)((int)pkt + 0x66) = *puVar4;
                 FUN_80057b80(puVar5, pkt, 0);
             }
-            cnt = cnt + -1;
+            param_4 = param_4 + -1;
             puVar4 = puVar4 + 0x10;
-        } while (cnt != 0);
+        } while (param_4 != 0);
     }
     return (u_long *)pkt[5];
 }
