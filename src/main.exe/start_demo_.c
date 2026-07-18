@@ -69,6 +69,20 @@
  * respellings, one bounded permuter run: 12,492 iterations, best candidate
  * rescored 40 > base 39) reduced ALL FIVE to two proven mechanisms:
  *
+ * RE-CONFIRMED (fresh session, corrected toolchain): a SECOND bounded permuter
+ * run of 13,082 iterations under the now-fixed permute.py (-fno-builtin in
+ * CC_FLAGS + split-piece address-order in find_nonmatching_s) still authoritatively
+ * rescored 39 = base (a tie candidate output-305-1 at 39, next at 45). The
+ * -fno-builtin fix — which matters because `sprintf` is a builtin and dominates
+ * this residual — does NOT unlock it: the prior run was already scoring the real
+ * program. Independently reproduced the mechanism A experiments from the final
+ * asm/dbr RTL: inline 4th arg = 42 (suffix reuses a2, `move a2` lands in the
+ * sprintf jal DELAY SLOT while `li s4,128` sits just after it — the two are one
+ * swap from target but dbr/sched2 own that choice, not C); no fence = 691/679
+ * blowup (fade_sprite s7->s6); fence moved before the sprintf = 691 blowup. The
+ * fence's position immediately before `full_brightness` is a load-bearing knife
+ * edge. 39 stands as the reachable sub-C floor.
+ *
  * A. Clusters 0/1/2 (0x55e7c, 0x55ea8, 0x55ec4-0x55ee8; 37 bytes) are ONE
  *    allocation story: retail has suffix in a3, ours t0. mips.h defines no
  *    REG_ALLOC_ORDER, so find_reg probes $2,$3,$4... numerically: suffix
