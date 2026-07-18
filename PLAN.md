@@ -149,9 +149,15 @@ prints exactly this set (it defaults to `--scope game`):
     unreachability proof fell to a tiebreak rule that was simply wrong, and
     SetupSpline's "permuter plateaued" was a crash. Re-check cheaply before honoring
     one (cookbook §4).
-  * **5 undrafted** — `FUN_80059008` (920), `FUN_8005961c` (1260), `FUN_80059b08`
-    (1260), `FUN_80059ff4` (984), `FUN_8005a3cc` (984). Never attempted. The pairs of
-    equal size are worth checking for clone relationships first.
+  * **The DecodeTMD primitive-renderer family (updated 2026-07-18)** — 6 members,
+    all sharing FUN_80058c70's recipe: **FUN_8005961c (1260), FUN_80059b08 (1260),
+    FUN_80059ff4 (984), FUN_8005a3cc (984) are now MATCHED** (byte-verified 0 this
+    session — the earlier "undrafted, never attempted" note was stale). Only
+    `FUN_80058c70` (920) and its twin `FUN_80059008` (920) remain, both PARKED @26
+    with the SAME residual (a sched2 prologue-leader ordering tie). **The 4 matched
+    siblings are the reference for the parked pair** — they reached zero on the same
+    recipe; diff the prologue-leader schedule against them, don't just read the
+    equally-stuck twin.
   * Also present but hidden by `--max-size 2048`: **`start_demo_`** (2188) and
     **`mission_score_screen`** (4636). Raise the flag or they are invisible.
 
