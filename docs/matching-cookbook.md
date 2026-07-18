@@ -1125,7 +1125,12 @@ preference machinery, REG_N_DEATHS, reload round-robin). The craft:
   "hard-conflict" (mission_score_screen's rowValue — ask which value is created
   first); source liveness across a call beats final scheduled position
   (DrawBlood; SaveCard's inverse); a pre-call narrow capture + post-call
-  widening separates a saved copy from its mask (FUN_8005778c).
+  widening separates a saved copy from its mask (FUN_8005778c). But it is the
+  order of the SETs/USES that matters, NOT the order of scalar DECLARATIONS:
+  reordering scalar local declarations is a nullcheck no-op — gcc-2.8.1 defers
+  scalar pseudo allocation to first-use, so declaration order cannot renumber
+  allocnos or break an equal-priority coloring tie (FUN_80036284; contrast
+  address-taken/stack locals, whose declaration order DOES fix slot order, §3.8).
 - **The `%hi` reload tie is `combine_regs` refusing a block-crossing pseudo**
   (compiler-facts): a shared local funnelled from both if/else arms into one
   post-join call can never tie with its `%hi` temp — call the function
