@@ -436,6 +436,12 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   LENGTH after every split (mission_score_screen: `brightness` split cleanly at
   the row, but not at the medal or number-init — both measured 4632).
 
+- **sched1 runs BEFORE local-alloc** (toplev.c:579-580: *"flag_schedule_insns means
+  schedule insns within basic blocks, before local_alloc"*; sched2 is after global).
+  So source ORDER among independent loads in a straight-line block is fixed by sched1
+  and never reaches local-alloc's priority computation — statement/declaration reorders
+  there are codegen no-ops (DrawHinoko: three respellings byte-identical). Generalises
+  the "sched1 runs before reload" note.
 - **Both schedulers are BACKWARD list schedulers**: T-1 is the block's LAST slot,
   filled first — an insn picked earlier lands LATER. "Emit first" = "lose the
   ranking". **T is NOT an address index**: `clock += stalls` (3747) skips T

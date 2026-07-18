@@ -1596,6 +1596,16 @@ re-check cheaply before honoring them:
   priority sink), 12→8 (a temp-before-intervening-read capture) — both verified by
   porting the semantic delta, never by score. (This does NOT license
   background-and-wait; each run is still one foreground bounded call.)
+- **A field read-and-stored as ONE statement between unrelated byte stores comes
+  out 1 INSTRUCTION SHORT.** If the target's tail writes several unrelated byte
+  fields (r/g/b) between a field's READ and its STORE, and your draft does that
+  field as one direct `dst->f = src->f;` positioned at the store, cc1 fills an
+  early load-delay slot with the r/g/b stores instead of leaving the target's bare
+  `nop` — you emit them one insn too early and finish exactly 1 short. Fix: split
+  the field into its OWN named local, read EARLY / store LATE (DrawHinoko, from the
+  matched sibling DrawSmoke's proven Sprite3D-tail idiom; DrawExplosion too). This
+  is a source-shape fix for a 1-short residual, not a scheduling tie — and it is the
+  human spelling, since the sibling's own header documents it.
 - **A branch delay slot the target fills with a leaf (`move sX,zero`) while yours
   fills with a REMAT-STORE: try the LITERAL at that site.** When your slot holds a
   store whose value is a reload-remat `li tN` (a spilled REG_EQUIV-const variable),
