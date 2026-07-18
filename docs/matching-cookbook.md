@@ -806,6 +806,12 @@ judgment:
   wrongly-wide prototype creates a full-width call-result pseudo that CSE
   propagates across calls (Think1ninja's `s16 Think1random`). Take prototypes
   from the matched CALLER over Ghidra (FUN_80058a54 → FUN_80058c70).
+- **An ignored SDK return still changes hard-register conflicts.** PsyQ declares
+  `MoveImage` as returning `int`; spelling it `void` emits the same call but
+  leaves v0 available to a preceding multiply result. The correct prototype
+  made that result use retail's t0 and closed the final 2 bytes of
+  `FUN_80032720`. Audit the full prototype even when no C expression consumes
+  the result.
 - **A conditional value used ONLY as a call argument is an inline ternary** in
   the argument position — a preceding if/else blocks sched1 from interleaving
   the flag with the other args (SetupSoundEffect; AVCameraSetup adds: assigning

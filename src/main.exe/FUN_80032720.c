@@ -15,95 +15,6 @@
  * END PSX.SYM */
 
 /*
- * VALIDATED (2026-07-18): a fresh bounded permuter on the corrected -fno-builtin
- * program confirms 25 is the floor (best candidate == base, 25/25/560). The old
- * permuter negative is now validated on the right program; the 56-byte hand-rolled
- * outer-loop experiment remains worse — do not re-run either.
- *
- * STATUS: NON_MATCHING — exact target extent (560 bytes / 140 instructions),
- * 25 differing bytes, 6 clusters / 16 differing insns (all operands-kind;
- * `matchdiff --clusters` reports NO branch-retarget here).
- *
- * READ THIS BEFORE RESUMING: the `volatile u32 scrollYShifted` below is a
- * DEAD END, not a near-miss. It cannot reach 0, for a structural reason that
- * is proven by measurement — and the previous note's claim that the target's
- * scrollY stack round-trip is "otherwise-unreachable" is FALSE.
- *
- * Why the volatile can never work. The target's frame holds three values above
- * the 0x10 outgoing-arg boundary: y@sp+0x10, z@sp+0x12, (scrollY<<16)@sp+0x14.
- * cc1 assigns frame slots in three phases, in this order: assign_parms
- * (ADDRESSABLE params) -> expand_decl (DECLARED locals, in declaration order)
- * -> reload's alter_reg (SPILLED pseudos, in pseudo-number order). A declared
- * local is therefore ALWAYS given a lower slot than any reload spill. y/z are
- * reload spills here (params get the lowest pseudo numbers, hence 0x10/0x12),
- * so any DECLARED local — volatile or not — necessarily squats on 0x10 and
- * pushes y/z to 0x14/0x16. That IS the 25-byte residual: swapped offsets, plus
- * the volatile's pinned `lw` landing 2 insns early and its register cascade.
- *
- * Confirmed in both directions. Making y/z `volatile short` params moves them
- * into assign_parms and the offsets snap to the target's exactly (sh a1,16(sp)
- * / sh a2,18(sp) / lw ...,20(sp)) — but volatile also pins those accesses
- * against sched, shattering the prologue and tail schedules: 107 bytes, 8
- * clusters (this reproduces the "107+" the earlier note reported). So the
- * target's y/z are NOT addressable, and (scrollY<<16) MUST be an ordinary
- * pseudo that reload spills.
- *
- * A NATURAL spill IS reachable. This shape builds at the exact 560-byte extent
- * with the natural reload spill at the CORRECT slot (sw a0,20(sp) / lw
- * a3,20(sp)) and all 140 mnemonics matching — matchdiff reports 7 clusters,
- * every one `operands`-only, i.e. a pure register permutation (56 bytes: worse
- * than 25 by the byte metric, but the only shape that can reach 0):
- *
- *     u32 scrollYShifted; s32 signedScrollY; int sx;
- *     ...
- *     sx = scrollX;
- *     scrollYShifted = (u32)(u16)scrollY << 16;
- *     j = 0;
- *   grid:
- *     for (i = 0; i < 2; i++)
- *         if ((0xF >> (j * 2 + i)) & 1) {
- *             signedScrollY = (s32)scrollYShifted >> 16;
- *             MoveImage((RECT *)&pp->bleed.vec, sx + im->pw * i,
- *                       signedScrollY + im->ph * j);
- *         }
- *     j++;
- *     if (j < 2) goto grid;
- *
- * Why each piece is load-bearing (from cc1's own movable log —
- * `tools/rtldump.py FUN_80032720 --pass loop --loop-log`):
- *  - The target computes `(short)scrollY` INSIDE the outer loop from a spilled
- *    `scrollY<<16` (sll before the loop @0x80032828, sra in-loop @0x80032848):
- *    the sign-extension is SPLIT BY THE SPILL, so the value live across the
- *    nest is the SHIFTED one. That extra live value is what forces the spill —
- *    9 s-regs already hold im/ef/pp/j/i/(short)scrollX/(short)j/j*2/
- *    (short)scrollY, and (scrollY<<16) is the 10th.
- *  - With an ordinary `for (j...)` outer loop, loop.c hoists BOTH halves out,
- *    only ONE value stays live, it fits in 9 s-regs, no spill happens, and the
- *    draft is 552 bytes (2 insns SHORT). The hoist gate is not close and cannot
- *    be tuned: threshold*savings*lifetime >= insn_count is 29*1*38 >> 37.
- *  - Hand-rolling the outer loop (`grid:`/`goto grid;`) emits no
- *    NOTE_INSN_LOOP_BEG, so loop.c does no invariant motion on it and the `sra`
- *    stays in — the same idiom this function already uses for its pool search.
- *  - The sra must sit INSIDE the inner `if`, not at the top of the outer body:
- *    loop.c(inner) then hoists it into the outer body while `i = 0` stays the
- *    body's first insn, which reorg duplicates into the outer back-edge delay
- *    slot (`move s0,zero` @0x80032834 + @0x800328d0). Written at the top of the
- *    outer body instead, the loop top becomes the `lw`, reorg fills the delay
- *    slot from the fall-through, and the draft is 556 bytes (1 insn SHORT).
- *
- * THE ONE OPEN QUESTION is a global s-register permutation (ours im/ef/pp/j/i/
- * sx/j*2/sy = s5/s4/s0/s3/s1/s8/s6/s7; target = s7/s8/s1/s5/s0/s6/s4/s3).
- * `tools/regalloc.py --order` shows cc1 allocating by
- * priority = floor_log2(refs)*refs/live, taking the lowest free reg each time.
- * The explicit `int sx` is the suspect: the target's (short)scrollX pseudo is
- * CREATED LATE by loop.c hoisting it out of a real `for`, whereas `sx` is an
- * early-numbered source local, so every priority slot shifts. Squaring that
- * circle — scrollX's sra hoisted out of the outer loop but scrollY's not, from
- * ONE loop form — is the remaining work. autorules: no improving edit among 52
- * candidates. The permuter could not be run to completion: it overruns the 600s
- * harness cap when piped, as its -j4 workers inherit the pipe and outlive the
- * inner `timeout`'s SIGTERM.
- *
  * FUN_80032720 (0x80032720, 0x230 bytes) — spawns an EffectSlot pool entry
  * that draws a small animated 2x2-cell water/warp tile grid from a texture
  * page (AddMisc.c: `extern void FUN_80032720(GsIMAGE *im, short y, short
@@ -150,6 +61,19 @@
  *    the first two statements) — the raw .s doesn't read them until deep
  *    into the found-body, immediately before the splash.sx/sy stores
  *    (cookbook: "trust the assembly over Ghidra's statement order").
+ *  - The outer indefinite loop keeps a meaningful fixed-point
+ *    `scrollYShifted` value live through the inner loop. Clearing that scratch
+ *    on the exit edge prevents loop.c from incorrectly lifting its signed
+ *    conversion; flow later removes the dead clear. The resulting ordinary
+ *    pseudo is the target's natural sp+0x14 reload spill, after the y/z spills.
+ *  - `mask` is a `short` work variable, not a folded literal. That source
+ *    identity gives the target's v1/v0/a3 shift chain without a donor fence.
+ *  - PsyQ declares `MoveImage` as returning `int`. Even though this caller
+ *    ignores the value, the return in v0 changes the hard-register conflicts:
+ *    the second multiply result naturally lands in t0. Declaring it `void`
+ *    leaves only the final two register bytes unmatched.
+ *
+ * These source identities and the exact SDK prototype match all 560 bytes.
  */
 
 typedef struct RECT RECT;
@@ -158,14 +82,10 @@ struct RECT
     short x, y, w, h;
 };
 
-extern void MoveImage(RECT *rect, int x, int y);
+extern int MoveImage(RECT *rect, int x, int y);
 extern void UpdateTexScroll(void);
 extern s16 D_80097F30;
 extern s16 D_80097F32;
-
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_80032720", FUN_80032720);
-#else
 
 void FUN_80032720(GsIMAGE *im, short y, short z)
 {
@@ -213,7 +133,10 @@ loop:
     goto loop;
 found:
 {
-    volatile u32 scrollYShifted;
+    u32 scrollYShifted;
+    s32 signedScrollY;
+    int sx;
+    short mask;
 
     pp = &ef->param;
     pp->smoke.vec.vy = 0;
@@ -232,19 +155,27 @@ found:
     pp->bleed.vec.vy = py;
     pp->bleed.vec.vz = im->pw;
     pp->bleed.vec.pad = im->ph;
+    sx = scrollX;
     scrollYShifted = (u32)(u16)scrollY << 16;
 
-    for (j = 0; j < 2; j++)
+    j = 0;
+    while (1)
     {
-        s32 signedScrollY = (s32)scrollYShifted >> 16;
-
         for (i = 0; i < 2; i++)
         {
-            if ((0xF >> (j * 2 + i)) & 1)
+            mask = 0xF;
+            if ((mask >> (j * 2 + i)) & 1)
             {
-                MoveImage((RECT *)&pp->bleed.vec, scrollX + im->pw * i,
+                signedScrollY = (s32)scrollYShifted >> 16;
+                MoveImage((RECT *)&pp->bleed.vec, sx + im->pw * i,
                           signedScrollY + im->ph * j);
             }
+        }
+        j++;
+        if (j >= 2)
+        {
+            scrollYShifted = 0;
+            break;
         }
     }
 
@@ -259,4 +190,3 @@ found:
     }
 }
 }
-#endif
