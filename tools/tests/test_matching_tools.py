@@ -4931,6 +4931,215 @@ Register 81 used 4 times across 22 insns in block 0; GR_REGS.
         ))
 
 
+# A compact real-shaped .lreg body: one basic block, three local pseudos where
+# p81 = p80 << 2 (p80 dies) TIES {p80,p81} into one quantity, and p82 conflicts
+# with it. {p80,p81} (refs 6, span 6 -> QTY_CMP_PRI 20000) outranks {p82} (refs
+# 2, span 2 -> 10000), so the walk gives {p80,p81} $v0 and the conflicting p82
+# $v1. The store insn carries the `/i` flag and a MEM whose address reg is NOT a
+# tie candidate -- both traps the parser must handle.
+LOCAL_LREG_FIXTURE = """
+
+3 registers.
+
+Register 80 used 2 times across 3 insns in block 0; GR_REGS or none.
+
+Register 81 used 4 times across 3 insns in block 0; GR_REGS or none.
+
+Register 82 used 2 times across 2 insns in block 0; GR_REGS or none.
+
+1 basic blocks.
+
+Basic block 0: first insn 1, last 7.
+
+Registers live at start: 29 30
+
+;; Register 80 in 2.
+;; Register 81 in 2.
+;; Register 82 in 3.
+(insn 1 0 3 (set (reg:SI 80)
+        (const_int 5)) 172 {movsi_internal2} (nil)
+    (nil))
+
+(insn 3 1 5 (set (reg:SI 81)
+        (ashift:SI (reg:SI 80)
+            (const_int 2))) 205 {ashlsi3} (nil)
+    (expr_list:REG_DEAD (reg:SI 80)
+        (nil)))
+
+(insn 5 3 7 (set (reg:SI 82)
+        (const_int 7)) 172 {movsi_internal2} (nil)
+    (nil))
+
+(insn/i 7 5 0 (set (mem:SI (reg:SI 30 $fp))
+        (plus:SI (reg:SI 81)
+            (reg:SI 82))) 3 {addsi3_internal} (nil)
+    (expr_list:REG_DEAD (reg:SI 81)
+        (expr_list:REG_DEAD (reg:SI 82)
+            (nil))))
+"""
+
+
+class LocalAllocFormulaTests(unittest.TestCase):
+    """QTY_CMP_PRI and the block_alloc quantity-order sort (local-alloc.c)."""
+
+    def test_qty_cmp_pri_matches_the_macro(self):
+        # (int)((double)(floor_log2(n) * n * size) / span * 10000), size in WORDS.
+        self.assertEqual(regalloc.floor_log2(16), 4)
+        self.assertEqual(regalloc.floor_log2(1), 0)
+        self.assertEqual(regalloc.qty_cmp_pri(16, 1, 30), 21333)   # SetupTelop col
+        self.assertEqual(regalloc.qty_cmp_pri(6, 1, 6), 20000)     # fixture {80,81}
+        # size is qty_size in WORDS (PSEUDO_REGNO_SIZE): a DImode qty doubles it.
+        self.assertEqual(regalloc.qty_cmp_pri(6, 2, 6), 40000)
+
+    def test_zero_span_quantity_is_int_min_and_sorts_last(self):
+        # qty_death == qty_birth divides by zero: (int)(+inf) is x86 INT_MIN.
+        self.assertEqual(regalloc.qty_cmp_pri(2, 1, 0), regalloc.QTY_PRI_INT_MIN)
+        self.assertLess(regalloc.QTY_PRI_INT_MIN, 0)
+
+    def test_block_order_replicates_the_small_qty_quirk(self):
+        # THE SetupTelop block-34 pin. For next_qty==3 block_alloc does NOT sort;
+        # its compare-and-exchange sequence on FIXED qty numbers leaves qty 0
+        # (LOWEST priority) FIRST here, so the lowest-priority quantity gets the
+        # lowest register -- a full descending sort would put it last.
+        pri = {0: 12000, 1: 60000, 2: 20000}
+        order = regalloc.block_order(3, lambda a, b: pri[b] - pri[a])
+        self.assertEqual(order, [0, 1, 2])
+        self.assertNotEqual(order, sorted(order, key=lambda q: -pri[q]))
+        # For >3 quantities it IS a full sort (pri desc, tie by qty number).
+        pri4 = {0: 10, 1: 40, 2: 40, 3: 5}
+        self.assertEqual(regalloc.block_order(4, lambda a, b: pri4[b] - pri4[a]),
+                         [1, 2, 0, 3])
+
+    def test_candidate_register_sets_are_the_mips_gr_class(self):
+        # find_free_reg excludes fixed {0,1,26-29,31} + fp 30; a call-crosser may
+        # use only callee-saved $s0-$s7.
+        self.assertEqual(regalloc.GR_CANDIDATES,
+                         [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+                          16, 17, 18, 19, 20, 21, 22, 23, 24, 25])
+        self.assertEqual(regalloc.GR_CALLEE_CANDIDATES, list(range(16, 24)))
+
+
+class LocalAllocParseTests(unittest.TestCase):
+    """The .lreg parsing traps that each cost a matcher lane a round."""
+
+    def test_census_reads_singular_call_and_size_words(self):
+        # "crosses 1 call" (singular!) must not read as 0 calls, or the crosser
+        # gets a caller-saved reg where cc1 needs $s0-$s7. Size is bytes -> words.
+        census = regalloc.parse_local_census(
+            "Register 82 used 2 times across 8 insns in block 0; "
+            "crosses 1 call; GR_REGS or none.\n"
+            "Register 83 used 5 times across 9 insns; crosses 3 calls; "
+            "2 bytes; GR_REGS or none.\n"
+            "Register 84 used 4 times across 4 insns; 8 bytes; GR_REGS or none.\n")
+        self.assertEqual(census[82]["calls"], 1)
+        self.assertEqual(census[82]["block"], 0)
+        self.assertEqual(census[83]["calls"], 3)
+        self.assertEqual(census[83]["size_words"], 1)     # HImode = 2 bytes = 1 word
+        self.assertIsNone(census[83]["block"])            # multi-block (no tag)
+        self.assertEqual(census[84]["size_words"], 2)     # DImode = 8 bytes = 2 words
+
+    def test_rtl_objects_accepts_flag_suffix(self):
+        # `(insn/i 7 ...)` must be recognised as its OWN object; missing the
+        # `/i` merges it into its predecessor and corrupts insn numbering.
+        kinds = [(k, n) for k, n, _ in
+                 regalloc.local_rtl_objects("(insn 1 0 3 (set (reg:SI 80)\n"
+                                            "    (const_int 5)) 172 {m} (nil))\n"
+                                            "(insn/i 7 5 0 (use (reg:SI 80)) -1 (nil))\n")]
+        self.assertEqual(kinds, [("insn", 1), ("insn", 7)])
+
+    def test_src_operands_treats_mem_as_opaque(self):
+        # A load's address register is NOT a tie candidate: block_alloc sees the
+        # MEM as one memory operand. Descending into it merged a pointer's home
+        # with the value it loads.
+        self.assertEqual(regalloc.src_operands("(reg:SI 130)"), [130])
+        self.assertEqual(regalloc.src_operands(
+            "(ior:SI (reg:SI 164) (reg:SI 165))"), [164, 165])
+        self.assertEqual(regalloc.src_operands("(mem/s:HI (reg:SI 162))"), [])
+        self.assertEqual(regalloc.src_operands(
+            "(zero_extend:SI (mem/s:QI (plus:SI (reg:SI 134) (const_int 1))))"), [])
+
+    def test_top_level_sets_finds_every_parallel_set(self):
+        # divmodsi4 is a PARALLEL: both div and mod dests must be seen as births,
+        # but only operand 0 (the first set) is a tie/suggestion candidate.
+        divmod_rtl = ("(insn 171 170 173 (parallel[ "
+                      "(set (reg:SI 133) (div:SI (reg:SI 2 v0) (reg:SI 130))) "
+                      "(set (reg:SI 132) (mod:SI (reg:SI 2 v0) (reg:SI 130))) "
+                      "(clobber (scratch:SI)) ] ) 68 {divmodsi4} (nil))")
+        sets = regalloc.top_level_sets(divmod_rtl)
+        self.assertEqual([regalloc.reg_of(d) for d, _ in sets], [133, 132])
+        self.assertEqual(regalloc.reg_of("(subreg:SI (reg/v:HI 83) 0)"), 83)
+
+
+class LocalAllocWalkTests(unittest.TestCase):
+    """The walk itself, on the fixture: quantities, tie, priority order, homes."""
+
+    def setUp(self):
+        self.view = regalloc.local_alloc_view("F", LOCAL_LREG_FIXTURE)
+
+    def test_tie_coalesces_the_arithmetic_chain(self):
+        qtys = self.view["per_block"][0]["quantities"]
+        by_members = {frozenset(q["members"]): q for q in qtys}
+        self.assertIn(frozenset({80, 81}), by_members)   # p81 = p80<<2, p80 dies
+        self.assertIn(frozenset({82}), by_members)
+        tied = by_members[frozenset({80, 81})]
+        self.assertEqual(tied["refs"], 6)                # 2 + 4, summed
+        self.assertEqual((tied["birth"], tied["death"]), (2, 8))
+        self.assertEqual(tied["pri"], 20000)
+
+    def test_walk_is_descending_priority_and_homes_reproduced(self):
+        pb = self.view["per_block"][0]
+        walk_pri = [q["pri"] for q in pb["walk"]]
+        self.assertEqual(walk_pri, sorted(walk_pri, reverse=True))
+        # Simulated assignment == cc1's printed homes: {80,81}->v0, p82->v1.
+        self.assertEqual(self.view["result"], {80: 2, 81: 2, 82: 3})
+        self.assertEqual(self.view["result"], self.view["homes"])
+
+    def test_conflicts_are_overlapping_live_ranges(self):
+        qtys = self.view["per_block"][0]["quantities"]
+        conf = regalloc.conflicts_in_block(qtys)
+        byq = {frozenset(q["members"]): q["qnum"] for q in qtys}
+        a, b = byq[frozenset({80, 81})], byq[frozenset({82})]
+        self.assertIn(b, conf[a])                        # [2,8) overlaps [6,8)
+
+
+class LocalAllocValidationTests(unittest.TestCase):
+    """The self-validation, and proof it fires -- the whole point of the tool."""
+
+    def test_reconstruction_agrees_with_cc1s_printed_homes(self):
+        view = regalloc.local_alloc_view("F", LOCAL_LREG_FIXTURE)
+        self.assertTrue(view["validated"])
+        self.assertEqual(regalloc.validate_local(view["result"], view["homes"]), [])
+
+    def test_validation_FIRES_when_the_priority_formula_is_wrong(self):
+        # FAULT INJECTION: negate QTY_CMP_PRI so the walk order inverts. The
+        # guard must catch the divergence from cc1's homes and refuse -- a guard
+        # never observed failing is not known to work.
+        orig = regalloc.qty_cmp_pri
+        with mock.patch.object(regalloc, "qty_cmp_pri",
+                               lambda refs, sz, span: -orig(refs, sz, span)):
+            view = regalloc.local_alloc_view("F", LOCAL_LREG_FIXTURE)
+        self.assertFalse(view["validated"])
+        self.assertTrue(view["divergences"])
+        self.assertEqual({p for p, _, _ in view["divergences"]}, {80, 81, 82})
+
+    def test_validation_FIRES_when_the_walk_order_is_wrong(self):
+        # A second, independent injection: break the qty_order sort itself
+        # (reverse it) so the higher-priority quantity is coloured last. The
+        # guard must catch the resulting home divergence.
+        with mock.patch.object(regalloc, "block_order",
+                               lambda n, cmp: list(reversed(range(n)))):
+            view = regalloc.local_alloc_view("F", LOCAL_LREG_FIXTURE)
+        self.assertFalse(view["validated"])
+        self.assertTrue(view["divergences"])
+
+    def test_empty_dump_is_a_refusal_not_a_vacuous_pass(self):
+        # No `;; Register N in M` homes means nothing to validate against -- that
+        # is never a silent success.
+        view = regalloc.local_alloc_view("E", "\n\n0 basic blocks.\n")
+        self.assertEqual(view["homes"], {})
+        self.assertFalse(view["validated"])
+
+
 class MatchToolLockTests(unittest.TestCase):
     def test_lock_is_reentrant_for_driver_helpers_and_excludes_other_owner(self):
         old = os.getcwd()

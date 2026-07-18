@@ -675,6 +675,607 @@ def report(name, a, show_rtl, body, compare=None, between=None,
         print(body.strip())
 
 
+# ===================================================================
+#  --local: the LOCAL-alloc quantity walk (block_alloc, local-alloc.c)
+# ===================================================================
+#
+# `--order` above models GLOBAL allocnos (global.c). It cannot see the
+# per-basic-block quantity allocation that colours the pseudos printed as
+# `;; Register N in M` in the `.lreg` dump (dump_local_alloc, local-alloc.c:2490)
+# -- and those are exactly the local-alloc-tie residuals (SetupTelop's
+# col/font/bits 4-clique, SetLightningI's qty chains, DrawImpact's a0/v0) that
+# four matcher lanes hand-traced this session because no tool printed the walk.
+#
+# local-alloc prints ONLY the final pseudo->hard-reg homes, never the walk
+# order. So there is no printed line to check the order against directly.
+# Instead we SIMULATE block_alloc in the computed QTY_CMP_PRI order and require
+# the resulting assignment to match cc1's printed homes for EVERY pseudo. If it
+# diverges we ABORT the derived view and print only the raw table -- exactly the
+# self-validate-or-refuse contract `--order` follows. Validated with zero
+# divergence across ~100 functions (SetupTelop, SetLightningI, DrawImpact,
+# PlayVoice, ControlHumanoid, FUN_8003562c/237 homes, ...).
+
+FIRST_PSEUDO = 76               # MIPS mips.h:1371
+# GR_REGS integer allocation. find_free_reg's always-excluded set within 0..31 =
+# fixed {0,1,26,27,28,29,31} + fp 30 + eliminables 'from' (arg-ptr 0, rap 75).
+GR_EXCLUDED = {0, 1, 26, 27, 28, 29, 30, 31}
+GR_CANDIDATES = [r for r in range(2, 26) if r not in GR_EXCLUDED]      # v0..t9
+# call_used int regs (caller-saved) = 0-15,24-29,31; so a quantity that crosses
+# a call may use only the callee-saved GR set {16..23} = s0..s7 (fp 30 aside).
+GR_CALLEE_CANDIDATES = list(range(16, 24))                            # s0..s7
+
+# x86 cvttsd2si returns 0x80000000 (INT_MIN) for (int) of an out-of-range/NaN
+# double -- what a zero-span quantity's QTY_CMP_PRI (divide by qty_death -
+# qty_birth == 0 -> +inf/NaN) evaluates to. Such a qty sorts last.
+QTY_PRI_INT_MIN = -2147483648
+
+
+def floor_log2(n):
+    """gcc's floor_log2: index of the highest set bit (>=1)."""
+    return n.bit_length() - 1 if n > 0 else -1
+
+
+def qty_cmp_pri(n_refs, size_words, span):
+    """QTY_CMP_PRI (local-alloc.c:1727), the local-alloc quantity priority:
+
+        (int)((double)(floor_log2(n_refs) * n_refs * size) / (death-birth) * 10000)
+
+    NB `size` is qty_size, in WORDS (PSEUDO_REGNO_SIZE) -- 1 for QI/HI/SI, 2 for
+    DI -- NOT GET_MODE_SIZE in bytes. Same shape as global allocno_compare, so a
+    same-length register residual among LOCAL pseudos is this walk's tie."""
+    if span <= 0:                                   # zero-length quantity
+        return QTY_PRI_INT_MIN
+    return int(float(floor_log2(n_refs) * n_refs * size_words) / span * 10000)
+
+
+def block_order(n, cmp):
+    """Replicate block_alloc's qty_order sort (local-alloc.c:1638-1662).
+
+    For next_qty <= 3 cc1 does NOT qsort: it runs a fixed compare-and-exchange
+    sequence whose compares take LITERAL qty numbers 0/1/2 (not qty_order[i]),
+    an INCOMPLETE sort that orders differently than a full sort would (this is
+    why SetupTelop's block 34 gives the LOWER-priority quantity the LOWER
+    register). For next_qty > 3 it qsorts with the _1 comparator (cmp, then qty
+    number). `cmp(a, b)` is qty_compare / qty_sugg_compare on qty NUMBERS a, b.
+    """
+    order = list(range(n))
+    if n == 2:
+        if cmp(0, 1) > 0:
+            order[0], order[1] = order[1], order[0]
+    elif n == 3:
+        if cmp(0, 1) > 0:
+            order[0], order[1] = order[1], order[0]
+        if cmp(1, 2) > 0:
+            order[2], order[1] = order[1], order[2]
+        if cmp(0, 1) > 0:
+            order[0], order[1] = order[1], order[0]
+    elif n > 3:
+        import functools
+        order.sort(key=functools.cmp_to_key(lambda a, b: cmp(a, b) or (a - b)))
+    return order
+
+
+# ---- .lreg parsing ----
+
+_CENSUS = re.compile(
+    r"^Register (\d+) used (\d+) times across (\d+) insns"
+    r"(?: in block (\d+))?;([^\n]*)$", re.M)
+_BLOCK = re.compile(r"^Basic block (\d+): first insn (\d+), last (\d+)\.$", re.M)
+_LIVE = re.compile(r"^Registers live at start:([^\n]*)$", re.M)
+_HOME = re.compile(r"^;; Register (\d+) in (\d+)\.$", re.M)
+# `(insn/i 430 ...)`, `(call_insn/i ...)`, `(jump_insn/u ...)`: the header may
+# carry /flags. Missing them merges an object into its predecessor and corrupts
+# the per-block insn numbering (and every birth/death read off it).
+_OBJ = re.compile(r"\((\w+)(?:/\w+)* (\d+)")
+_CLOBBER = re.compile(r"\(clobber \(reg(?:/\w+)?:\w+ (\d+)")
+# REG_DEAD/REG_UNUSED must match BOTH pseudos `(reg:SI 130)` and NAMED hard regs
+# `(reg:SI 4 a0)`, so do not anchor on the `)` after the number: a missed
+# hard-reg death leaves an incoming arg live all block and hides its register.
+_DEAD = re.compile(r"REG_DEAD \(reg(?:/\w+)?:\w+ (\d+)")
+_UNUSED = re.compile(r"REG_UNUSED \(reg(?:/\w+)?:\w+ (\d+)")
+_REG_HEAD = re.compile(r"^\(reg(?:/\w+)?:\w+ (\d+)")
+_SUBREG_HEAD = re.compile(r"^\(subreg:\w+ \(reg(?:/\w+)?:\w+ (\d+)\)")
+
+
+def parse_local_census(body):
+    """Per-pseudo {refs, live_length, block, size_words, calls, pointer}."""
+    out = {}
+    for m in _CENSUS.finditer(body):
+        tail = m.group(5)
+        nbytes = int(bm.group(1)) if (bm := re.search(r"(\d+) bytes", tail)) else 4
+        # "crosses 1 call" (singular) as well as "crosses N calls": missing the
+        # singular reads a single-call crosser as 0 calls and hands it a
+        # caller-saved register where cc1 needs a callee-saved ($s0-$s7).
+        cm = re.search(r"crosses (\d+) calls?", tail)
+        out[int(m.group(1))] = dict(
+            refs=int(m.group(2)), live_length=int(m.group(3)),
+            block=int(m.group(4)) if m.group(4) else None,
+            size_words=(nbytes + 3) // 4, nbytes=nbytes,
+            calls=int(cm.group(1)) if cm else 0, pointer="pointer" in tail)
+    return out
+
+
+def parse_local_blocks(body):
+    """{block: {num, first, last, live_start}} from the .lreg block census."""
+    blocks, cur = {}, None
+    for line in body.splitlines():
+        if (bm := _BLOCK.match(line)):
+            cur = int(bm.group(1))
+            blocks[cur] = dict(num=cur, first=int(bm.group(2)),
+                               last=int(bm.group(3)), live_start=set())
+        elif cur is not None and (lm := _LIVE.match(line)):
+            blocks[cur]["live_start"] = {int(x) for x in lm.group(1).split()}
+            cur = None
+    return blocks
+
+
+def parse_local_homes(body):
+    """{pseudo: hard reg} from `;; Register N in M.` -- the GROUND TRUTH the
+    derived walk self-validates against (dump_local_alloc, local-alloc.c:2490)."""
+    return {int(m.group(1)): int(m.group(2)) for m in _HOME.finditer(body)}
+
+
+def local_rtl_objects(body):
+    """(kind, uid, text) for each col-0 RTL object, in dump (chain == exec)
+    order. Flag-suffixed headers (`insn/i`) are handled; comment/census lines
+    (which never start with `(`) are ignored."""
+    obj, kind, num = [], None, None
+    for line in body.splitlines():
+        if (m := _OBJ.match(line)):
+            if kind is not None:
+                yield kind, num, "\n".join(obj)
+            kind, num, obj = m.group(1), int(m.group(2)), [line]
+        elif kind is not None:
+            obj.append(line)
+    if kind is not None:
+        yield kind, num, "\n".join(obj)
+
+
+def _balanced_from(text, i):
+    """text[i]=='('. Return (substring, index-after-close)."""
+    depth = 0
+    for j in range(i, len(text)):
+        if text[j] == "(":
+            depth += 1
+        elif text[j] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[i:j + 1], j + 1
+    return text[i:], len(text)
+
+
+def reg_of(expr):
+    """Regno if expr is `(reg N ...)` or `(subreg .. (reg N) ..)` at top, else
+    None. Matches pseudos (no name) and hard regs (named) alike."""
+    expr = expr.strip()
+    m = _REG_HEAD.match(expr) or _SUBREG_HEAD.match(expr)
+    return int(m.group(1)) if m else None
+
+
+def _split_children(expr):
+    """(head, [child substrings]) of a parenthesised `(HEAD c1 c2 ...)`; a `[..]`
+    vector body is skipped (its sets are found by the top-level (set ...) scan)."""
+    inner = expr.strip()[1:-1]
+    n, i = len(inner), 0
+    while i < n and not inner[i].isspace() and inner[i] not in "([":
+        i += 1
+    head, kids = inner[:i], []
+    while i < n:
+        c = inner[i]
+        if c.isspace():
+            i += 1
+        elif c == "(":
+            sub, i = _balanced_from(inner, i)
+            kids.append(sub)
+        elif c == "[":
+            depth = 0
+            while i < n:
+                depth += (inner[i] == "[") - (inner[i] == "]")
+                i += 1
+                if depth == 0:
+                    break
+        else:
+            j = i
+            while j < n and not inner[j].isspace() and inner[j] not in "()[]":
+                j += 1
+            kids.append(inner[i:j])
+            i = j
+    return head, kids
+
+
+def src_operands(src):
+    """The direct reg operands of a SET_SRC, in order -- the tie candidates
+    block_alloc's loop sees. A MEM is ONE opaque memory operand: the registers
+    inside its address are NOT tie candidates (the load-tie trap that made a
+    pointer's home merge with the value it loads)."""
+    if (r := reg_of(src)) is not None:
+        return [r]
+    head, kids = _split_children(src)
+    if head.startswith("mem"):
+        return []
+    return [rk for rk in (reg_of(k) for k in kids) if rk is not None]
+
+
+def top_level_sets(text):
+    """[(dest_expr, src_expr)] for every top-level (set DEST SRC) in the insn
+    PATTERN -- a PARALLEL (divmod, call) has several. Only the FIRST (operand 0)
+    is a tie/suggestion candidate; the rest merely birth their dest."""
+    flat = " ".join(text.split())
+    out, i = [], 0
+    while (k := flat.find("(set ", i)) >= 0:
+        group, _ = _balanced_from(flat, k)
+        _, kids = _split_children(group)
+        if len(kids) >= 2:
+            out.append((kids[0], kids[1]))
+        i = k + 5
+    return out
+
+
+def _local_pseudos_in_block(homes, census, b):
+    """The homed local pseudos whose census block is b."""
+    return {p for p in homes if census.get(p, {}).get("block") == b}
+
+
+def local_alloc_view(name, lreg_body):
+    """Simulate block_alloc for every basic block and self-validate.
+
+    Returns a dict: homes (cc1's printed truth), result (our simulated homes),
+    per_block (quantities/walk/assignment/hard-live), divergences, validated,
+    diagnostics. See the module comment for the contract."""
+    census = parse_local_census(lreg_body)
+    blocks = parse_local_blocks(lreg_body)
+    homes = parse_local_homes(lreg_body)
+    objects = list(local_rtl_objects(lreg_body))
+    pos = {uid: i for i, (_, uid, _) in enumerate(objects)}
+
+    result, diagnostics, per_block = {}, [], {}
+
+    for b in sorted(blocks):
+        locals_b = _local_pseudos_in_block(homes, census, b)
+        if not locals_b:
+            continue
+        first, last = blocks[b]["first"], blocks[b]["last"]
+        if first not in pos or last not in pos:
+            diagnostics.append(f"block {b}: first/last insn not in RTL body")
+            continue
+        # Objects of the block, in chain order, numbered like block_alloc
+        # (every NON-note object -- insn/jump/call/label/barrier -- increments).
+        objs, numbering, k = [], {}, 0
+        for j in range(pos[first], pos[last] + 1):
+            kind, uid, text = objects[j]
+            if kind != "note":
+                k += 1
+            numbering[uid] = k
+            objs.append((kind, uid, text))
+
+        birth, death, ties = {}, {}, []
+        copy_sugg, arith_sugg, hard_events = {}, {}, []
+
+        for kind, uid, text in objs:
+            if kind == "note":
+                continue
+            k = numbering[uid]
+            flat = " ".join(text.split())
+            # Deaths: REG_DEAD at 2k, REG_UNUSED (dead output) at 2k+1.
+            for p in (int(x) for x in _DEAD.findall(flat)):
+                if p >= FIRST_PSEUDO:
+                    if p in locals_b:
+                        death[p] = 2 * k
+                elif p < 32:
+                    hard_events.append((p, "dead", 2 * k))
+            for p in (int(x) for x in _UNUSED.findall(flat)):
+                if p >= FIRST_PSEUDO:
+                    if p in locals_b:
+                        death[p] = 2 * k + 1
+                elif p < 32:
+                    hard_events.append((p, "unused", 2 * k + 1))
+            # Births (every set), then tie + suggestions (ONLY operand 0).
+            born_before = set(birth)
+            sets = top_level_sets(text)
+            for dest_expr, _src in sets:
+                dest = reg_of(dest_expr)
+                if dest is None:
+                    continue
+                if dest < FIRST_PSEUDO:
+                    if dest < 32:
+                        hard_events.append((dest, "set", 2 * k))
+                elif dest in locals_b and dest not in birth:
+                    birth[dest] = 2 * k
+            if sets:
+                dest = reg_of(sets[0][0])                 # r0 = operand 0
+                ops = src_operands(sets[0][1])
+                bucket = copy_sugg if reg_of(sets[0][1]) is not None else arith_sugg
+                if dest is not None and dest >= FIRST_PSEUDO and dest in locals_b:
+                    # A HARD operand records a suggestion for r0 AND reg_is_born's
+                    # r0 (line 1906), committing it so no later pseudo can tie; a
+                    # tie also needs r0 born THIS insn (reg_qty==-2, line 1946).
+                    committed = dest in born_before
+                    for r1 in ops:
+                        if r1 < FIRST_PSEUDO:
+                            if 2 <= r1 <= 25:
+                                bucket.setdefault(dest, set()).add(r1)
+                            committed = True
+                        elif not committed and r1 in locals_b and r1 in death \
+                                and death[r1] == 2 * k:
+                            ties.append((dest, r1))
+                            break
+                elif dest is not None and 2 <= dest <= 25:
+                    # r0 a hard reg -> suggested to each pseudo operand (call-arg
+                    # / return copies): combine_regs' sreg-hard branch.
+                    for r1 in ops:
+                        if r1 >= FIRST_PSEUDO and r1 in locals_b:
+                            bucket.setdefault(r1, set()).add(dest)
+            for c in (int(x) for x in _CLOBBER.findall(flat)):
+                if c >= FIRST_PSEUDO:
+                    if c in locals_b and c not in birth:
+                        birth[c] = 2 * k - 1
+                elif c < 32:
+                    hard_events.append((c, "set", 2 * k - 1))
+
+        # Quantities: union-find over ties (output joins the dying input's qty).
+        parent = {p: p for p in locals_b}
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        for out, src in ties:
+            if out in parent and src in parent:
+                parent[find(out)] = find(src)
+        members_of = {}
+        for p in locals_b:
+            members_of.setdefault(find(p), set()).add(p)
+
+        quantities = []
+        for members in members_of.values():
+            bs = [birth[m] for m in members if m in birth]
+            ds = [death[m] for m in members if m in death]
+            if not bs or not ds:
+                diagnostics.append(
+                    f"block {b}: quantity {sorted(members)} has no "
+                    f"birth/death in the RTL body (model incomplete)")
+            qb = min(bs) if bs else 0
+            qd = max(ds) if ds else qb
+            refs = sum(census[m]["refs"] for m in members)
+            size = max(census[m]["size_words"] for m in members)
+            calls = sum(census[m]["calls"] for m in members)
+            cs, ars = set(), set()
+            for m in members:
+                cs |= copy_sugg.get(m, set())
+                ars |= arith_sugg.get(m, set())
+            quantities.append(dict(
+                members=members, birth=qb, death=qd, refs=refs, size=size,
+                calls=calls, copy_sugg=cs, arith_sugg=ars,
+                pri=qty_cmp_pri(refs, size, qd - qb)))
+        # qty number = birth (alloc) order; lower birth -> lower number.
+        quantities.sort(key=lambda q: (q["birth"], min(q["members"])))
+        for i, q in enumerate(quantities):
+            q["qnum"] = i
+
+        # Hard-reg live intervals. A hard reg (call arg / return value) is set
+        # and killed repeatedly; track precise [set, dead] intervals -- a 'set'
+        # opens if not already open, a death closes an open one, an unmatched
+        # death is IGNORED (never a spurious block-long [0, X] that hides a reg).
+        hard_live, cur_open = {}, {}
+        for r in blocks[b]["live_start"]:
+            if r < 32:
+                cur_open[r] = 0
+        for r, ev, idx in sorted(hard_events, key=lambda e: (e[2], e[1] == "set")):
+            if ev == "set":
+                cur_open.setdefault(r, idx)
+            elif r in cur_open:
+                hard_live.setdefault(r, []).append((cur_open.pop(r), idx))
+        end_idx = 2 * (max((numbering[o[1]] for o in objs), default=0)) + 2
+        for r, b0 in cur_open.items():
+            hard_live.setdefault(r, []).append((b0, end_idx))
+
+        def hard_busy(reg, lo, hi):
+            return any(a < hi and lo < z for (a, z) in hard_live.get(reg, []))
+
+        assigned, occupied = {}, {}
+        byq = {q["qnum"]: q for q in quantities}
+        n = len(quantities)
+
+        def cand_list(q):
+            return GR_CALLEE_CANDIDATES if q["calls"] > 0 else GR_CANDIDATES
+
+        def is_free(reg, lo, hi):
+            # A zero-length quantity (birth==death) has an EMPTY [born,dead)
+            # range: find_free_reg's live-scan never runs, so it conflicts with
+            # nothing and takes the lowest candidate.
+            if lo >= hi:
+                return True
+            if hard_busy(reg, lo, hi):
+                return False
+            return not any(a < hi and lo < z for (a, z) in occupied.get(reg, []))
+
+        def place(q, reg):
+            assigned[q["qnum"]] = reg
+            if q["birth"] < q["death"]:
+                occupied.setdefault(reg, []).append((q["birth"], q["death"]))
+            for m in q["members"]:
+                result[m] = reg
+
+        def cmp_pri(a, bb):                              # qty_compare
+            return byq[bb]["pri"] - byq[a]["pri"]
+
+        def sugg_val(q):                                 # QTY_CMP_SUGG
+            ncs, ns = len(q["copy_sugg"]), len(q["arith_sugg"])
+            return ncs if ncs else ns * FIRST_PSEUDO
+
+        def cmp_sugg(a, bb):                             # qty_sugg_compare
+            t = sugg_val(byq[a]) - sugg_val(byq[bb])
+            return t if t != 0 else byq[bb]["pri"] - byq[a]["pri"]
+
+        # Pass 1: quantities with a suggested hard reg get first crack at it, in
+        # qty_sugg_compare order: copy-suggs (lowest free), then arith-suggs.
+        for qn in block_order(n, cmp_sugg):
+            q = byq[qn]
+            if not (q["copy_sugg"] or q["arith_sugg"]):
+                continue
+            cand = set(cand_list(q))
+            lo, hi = q["birth"], q["death"]
+            pools = ([q["copy_sugg"], q["arith_sugg"]] if q["copy_sugg"]
+                     else [q["arith_sugg"]])
+            for pool in pools:
+                if (hit := next((r for r in sorted(pool)
+                                 if r in cand and is_free(r, lo, hi)), None)):
+                    place(q, hit)
+                    break
+        # Pass 2: everything still unplaced, in qty_compare order, lowest free.
+        main_order = block_order(n, cmp_pri)
+        for qn in main_order:
+            q = byq[qn]
+            if qn in assigned:
+                continue
+            lo, hi = q["birth"], q["death"]
+            if (hit := next((r for r in cand_list(q)
+                             if is_free(r, lo, hi)), None)) is not None:
+                place(q, hit)
+
+        per_block[b] = dict(
+            quantities=quantities, walk=[byq[qn] for qn in main_order],
+            assigned=assigned, hard_live=hard_live, locals=locals_b)
+
+    divergences = validate_local(result, homes)
+    return dict(name=name, homes=homes, census=census, blocks=blocks,
+                per_block=per_block, result=result, divergences=divergences,
+                validated=not divergences and bool(homes),
+                diagnostics=diagnostics)
+
+
+def validate_local(result, homes):
+    """[(pseudo, our_reg, cc1_reg)] where the simulation disagrees with cc1's
+    printed home. Empty == every home reproduced. This is the guard: a non-empty
+    return ABORTS the derived view (the walk/assignment model is wrong)."""
+    bad = []
+    for p in sorted(homes):
+        if result.get(p) != homes[p]:
+            bad.append((p, result.get(p), homes[p]))
+    return bad
+
+
+def conflicts_in_block(quantities):
+    """{qnum: [qnums whose live range overlaps]} within a block -- the mutual
+    conflicts the walk resolves (two overlapping quantities cannot share a
+    register). Empty [birth,death) ranges (zero-length qtys) conflict nothing."""
+    out = {}
+    for a in quantities:
+        la, ha = a["birth"], a["death"]
+        out[a["qnum"]] = [c["qnum"] for c in quantities
+                          if c["qnum"] != a["qnum"]
+                          and la < c["death"] and c["birth"] < ha]
+    return out
+
+
+def report_local(view, dump_path):
+    """Print the RAW per-pseudo table (always) then, only if the simulation
+    self-validated against cc1's printed homes, the DERIVED quantities + walk."""
+    name, homes = view["name"], view["homes"]
+    census, per_block = view["census"], view["per_block"]
+    print(f"function {name}: LOCAL-alloc quantity walk (block_alloc)")
+    print(f"  dump: {dump_path}")
+    if not homes:
+        # A guarded source measures the DRAFT; an empty homes list is a real
+        # ERROR (cc1 produced no `;; Register N in M`), never a vacuous success.
+        print("  ERROR: no `;; Register N in M` homes in this .lreg dump -- "
+              "nothing was locally allocated (or the dump is empty/for the wrong")
+        print("  variant). This is NOT 'no quantities'; check the dump path above.")
+        return
+    for d in view["diagnostics"]:
+        print(f"  note: {d}")
+
+    # ---- RAW: always shown, straight from the dump (the hand-trace). ----
+    print(f"\n  RAW homes ({len(homes)} local pseudos, grouped by block; birth/"
+          "death are per-block insn*2 indices):")
+    shown = set()
+    for b in sorted(per_block):
+        pb = per_block[b]
+        qby_member = {m: q for q in pb["quantities"] for m in q["members"]}
+        rows = sorted(pb["locals"])
+        if not rows:
+            continue
+        print(f"    block {b}:")
+        print(f"      {'pseudo':>7} {'home':>5} {'refs':>4} {'sz':>2} "
+              f"{'birth':>5} {'death':>5} {'QTY_CMP_PRI':>11}  calls")
+        for p in rows:
+            q = qby_member.get(p, {})
+            c = census.get(p, {})
+            print(f"      {('p'+str(p)):>7} {rn(homes[p]):>5} "
+                  f"{c.get('refs','?'):>4} {c.get('size_words','?'):>2} "
+                  f"{q.get('birth','?'):>5} {q.get('death','?'):>5} "
+                  f"{q.get('pri','?'):>11}  {c.get('calls',0)}")
+            shown.add(p)
+    orphans = sorted(set(homes) - shown)
+    if orphans:
+        print("    (homes whose census block was not matched to a block body: "
+              + " ".join(f"p{p}->{rn(homes[p])}" for p in orphans) + ")")
+
+    # ---- DERIVED: only if the simulated assignment self-validated. ----
+    div = view["divergences"]
+    print()
+    if not view["validated"]:
+        print("  *** SELF-VALIDATION FAILED -- DERIVED WALK REFUSED ***")
+        print(f"  The simulated assignment diverges from cc1's printed homes at "
+              f"{len(div)} pseudo(s):")
+        for p, mine, cc1 in div[:12]:
+            b = census.get(p, {}).get("block")
+            print(f"    p{p} (block {b}): simulated "
+                  f"{rn(mine) if mine is not None else '(unplaced)'} != cc1 "
+                  f"{rn(cc1)}")
+        if len(div) > 12:
+            print(f"    ... and {len(div) - 12} more")
+        print("  The walk order or assignment model is WRONG here, so the raw "
+              "table above is the")
+        print("  trustworthy view; the derived quantities/order are withheld. "
+              "This divergence is")
+        print("  itself a finding about the local-alloc model -- report it. "
+              "(blind spot: the")
+        print("  suggestion/coalescing model may be incomplete for this block.)")
+        return
+
+    print(f"  self-validated: simulated assignment reproduced all {len(homes)} "
+          "of cc1's printed homes, 0 divergences.")
+    print("  DERIVED walk -- cc1 colours each block's quantities in DESCENDING "
+          "QTY_CMP_PRI order")
+    print("  (the small-block quirk of local-alloc.c:1638 aside), taking the "
+          "lowest free reg; a")
+    print("  quantity that crosses a call may use only $s0-$s7. blind spot: the "
+          "quantity/tie")
+    print("  structure is INFERRED (local-alloc prints only final homes), but "
+          "the assignment it")
+    print("  implies matches cc1's homes exactly, which is the check.")
+    for b in sorted(per_block):
+        pb = per_block[b]
+        if not pb["quantities"]:
+            continue
+        conf = conflicts_in_block(pb["quantities"])
+        print(f"\n    block {b} -- walk order ({len(pb['quantities'])} "
+              "quantities):")
+        print(f"      {'#':>2} {'qty (pseudos)':>18} {'home':>5} {'refs':>4} "
+              f"{'[birth,death)':>13} {'pri':>9}  suggests / conflicts")
+        for q in pb["walk"]:
+            reg = pb["assigned"].get(q["qnum"])
+            sg = sorted(q["copy_sugg"]) + sorted(q["arith_sugg"])
+            sgs = "sugg " + "/".join(rn(r) for r in sg) if sg else ""
+            cf = conf.get(q["qnum"], [])
+            cfs = ("conflicts q" + ",q".join(str(x) for x in cf)) if cf else ""
+            tag = "  ".join(x for x in (sgs, cfs) if x)
+            mem = ",".join("p" + str(m) for m in sorted(q["members"]))
+            print(f"      {q['qnum']:>2} {mem:>18} "
+                  f"{(rn(reg) if reg is not None else '-'):>5} {q['refs']:>4} "
+                  f"{('['+str(q['birth'])+','+str(q['death'])+')'):>13} "
+                  f"{q['pri']:>9}  {tag}")
+    print("\n  reading: to move a LOCAL pseudo's register, change its quantity's "
+          "QTY_CMP_PRI rank")
+    print("  (refs / live span) so the walk reaches it earlier/later, or seed a "
+          "copy so it")
+    print("  coalesces into a differently-homed quantity. See "
+          "docs/matching-cookbook.md.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("target")
@@ -688,6 +1289,14 @@ def main():
                          "order, and a SELF-VALIDATION verdict — divergence means the "
                          "model is wrong and the output is refused. Asked for by three "
                          "lanes; two called it the highest-value gap they hit.")
+    ap.add_argument("--local", action="store_true",
+                    help="the LOCAL-alloc quantity walk (block_alloc): per-block "
+                         "quantities, their QTY_CMP_PRI priorities, the descending "
+                         "walk order and conflicts, plus a SELF-VALIDATION verdict — "
+                         "the derived walk is shown ONLY if a simulated assignment "
+                         "reproduces cc1's printed `;; Register N in M` homes, else it "
+                         "is refused and only the raw table prints. This is the "
+                         "local-alloc-tie view `--order` (global allocnos) cannot see.")
     ap.add_argument("--notes", action="store_true",
                     help="show ALL REG_EQUIV/REG_EQUAL notes, not just the LIVE ones")
     ap.add_argument("--compare", nargs=2, type=int, metavar=("FIRST", "SECOND"),
@@ -700,6 +1309,9 @@ def main():
     ap.add_argument("--prefer", metavar="HARD",
                     help="focus allocnos carrying a hard-register preference (a0, v1, ...)")
     args = ap.parse_args()
+    if args.local and args.raw:
+        ap.error("--local needs the .lreg dump; it is not compatible with --raw "
+                 "(which produces only a greg dump)")
     if args.enclosed_refs is not None and args.enclosed_refs <= 0:
         ap.error("--enclosed-refs must be positive")
     if args.enclosed_refs is not None and not (args.compare or args.between):
@@ -735,6 +1347,20 @@ def main():
         usage_dump = ""
     funcs = split_functions(dump)
     usage_funcs = split_functions(usage_dump)
+
+    if args.local:
+        # The local-alloc walk lives entirely in the .lreg dump.
+        want = args.func or default_func
+        chosen = [f for f in usage_funcs if want is None or f == want] \
+            or list(usage_funcs)
+        if not chosen:
+            sys.exit("regalloc: no functions in the lreg dump (did it compile?)")
+        for i, f in enumerate(chosen):
+            if i:
+                print()
+            report_local(local_alloc_view(f, usage_funcs[f]), lreg)
+        return
+
     if not funcs:
         sys.exit("regalloc: no functions in the greg dump (did it compile?)")
 
