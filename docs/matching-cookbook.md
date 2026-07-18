@@ -1689,7 +1689,7 @@ guards, no flag.
   (ProcMiscSprite's error string, 8+ pages off as a fresh literal).
 - `-fdollars-in-identifiers` is required for `reference/ghidra_types.h`.
 
-### 3.18 Toolchain boundaries — park-on-sight classes
+### 3.18 Toolchain boundaries and distinctive expression clues
 
 - **The PsyQ SDK block (0x80060000+) is a different compiler.** Trivial-frame
   epilogue tell: sp-restore BEFORE `jr ra` with a bare `nop` slot — our cc1
@@ -1699,13 +1699,17 @@ guards, no flag.
   per game (LIBGS's dmyGs* matched). Read `jr ra`'s delay slot before spending
   anything on an SDK cluster. `EVENT_OBJ_80/90/BC` are shared epilogues, not
   functions.
-- **The 3-insn sign-extension split (`sll 16 / sra k / sra 16-k`)** has no
-  natural-C form (all respellings refold; verified exhaustively) — exactly
-  three exist (GetPad, FUN_8001b174, GetPadXY), all parked; triage.py names the
-  class. Do NOT confuse with the 2-insn `sll 16 / sra K` (a short index
-  sign-extended and scaled — perfectly matchable). PClseek's `break 0x107`
-  BIOS trap likewise stays parked (no C representation; gte-policy excludes
-  it).
+- **The 3-insn split (`sll 16 / sra k / sra 16-k`) is matchable ordinary C.**
+  The former park-on-sight rule was a local-minimum error: all three game
+  examples (`GetPad`, `GetPadXY`, `FUN_8001b174`) are now exact. Their human
+  source first forms the API's encoded port (`s32 port = no << 4`) and then
+  consumes both halves in `PadPort[port >> 4][port & 3]`. Because the shared
+  encoded value has two distinct consumers, cc1 naturally retains the three
+  shifts. Treat this sequence as evidence for an encoded/shared value, not as
+  an optimizer barrier or inline-assembly boundary. The ordinary 2-insn
+  `sll 16 / sra K` remains the usual fused short extend-and-scale. PClseek's
+  `break 0x107` is a separate support-code question and must be judged from
+  its own compiler/demo evidence.
 - **GTE**: command opcodes assemble via splat's macros; matching is sanctioned
   ONLY through `src/main.exe/gte.h` for functions in
   `config/gte-allowlist.txt` (docs/gte-policy.md; tests pin containment).

@@ -17,8 +17,8 @@ size an agent (orchestrator).
   tools/triage.py --parked        only the shelved functions, with their reason
 
 PARKED functions are ones we already investigated and consciously shelved (a
-documented `STATUS: NON_MATCHING` in their .c — sub-C register ties, the
-sll16/sra12/sra4 sign-extension class, etc). They are hidden by default: their
+documented `STATUS: NON_MATCHING` in their .c — usually a measured compiler
+residual). They are hidden by default: their
 features still look easy, so leaving them in the list sends agents down dead
 ends we have already paid for. Read the .c's STATUS note before reviving one.
 
@@ -144,7 +144,7 @@ COP2_MOVES = {"lwc2", "swc2", "mfc2", "mtc2", "cfc2", "ctc2"}
 # include/gte_macros.inc (68 macros) which macro.inc includes, so the region IS
 # splittable and every one of these functions is carved. What still blocks a
 # MATCH is that no C construct emits a GTE opcode: that needs the inline-asm
-# policy decision (same one as GetPad/PClseek). Keep them de-ranked, say why.
+# policy decision. Keep them de-ranked, say why.
 GTE_CMD = "c2"
 
 
@@ -158,11 +158,11 @@ def _shamt(ops):
 def signext_split(win):
     """True for the `sll r,r,16 / sra r,r,k / sra r,r,16-k` (k != 16) triple.
 
-    That's a short's sign-extension FUSED with a left-scale, and it has no
-    natural-C spelling: cc1 refolds every plain-arithmetic respelling back to
-    the textbook 2-shift sll16/sra16. Whole game code has exactly three (the
-    GetPad/FUN_8001b174/GetPadXY trio), all parked pending the inline-asm
-    policy — so flag it rather than let it read as a TRIVIAL target.
+    This is a useful source clue, not a hard class.  The three game examples
+    all match from the ordinary encoded-pad-port idiom: first form
+    ``port = no << 4``, then decode both halves with ``port >> 4`` and
+    ``port & 3``.  cc1 preserves the shared value and naturally emits the
+    three shifts.  Retain the detector so triage can point at that idiom.
     """
     if len(win) != 3:
         return False
@@ -259,8 +259,8 @@ def docs_for(f):
     if f["floats"]:
         d.append(("(sparse in cookbook)", "float/GTE ops — few documented idioms yet"))
     if f["signext"]:
-        d.append(("Toolchain gotchas",
-                  "sll16/sra-split sign-extension — no natural-C form; see GetPad.c"))
+        d.append(("Expressions",
+                  "three-shift encoded-value split — see exact GetPad/GetPadXY sources"))
     if f["gtecmd"]:
         d.append(("Toolchain gotchas",
                   "GTE command opcodes — matchable via the restricted gte.h "
@@ -283,7 +283,8 @@ def score(f, sim):
     base += 40 * f["loops"]
     base += 30 * (f["frame"] > 0x200)
     base += 5 * f["callees"]
-    base += 400 * bool(f["signext"])  # no natural-C form (GetPad class)
+    # The three-shift pattern is exact, ordinary C in the pad family.  It is a
+    # positive source clue, not a difficulty penalty.
     base += 800 * bool(f["gtecmd"])   # splittable, but no C form for GTE ops
     base += 400 * bool(f["cop2"])     # assembles, but no C spelling
     if sim >= 0.99:
@@ -328,7 +329,7 @@ def why(f, sim, twin):
     if f["indirect"]:
         bits.append("indirect-call")
     if f["signext"]:
-        bits.append("SIGNEXT-SPLIT (GetPad class — likely unmatchable)")
+        bits.append("ENCODED-VALUE SPLIT (matchable GetPad idiom)")
     bits.append(f"{f['callees']} callees")
     if sim >= 0.99:
         bits.append(f"NEAR-CLONE of {twin} — clone it")

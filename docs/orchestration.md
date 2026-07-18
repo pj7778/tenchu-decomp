@@ -53,7 +53,7 @@ tightly coupled family) per isolated worktree:
 1. `nix develop --command 'tools/triage.py'` → pick a batch of **5 clean-seam
    functions**. Clean seam = non-jump-table, ≤~500 bytes, non-dispatch, ideally
    with a matched twin (`~0.NN to <Twin>`). triage already hides parked functions
-   and de-ranks the GTE/SIGNEXT classes; you still filter OUT `switchD`,
+   and de-ranks genuine GTE/COP2 boundaries; you still filter OUT `switchD`,
    `Think3*`, `handle_char_state_*`, `0x80060xxx`, and — until the inline-asm
    policy lands — **`DrawTMD`**, whose handler interface uses non-ABI live
    registers (m2c confirms the callees read `input_t0/t3/t5`). Prefer trivial/easy
@@ -114,7 +114,7 @@ Everything the pipeline needs, in the order you touch it:
 
 | Tool | Does |
 |---|---|
-| `tools/triage.py` | rate every function EASY..VERY-HARD + why + relevant cookbook sections; `--leverage` = call in-degree; `<Name>` = detail; `--parked` = the shelved ones + why. Pick targets. It now **hides** functions already parked NON_MATCHING and flags the two un-matchable idiom classes (`GTE CMD — UN-SPLITTABLE`, `SIGNEXT-SPLIT`), so the default list is all live targets. |
+| `tools/triage.py` | rate every function EASY..VERY-HARD + why + relevant cookbook sections; `--leverage` = call in-degree; `<Name>` = detail; `--parked` = the shelved ones + why. Pick targets. It **hides** functions already parked NON_MATCHING, flags genuine GTE/COP2 boundaries, and recognizes the matchable encoded-value three-shift clue demonstrated by GetPad. |
 | `tools/findsimilar.py [--targets]` | mnemonic-similarity ranking (nearest matched / easiest unmatched). |
 | `tools/siblingdiff.py <Name> [<Sibling>] [--demo\|--compose]` | **the drafting kickstart for related functions** — ordinary mode auto-picks the nearest MATCHED retail sibling, prints its C plus a normalized asm diff. `--demo` instead aligns the same-named earlier demo function, relativizing local branches and replacing cross-build call/jump addresses with shared function names. It also flags a demo-only named call when most of that retail helper's mnemonic bigrams occur inside the target—the mechanical tell for a likely local inline expansion. `--compose` compares the target simultaneously with its same-named demo body and the top matched siblings (or `--sources A,B`): the demo claims its exact normalized runs first, ranked siblings fill the gaps, and the report includes per-source potential coverage, a compressed provenance map, and unmapped spans. Identical runs collapse in pairwise modes. These are source-structure hints; retail bytes remain the exact-match authority. |
 | `tools/matcher-prompt.py <Name>` | **generate the agent launch prompt** — never hand-write it. Auto-fills address/size, jump-table detection, nearest matched worked-examples, TU family, and the evolving `GUIDANCE` block. Routes findsimilar-1.00 near-clones to an inline recipe. |
@@ -1321,9 +1321,10 @@ findrule.
   pinned-register locals, ONLY for functions whitelisted in
   `config/gte-allowlist.txt`; containment + whitelist are unit-tested.
   `SetDepthQ` matched byte-exactly as the pipeline spike. The
-  `GetPad`/`GetPadXY`/`FUN_8001b174` sign-extension trio and `PClseek` are
-  deliberately EXCLUDED (plain-C / libsn-assembly originals — an asm body
-  would be unfaithful; they stay parked). Family order: `drawF3` anchor →
+  `GetPad`/`GetPadXY`/`FUN_8001b174` trio is deliberately EXCLUDED and now
+  exact plain C: the encoded-port model naturally emits the former
+  "SIGNEXT-SPLIT" signature. `PClseek` is a separate support-code question;
+  neither case expands GTE policy. Family order: `drawF3` anchor →
   15 `draw*` clones → the three twin pairs → `FUN_80057b80` → `DrawTMD`. m2c
   can already read the region (`--input-regs`). ArrangeLocalMatrix was an old
   false positive in this list: its `$t2..$t6` values are internal loop

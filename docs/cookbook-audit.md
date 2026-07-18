@@ -215,7 +215,7 @@ trap is charter evidence) · 7152 hand-written range-split is load-bearing
 | loop.c hoisting economy (5860–5933) | KEEP — canon home; absorb 7185/7228/7260/5906/4497. |
 | --expand-div (5933–5964) | Compress to ~10 ln: the `break 7/6` tell + "run `maspsxflags --write`". |
 | Matching main (5964–5977) | KEEP (tiny). |
-| Toolchain gotchas (5977–6363, 386 ln) | Split: SDK-boundary, GTE policy, SIGNEXT class = KEEP (park-on-sight recognisers, already partly in triage.py). The FUN_80057b80/AddEnemy investigation bullets (6135–6360) → park headers / compiler-facts. Net ~50% cut. |
+| Toolchain gotchas (5977–6363, 386 ln) | Split: SDK-boundary and GTE policy = KEEP. The former SIGNEXT park-on-sight classification was later falsified by exact GetPad/GetPadXY/FUN_8001b174 encoded-port source and was removed from triage. The FUN_80057b80/AddEnemy investigation bullets (6135–6360) → park headers / compiler-facts. Net ~50% cut. |
 
 ---
 

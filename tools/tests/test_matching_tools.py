@@ -5862,10 +5862,10 @@ class GtePolicyTests(unittest.TestCase):
     .c files with literal __asm__ are already blocked from ever completing by
     matchdiff's source_completion_blockers; the gap these tests close is asm
     smuggled through a header (which that blocker cannot see) and gte.h use
-    spreading beyond the owner-approved whitelist. The three parked
-    investigation drafts (PClseek/GetPad/FUN_8001b174) legitimately contain
-    __asm__ inside their NON_MATCHING-guarded bodies and are exempt here
-    because they are .c files, not headers.
+    spreading beyond the owner-approved whitelist. Guarded handwritten or
+    support-code reference reconstructions may legitimately contain __asm__
+    inside their .c bodies; this test governs headers, while completion checks
+    and the handwritten manifest govern those source files separately.
     """
 
     GTE_HEADER = os.path.join("src", "main.exe", "gte.h")

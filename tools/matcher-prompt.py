@@ -104,9 +104,11 @@ GUIDANCE = [
     "such function drops the symbol. Add a plain `D_XXXXXXXX = 0xXXXXXXXX;` to "
     "config/symbols.main.exe.txt (that file has NO comment syntax).",
 
-    "A 3-instruction `sll 16 / sra k / sra 16-k` (k!=16) is the blocked GetPad "
-    "sign-extension class — park it. The ordinary 2-instruction `sll 16 / sra K` "
-    "is just a short-indexed array's fused extend+scale and matches fine.",
+    "A 3-instruction `sll 16 / sra k / sra 16-k` (k!=16) is MATCHABLE ordinary "
+    "C in the pad family. GetPad/GetPadXY/FUN_8001b174 form an encoded value "
+    "with `port = no << 4`, then consume both halves as `port >> 4` and "
+    "`port & 3`; the shared expression naturally preserves all three shifts. "
+    "Treat the sequence as a data-model clue, never a park-on-sight class.",
 
     "Before trusting the Ghidra export's SIZE, remember two entries are "
     "under-sized (LoadCard, FUN_800593a0) and a truncated carve still builds "
