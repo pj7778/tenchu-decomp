@@ -49,26 +49,9 @@
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GetPadXY", GetPadXY);
 #else
-// DO NOT EDIT THIS
-// add your version beneath it
-//
-// void GetPadXY(short no, short *x, short *y)
-// {
-//     *x = (short)PadPort[no][0].unk_2[0];
-//     *y = (short)PadPort[no][0].unk_2[1];
-// }
-//
-//
-// matched (same idiom as GetPad.c): the `no << 4` split with the `pad & 3`
-// second use keeps combine from refolding to the 2-shift form; the pointer
-// temp computes the base once and defers lui/addiu to after the ×56 offset.
-// unk_2 is u16, so the reads are lhu + sh (no cast).
 void GetPadXY(short no, short *x, short *y)
 {
-    controller_input *p;
-    s32 pad = no << 4;
-    p = &PadPort[pad >> 4][pad & 3];
-    *x = p->unk_2[0];
-    *y = p->unk_2[1];
+    *x = (short)PadPort[no][0].unk_2[0];
+    *y = (short)PadPort[no][0].unk_2[1];
 }
 #endif
