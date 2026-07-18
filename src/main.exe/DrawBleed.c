@@ -41,6 +41,12 @@
  * zero prior autorules/permuter/RTL history; length still matches exactly —
  * this residual is a register-coalescing question, not a wrong value).
  *
+ * ROUND 2026-07-18: fixed-permuter re-screened (timeout 300, -j4,
+ * --stop-on-zero, ~28k iters). Authoritative full-link rescore: base.c is
+ * best at 8; the only sub-8 lead remains the REJECTED uninitialized-`param2`
+ * scaffold documented below (not even re-found this run). Plateau at 8 — floor
+ * stands.
+ *
  * DrawBleed (0x8003437c, EFFECT.C:910) — the blood-drip effect's per-frame
  * draw: while `mode==0` and `time!=0`, advances the drip position by its
  * velocity (`pos += vec`) and drifts `vec.vy` by +1 (gravity-ish), or kills

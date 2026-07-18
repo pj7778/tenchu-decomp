@@ -35,6 +35,11 @@
  * MISMATCH) is FIXED; see "Length fix" below. The residual is a pure
  * register tie confined to one basic block; see "Residual" below.
  *
+ * ROUND 2026-07-18: fixed-permuter re-screened (timeout 300, -j4). Authoritative
+ * best is again output-25-1 at 4 — the SAME `new_var` second-pointer-identity
+ * scaffold already vetoed below (target's join block has NO third pointer
+ * register; only a2/s0). scaffold-rejected; floor at 18 stands.
+ *
  * DrawHinoko (0x800368b0, 0x134 bytes) — bomb/explosion sprite proc:
  * bumps the explosion state machine (mode 0 -> 1 with a 30-tick timer;
  * mode 1 fades an alpha value from the countdown and self-disposes at 0),

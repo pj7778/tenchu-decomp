@@ -129,6 +129,11 @@ static inline void BuildVoiceLocation(CdlLOC *loc, u8 min, u8 sec)
  * 4 differing linked bytes (down from a banked 14; matchdiff --clusters: 2
  * clusters, both pure register-operand swaps, 0 length/opcode diffs).
  *
+ * ROUND 2026-07-18: fixed-permuter re-screened (timeout 300, -j4, ~28k iters).
+ * Authoritative full-link rescore retained NOTHING below base — best is base.c
+ * at 4. Confirms the p95/p96 register-priority tie below is a genuine sub-C
+ * floor; plateau at 4 stands.
+ *
  * PSX.SYM lists two distinct nested `min`/`sec` pairs. Giving each
  * BuildVoiceLocation call its own block scope, while keeping the volume clamp
  * in an `s32`, fixes the saved-register cycle and makes the complete playback

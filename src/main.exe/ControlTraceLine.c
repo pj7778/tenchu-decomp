@@ -37,6 +37,12 @@
  * STATUS: NON_MATCHING - 10 of 504 bytes differ (4 instructions), at the
  * CORRECT length. Was 167/504 before this round.
  *
+ * ROUND 2026-07-18: fixed-permuter re-screened (timeout 300, -j4, ~29k iters).
+ * Authoritative rescore best is output-415-2 at 9 — the SAME `(-1) & 0xFFu`
+ * (== 255) sentinel-truncation scaffold already rejected below as output-415-1
+ * (functional bug: `pad == 255` never fires). scaffold-rejected; floor at 10
+ * stands.
+ *
  * The previous park's header ("18 differing instruction lines") was stale: it
  * measured 167 bytes / 49 differing instruction lines. Two of its three claims
  * were refuted by measurement this round; both of its recorded negatives were

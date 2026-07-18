@@ -49,6 +49,13 @@
  * STATUS: NON_MATCHING — 12 of 216 bytes differ (was 60; two independent,
  * fully-verified fixes closed 48 of those 60 bytes this round):
  *
+ * ROUND 2026-07-18: fixed-permuter re-screened a THIRD time (timeout 300, -j4,
+ * ~37k iters). Authoritative best output-250-1 at 9 — the same sub-12
+ * neighbourhood, reached only via three synthetic scaffolds (`char
+ * new_var=0x60` index temp, `input=prev` seed-temp copy, `while(0,result==0)`
+ * comma no-op). scaffold-rejected, consistent with the two prior rejects
+ * below; floor at 12 stands.
+ *
  *  A. (60->43, MECHANICAL — tools/autorules.py) `D_8008EA78` retyped
  *     `extern s16 D_8008EA78;` -> `extern s16 D_8008EA78[];` (`[0]` at the
  *     one use site). Both spellings emit the IDENTICAL `lui/lh` pair for the
