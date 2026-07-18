@@ -104,7 +104,7 @@ prints exactly this set (it defaults to `--scope game`):
     function: a park at 97% exact contributes ZERO matched bytes, because the default
     build still links its stub. So the payoff is the function's FULL SIZE.
 
-        6084  15.2%  StageEndScreen        (residual 202 — 96.7% exact)
+        6084  15.2%  StageEndScreen        (residual 199 — cluster B confirmed uncollectable)
         4636  26.9%  mission_score_screen  (residual 187 — HUMAN-STRUCTURE rewrite, see below)
         3796  36.4%  FUN_80057b80          (residual   8)
         2188  41.8%  start_demo_           (residual  75 — 96.6% exact)
@@ -123,10 +123,14 @@ prints exactly this set (it defaults to `--scope game`):
     (`addiu s7,zero,0x52`) emitted early, displacing 46 slots by +4 — 168 of its 202
     bytes — and it is unreachable, because the insn has `ref_count = 0` (nothing in
     the block consumes it) so `adjust_priority` is never called on it and the birthing
-    bump cannot lift it off priority 1. If that holds, StageEndScreen's 6084 bytes are
-    not collectable at any price, and the prize ranking should move to
-    `mission_score_screen` (4636) or `FUN_80057b80` (3796, residual 8). **Read the
-    dominant cluster's mechanism before spending a round on size alone.**
+    bump cannot lift it off priority 1. **CONFIRMED 2026-07-18** (sched-deps: ref=0
+    tool-verified; `.loop`: the div-magic is hoisted but current_x is NOT, so its
+    low source-LUID makes sched1 emit it first — a genuine un-raisable sched1 LUID
+    wall, not a scaffold artifact). So StageEndScreen's cluster B (168 of its bytes)
+    is not collectable at any price; the prize ranking moves to `FUN_80057b80`
+    (3796, residual 8 — also a proven sched2 wall) and the medium structural
+    residuals. **Read the dominant cluster's mechanism before spending a round on
+    size alone.**
 
     **Worked example of the human-source lever paying off (2026-07-18):
     `mission_score_screen` was rebuilt from scratch to the shape of its MATCHED
@@ -139,8 +143,13 @@ prints exactly this set (it defaults to `--scope game`):
     stays byte-identical GREEN — the raw image is unchanged), and it collapses the
     scaffolding to ONE labelled `do{}while(0)`. This is the directive in action:
     prefer the sibling-derived human shape that escapes the carrier/fence local
-    minimum over a lower byte count built on invented constructs. **StageEndScreen
-    (202) is the reverse-transfer target — same macro family, the larger sibling.**
+    minimum over a lower byte count built on invented constructs. **The reverse
+    transfer to StageEndScreen was TESTED (2026-07-18) and FAILED**: its cluster-B
+    constant `current_x` is a PERSISTENT s7 (loaded once, 5 reads = a sched1 LUID
+    wall), NOT a REG_EQUIV rematerialiser like the sibling's `resultX` — the two
+    were conflated. The lesson generalised into cookbook §4: verify the target's
+    LOAD COUNT before assuming a cluster is the mission_score_screen case. (The
+    permuter fix still bought StageEndScreen 202→199 on an UNRELATED cluster.)
   * **33 parked drafts** — each root-caused in its own `.c` header, closest at 1-10
     residual bytes. Residuals are overwhelmingly sub-C (allocation / scheduling /
     reload ties), which is why the tooling investment has overtaken target-picking as

@@ -1809,10 +1809,19 @@ re-check cheaply before honoring them:
   `li` constant shape the scaffolds were faking. +18 bytes (169→187) but ONE
   labelled `do{}while(0)` remains where many fences stood. **A "cluster is
   unreachable / ref_count=0" park conclusion reached on the SCAFFOLDED draft is
-  suspect for the same reason** — the constant a carrier fakes has no consumer,
-  but the sibling's plain variable does; re-test unreachability under the
-  sibling structure before honoring it (StageEndScreen's cluster-2 s7=0x52 is
-  the open case).
+  worth re-testing under the sibling structure** — the constant a carrier fakes
+  may have no consumer while the sibling's plain variable does. BUT verify the
+  target's LOAD COUNT first, or you conflate two opposite cases: if the target
+  loads the constant ONCE into a persistent callee-saved reg (`grep -c` the reg
+  = 1 load, N reads), it is a sched1 LUID WALL — the constant's low source-LUID
+  precedes any hoisted loop-invariant so sched1 emits it first, un-raisable — NOT
+  a REG_EQUIV loser that rematerialises per-use. Only the latter is the
+  mission_score_screen `resultX` case where the sibling-transcribe helps.
+  StageEndScreen's cluster-2 s7=0x52 was TESTED (2026-07-18) and FALSIFIED:
+  current_x is persistent (one `addiu s7,zero,0x52`, 5 reads) = a genuine sched1
+  LUID wall, and its best_x neighbour's dual-life `0x80010000` pointer is FAITHFUL
+  to the target (clean externs = LENGTH MISMATCH 6104>6084), not scaffold. The
+  transfer hypothesis was conflating the two — don't.
 - **Park format**: STATUS line with byte count, the residual's cluster
   addresses, the mechanism WITH its falsification, what was measured (numbers,
   not adjectives), and the named levers already burned. The next reader should
