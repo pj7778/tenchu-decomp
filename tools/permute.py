@@ -63,22 +63,49 @@ CPP = ("mipsel-unknown-linux-gnu-cpp -Iinclude -undef -Wall -lang-c "
 CC_FLAGS = ("-mcpu=3000 -quiet -fno-builtin -G8 -w -O2 -funsigned-char -fpeephole "
             "-ffunction-cse -fpcc-struct-return -fcommon -fverbose-asm -fgnu-linker "
             "-mgas -msoft-float").split()
-# Stock PsyQ objects can use different cc1 defaults from the game TUs. Keep
-# this table in sync with Build.hs's ccExtraFlags so every candidate is scored
-# with the flags that produced the authoritative build object.
-CC_EXTRA_FLAGS = {
-    # Stock PsyQ library leaves need not share the game's address-splitting
-    # default. Keep in sync with Build.hs's ccExtraFlags -- a permuter search
-    # under different flags than the build is searching a different program.
-    "MemCardCallback": ["-mno-split-addresses"],
-    "GS_107_OBJ_4B8": ["-mno-split-addresses"],
-    "GS_107_OBJ_51C": ["-mno-split-addresses"],
-    "FUN_80058c70": ["-fno-strength-reduce"],
-    "FUN_80059008": ["-fno-strength-reduce"],
-    "FUN_80059ff4": ["-fno-strength-reduce"],
-    "FUN_8005a3cc": ["-fno-strength-reduce"],
-    "FUN_8005961c": ["-fno-strength-reduce"],
-    "FUN_80059b08": ["-fno-strength-reduce"],
+CC_DEFAULT = "cc1-281"
+# Stock PsyQ objects can use different cc1 defaults from the game TUs. The
+# decomp's one-function files are artificial, so the executable and options
+# belong to an ORIGINAL object and are inherited by every known member. Most
+# members below are target-only today; retaining them is deliberate, because a
+# future C carve must receive the complete object profile automatically.
+ORIGINAL_OBJECT_MEMBERS = {
+    "LIBMCRD.OBJ": (
+        "MemCardStart", "MemCardStop", "MemCardExist", "FUN_80080f28",
+        "MemCardAccept", "FUN_80081164", "MemCardOpen", "MemCardClose",
+        "MemCardReadData", "FUN_8008161c", "MemCardWriteData",
+        "FUN_80081810", "MemCardReadFile", "FUN_80081a64",
+        "MemCardWriteFile", "FUN_80081c84", "MemCardGetDirentry",
+        "MemCardCallback", "MemCardSync", "MemCardCreateFile",
+        "MemCardFormat",
+    ),
+    "GS_107.OBJ": (
+        "GsSetFlatLight", "GS_107_OBJ_444", "GS_107_OBJ_4B8",
+        "GS_107_OBJ_51C",
+    ),
+    "ADT.OBJ": (
+        "AdtGetDisp", "AdtMessageBox", "AdtQuiet", "AdtFntOpen",
+        "AdtFntLoad", "AdtReleaseDisp", "AdtDmyPadRead", "AdtVsprintf",
+        "FUN_8005fe38", "FUN_8005fe88", "AdtSelect",
+    ),
+}
+ORIGINAL_OBJECT_CC_FLAGS = {
+    "LIBMCRD.OBJ": ("-mno-split-addresses",),
+    "GS_107.OBJ": ("-mno-split-addresses",),
+    "ADT.OBJ": (),
+}
+ORIGINAL_OBJECT_CC_EXECUTABLES = {
+    "ADT.OBJ": "cc1-280",
+}
+CC_FLAGS_BY_OBJECT_MEMBER = {
+    member: list(ORIGINAL_OBJECT_CC_FLAGS[obj])
+    for obj, members in ORIGINAL_OBJECT_MEMBERS.items()
+    for member in members
+}
+CC_EXECUTABLE_BY_OBJECT_MEMBER = {
+    member: ORIGINAL_OBJECT_CC_EXECUTABLES.get(obj, CC_DEFAULT)
+    for obj, members in ORIGINAL_OBJECT_MEMBERS.items()
+    for member in members
 }
 AS_FLAGS = ("-EL -Iinclude -march=r3000 -mtune=r3000 -no-pad-sections -O1 -G0").split()
 LD = "mipsel-unknown-linux-gnu-ld"
@@ -106,8 +133,13 @@ PERMUTER_PARSER_DECLS = {
 
 
 def cc_flags_for(name):
-    """Build-equivalent cc1 flags for one translation unit."""
-    return CC_FLAGS + CC_EXTRA_FLAGS.get(name, [])
+    """Build-equivalent flags inherited from this carve's original object."""
+    return CC_FLAGS + CC_FLAGS_BY_OBJECT_MEMBER.get(name, [])
+
+
+def cc_executable_for(name):
+    """Build-equivalent cc1 executable for an original object member."""
+    return CC_EXECUTABLE_BY_OBJECT_MEMBER.get(name, CC_DEFAULT)
 
 
 def add_permuter_parser_declarations(source):
@@ -472,7 +504,7 @@ IN=$(realpath "$1"); OUT=$(realpath -m "$3")
 cd {root}
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-cc1-281 {ccflags} < "$IN" > "$TMP/a.s"
+{cc} {ccflags} < "$IN" > "$TMP/a.s"
 maspsx --aspsx-version=2.77 -G8{gpexterns} < "$TMP/a.s" > "$TMP/b.s"
 mipsel-unknown-linux-gnu-as {asflags} -o "$OUT" "$TMP/b.s"
 """
@@ -933,7 +965,8 @@ def main():
     gpx = "".join(f" {f}" for f in MASPSX_EXTRA.get(name, []))
     gpx += "".join(f" --gp-extern {s}" for s in GP_EXTERNS.get(name, []))
     open(csh, "w").write(COMPILE_SH.format(
-        root=ROOT, ccflags=" ".join(cc_flags_for(name)), asflags=" ".join(AS_FLAGS),
+        root=ROOT, cc=cc_executable_for(name),
+        ccflags=" ".join(cc_flags_for(name)), asflags=" ".join(AS_FLAGS),
         gpexterns=gpx))
     os.chmod(csh, 0o755)
 

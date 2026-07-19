@@ -121,8 +121,8 @@ asFlags = ["-EL", "-Iinclude", "-march=r3000", "-mtune=r3000", "-no-pad-sections
 cpp :: FilePath
 cpp = cross "cpp"
 
-cc :: FilePath
-cc = "cc1-281"          -- PS1 GCC 2.8.1 cc1, provided on PATH by the nix devShell
+ccDefault :: FilePath
+ccDefault = "cc1-281"
 
 -- | maspsx post-processes cc1's asm so GNU @as@ reproduces PSY-Q ASPSX's bytes
 -- (div traps, load-delay nops, $at/li/move expansion, $gp small-data layout).
@@ -517,21 +517,90 @@ ccFlags =
   ]
 
 -- Stock PsyQ library objects were not necessarily built with the game's
--- translation-unit defaults.  LIBMCRD's callback-slot swap keeps `la` as one
--- unsplit address macro; splitting it lets cse fold the low half into the two
--- memory operations and changes the five-instruction leaf into four.
-ccExtraFlags :: FilePath -> [String]
-ccExtraFlags src = case takeBaseName src of
-  "MemCardCallback" -> ["-mno-split-addresses"]
-  "GS_107_OBJ_4B8" -> ["-mno-split-addresses"]
-  "FUN_80058c70" -> ["-fno-strength-reduce"]
-  "FUN_80059008" -> ["-fno-strength-reduce"]
-  "FUN_80059ff4" -> ["-fno-strength-reduce"]
-  "FUN_8005a3cc" -> ["-fno-strength-reduce"]
-  "FUN_8005961c" -> ["-fno-strength-reduce"]
-  "FUN_80059b08" -> ["-fno-strength-reduce"]
-  "GS_107_OBJ_51C" -> ["-mno-split-addresses"]
-  _ -> []
+-- translation-unit defaults. Our one-function C files are an artificial split,
+-- so flags are selected ONLY after mapping a carve back to its original object.
+-- Never add a function directly to a compiler-option table.
+--
+-- LIBMCRD.OBJ spans the whole MemCardStart..MemCardFormat range; only
+-- MemCardCallback is C-carved today. GS_107.OBJ contains GsSetFlatLight and the
+-- three offset-named pieces below; only its 0x4B8/0x51C leaves are C-carved.
+-- Listing every known member makes the policy automatic when another piece is
+-- converted, rather than silently turning an object option into function tuning.
+--
+-- The target itself shows unsplit reusable bases throughout both objects. In
+-- GS_107, the target-only 0x0/0x444 portions and both C leaves all materialise
+-- their object globals through the same `lui`/`addiu` address form.
+libmcrdObjectMembers :: [String]
+libmcrdObjectMembers =
+  [ "MemCardStart",
+    "MemCardStop",
+    "MemCardExist",
+    "FUN_80080f28",
+    "MemCardAccept",
+    "FUN_80081164",
+    "MemCardOpen",
+    "MemCardClose",
+    "MemCardReadData",
+    "FUN_8008161c",
+    "MemCardWriteData",
+    "FUN_80081810",
+    "MemCardReadFile",
+    "FUN_80081a64",
+    "MemCardWriteFile",
+    "FUN_80081c84",
+    "MemCardGetDirentry",
+    "MemCardCallback",
+    "MemCardSync",
+    "MemCardCreateFile",
+    "MemCardFormat"
+  ]
+
+gs107ObjectMembers :: [String]
+gs107ObjectMembers =
+  [ "GsSetFlatLight",
+    "GS_107_OBJ_444",
+    "GS_107_OBJ_4B8",
+    "GS_107_OBJ_51C"
+  ]
+
+originalObjectCcFlags :: FilePath -> [String]
+originalObjectCcFlags src
+  | name `elem` libmcrdObjectMembers = ["-mno-split-addresses"]
+  | name `elem` gs107ObjectMembers = ["-mno-split-addresses"]
+  | name `elem` adtObjectMembers = []
+  | otherwise = []
+  where
+    name = takeBaseName src
+
+-- ADT's eleven contiguous C functions are one reused library object. Every
+-- member remains byte-exact under GCC 2.8.0; GCC 2.8.1 changes one reload retype
+-- and leaves AdtSelect nine bytes off. Keep the complete object membership here
+-- so future tooling cannot turn the compiler attribution into function tuning.
+adtObjectMembers :: [String]
+adtObjectMembers =
+  [ "AdtGetDisp",
+    "AdtMessageBox",
+    "AdtQuiet",
+    "AdtFntOpen",
+    "AdtFntLoad",
+    "AdtReleaseDisp",
+    "AdtDmyPadRead",
+    "AdtVsprintf",
+    "FUN_8005fe38",
+    "FUN_8005fe88",
+    "AdtSelect"
+  ]
+
+originalObjectCcExecutable :: FilePath -> FilePath
+originalObjectCcExecutable src
+  | takeBaseName src `elem` adtObjectMembers = "cc1-280"
+  | otherwise = ccDefault
+
+-- | All varying compiler inputs are one original-object profile. Returning the
+-- executable and flags through one oracle makes either change invalidate .s.
+originalObjectCcProfile :: FilePath -> (FilePath, [String])
+originalObjectCcProfile src =
+  (originalObjectCcExecutable src, originalObjectCcFlags src)
 
 cppFlags :: [String]
 cppFlags =
@@ -614,7 +683,9 @@ main = do
             -- "3": one-time bump so every .s rule recorded the GpFlags oracle
             -- dependency. "4": recompile after adding the LIBMCRD-specific
             -- cc flag; command-line contents are not otherwise tracked.
-            shakeVersion = "5"
+            -- "6": compiler executable is now part of the per-object profile;
+            -- the reused ADT object selects pinned GCC 2.8.0.
+            shakeVersion = "6"
           }
   shakeArgs opts rules
 
@@ -622,7 +693,7 @@ rules :: Rules ()
 rules = do
   _ <- addOracle (liftIO . runIdOracle)
   _ <- addOracle (\(GpFlags f) -> pure (maspsxGpExterns f))
-  _ <- addOracle (\(CcFlags f) -> pure (ccExtraFlags f))
+  _ <- addOracle (\(OriginalObjectCcProfile f) -> pure (originalObjectCcProfile f))
   want [mainExe]
   objRules
   mapM_ exeRules targets
@@ -688,9 +759,9 @@ objRules = do
     -- reproduces ASPSX's bytes; it leaves INCLUDE_ASM's .include/.section/.set
     -- directives untouched, so stubs pass through unchanged.
     gpFlags <- askOracle (GpFlags processed)
-    ccExtra <- askOracle (CcFlags processed)
+    (ccExe, objectCc) <- askOracle (OriginalObjectCcProfile processed)
     withTempFile $ \ccOut -> do
-      cmd_ (FileStdin processed) (FileStdout ccOut) cc (ccFlags <> ccExtra)
+      cmd_ (FileStdin processed) (FileStdout ccOut) ccExe (ccFlags <> objectCc)
       cmd_ (FileStdin ccOut) (FileStdout out) maspsx
         (maspsxFlags <> gpFlags)
 
@@ -1033,27 +1104,21 @@ instance Binary GpFlags
 
 type instance RuleResult GpFlags = [String]
 
--- | The per-file cc1 extra flags. IDENTICAL bug to GpFlags above, and it sat
--- here unnoticed because the table had exactly one entry (MemCardCallback) that
--- never changed after it was added. The moment a second entry arrived it bit:
--- adding @-mno-split-addresses@ for a function did NOT rebuild its @.s@, so the
--- flag silently did not apply and the experiment measured a STALE object —
--- reporting "the flag does nothing" for a function the flag demonstrably does
--- change (verified by running cc1 directly both ways). @touch@ does not help
--- either: Shake keys on CONTENT. A per-TU compiler-input flag whose effect
--- depends on whether you happened to edit the source in the same breath is worse
--- than no flag at all. Same oracle treatment: the @.s@ now depends on the flag
--- VALUE.
-newtype CcFlags = CcFlags FilePath
+-- | The per-original-object compiler executable plus extra flags. As with
+-- GpFlags, the oracle value itself must be a dependency: Shake keys on source
+-- content and does not otherwise notice a changed command executable or flag.
+-- Keeping both inputs in one result also prevents the build and matching tools
+-- from accidentally selecting half of a compiler profile.
+newtype OriginalObjectCcProfile = OriginalObjectCcProfile FilePath
   deriving (Generic, Show, Eq)
 
-instance Hashable CcFlags
+instance Hashable OriginalObjectCcProfile
 
-instance NFData CcFlags
+instance NFData OriginalObjectCcProfile
 
-instance Binary CcFlags
+instance Binary OriginalObjectCcProfile
 
-type instance RuleResult CcFlags = [String]
+type instance RuleResult OriginalObjectCcProfile = (FilePath, [String])
 
 data GenData = GenData
   { lastRunId :: UUID.UUID,

@@ -16,8 +16,8 @@ extern MATRIX _LC;
 /*
  * STATUS: NON_MATCHING — ONE INSTRUCTION over (20 vs 19). Every other
  * instruction, register and operand is exact, and it needs
- * `-mno-split-addresses` (Build.hs ccExtraFlags) to get there — same provenance
- * as its sibling GS_107_OBJ_4B8.
+ * `-mno-split-addresses` (Build.hs original-object profile) to get there — same
+ * provenance as its sibling GS_107_OBJ_4B8.
  *
  * THE RESIDUAL IS SHARED WITH GS_107_OBJ_4B8, and it is the same instruction in
  * both: reorg will not put the struct-copy's LAST STORE into the branch's delay
@@ -35,15 +35,14 @@ extern MATRIX _LC;
  * store touches none of `jr ra`'s operands and sits directly above it, so plain
  * eligibility is not the blocker.
  *
- * WORKING HYPOTHESIS (untested): `*m = _LC;` is a whole-struct assignment, which
- * cc1 expands as a BLOCK MOVE — and compiler-facts records that
- * `fill_simple_delay_slots` stops at SEQUENCEs. If the 32-byte copy is one RTL
- * insn emitting many assembly instructions, reorg cannot take just its tail. The
- * target filling the slot would then mean the ORIGINAL did not write a struct
- * assignment here — it wrote something that produces separate insns. The
- * load/store batching (3+3, 3+3, 2+2) is characteristic of the block move
- * though, so that cuts the other way; check the RTL before believing either.
- * Fixing this once fixes BOTH functions.
+ * The sibling's compiler dump explains this residual too: GCC 2.8.1 leaves the
+ * global side as a symbolic-address `movstrsi_internal`, while its delay-slot
+ * split requires register addresses. The exact stock GS_107.OBJ alone does not
+ * identify its compiler: PsyQ 4.5 and 4.6 ship the same object beside different
+ * cc1 versions, and neither compiler reproduces every feature of this helper
+ * from the natural assignment. Explicit grouped word copies fill the slot but
+ * rotate the global base and all three scratch registers. Keep the human
+ * whole-struct copy while the original toolchain/source distinction is open.
  */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GS_107_OBJ_51C", GS_107_OBJ_51C);

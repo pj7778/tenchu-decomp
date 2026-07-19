@@ -217,24 +217,29 @@ Look up what the authors wrote before drafting anything.
   refutes it, and the human spelling reproduces the island). Adopt the human base
   even at a worse byte count. (c) **A BARE load-bearing fence** — no macro backs
   it, no better structure is on offer, and unwrapping it (test with `autorules`'
-  `fence-unwrap`, which sweeps each singly) measurably regresses. **KEEP it**:
-  measured necessity, not macro provenance, decides (StageEndScreen's 4-nest at
-  L423 scores 202→227 unwrapped; FUN_800519bc's 5 fences, no macro, cost 87→91..1012).
+  `fence-unwrap`, which sweeps each singly) measurably regresses. **KEEP it
+  provisionally in that draft**: measured necessity, not macro provenance,
+  decides whether to retain the current experiment (StageEndScreen's 4-nest at
+  L423 scores 202→227 unwrapped). It does NOT prove original-source authenticity
+  or a global minimum: FUN_800519bc's five old fences measured 87→91..1012 when
+  removed, yet all disappeared when a human tpage/width/x-coordinate decomposition
+  replaced the local minimum and matched at zero.
   **Classify (b) vs (c) by the UNWRAPPED RESIDUAL, not the byte delta**: read the
-  asmdiff of the unwrapped version — if the regressed bytes are ENTIRELY
-  callee-saved register renames (sN↔sM shuffles, identical mnemonics/operand
-  shapes), the fence is a pure global-allocation nudge with nothing better behind
-  it → case (c), KEEP (AdtSelect's two fences unwrap to 37 bytes of pure
-  s1↔s2/s3↔s4 renames). Only when the unwrapped residual shows a genuinely
-  different or more-complete control/expression structure is it case (b). **TOOL
+  asmdiff of the unwrapped version. A residual made entirely of callee-saved
+  register renames proves only that the fence was nudging global allocation; it
+  does **not** prove the fence belongs in the source. AdtSelect is the corrective
+  witness: its two fences once appeared to be a 37-byte, pure s1↔s2/s3↔s4
+  necessity, but an ordinary display loop plus human `if / else if` D-pad chain
+  removed both at the same residual. Keep a bare fence only after searching for
+  the larger human structure that makes its allocation nudge unnecessary. **TOOL
   TICKET (fence-unwrap --classify)**: label each unwrapped residual "N%
   register-rename / M% structural" to mechanize this read — currently a manual
   asmdiff.
   **The "adopt the worse byte count" move is ONLY for case (b)** — a bare fence
   with nothing better behind it is not a reason to regress. And test fence
-  clusters as SUBSETS, not singletons: FUN_800519bc's three position-carriers act
-  as one dial (removing any one flips the same s1/s2 tie), which a one-at-a-time
-  sweep misreads. And a fence you KEEP can still be tuned via its CONDITION:
+  clusters as SUBSETS, not singletons: several fences can act as one allocation
+  dial, which a one-at-a-time sweep misreads. And a fence you KEEP can still be
+  tuned via its CONDITION:
   reading a different pseudo in an identical-arm fence's discriminator reorders
   `find_reg` hundreds of insns away (SetLightningI moved an `end`-vs-`scrp` race
   for `s7` that way).
@@ -714,9 +719,21 @@ judgment:
     (ProcItemArrow); a `u8`-stored countdown tested later wants an `s32` host +
     explicit narrow tests (ProcItemFire); keep a narrow countdown's new value in
     an `s32` temp when the target zero-tests `sll 16` (ProcItemDokudango).
-  - An s16→s32 extend the target does IN PLACE is an explicit shift pair
-    (`x <<= 16; x >>= 16;`) — otherwise the intermediate routes through `$v0`
-    (FUN_800519bc). **TOOL TICKET (signext-inplace-pair autorule)**.
+  - An s16→s32 extend the target does IN PLACE can be an explicit shift pair
+    (`x <<= 16; x >>= 16;`), but that is a candidate, not a prescription.
+    FUN_800519bc's exact human source instead has a genuine `s16` sprite
+    coordinate followed by a distinct `s32` brightness coordinate; their
+    non-overlapping lifetimes coalesce and emit the same in-place `sll/sra`.
+    Its earlier explicit shifts were a convincing local minimum.
+    **TOOL TICKET (signext-inplace-pair autorule)**.
+  - Preserve semantic width stages when the target couples a reload register to
+    an in-place narrowing. In FUN_800519bc, `s32 offset` → `s16 sprite_x` →
+    `s32 signed_x` lets combine consume the spilled u16 x-base directly, so reload
+    selects `$t0`, while sched2 must store `sprite_x` before the destructive
+    in-place extension. Collapsing those values into one wide expression creates
+    a separate `zero_extend` pseudo in `$v1`; assigning straight to the narrow
+    field gets `$t0` but loses the store/extension dependency. Read `.lreg` before
+    adding allocator scaffolding.
     Two adjacent extensions the target INTERLEAVES are hand-split halves
     (BIS cursor). A narrowed negate needs a separate SImode operand variable
     (compiler-facts; mission_score_screen).
@@ -1207,7 +1224,9 @@ preference machinery, REG_N_DEATHS, reload round-robin). The craft:
   bookkeeping enough to flip ordering ties; semantic-diff permuter winners
   against the REPRINTED base (the reprint alone skews scores).
 - **Reload structure**: a reload-register diff downstream of a reload-COUNT diff
-  is one root cause — fix the count, ignore the sites (AdtSelect).
+  is one root cause — fix the count, ignore the sites. Before deforming clean C,
+  verify the original-object compiler profile: AdtSelect's count changed only
+  because GCC 2.8.0 and 2.8.1 classify its address reload differently.
   **TOOL TICKET (regalloc --spill-uses)**: print each use BARE vs IN-MEM — the
   discriminator that retired a wrong park verdict. **TOOL TICKET (regalloc
   --names)**: pseudo→C-name (UNIDENTIFIED when unprovable). **`regalloc --local`
@@ -1233,7 +1252,7 @@ preference machinery, REG_N_DEATHS, reload round-robin). The craft:
 Fences are reconstruction scaffolding, not original idiom — **debt**. At exact
 promotion, challenge every one (`fence-unwrap` + `empty-loop-boundary` removal
 candidates are in the DEFAULT autorules set precisely because fence effects are
-NON-LOCAL: FUN_800519bc's prologue fence closed 25 bytes ~100 lines away). A
+NON-LOCAL). A
 fence whose depth sweep is FLAT is not a fence — delete it (AddEnemy's
 `weapon++`). The mechanisms:
 
@@ -1267,10 +1286,11 @@ fence whose depth sweep is FLAT is not a fence — delete it (AddEnemy's
   (`if (cond) x = E; else x = E;`, same store both arms) is specifically a cse
   STORE→LOAD FORWARDING barrier — the loop fence above cannot do this, but the
   control-flow merge blocks cse from forwarding a statically-known stack value, so
-  the target's fresh `lw`/`sra` reload of a field cc1 could prove survives. Use it
-  (not a fence) when the target refetches a provable field; dropping it collapses
-  to reusing the source register and SHORTENS the function (FUN_800519bc: drop →
-  −2 insns / length mismatch).
+  a fresh `lw`/`sra` reload of a field cc1 could prove survives. Treat it as a
+  diagnostic candidate, not a source conclusion: shortening when it is removed
+  only proves the barrier affects the current RTL. FUN_800519bc once appeared to
+  require this exact device; scoped direct tpage/width values later reproduced
+  the reload and load-delay nop naturally and removed the identical arms at zero.
 - **Donor variants** (all erased by jump2): `allocation-donor-fence` (duplicated
   assignment under an initialized/guard-proven discriminator — FUN_80033bc0,
   Think1target, AddEnemy's weapon_entry after removing invented base locals);
@@ -1637,8 +1657,10 @@ symbol's arithmetic against proven layouts first. Split-address consequences
 and declaration levers: §3.12 and compiler-facts. gp-output aggregates whose
 fields splat auto-named as drifted `D_` symbols: bind ONE fresh correct-address
 name and declare the real SVECTOR (GetConflictResult). Stock PsyQ objects may
-differ (LIBMCRD's `-mno-split-addresses` exception — encode narrowly in
-per-TU `ccExtraFlags`, mirror in permute.py, `Build check-all`).
+differ, but flags are never selected per function: map every artificial carve
+back to its original `.OBJ`, apply the option to all known object members, mirror
+that object table in permute.py, reject it if any C-carved sibling regresses, and
+run `Build check-all` (LIBMCRD/GS_107 `-mno-split-addresses`).
 
 ### 3.16 Dividing by a variable
 
@@ -1696,9 +1718,18 @@ guards, no flag.
   never emits it (compiler-facts). triage.py/progress.py cut at 0x80060000; the
   LIBCD/LIBPAD/LIBMCRD forwarding wrappers are permanent 6-of-32-byte
   NON_MATCHING (drafts on `codex/sdk-wave2-epilogue-blocked`); libraries differ
-  per game (LIBGS's dmyGs* matched). Read `jr ra`'s delay slot before spending
-  anything on an SDK cluster. `EVENT_OBJ_80/90/BC` are shared epilogues, not
-  functions.
+  per game (LIBGS's dmyGs* matched). A direct artifact check makes the boundary
+  concrete: `GS_107.OBJ` has relocation-normalised `.text` identical to all
+  0x570 target bytes, and the same object ships in PsyQ 4.5 and 4.6 beside
+  different cc1 versions. Archive adjacency is therefore NOT compiler
+  provenance. Direct probes split the signature: Sony 2.8.1 preserves the
+  target's 3+3+2 MATRIX-copy batching but leaves the final delay slots empty;
+  Sony 2.95.2 fills the slots but emits sequential load/store pairs. Our 2.8.1
+  dump shows the symbolic-address block move its delay splitter cannot split;
+  explicit word copies fill the slot only by rotating the base/scratch registers
+  and changing the epilogue, a measured local minimum. Read `jr ra`'s delay slot
+  before spending anything on an SDK cluster. `EVENT_OBJ_80/90/BC` are shared
+  epilogues, not functions.
 - **The 3-insn split (`sll 16 / sra k / sra 16-k`) is matchable ordinary C.**
   The former park-on-sight rule was a local-minimum error: all three game
   examples (`GetPad`, `GetPadXY`, `FUN_8001b174`) are now exact. Their human

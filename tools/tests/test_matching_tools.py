@@ -5661,22 +5661,74 @@ class BuildConfigurationTests(unittest.TestCase):
         ))
         self.assertEqual(names, set(permute.MASPSX_EXTRA))
 
-    def test_cc_extra_flags_match_build(self):
+    def test_original_object_cc_profiles_match_build(self):
         path = os.path.join(os.path.dirname(TOOLS), "shake", "src", "Build.hs")
         with open(path) as f:
             build = f.read()
-        block = build.split("ccExtraFlags src =", 1)[1].split("_ -> []", 1)[0]
-        found = {}
-        pattern = __import__("re").compile(
-            r'^\s*"([A-Za-z0-9_]+)"\s*->\s*\[(.*)\]$', __import__("re").M
+        re = __import__("re")
+        groups = {
+            "LIBMCRD.OBJ": "libmcrdObjectMembers",
+            "GS_107.OBJ": "gs107ObjectMembers",
+            "ADT.OBJ": "adtObjectMembers",
+        }
+        found_members = {}
+        found_flags = {}
+        for obj, variable in groups.items():
+            members_block = build.split(f"{variable} =\n  [", 1)[1].split(
+                "\n  ]", 1
+            )[0]
+            found_members[obj] = tuple(re.findall(r'"([^"]+)"', members_block))
+            guard = re.search(
+                rf'name `elem` {variable} = \[(.*?)\]', build
+            )
+            self.assertIsNotNone(guard, f"Build.hs has no flag guard for {obj}")
+            found_flags[obj] = tuple(re.findall(r'"([^"]+)"', guard.group(1)))
+
+        self.assertEqual(found_members, permute.ORIGINAL_OBJECT_MEMBERS)
+        self.assertEqual(found_flags, permute.ORIGINAL_OBJECT_CC_FLAGS)
+        flattened = {
+            member: list(found_flags[obj])
+            for obj, members in found_members.items()
+            for member in members
+        }
+        self.assertEqual(flattened, permute.CC_FLAGS_BY_OBJECT_MEMBER)
+        executable_guards = re.findall(
+            r'takeBaseName src `elem` ([A-Za-z0-9_]+) = "([^"]+)"', build
         )
-        for name, values in pattern.findall(block):
-            found[name] = __import__("re").findall(r'"([^"]+)"', values)
-        self.assertEqual(found, permute.CC_EXTRA_FLAGS)
-        self.assertIn(
-            "-mno-split-addresses", permute.cc_flags_for("MemCardCallback")
+        variable_to_object = {variable: obj for obj, variable in groups.items()}
+        found_executables = {
+            variable_to_object[variable]: executable
+            for variable, executable in executable_guards
+            if variable in variable_to_object
+        }
+        self.assertEqual(
+            found_executables, permute.ORIGINAL_OBJECT_CC_EXECUTABLES
         )
+        flattened_executables = {
+            member: found_executables.get(obj, permute.CC_DEFAULT)
+            for obj, members in found_members.items()
+            for member in members
+        }
+        self.assertEqual(
+            flattened_executables, permute.CC_EXECUTABLE_BY_OBJECT_MEMBER
+        )
+        for member in permute.ORIGINAL_OBJECT_MEMBERS["LIBMCRD.OBJ"]:
+            self.assertIn("-mno-split-addresses", permute.cc_flags_for(member))
+        for member in permute.ORIGINAL_OBJECT_MEMBERS["GS_107.OBJ"]:
+            self.assertIn("-mno-split-addresses", permute.cc_flags_for(member))
         self.assertNotIn("-mno-split-addresses", permute.cc_flags_for("Other"))
+        self.assertEqual(permute.cc_executable_for("AdtSelect"), "cc1-280")
+        self.assertEqual(permute.cc_executable_for("AdtGetDisp"), "cc1-280")
+        self.assertEqual(permute.cc_executable_for("Other"), "cc1-281")
+
+        # Shake must depend on the executable and flags as one oracle value;
+        # otherwise changing only cc1 can silently reuse a stale .s.
+        self.assertIn("OriginalObjectCcProfile f", build)
+        self.assertIn(
+            "(ccExe, objectCc) <- askOracle (OriginalObjectCcProfile processed)",
+            build,
+        )
+        self.assertRegex(build, r"cmd_ .* ccExe \(ccFlags <> objectCc\)")
 
     def test_no_tool_puts_fno_builtin_in_cpp(self):
         """`-fno-builtin` is a cc1 flag; in a CPP list it silently does nothing.
@@ -5722,7 +5774,8 @@ class BuildConfigurationTests(unittest.TestCase):
         the callee-saved register assignment differed outright, and permute's rescore
         printed 291357/1004/1492 for a base.c whose draft is 1488 bytes at 70.
 
-        GP_EXTERNS and ccExtraFlags each had a mirror test; the FLAG LISTS did not,
+        GP_EXTERNS and originalObjectCcFlags each had a mirror test; the FLAG
+        LISTS did not,
         which is exactly why this one drifted and the others didn't.
         """
         import re

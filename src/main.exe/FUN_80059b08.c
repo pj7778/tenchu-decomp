@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include <psxsdk/libgpu.h>
 #include "gte.h"
 
 /*
@@ -16,33 +17,14 @@
  * that file's header for the full mechanism account.
  *
  * Matching notes: applies the FUN_80059ff4 recipe verbatim (read that
- * header); -fno-strength-reduce for this TU (Build.hs ccExtraFlags +
- * permute.py CC_EXTRA_FLAGS). New vs the leaf: work lives as TWO variables
- * (work + the prim copy — the packet accesses go through prim, the context
+ * header). The original TMD_P_TNF4 record type keeps the normal strength-
+ * reduced loop on the target's single cursor; the former function-only flag
+ * was compensating for decompiler-style byte offsets. New vs the leaf: work
+ * lives as TWO variables (work + the prim copy — the packet accesses go through prim, the context
  * fields through work); flagAddr is a precomputed loop invariant (used by
  * BOTH gte_stflg sites); the 52-byte POLY_GT4 struct assignment emits a
  * 3-chunk movstrsi loop + 4-byte remainder.
  */
-
-typedef struct {
-    u_long tag;
-    u8 r0, g0, b0, code;
-    s16 x0, y0;
-    u8 u0, v0;
-    u16 clut;
-    u8 r1, g1, b1, p1;
-    s16 x1, y1;
-    u8 u1, v1;
-    u16 tpage;
-    u8 r2, g2, b2, p2;
-    s16 x2, y2;
-    u8 u2, v2;
-    u16 pad2;
-    u8 r3, g3, b3, p3;
-    s16 x3, y3;
-    u8 u3, v3;
-    u16 pad3;
-} POLY_GT4; /* 52 bytes — reference/psxsym-types.h */
 
 u_long *FUN_80059b08(u_short *param_1, u_long param_2, u_long *param_3, int param_4, u_long *param_5)
 {
@@ -52,7 +34,7 @@ u_long *FUN_80059b08(u_short *param_1, u_long param_2, u_long *param_3, int para
     u8 *codeAddr;
     s32 codeVal;
     u_long *sz0Ptr;
-    u8 *rec;
+    TMD_P_TNF4 *record;
     u_long *rgbPtr;
     u_long *otSlot;
     u32 idx0, idx1, idx2;
@@ -66,35 +48,35 @@ u_long *FUN_80059b08(u_short *param_1, u_long param_2, u_long *param_3, int para
         codeAddr = work + 4;
         codeVal = 0x3C;
         sz0Ptr = (u_long *)(work + 0x5C);
-        rec = (u8 *)param_1 + 0x14;
+        record = (TMD_P_TNF4 *)param_1;
         do {
-            idx0 = *(u16 *)(rec + 4);
-            idx1 = *(u16 *)(rec + 6);
-            idx2 = *(u16 *)(rec + 8);
+            idx0 = record->v0;
+            idx1 = record->v1;
+            idx2 = record->v2;
             gte_ldv3((SVECTOR *)(idx0 * 8 + param_2), (SVECTOR *)(idx1 * 8 + param_2),
                      (SVECTOR *)(idx2 * 8 + param_2));
             gte_rtpt();
 
-            *(s32 *)(prim + 0xC) = *(s32 *)(rec - 0x10);
-            *(s32 *)(prim + 0x18) = *(s32 *)(rec - 0xC);
-            *(s32 *)(prim + 0x24) = *(s32 *)(rec - 8);
+            *(s32 *)(prim + 0xC) = *(s32 *)&record->tu0;
+            *(s32 *)(prim + 0x18) = *(s32 *)&record->tu1;
+            *(s32 *)(prim + 0x24) = *(s32 *)&record->tu2;
             gte_stflg(flagAddr);
             if (*(s32 *)(work + 0x74) < 0) goto next;
 
             gte_nclip();
-            *(s32 *)(prim + 4) = *(s32 *)rec;
+            *(s32 *)(prim + 4) = *(s32 *)&record->r0;
             codeAddr[3] = codeVal;
             gte_stopz((u_long *)(work + 0x80));
             if (*(s32 *)(work + 0x80) <= 0) goto next;
 
             gte_stsxy3_gt3(prim);
-            gte_ldv0((SVECTOR *)(*(u16 *)(rec + 0xA) * 8 + param_2));
+            gte_ldv0((SVECTOR *)(record->v3 * 8 + param_2));
             gte_rtps();
 
-            *(s32 *)(prim + 0x30) = *(s32 *)(rec - 4);
-            *(s32 *)(prim + 0x10) = *(s32 *)rec;
-            *(s32 *)(prim + 0x1C) = *(s32 *)rec;
-            *(s32 *)(prim + 0x28) = *(s32 *)rec;
+            *(s32 *)(prim + 0x30) = *(s32 *)&record->tu3;
+            *(s32 *)(prim + 0x10) = *(s32 *)&record->r0;
+            *(s32 *)(prim + 0x1C) = *(s32 *)&record->r0;
+            *(s32 *)(prim + 0x28) = *(s32 *)&record->r0;
             gte_stflg(flagAddr);
             if (*(s32 *)(work + 0x74) < 0) goto next;
 
@@ -227,7 +209,7 @@ u_long *FUN_80059b08(u_short *param_1, u_long param_2, u_long *param_3, int para
 
         next:
             param_4--;
-            rec += 0x20;
+            record++;
         } while (param_4 != 0);
     }
     return param_3;
