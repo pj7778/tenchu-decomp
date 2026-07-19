@@ -1,9 +1,10 @@
 # Relocatable loaded data
 
-`tools/reloc_audit.py` finds a conservative set of 185 aligned literal words
+`tools/reloc_audit.py` found a conservative set of 185 aligned literal words
 in the current loaded data that point back into the movable MAIN.EXE image.
-Use the live audit rather than treating that count as an invariant. This is a
-much cleaner problem than the raw-code candidates:
+The reviewed manifest now covers all 185. Use the live audit rather than
+treating that count as an invariant. This was a much cleaner problem than the
+raw-code candidates:
 
 - every initial and current candidate source word is in trailing owner
   `72CD0.data.s`;
@@ -96,10 +97,25 @@ the exact start of the corresponding `stNNN.tim` or `mojoN.tim` string. Stage
 references to the exact enclosing `D_800136B0` label, so the manifest leaves
 them alone rather than manufacturing redundant aliases.
 
-Together the slices cover 108 pointer words and 47 exact targets across
-`207C.data.s`, `2EB0.data.s`, and `72CD0.data.s`. The names are supported by
-the source table/type/field names and literal string contents. No wider
-top-level target ownership is inferred.
+The final slice covers the remaining 77 words:
+
+- four `HumanData[].name` fields and three `WeaponModel[].name` fields, whose
+  0x18-byte and 0x0c-byte record types are exercised directly by the matching
+  C sources;
+- all 18 non-null literal `ThinkDB[].name` fields, paired with their adjacent
+  values and used as strings by `AddEnemy`;
+- all 32 `CD_comstr` and eight `CD_intstr` entries, including their shared
+  `"?"` string;
+- four SDK singleton pointers to the BIOS/intr/GPU revision strings and the
+  hexadecimal digit alphabet;
+- the six XA filenames consumed by the typed `PlayVoice` paths; and
+- the `TENCHU_ID` and `CID` card-id string pointers consumed by the card/save
+  C sources.
+
+Together the slices cover 185 pointer words and 112 exact targets across nine
+generated files. The names are supported by source table/type/field names,
+direct C uses, and literal contents. No wider top-level target ownership is
+inferred.
 
 Validate the manifest against a generated tree without writing anything:
 
@@ -108,7 +124,7 @@ $ tools/reloc_data.py \
     --manifest config/reloc-data.main.exe.json \
     --input-dir .shake/gen/main.exe/asm/data \
     --check
-reloc-data: validated 108 pointer words and 47 exact targets across 3 files
+reloc-data: validated 185 pointer words and 112 exact targets across 9 files
 ```
 
 Or write separate assembly inputs directly:
@@ -120,7 +136,7 @@ $ tools/reloc_data.py \
     --output-dir .shake/build/reloc-data/asm
 ```
 
-Only the three touched files are emitted. The default matching lane still
+Only the nine touched files are emitted. The default matching lane still
 consumes Splat's files unchanged.
 
 The standalone build gate applies the transform to temporary copies, assembles
@@ -128,16 +144,15 @@ the touched objects, and performs the controlled links described below:
 
 ```console
 $ ./Build check-reloc-data
-reloc-data-lane: verified 108 R_MIPS_32 pointer words, 47 exact targets, and 3 link layouts across 3 files
+reloc-data-lane: verified 185 R_MIPS_32 pointer words, 112 exact targets, and 3 link layouts across 9 files
 check-reloc-data: reviewed pointer tables are retail-exact and shift-relocatable
 ```
 
-The same manifest transformation is composed into `./Build relink`: its
-`207C`, `2EB0`, and `72CD0` objects replace the literal generated inputs, with
-the BSS transform applied after the `72CD0` pointer rewrite. The standalone
-gate remains the stricter per-record and controlled-shift oracle. This removes
-108 blockers from the real relink, but does not make the remaining raw pointers
-or code safe.
+Composing the whole manifest into `./Build relink` requires replacing all nine
+generated objects: `E58`, `1160`, `207C`, `2EB0`, `33C4`, `37A8`, `400C`,
+`4900`, and `72CD0`. The BSS transform must remain after the `72CD0` pointer
+rewrite. The standalone gate remains the stricter per-record and
+controlled-shift oracle.
 
 ## Binutils proof
 
@@ -145,12 +160,12 @@ The proof uses GNU MIPS assembler and linker output, not a source-level
 assumption:
 
 - in the current generated tree, unmodified `72CD0.data.s.o` has 408
-  `R_MIPS_32` records and the rewritten object has 516;
-- the 108 additions are individually required to be `R_MIPS_32` at their exact
+  `R_MIPS_32` records and the rewritten object has 593;
+- the 185 additions are individually required to be `R_MIPS_32` at their exact
   reviewed source offsets and against their exact target symbols;
 - each target symbol is section-relative at the expected interior offset in
   `207C.data.s.o` or `2EB0.data.s.o`, never `ABS`;
-- a retail-address partial link reproduces all 108 shipped pointer words;
+- a retail-address partial link reproduces all 185 shipped pointer words;
 - moving all touched loaded-data inputs by `+4` increments every pointer by
   `+4`; and
 - moving them by `+0x10004` increments every pointer by `+0x10004`, including
@@ -164,9 +179,9 @@ $ python3 -m unittest -v \
     tools.tests.test_reloc_data tools.tests.test_reloc_data_lane
 ```
 
-Applying the manifest to the current generated `72CD0.data.s` reduces its live
-literal-pointer candidates from 185 to 77. The ordinary generated input is
-unchanged; the composed normal relink consumes the transformed copy.
+Applying the manifest to the current generated inputs reduces the live
+literal-pointer inventory from 185 to zero. The ordinary generated inputs are
+unchanged; only the relocation lane consumes transformed copies.
 
 The default `tools/reloc_audit.py` invocation audits that composed normal
 relink, not the untouched matching linker. It resolves ordinary raw objects
@@ -180,9 +195,8 @@ composed layout; the explicit mappings override the applicable defaults.
 
 ## Scaling without inventing source
 
-Continue by coherent owner, not by blindly replacing every aligned word. The
-next strong candidates are `CD_comstr`/`CD_intstr` and `ThinkDB`. For every
-batch:
+If future generated data introduces new candidates, continue by coherent
+owner, not by blindly replacing every aligned word. For every batch:
 
 1. confirm the exact target directive and enclosing owner;
 2. name the exact interior object, not an enclosing blob plus a guessed addend;

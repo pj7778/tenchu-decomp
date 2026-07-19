@@ -973,6 +973,699 @@
       "target_address": "0x80013acc",
       "target_owner": "D_80013AC0",
       "symbol": "gov_archive_name_japanese"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80088a9c",
+      "source_owner": "HumanData",
+      "target_file": "E58.data.s",
+      "target_address": "0x800116e0",
+      "target_owner": "D_800116B8",
+      "symbol": "human_name_rikimaru"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80088acc",
+      "source_owner": "HumanData",
+      "target_file": "E58.data.s",
+      "target_address": "0x800116e0",
+      "target_owner": "D_800116B8",
+      "symbol": "human_name_rikimaru"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80088dfc",
+      "source_owner": "HumanData",
+      "target_file": "E58.data.s",
+      "target_address": "0x800116d4",
+      "target_owner": "D_800116B8",
+      "symbol": "human_name_onikerai"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80088ebc",
+      "source_owner": "HumanData",
+      "target_file": "E58.data.s",
+      "target_address": "0x800116c8",
+      "target_owner": "D_800116B8",
+      "symbol": "human_name_echigoya"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x800899c8",
+      "source_owner": "WeaponModel",
+      "target_file": "E58.data.s",
+      "target_address": "0x80011704",
+      "target_owner": "D_800116B8",
+      "symbol": "weapon_model_name_kabututi"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x800899d4",
+      "source_owner": "WeaponModel",
+      "target_file": "E58.data.s",
+      "target_address": "0x800116f8",
+      "target_owner": "D_800116B8",
+      "symbol": "weapon_model_name_sasumata"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089a7c",
+      "source_owner": "WeaponModel",
+      "target_file": "E58.data.s",
+      "target_address": "0x800116ec",
+      "target_owner": "D_800116B8",
+      "symbol": "weapon_model_name_katayumi"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e40",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x80011a44",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_1_pad_1"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e48",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x80011a38",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_1_pad_2"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e50",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x80011a2c",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_1a_trace"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e58",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x80011a20",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_1b_watch"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e60",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x80011a14",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_1c_random"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e68",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x80011a08",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_1d_ninja"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e70",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x800119fc",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_1e_sleep"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e78",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x800119f0",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_1f_chase"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e80",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x800119e4",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_2a_confirm"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e88",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x800119d8",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_2b_contact"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e90",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x800119cc",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_3a_callaid"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089e98",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x800119bc",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_3b_atk_chase"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089ea0",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x800119ac",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_3c_atk_point"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089ea8",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x800119a0",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_3d_escape"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089eb0",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x80011994",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_3e_atk_area"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089eb8",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x80011984",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_3f_atk_hitaway"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089ec0",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x80011978",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_4a_abandon"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80089ec8",
+      "source_owner": "ThinkDB",
+      "target_file": "1160.data.s",
+      "target_address": "0x8001196c",
+      "target_owner": "D_80011960",
+      "symbol": "think_db_name_4b_contact"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2c4",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c38",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_sync"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2c8",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c30",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_nop"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2cc",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c24",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_setloc"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2d0",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c1c",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_play"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2d4",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c10",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_forward"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2d8",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c04",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_backward"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2dc",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014bf8",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_read_n"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2e0",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014bec",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_standby"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2e4",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014be4",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_stop"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2e8",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014bd8",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_pause"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2ec",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014bcc",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_reset"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2f0",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014bc4",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_mute"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2f4",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014bb8",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_demute"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2f8",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014ba8",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_setfilter"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f2fc",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b9c",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_setmode"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f300",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f304",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b8c",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_getloc_l"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f308",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b80",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_getloc_p"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f30c",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f310",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b74",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_get_tn"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f314",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b68",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_get_td"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f318",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b5c",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_seek_l"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f31c",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b50",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_seek_p"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f320",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f324",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f328",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f32c",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f330",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b44",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_command_name_read_s"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f334",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f338",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f33c",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f340",
+      "source_owner": "CD_comstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f344",
+      "source_owner": "CD_intstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c78",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_interrupt_name_no_intr"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f348",
+      "source_owner": "CD_intstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c6c",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_interrupt_name_data_ready"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f34c",
+      "source_owner": "CD_intstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c60",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_interrupt_name_complete"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f350",
+      "source_owner": "CD_intstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c54",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_interrupt_name_acknowledge"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f354",
+      "source_owner": "CD_intstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c4c",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_interrupt_name_data_end"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f358",
+      "source_owner": "CD_intstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014c40",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_interrupt_name_disk_error"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f35c",
+      "source_owner": "CD_intstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f360",
+      "source_owner": "CD_intstr",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014b98",
+      "target_owner": "D_80014B34",
+      "symbol": "cd_unknown_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008f594",
+      "source_owner": "D_8008F580",
+      "target_file": "400C.data.s",
+      "target_address": "0x80014d3c",
+      "target_owner": "D_80014D34",
+      "symbol": "bios_revision_string"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x800967b8",
+      "source_owner": "D_800967B8",
+      "target_file": "4900.data.s",
+      "target_address": "0x80015c14",
+      "target_owner": "D_80015C04",
+      "symbol": "interrupt_revision_string"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x800973f4",
+      "source_owner": "D_800973F4",
+      "target_file": "4900.data.s",
+      "target_address": "0x80015cb4",
+      "target_owner": "D_80015CA0",
+      "symbol": "hex_digit_characters"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80097400",
+      "source_owner": "D_80097400",
+      "target_file": "4900.data.s",
+      "target_address": "0x80015d54",
+      "target_owner": "switchD_8007d9a8__switchdataD_80015ccc",
+      "symbol": "gpu_system_revision_string"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80097c98",
+      "source_owner": "D_80097C98",
+      "target_file": "207C.data.s",
+      "target_address": "0x80012c74",
+      "target_owner": "D_80012C68",
+      "symbol": "voice_intro_xa_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80097c9c",
+      "source_owner": "D_80097C9C",
+      "target_file": "207C.data.s",
+      "target_address": "0x80012c8c",
+      "target_owner": "D_80012C68",
+      "symbol": "voice_tora_xa_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80097ca0",
+      "source_owner": "D_80097CA0",
+      "target_file": "207C.data.s",
+      "target_address": "0x80012ca4",
+      "target_owner": "D_80012C68",
+      "symbol": "voice_event_english_xa_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80097ca4",
+      "source_owner": "D_80097CA4",
+      "target_file": "207C.data.s",
+      "target_address": "0x80012e9c",
+      "target_owner": "D_80012CBC",
+      "symbol": "voice_event_french_xa_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80097ca8",
+      "source_owner": "D_80097CA8",
+      "target_file": "207C.data.s",
+      "target_address": "0x80013094",
+      "target_owner": "D_80012EB4",
+      "symbol": "voice_event_italian_xa_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80097cac",
+      "source_owner": "D_80097CAC",
+      "target_file": "207C.data.s",
+      "target_address": "0x8001328c",
+      "target_owner": "D_800130AC",
+      "symbol": "voice_event_japanese_xa_name"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80097d04",
+      "source_owner": "TENCHU_ID",
+      "target_file": "33C4.data.s",
+      "target_address": "0x80013bd4",
+      "target_owner": "D_80013BC4",
+      "symbol": "tenchu_card_id_prefix"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x80097d8c",
+      "source_owner": "CID",
+      "target_file": "37A8.data.s",
+      "target_address": "0x800140f4",
+      "target_owner": "D_800140E0",
+      "symbol": "stage_card_id_prefix"
     }
   ]
 }

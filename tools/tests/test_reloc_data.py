@@ -72,9 +72,9 @@ class Fixture:
 
 
 class RewriteTests(unittest.TestCase):
-    def test_repository_manifest_contains_only_reviewed_named_tables(self) -> None:
+    def test_repository_manifest_contains_only_reviewed_pointer_tables(self) -> None:
         entries = reloc_data.load_manifest(ROOT / "config/reloc-data.main.exe.json")
-        self.assertEqual(len(entries), 108)
+        self.assertEqual(len(entries), 185)
         self.assertEqual(
             {entry.source_owner for entry in entries},
             {
@@ -87,6 +87,23 @@ class RewriteTests(unittest.TestCase):
                 "RANKS_ARCHIVE_PTRS",
                 "TRN_SPRITE_PTRS",
                 "GOV_ARCHIVE_PTRS",
+                "HumanData",
+                "WeaponModel",
+                "ThinkDB",
+                "CD_comstr",
+                "CD_intstr",
+                "D_8008F580",
+                "D_800967B8",
+                "D_800973F4",
+                "D_80097400",
+                "D_80097C98",
+                "D_80097C9C",
+                "D_80097CA0",
+                "D_80097CA4",
+                "D_80097CA8",
+                "D_80097CAC",
+                "TENCHU_ID",
+                "CID",
             },
         )
         self.assertEqual(
@@ -98,6 +115,19 @@ class RewriteTests(unittest.TestCase):
                 "D_800137A0",
                 "ITEM_HELP_TIM_PATHS",
                 "D_80013AC0",
+                "D_800116B8",
+                "D_80011960",
+                "D_80012C68",
+                "D_80012CBC",
+                "D_80012EB4",
+                "D_800130AC",
+                "D_80013BC4",
+                "D_800140E0",
+                "D_80014B34",
+                "D_80014D34",
+                "D_80015C04",
+                "D_80015CA0",
+                "switchD_8007d9a8__switchdataD_80015ccc",
             },
         )
         demo_sources = {
@@ -114,16 +144,53 @@ class RewriteTests(unittest.TestCase):
             # D_800136B0 symbol in Splat's generated input.
             if stage != 8 and not (stage == 10 and field == 1)
         }
-        self.assertEqual(
-            {entry.source_address for entry in entries},
+        old_sources = (
             set(range(0x8008EA58, 0x8008EA78, 4))
             | demo_sources
             | set(range(0x8008EF28, 0x8008EF78, 4))
-            | set(range(0x8008EF88, 0x8008EF98, 4)),
+            | set(range(0x8008EF88, 0x8008EF98, 4))
+        )
+        final_sources = (
+            {
+                0x80088A9C,
+                0x80088ACC,
+                0x80088DFC,
+                0x80088EBC,
+                0x800899C8,
+                0x800899D4,
+                0x80089A7C,
+                0x8008F594,
+                0x800967B8,
+                0x800973F4,
+                0x80097400,
+                0x80097D04,
+                0x80097D8C,
+            }
+            | set(range(0x80089E40, 0x80089ED0, 8))
+            | set(range(0x8008F2C4, 0x8008F364, 4))
+            | set(range(0x80097C98, 0x80097CB0, 4))
+        )
+        self.assertEqual(
+            {entry.source_address for entry in entries}, old_sources | final_sources
         )
         self.assertEqual(
             len({(entry.target_file, entry.target_address) for entry in entries}),
-            47,
+            112,
+        )
+        self.assertEqual(
+            {str(entry.source_file) for entry in entries}
+            | {str(entry.target_file) for entry in entries},
+            {
+                "E58.data.s",
+                "1160.data.s",
+                "207C.data.s",
+                "2EB0.data.s",
+                "33C4.data.s",
+                "37A8.data.s",
+                "400C.data.s",
+                "4900.data.s",
+                "72CD0.data.s",
+            },
         )
         demo_entries = [
             entry for entry in entries if entry.source_owner == "D_8008EA90"
@@ -162,8 +229,16 @@ class RewriteTests(unittest.TestCase):
                 sum(entry.symbol == symbol for entry in demo_entries),
                 4,
             )
+        archive_owners = {
+            "ITEM_SEL_SPRITE_PTRS",
+            "RS_ARCHIVE_PTRS",
+            "RANK_ARCHIVE_PTRS",
+            "RANKS_ARCHIVE_PTRS",
+            "TRN_SPRITE_PTRS",
+            "GOV_ARCHIVE_PTRS",
+        }
         new_symbols = {
-            entry.symbol for entry in entries if entry.source_address >= 0x8008EF28
+            entry.symbol for entry in entries if entry.source_owner in archive_owners
         }
         self.assertEqual(
             new_symbols,
@@ -188,6 +263,57 @@ class RewriteTests(unittest.TestCase):
                 ),
                 2,
             )
+
+        owner_counts = {
+            "HumanData": 4,
+            "WeaponModel": 3,
+            "ThinkDB": 18,
+            "CD_comstr": 32,
+            "CD_intstr": 8,
+            "D_8008F580": 1,
+            "D_800967B8": 1,
+            "D_800973F4": 1,
+            "D_80097400": 1,
+            "D_80097C98": 1,
+            "D_80097C9C": 1,
+            "D_80097CA0": 1,
+            "D_80097CA4": 1,
+            "D_80097CA8": 1,
+            "D_80097CAC": 1,
+            "TENCHU_ID": 1,
+            "CID": 1,
+        }
+        for owner, count in owner_counts.items():
+            self.assertEqual(
+                sum(entry.source_owner == owner for entry in entries), count
+            )
+
+        final_entries = [
+            entry for entry in entries if entry.source_address in final_sources
+        ]
+        self.assertEqual(len(final_entries), 77)
+        self.assertEqual(
+            sum(entry.symbol == "human_name_rikimaru" for entry in final_entries),
+            2,
+        )
+        self.assertEqual(
+            sum(entry.symbol == "cd_unknown_name" for entry in final_entries),
+            12,
+        )
+        self.assertEqual(
+            {entry.symbol for entry in final_entries if entry.source_owner == "ThinkDB"},
+            {
+                "think_db_name_1_pad_1",
+                "think_db_name_1_pad_2",
+                *(f"think_db_name_{name}" for name in (
+                    "1a_trace", "1b_watch", "1c_random", "1d_ninja",
+                    "1e_sleep", "1f_chase", "2a_confirm", "2b_contact",
+                    "3a_callaid", "3b_atk_chase", "3c_atk_point",
+                    "3d_escape", "3e_atk_area", "3f_atk_hitaway",
+                    "4a_abandon", "4b_contact",
+                )),
+            },
+        )
 
     def test_rewrite_inserts_exact_label_and_symbolic_word(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
