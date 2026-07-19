@@ -195,6 +195,14 @@ using its normal output sections and fitting the reviewed RAM/relocation
 limits. It does not promise arbitrary custom section attributes, unsupported
 compiler extensions, or unlimited storage.
 
+The normal lane also has no catch-all section discard. Its generated script
+discards only reviewed MIPS/debug metadata, collects the toolchain's expected
+empty companion sections behind a zero-size assertion, and invokes GNU `ld`
+with `--orphan-handling=error`. An unsupported allocatable section such as
+`__attribute__((section(".custom")))` therefore stops `relink` with its section
+name instead of producing an executable that silently omits those bytes. The
+retail matching lanes retain their generated discard behavior unchanged.
+
 ## Complete canonical CRT/SDK text
 
 The entire CRT/PsyQ text stream at `0x800601d4..0x80086764` is now

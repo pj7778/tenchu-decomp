@@ -195,6 +195,22 @@ def require_file(path: Path, description: str) -> None:
         )
 
 
+def extension_object_inputs(root: Path) -> list[Path]:
+    """Return source-backed extension objects using linker-script-relative paths."""
+
+    source_root = root / "src/main.exe"
+    build_root = Path(".shake/build/main.exe")
+    inputs: list[Path] = []
+    # Keep this one level deep to match reloc_bss_lane's
+    # ``.shake/build/main.exe/reloc/*.c.o`` ownership hook.
+    for source in sorted((source_root / "reloc").glob("*.c")):
+        relative_source = source.relative_to(source_root)
+        relative_object = build_root / Path(f"{relative_source}.o")
+        require_file(root / relative_object, f"extension object for {relative_source}")
+        inputs.append(relative_object)
+    return inputs
+
+
 def symbol(
     elf: reloc_c_literals.ElfObject, name: str
 ) -> reloc_c_literals.Symbol:
@@ -712,7 +728,7 @@ def execute(args: argparse.Namespace) -> ProbeReport:
         )
 
     grown_linker.write_text(inject_probe(linker.read_text(), probe_object.resolve()))
-    extension_objects = sorted((root / ".shake/build/main.exe/reloc").glob("*.c.o"))
+    extension_objects = extension_object_inputs(root)
     link_command = [
         args.ld,
         "-EL",
@@ -728,6 +744,7 @@ def execute(args: argparse.Namespace) -> ProbeReport:
         str(undefined_symbols),
         "-T",
         str(undefined_functions),
+        "--orphan-handling=error",
         "--no-check-sections",
         "-nostdlib",
         str(probe_object),

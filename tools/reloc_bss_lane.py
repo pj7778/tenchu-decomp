@@ -100,6 +100,51 @@ READELF_SECTION_RE = re.compile(
     r"(?P<address>[0-9A-Fa-f]+)\s+[0-9A-Fa-f]+\s+"
     r"(?P<size>[0-9A-Fa-f]+)\s+"
 )
+CATCHALL_DISCARD_RE = re.compile(
+    r"(?P<indent>^[ \t]*)/DISCARD/[ \t]*:[ \t\r\n]*\{[ \t\r\n]*"
+    r"\*\(\*\)[ \t]*;[ \t\r\n]*\}",
+    re.MULTILINE,
+)
+
+# These sections carry link-time/debug metadata, not bytes consumed by the
+# PlayStation program.  The normal relink explicitly discards only this
+# reviewed set and pairs it with GNU ld's ``--orphan-handling=error``.  Do not
+# add runtime-looking sections here merely to make a new input link: their
+# placement and lifetime must first be represented by an owned output section.
+NON_RUNTIME_INPUT_SECTIONS = (
+    ".reginfo",
+    ".MIPS.abiflags",
+    ".pdr",
+    ".mdebug*",
+    ".gnu.attributes",
+    ".comment",
+    ".note",
+    ".note.*",
+    ".debug*",
+    ".zdebug*",
+    ".line",
+    ".stab",
+    ".stab.*",
+    ".gptab.*",
+)
+
+# GNU ld treats an unconsumed zero-sized input section as an orphan too.  The
+# generated data-only assembly objects all carry empty .text/.bss companions,
+# and GNU ld 2.40 synthesizes an empty .rel.dyn output for this static MIPS
+# link. Collect those names in an INFO output and assert that they contributed
+# no bytes. This suppresses false positives without permitting a nonempty
+# runtime or dynamic-relocation section to disappear.
+EXPECTED_EMPTY_INPUT_SECTIONS = (
+    ".text",
+    ".data",
+    ".rodata",
+    ".sdata",
+    ".bss",
+    ".sbss",
+    ".scommon",
+    ".rel.dyn",
+    ".rela.dyn",
+)
 
 
 class LaneError(RuntimeError):
@@ -225,6 +270,36 @@ def transform_tail_source(source: str) -> tuple[str, set[str]]:
 
 def _indent_of(line: str) -> str:
     return line[: len(line) - len(line.lstrip())]
+
+
+def replace_catchall_discard(source: str) -> str:
+    """Keep known metadata discardable while exposing unknown orphans to ld."""
+
+    matches = list(CATCHALL_DISCARD_RE.finditer(source))
+    if len(matches) != 1:
+        raise LaneError(
+            f"expected one catch-all /DISCARD/ block, found {len(matches)}"
+        )
+    match = matches[0]
+    indent = match.group("indent")
+    inner = indent + "    "
+    zero_patterns = " ".join(
+        f"*({name})" for name in EXPECTED_EMPTY_INPUT_SECTIONS
+    )
+    section_patterns = " ".join(f"*({name})" for name in NON_RUNTIME_INPUT_SECTIONS)
+    replacement = (
+        f"{indent}.tenchu_zero_sized_inputs 0 (INFO) :\n"
+        f"{indent}{{\n"
+        f"{inner}{zero_patterns};\n"
+        f"{indent}}}\n"
+        f"{indent}ASSERT(SIZEOF(.tenchu_zero_sized_inputs) == 0, "
+        '"nonempty standard input section lacks a normal-link owner")\n\n'
+        f"{indent}/DISCARD/ :\n"
+        f"{indent}{{\n"
+        f"{inner}{section_patterns};\n"
+        f"{indent}}}"
+    )
+    return source[: match.start()] + replacement + source[match.end() :]
 
 
 def make_bss_body(
@@ -394,6 +469,7 @@ def rewrite_linker(
     ordinary_c_object_globs: Sequence[str] = (),
     object_replacements: Sequence[tuple[str, str]] = (),
     dynamic_pool: bool = False,
+    strict_orphans: bool = False,
 ) -> str:
     lines = source.splitlines(keepends=True)
     for old_object, new_object in object_replacements:
@@ -521,7 +597,10 @@ def rewrite_linker(
         )
     )
     del lines[vram_index]
-    return "".join(lines)
+    rewritten = "".join(lines)
+    if strict_orphans:
+        rewritten = replace_catchall_discard(rewritten)
+    return rewritten
 
 
 def generate(
@@ -540,6 +619,7 @@ def generate(
     ordinary_c_object_globs: Sequence[str] = (),
     object_replacements: Sequence[tuple[str, str]] = (),
     dynamic_pool: bool = False,
+    strict_orphans: bool = False,
 ) -> tuple[int, int, int]:
     symbol_source = symbols_input.read_text()
     undefined_source = undefined_input.read_text()
@@ -593,6 +673,7 @@ def generate(
         ordinary_c_object_globs=ordinary_c_object_globs,
         object_replacements=object_replacements,
         dynamic_pool=dynamic_pool,
+        strict_orphans=strict_orphans,
     )
 
     atomic_write(linker_output, rewritten_linker)
@@ -815,6 +896,15 @@ def arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     generate_parser.add_argument(
+        "--strict-orphans",
+        action="store_true",
+        help=(
+            "replace the generated catch-all /DISCARD/ with reviewed "
+            "metadata/debug patterns; the caller must also pass GNU ld "
+            "--orphan-handling=error"
+        ),
+    )
+    generate_parser.add_argument(
         "--replace-object",
         action="append",
         default=[],
@@ -864,6 +954,7 @@ def main(argv: list[str] | None = None) -> int:
                 ordinary_c_object_globs=args.ordinary_c_object_glob,
                 object_replacements=replacements,
                 dynamic_pool=args.dynamic_pool,
+                strict_orphans=args.strict_orphans,
             )
             print(
                 f"reloc-bss lane: moved {initialized_symbols} initialized and "

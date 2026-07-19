@@ -1589,6 +1589,7 @@ mainExtraRules = do
         "--undefined-in", undefinedSymbols,
         "--tail-in", relocData75F64Asm,
         "--dynamic-pool",
+        "--strict-orphans",
         "--linker-out", normalRelinkLinker,
         "--symbols-out", normalRelinkSymbols,
         "--undefined-out", normalRelinkUndefined,
@@ -1636,6 +1637,7 @@ mainExtraRules = do
         "-T", normalRelinkSymbols,
         "-T", normalRelinkUndefined,
         "-T", undefinedFunctions,
+        "--orphan-handling=error",
         "--no-check-sections",
         "-nostdlib"
       ] extensionObjects

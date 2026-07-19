@@ -184,6 +184,26 @@ SECTIONS
             output,
         )
 
+    def test_strict_orphans_replaces_only_the_catchall_discard(self) -> None:
+        output = lane.rewrite_linker(
+            self.LINKER,
+            old_tail_object="old/72CD0.data.s.o",
+            new_tail_object="new/72CD0.reloc.s.o",
+            extension_object_glob="build/reloc/*.c.o",
+            aliases=[],
+            strict_orphans=True,
+        )
+        self.assertNotIn("*(*);", output)
+        self.assertIn(".tenchu_zero_sized_inputs 0 (INFO)", output)
+        self.assertIn(
+            "ASSERT(SIZEOF(.tenchu_zero_sized_inputs) == 0", output
+        )
+        self.assertIn("*(.reginfo)", output)
+        self.assertIn("*(.MIPS.abiflags)", output)
+        self.assertIn("*(.pdr)", output)
+        self.assertIn("*(.debug*)", output)
+        self.assertNotIn("*(.custom)", output)
+
     def test_dynamic_pool_follows_aligned_bss_and_keeps_fixed_upper_bound(self) -> None:
         output = lane.rewrite_linker(
             self.LINKER,
@@ -603,6 +623,74 @@ SECTIONS
                 "replacement_bss_suffix",
             }:
                 self.assertIn(symbols[name][1], {"B", "b"}, name)
+
+
+class StrictOrphanIntegrationTests(unittest.TestCase):
+    TOOLS = ("mipsel-unknown-linux-gnu-as", "mipsel-unknown-linux-gnu-ld")
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        missing = [tool for tool in cls.TOOLS if shutil.which(tool) is None]
+        if missing:
+            raise unittest.SkipTest("missing MIPS tools: " + ", ".join(missing))
+
+    def test_unknown_alloc_section_hard_fails_with_its_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "custom.s"
+            obj = root / "custom.s.o"
+            linker = root / "strict.ld"
+            elf = root / "custom.elf"
+            source.write_text(
+                """\
+.section .custom,"a",@progbits
+.globl custom_payload
+custom_payload:
+    .word 0x12345678
+"""
+            )
+            subprocess.run(
+                [
+                    "mipsel-unknown-linux-gnu-as",
+                    "-EL",
+                    "-march=r3000",
+                    "-mtune=r3000",
+                    "-G0",
+                    "-o",
+                    str(obj),
+                    str(source),
+                ],
+                check=True,
+            )
+            linker.write_text(
+                lane.replace_catchall_discard(
+                    """\
+SECTIONS
+{
+    .owned 0x80010000 : { *(.text .data .bss) }
+    /DISCARD/ : { *(*); }
+}
+"""
+                )
+            )
+            result = subprocess.run(
+                [
+                    "mipsel-unknown-linux-gnu-ld",
+                    "-EL",
+                    "--orphan-handling=error",
+                    "-T",
+                    str(linker),
+                    "-o",
+                    str(elf),
+                    str(obj),
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unplaced orphan section", result.stderr)
+            self.assertIn(".custom", result.stderr)
 
 
 class ValidationTests(unittest.TestCase):

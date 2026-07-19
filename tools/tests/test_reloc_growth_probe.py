@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import tempfile
 import unittest
 
 from tools import reloc_c_literals, reloc_data, reloc_growth_probe
@@ -37,6 +38,24 @@ class FakeElf:
 
 
 class RelocGrowthProbeTests(unittest.TestCase):
+    def test_extension_inputs_follow_sources_and_ignore_stale_objects(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_dir = root / "src/main.exe/reloc"
+            object_dir = root / ".shake/build/main.exe/reloc"
+            source_dir.mkdir(parents=True)
+            object_dir.mkdir(parents=True)
+            (source_dir / "live.c").write_text("int live(void) { return 1; }\n")
+            (object_dir / "live.c.o").touch()
+            (object_dir / "stale.c.o").touch()
+            (source_dir / "nested").mkdir()
+            (source_dir / "nested/unsupported.c").touch()
+
+            self.assertEqual(
+                reloc_growth_probe.extension_object_inputs(root),
+                [Path(".shake/build/main.exe/reloc/live.c.o")],
+            )
+
     def test_injects_one_ordinary_input_after_main(self) -> None:
         source = """\
 SECTIONS
