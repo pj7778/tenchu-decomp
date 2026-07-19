@@ -153,6 +153,46 @@ modRelinkPreprocessed name = modRelinkDir </> name <.> "i"
 modRelinkAssembly name = modRelinkDir </> name <.> "s"
 modRelinkObject name = modRelinkDir </> name <.> "o"
 
+-- | Committed real-edit regression lane: replay the PadProc+mod_probe grown
+-- edit through the override machinery in an isolated composition, without
+-- touching src/.  The gate proves the modding contract stays runnable.
+realeditFixtureDir :: FilePath
+realeditFixtureDir = "tools" </> "fixtures" </> "relink-realedit"
+
+realeditDir :: FilePath
+realeditDir = shakeDir </> "relink-realedit"
+
+realeditLayoutDir :: FilePath
+realeditLayoutDir = realeditDir </> "layout"
+
+realeditLinker, realeditSymbols, realeditUndefined :: FilePath
+realeditLinker = realeditLayoutDir </> "main.exe.ld"
+realeditSymbols = realeditLayoutDir </> "symbols.main.exe.txt"
+realeditUndefined = realeditLayoutDir </> "undefined_symbols_auto.main.exe.txt"
+
+realeditTailAsm, realeditTailObject :: FilePath
+realeditTailAsm = realeditDir </> "generated" </> "75F64.bss.s"
+realeditTailObject = realeditDir </> "obj" </> "75F64.bss.s.o"
+
+realeditOverridePreprocessed, realeditOverrideAssembly, realeditOverrideObject :: FilePath
+realeditOverridePreprocessed = realeditDir </> "PadProc.i"
+realeditOverrideAssembly = realeditDir </> "PadProc.s"
+realeditOverrideObject = realeditDir </> "PadProc.o"
+
+realeditExtDir :: FilePath
+realeditExtDir = realeditDir </> "ext"
+
+realeditExtPreprocessed, realeditExtAssembly, realeditExtObject :: FilePath
+realeditExtPreprocessed = realeditExtDir </> "mod_probe.i"
+realeditExtAssembly = realeditExtDir </> "mod_probe.s"
+realeditExtObject = realeditExtDir </> "mod_probe.c.o"
+
+realeditElf, realeditMap, realeditLogical, realeditExe :: FilePath
+realeditElf = realeditDir </> "main_realedit.exe.elf"
+realeditMap = realeditDir </> "main_realedit.exe.map"
+realeditLogical = realeditDir </> "main_realedit.logical"
+realeditExe = realeditDir </> "main_realedit.exe"
+
 -- | Overriding the allocator sources would silently bypass their reviewed
 -- normal-lane relocation transform, so reject those names with guidance.
 modRelinkOverrideNames :: Action [String]
@@ -1168,6 +1208,43 @@ objRules = do
       cmd_ as asFlags ["--MD", depFile, "-o", out, assembly]
       neededAsmDeps depFile
 
+  -- Real-edit regression fixture objects: the committed grown PadProc and its
+  -- new translation unit, compiled by the identical pipeline into the
+  -- isolated realedit lane.
+  let realeditCompile srcName preprocessed assembly object = do
+        preprocessed %> \out -> do
+          let src = realeditFixtureDir </> srcName
+              header = srcDir </> "main.exe" </> "main.exe.h"
+          need [src]
+          orderOnly [header]
+          liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+          withTempFile $ \makeOut -> do
+            cmd_ cpp
+              (cppFlags <>
+                [ "-MMD", "-MF", makeOut,
+                  "-I", takeDirectory header
+                ])
+              src out
+            neededMakefileDependencies makeOut
+        assembly %> \out -> do
+          let src = realeditFixtureDir </> srcName
+          need [preprocessed]
+          gpFlags <- askOracle (GpFlags src)
+          (ccExe, objectCc) <- askOracle (OriginalObjectCcProfile src)
+          withTempFile $ \ccOut -> do
+            cmd_ (FileStdin preprocessed) (FileStdout ccOut) ccExe (ccFlags <> objectCc)
+            cmd_ (FileStdin ccOut) (FileStdout out) maspsx (maspsxFlags <> gpFlags)
+        object %> \out -> do
+          need [assembly]
+          trackAllow ["include/*.inc"]
+          withTempFile $ \depFile -> do
+            cmd_ as asFlags ["--MD", depFile, "-o", out, assembly]
+            neededAsmDeps depFile
+  realeditCompile "PadProc.c"
+    realeditOverridePreprocessed realeditOverrideAssembly realeditOverrideObject
+  realeditCompile "mod_probe.c"
+    realeditExtPreprocessed realeditExtAssembly realeditExtObject
+
   [buildDir </> "*" </> "data" <//> "*.s.o", buildDir </> "*" </> "*.s.o"] |%> \out -> do
     let fileComponent = makeRelative buildDir out
         target = takeDirectory1 fileComponent
@@ -1810,6 +1887,112 @@ mainExtraRules = do
         "--expect", "sp=" <> stack
       ]
 
+  -- Real-edit regression lane: the same composition as the normal relink,
+  -- but with the committed fixture override/extension in place of any user
+  -- mods.  The gate proves the grown-function modding contract end to end
+  -- without touching src/.
+  [realeditLinker, realeditSymbols, realeditUndefined, realeditTailAsm] &%> \_outs -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedSymbols = genD </> metaDir </> "undefined_symbols_auto.main.exe.txt"
+        oldTailObject = tBuildDir </> "data" </> "75F64.data.s.o"
+        replacementArgs = concatMap
+          (\name ->
+            [ "--replace-object",
+              (tBuildDir </> "data" </> name <.> "data.s.o") <>
+                "=" <> relocDataObject name
+            ])
+          relocDataTargetNames
+        tool = "tools" </> "reloc_bss_lane.py"
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    need [ normalRelinkSdkLinker, normalRelinkSdkSymbols, undefinedSymbols,
+           relocData75F64Asm, tool, ramLayoutTool, ramLayoutHeader ]
+    liftIO $ IO.createDirectoryIfMissing True realeditLayoutDir
+    cmd_ "python3" tool $
+      [ "generate",
+        "--linker-in", normalRelinkSdkLinker,
+        "--symbols-in", normalRelinkSdkSymbols,
+        "--undefined-in", undefinedSymbols,
+        "--tail-in", relocData75F64Asm,
+        "--dynamic-pool",
+        "--strict-orphans",
+        "--linker-out", realeditLinker,
+        "--symbols-out", realeditSymbols,
+        "--undefined-out", realeditUndefined,
+        "--tail-out", realeditTailAsm,
+        "--old-tail-object", oldTailObject,
+        "--new-tail-object", realeditTailObject,
+        "--extension-object-glob", realeditExtDir </> "*.c.o",
+        "--ordinary-c-object-glob", tBuildDir </> "*.c.o"
+      ] <>
+      concatMap
+        (\name -> ["--ordinary-c-object-glob", relocCLiteralObject name])
+        relocCLiteralNames <>
+      [ "--ordinary-c-object-glob", realeditOverrideObject ] <>
+      replacementArgs <>
+      [ "--override-object",
+        (tBuildDir </> "PadProc.c.o") <> "=" <> realeditOverrideObject
+      ]
+
+  realeditTailObject %> \out -> do
+    need [realeditTailAsm]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    withTempFile $ \depFile -> do
+      cmd_ as asFlags ["--MD", depFile, "-o", out, realeditTailAsm]
+      neededAsmDeps depFile
+
+  [realeditElf, realeditMap] &%> \_outs -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedFunctions = genD </> metaDir </> "undefined_functions_auto.main.exe.txt"
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    sFiles <- liftIO $ getDirectoryFilesIO (genD </> asmDir) ["*.s", "data/*.s"]
+    userFiles <- Set.fromList <$> getDirectoryFiles (tgSrcDir t) ["//*.c"]
+    genFiles <- Set.fromList <$> getDirectoryFiles (genD </> srcDir) ["//*.c"]
+    let cFiles = Set.toList (userFiles <> genFiles)
+    assetFiles <- liftIO $ getDirectoryFilesIO (genD </> assetsDir) ["//*.bin"]
+    let oFiles = map (\f -> tBuildDir </> f <.> "o") (cFiles <> sFiles <> assetFiles)
+        sFilesExp = map (\f -> genD </> asmDir </> f) sFiles
+        assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
+    need $ sFilesExp <> assetFilesExp <> oFiles <> relocCLiteralObjects <>
+      [ realeditLinker, realeditSymbols, realeditUndefined,
+        realeditTailObject, realeditOverrideObject, realeditExtObject,
+        undefinedFunctions, tgSymbols mainTarget
+      ] <> relocDataObjects
+    cmd_ ld ldFlags
+      [ "-o", realeditElf,
+        "-Map", realeditMap,
+        "-T", realeditLinker,
+        "-T", realeditSymbols,
+        "-T", realeditUndefined,
+        "-T", undefinedFunctions,
+        "--orphan-handling=error",
+        "--no-check-sections",
+        "-nostdlib",
+        realeditExtObject
+      ]
+
+  realeditLogical %> \out -> do
+    need [realeditElf]
+    cmd_ objcopy objcopyFlags [realeditElf, out]
+
+  realeditExe %> \out -> do
+    let tool = "tools" </> "psxexe.py"
+    stack <- ramLayoutValue "initial_stack_address"
+    need [realeditLogical, realeditElf, tool]
+    cmd_ "python3" tool
+      [ "finalize", realeditLogical,
+        "-o", out,
+        "--elf", realeditElf,
+        "--entry-symbol", "__SN_ENTRY_POINT",
+        "--load-symbol", "__load_start",
+        "--set", "sp=" <> stack,
+        "--expect", "gp=0",
+        "--expect", "sp=" <> stack
+      ]
+
   -- Non-matching build: mkmod patches hooked functions in place. It reads main.exe's
   -- symbol table (via nm on the elf), compiles every src/mod/main.exe/*.c, and aborts
   -- if one outgrows its slot -- so depend on the exe+elf, the mod sources, AND the
@@ -1966,6 +2149,21 @@ phonyRules = do
   phony "shiftability-report" runShiftabilityReport
 
   phony "check-relink-growth" runRelinkGrowthProbe
+
+  -- Replay the committed grown-PadProc fixture through the override
+  -- machinery in an isolated composition and verify code growth, the
+  -- relocated call, loaded data, a zero-finding input audit, and (unless
+  -- TENCHU_REALEDIT_NO_SMOKE=1) an emulator boot with observed behavior.
+  phony "check-relink-realedit" $ do
+    let tool = "tools" </> "relink_realedit.py"
+    need
+      [ realeditExe, realeditElf, realeditMap, realeditLinker,
+        mainRelocBssElf, tool,
+        "tools" </> "reloc_input_audit.py", "tools" </> "psxexe.py",
+        "tools" </> "reloc_c_literals.py",
+        "tools" </> "pcsx_smoke.py", "tools" </> "pcsx-smoke.lua"
+      ]
+    cmd_ "python3" tool
 
   -- Structural integration gate for the real no-pad artifact.  The compiler
   -- object delta is measured, every unique canonical-SDK symbol must follow

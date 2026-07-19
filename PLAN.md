@@ -241,9 +241,13 @@ re-proven through the override lane (check green with mod present; direct and
 full-chain smokes PASS with both watches; `check-relink` green). The
 `verify-normal-link` SDK check now measures rigid-block displacement from its
 own anchor instead of assuming only the six modeled objects can change size.
-Remaining for this thread: an automated committed regression gate that
-replays the real-edit fixture (`check-relink-realedit`), then the broader
-runtime gates (STR EOF, XA audio, gameplay, save/load, exe transitions).
+The proof is now a committed repeatable gate: `./Build check-relink-realedit`
+replays the fixture (`tools/fixtures/relink-realedit/`) through the override
+machinery in an isolated composition and verifies growth, the relocated
+call, loaded data, a clean strict audit, and the emulator-observed counter
+(`TENCHU_REALEDIT_NO_SMOKE=1` for disc-less environments). Remaining for
+this thread: the broader runtime gates (STR EOF, XA audio, gameplay,
+save/load, exe transitions).
 
 ### Historical 2026-07-18 frontier
 

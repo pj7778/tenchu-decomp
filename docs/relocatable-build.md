@@ -530,6 +530,17 @@ new initialized data loads at its linked address. This run is also what
 exposed the loaded-image congruence bug above: the first boot executed
 displaced bytes that no static gate had rejected.
 
+The proof is committed as a repeatable gate: `./Build check-relink-realedit`
+compiles `tools/fixtures/relink-realedit/` (the grown `PadProc` plus the
+`mod_probe` TU) with the pinned pipeline, replays it through the same
+override machinery in an isolated composition under `.shake/relink-realedit/`
+(user mods in `src/mod-relink/` never influence it), and
+`tools/relink_realedit.py` verifies whole-instruction growth, exactly one
+relocated `JAL` into the new TU, the magic word in the finalized payload, a
+zero-finding strict input audit, and a PCSX-Redux boot in which the counter
+increments (`TENCHU_REALEDIT_NO_SMOKE=1` skips only the emulator step for
+machines without pcsx-redux or the disc).
+
 ## Emulator smoke proof
 
 The current `+0x10004` artifact has also passed two bounded, non-interactive
