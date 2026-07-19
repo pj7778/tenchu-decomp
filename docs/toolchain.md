@@ -104,16 +104,18 @@ huge-frame `lw a3,0(a3)` self-tie. 2.8.1 unconditionally retypes that case to
 register. This supersedes the earlier conclusion that the human indexed loop
 was unreachable.
 
-### GS_106.OBJ, GS_110.OBJ, GS_111.OBJ, GS_113.OBJ, and GS_122.OBJ: stock GCC 2.7.2
+### GS_106/110/111/113/121/122: stock GCC 2.7.2
 
-`GS_106.OBJ`, `GS_110.OBJ`, `GS_111.OBJ`, `GS_113.OBJ`, and `GS_122.OBJ`
+`GS_106.OBJ`, `GS_110.OBJ`, `GS_111.OBJ`, `GS_113.OBJ`, `GS_121.OBJ`, and
+`GS_122.OBJ`
 select the pinned `cc1-272` profile. These are original-object attributions,
 despite each object having one public member: running PsyQ's Win32
 `PSYLIB.EXE` under nixpkgs `wibo` lists only `GsSetProjection`,
-`GsSetAmbient`, `GsDrawOt`, `GsClearOt`, and `GsGetTimInfo` respectively, and
-extracting each complete object produces the same text as Tenchu. Their natural
-sources are ordinary projection, ambient-light, ordering-table, and TIM-image
-operations. In particular, `GsClearOt` stores `offset` and `point`, computes
+`GsSetAmbient`, `GsDrawOt`, `GsClearOt`, `gte_init`, and `GsGetTimInfo`
+respectively, and extracting each complete object produces the same text as
+Tenchu. Their natural sources are ordinary projection, ambient-light,
+ordering-table, geometry-init, and TIM-image operations. In particular,
+`GsClearOt` stores `offset` and `point`, computes
 `ot->org + (1 << ot->length) - 1`, and calls `ClearOTagR` with the same
 power-of-two length. `GsGetTimInfo` follows the TIM block lengths directly with
 `pixel = image + (*image >> 2)` and copies the two optional CLUT and pixel
@@ -123,9 +125,11 @@ Released GCC 2.8.x fills `GsClearOt`'s `jr $ra` delay slot with the stack
 adjustment and reuses the first length load; GCC 2.7.2's RTL keeps the target's
 second length load. The normal maspsx 2.77 pipeline emits the extracted
 objects' exact return sequences, including `GsGetTimInfo`'s local return label.
+`gte_init` is the direct SDK initializer: `InitGeom`, zero far colour and
+geometry offset, then clear `GsORGOFSY` and `GsORGOFSX` in that order.
 
 This does not infer a compiler from archive adjacency: both the actual object
-bytes and the compiler's debug output were checked. All five objects are
+bytes and the compiler's debug output were checked. All six objects are
 enumerated separately and completely in the profile oracle, and receive no
 exceptional flags.
 The dev shell includes nixpkgs `wibo` for compatible original Win32 archive

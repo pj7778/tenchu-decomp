@@ -589,6 +589,14 @@ gs113ObjectMembers =
   [ "GsClearOt"
   ]
 
+-- GS_121.OBJ has one public member and its complete 0x50-byte text is
+-- Tenchu's gte_init slot. The natural initializer uses the same 2.7.2
+-- epilogue as the neighbouring proven libgs objects.
+gs121ObjectMembers :: [String]
+gs121ObjectMembers =
+  [ "gte_init"
+  ]
+
 -- GS_122.OBJ also has one public member. Its complete 0xF0-byte text,
 -- including the local return label and trailing alignment, is Tenchu's slot.
 gs122ObjectMembers :: [String]
@@ -603,6 +611,7 @@ originalObjectCcFlags src
   | name `elem` gs110ObjectMembers = []
   | name `elem` gs111ObjectMembers = []
   | name `elem` gs113ObjectMembers = []
+  | name `elem` gs121ObjectMembers = []
   | name `elem` gs122ObjectMembers = []
   | name `elem` gs107ObjectMembers = ["-mno-split-addresses"]
   | name `elem` adtObjectMembers = []
@@ -635,6 +644,7 @@ originalObjectCcExecutable src
   | takeBaseName src `elem` gs110ObjectMembers = "cc1-272"
   | takeBaseName src `elem` gs111ObjectMembers = "cc1-272"
   | takeBaseName src `elem` gs113ObjectMembers = "cc1-272"
+  | takeBaseName src `elem` gs121ObjectMembers = "cc1-272"
   | takeBaseName src `elem` gs122ObjectMembers = "cc1-272"
   | takeBaseName src `elem` gs107ObjectMembers = "cc1-281-gs107"
   | takeBaseName src `elem` adtObjectMembers = "cc1-280"

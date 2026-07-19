@@ -738,6 +738,8 @@ segments:
       - { start: 0x55478, type: data, linker_section_order: .text }
       - [0x55484, c, GsClearOt]
       - { start: 0x554DC, type: data, linker_section_order: .text }
+      - [0x554E4, c, gte_init]
+      - { start: 0x55530, type: data, linker_section_order: .text }
       - [0x55534, c, GsGetTimInfo]
       - { start: 0x55618, type: data, linker_section_order: .text }
       - [0x56304, c, dmyGsPrstF3NL]

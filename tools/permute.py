@@ -91,6 +91,9 @@ ORIGINAL_OBJECT_MEMBERS = {
     "GS_113.OBJ": (
         "GsClearOt",
     ),
+    "GS_121.OBJ": (
+        "gte_init",
+    ),
     "GS_122.OBJ": (
         "GsGetTimInfo",
     ),
@@ -110,6 +113,7 @@ ORIGINAL_OBJECT_CC_FLAGS = {
     "GS_110.OBJ": (),
     "GS_111.OBJ": (),
     "GS_113.OBJ": (),
+    "GS_121.OBJ": (),
     "GS_122.OBJ": (),
     "GS_107.OBJ": ("-mno-split-addresses",),
     "ADT.OBJ": (),
@@ -119,6 +123,7 @@ ORIGINAL_OBJECT_CC_EXECUTABLES = {
     "GS_110.OBJ": "cc1-272",
     "GS_111.OBJ": "cc1-272",
     "GS_113.OBJ": "cc1-272",
+    "GS_121.OBJ": "cc1-272",
     "GS_122.OBJ": "cc1-272",
     "GS_107.OBJ": "cc1-281-gs107",
     "ADT.OBJ": "cc1-280",

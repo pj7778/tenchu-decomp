@@ -849,7 +849,7 @@
 80065c24	40	GsSetAmbient
 80065c54	36	GsDrawOt
 80065c84	88	GsClearOt
-80065ce4	76	FUN_80065ce4
+80065ce4	76	gte_init
 80065d34	220	GsGetTimInfo
 80065e10	8	GS_122_OBJ_DC
 80065e24	124	Gssub_make_matrix
