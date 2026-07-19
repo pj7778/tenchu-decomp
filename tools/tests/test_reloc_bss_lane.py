@@ -111,6 +111,7 @@ SECTIONS
             self.LINKER,
             old_tail_object="old/72CD0.data.s.o",
             new_tail_object="new/72CD0.reloc.s.o",
+            extension_object_glob="build/reloc/*.c.o",
             aliases=[lane.Symbol("OTable", 0x80098018)],
         )
         self.assertNotIn("_gp = 0x80097698", output)
@@ -124,16 +125,24 @@ SECTIONS
         self.assertIn("D_800CDBA8 = .;", output)
         self.assertIn(".main_exe_memory_pool 0x800dc000 (NOLOAD)", output)
         self.assertIn("MemoryPool = .;\n        . += 0x120000;", output)
+        self.assertIn(".main_exe_extension : AT(__romPos)", output)
+        self.assertIn("build/reloc/*.c.o(.text .text.*", output)
+        self.assertIn("build/reloc/*.c.o(.sbss .sbss.* .scommon);", output)
+        self.assertIn("build/reloc/*.c.o(.bss .bss.* COMMON);", output)
 
-    def test_retail_asserts_are_an_intentional_ownership_only_gate(self) -> None:
+    def test_growth_uses_relative_layout_and_collision_asserts(self) -> None:
         output = lane.rewrite_linker(
             self.LINKER,
             old_tail_object="old/72CD0.data.s.o",
             new_tail_object="new/72CD0.reloc.s.o",
+            extension_object_glob="build/reloc/*.c.o",
             aliases=[],
         )
+        self.assertNotIn("retail BSS start changed", output)
+        self.assertNotIn("retail _gp changed", output)
         self.assertIn(
-            'ASSERT(main_exe_BSS_START == 0x80097eb0, "retail BSS start changed")',
+            'ASSERT(main_exe_BSS_START == ALIGN(main_exe_INITIALIZED_END, 16), '
+            '"BSS does not follow aligned initialized data")',
             output,
         )
         self.assertIn(

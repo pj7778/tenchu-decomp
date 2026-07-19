@@ -89,6 +89,7 @@ works from anywhere in the tree.
 ./Build check           # build + assert sha256 == disks/tenchu/main.exe
 ./Build check-reloc-game  # alternate normal link: game symbols are linker-owned
 ./Build check-reloc-bss   # alternate link: BSS/pool are real NOBITS regions
+./Build relink            # experimental normal GNU-ld/finalized PS-X EXE output
 ./Build all             # build all six executables
 ./Build check-all       # build + assert sha256 for all six
 ./Build clean           # remove .shake/{gen,build,processed}
@@ -118,6 +119,14 @@ adds the required sector padding; the resulting
 still a retail-address ownership proof, not a runnable grown executable. See
 the BSS layout and remaining blockers in
 [`relocatable-build.md`](relocatable-build.md#implemented-second-gate-linker-owned-bss-boundaries).
+
+`./Build relink` builds that same composed GNU-ld/finalizer artifact without
+requiring retail hashes. Existing functions may grow, and new helper sources
+under `src/main.exe/reloc/` are collected into ordinary text/rodata/data,
+small-BSS, and BSS sections. The linker uses relative BSS/heap/GP assertions and
+rejects collision with the fixed `MemoryPool`. This target is an integration
+surface, not yet a claim that changed images run: remaining raw SDK/data and
+literal-reference blockers are tracked in `relocatable-build.md`.
 
 ## The other five executables
 

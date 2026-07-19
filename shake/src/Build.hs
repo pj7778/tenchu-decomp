@@ -8,7 +8,7 @@ import qualified Data.Aeson as A
 import Data.Binary (Binary)
 import Data.Functor ((<&>))
 import Data.Hashable (Hashable)
-import Data.List (sort)
+import Data.List (isPrefixOf, sort)
 import qualified Data.Set as Set
 import qualified Data.UUID as UUID
 import Data.UUID.V4 (nextRandom)
@@ -1160,6 +1160,7 @@ mainExtraRules = do
   [relocBssLinker, relocBssSymbols, relocBssUndefined, relocBssTailAsm] &%> \_outs -> do
     let t = mainTarget
         genD = tgGenDir t
+        tBuildDir = tgBuildDir t
         undefinedSymbols = genD </> metaDir </> "undefined_symbols_auto.main.exe.txt"
         tailSource = genD </> asmDir </> "data" </> "72CD0.data.s"
         oldTailObject = tgBuildDir t </> "data" </> "72CD0.data.s.o"
@@ -1178,7 +1179,8 @@ mainExtraRules = do
         "--undefined-out", relocBssUndefined,
         "--tail-out", relocBssTailAsm,
         "--old-tail-object", oldTailObject,
-        "--new-tail-object", relocBssTailObject
+        "--new-tail-object", relocBssTailObject,
+        "--extension-object-glob", tBuildDir </> "reloc" </> "*.c.o"
       ]
 
   relocBssTailObject %> \out -> do
@@ -1195,12 +1197,14 @@ mainExtraRules = do
         undefinedFunctions = genD </> metaDir </> "undefined_functions_auto.main.exe.txt"
     _generatedFiles <- getGeneratedFiles (tgGen t)
     sFiles <- liftIO $ getDirectoryFilesIO (genD </> asmDir) ["*.s", "data/*.s"]
-    cFiles <- liftIO $ do
-      userFiles <- Set.fromList <$> getDirectoryFilesIO (tgSrcDir t) ["//*.c"]
-      genFiles <- Set.fromList <$> getDirectoryFilesIO (genD </> srcDir) ["//*.c"]
-      pure $ Set.toList (userFiles <> genFiles)
+    userFiles <- Set.fromList <$> getDirectoryFiles (tgSrcDir t) ["//*.c"]
+    genFiles <- Set.fromList <$> getDirectoryFiles (genD </> srcDir) ["//*.c"]
+    let cFiles = Set.toList (userFiles <> genFiles)
     assetFiles <- liftIO $ getDirectoryFilesIO (genD </> assetsDir) ["//*.bin"]
     let oFiles = map (\f -> tBuildDir </> f <.> "o") (cFiles <> sFiles <> assetFiles)
+        extensionObjects =
+          map (\f -> tBuildDir </> f <.> "o") $
+            filter (\f -> ["reloc"] `isPrefixOf` splitDirectories f) cFiles
         sFilesExp = map (\f -> genD </> asmDir </> f) sFiles
         assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
     need $ sFilesExp <> assetFilesExp <> oFiles <>
@@ -1217,7 +1221,7 @@ mainExtraRules = do
         "-T", undefinedFunctions,
         "--no-check-sections",
         "-nostdlib"
-      ]
+      ] extensionObjects
 
   mainRelocBssLogical %> \out -> do
     need [mainRelocBssElf]
@@ -1329,6 +1333,12 @@ phonyRules = do
   -- The matching gate: main.exe only, so it stays fast (matchdiff runs ./Build once
   -- per function). `check-all` verifies every executable on the disc.
   phony "check" $ checkTarget mainTarget
+
+  -- Experimental normal GNU-ld output. Unlike the same-slot `mod` target this
+  -- allows sections to grow and accepts new sources under src/main.exe/reloc/.
+  -- Remaining raw-address audits still gate treating a changed image as
+  -- runnable; `check-reloc-bss` is the exact-at-retail structural check.
+  phony "relink" $ need [mainRelocBssExe]
 
   -- Opt-in exact-at-retail gate for the normal linker-owned game-symbol lane.
   -- This deliberately does not claim that a grown image is runnable yet: raw

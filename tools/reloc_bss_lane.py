@@ -12,7 +12,10 @@ This opt-in proof rewrites only generated build products:
 * the generated linker's zero-sized BSS input list moves into a real NOLOAD
   output section following initialized data;
 * script-assigned BSS symbols become section-relative labels and ``_gp`` is
-  allowed to come from its real initialized-data input label; and
+  allowed to come from its real initialized-data input label;
+* new C files under the normal-link extension directory receive ordinary
+  text/data/small-BSS/BSS input patterns instead of falling into ``/DISCARD/``;
+  and
 * the fixed virtual-memory pool is represented as an explicit NOBITS
   reservation.
 
@@ -210,6 +213,7 @@ def make_bss_body(
     indent: str,
     bss_input_lines: list[str],
     tail_object: str,
+    extension_object_glob: str,
     aliases: list[Symbol],
 ) -> str:
     inner = indent + "    "
@@ -219,6 +223,7 @@ def make_bss_body(
         f"{inner}main_exe_BSS_START = .;\n",
         f"{inner}__bss_start = .;\n",
         f"{inner}{tail_object}(.bss);\n",
+        f"{inner}{extension_object_glob}(.sbss .sbss.* .scommon);\n",
     ]
     lines.extend(bss_input_lines)
     cursor = BSS_PAD_END
@@ -236,6 +241,7 @@ def make_bss_body(
     lines.extend(
         [
             f"{inner}. += 0x{final_gap:x};\n",
+            f"{inner}{extension_object_glob}(.bss .bss.* COMMON);\n",
             f"{inner}__bss_end = .;\n",
             f"{inner}D_800CDBA8 = .;\n",
             f"{inner}main_exe_BSS_END = .;\n",
@@ -254,14 +260,14 @@ def make_bss_body(
             "\n",
             f"{indent}__tenchu_handoff_start = ABSOLUTE(0x{HANDOFF_START:08x});\n",
             f"{indent}__tenchu_handoff_end = ABSOLUTE(0x{HANDOFF_END:08x});\n",
-            f'{indent}ASSERT(main_exe_BSS_START == 0x{BSS_START:08x}, '
-            '"retail BSS start changed")\n',
-            f'{indent}ASSERT(main_exe_BSS_END == 0x{BSS_END:08x}, '
-            '"retail BSS end changed")\n',
-            f'{indent}ASSERT(_gp == 0x{GP_ADDRESS:08x}, '
-            '"retail _gp changed")\n',
-            f'{indent}ASSERT(HEAP_START == 0x{HEAP_START:08x}, '
-            '"retail heap start changed")\n',
+            f'{indent}ASSERT(main_exe_BSS_START == ALIGN(main_exe_INITIALIZED_END, 16), '
+            '"BSS does not follow aligned initialized data")\n',
+            f'{indent}ASSERT(D_800CDBA8 == main_exe_BSS_END, '
+            '"crt0 clear end disagrees with linker BSS end")\n',
+            f'{indent}ASSERT(HEAP_START == main_exe_BSS_END + 4, '
+            '"heap start does not follow BSS")\n',
+            f'{indent}ASSERT(_gp >= __load_start && _gp < main_exe_INITIALIZED_END, '
+            '"_gp lies outside the initialized image")\n',
             f'{indent}ASSERT(MemoryPool == 0x{MEMORY_POOL_START:08x}, '
             '"retail MemoryPool changed")\n',
             f'{indent}ASSERT(main_exe_MEMORY_POOL_END == 0x{MEMORY_POOL_END:08x}, '
@@ -282,6 +288,7 @@ def rewrite_linker(
     *,
     old_tail_object: str,
     new_tail_object: str,
+    extension_object_glob: str,
     aliases: list[Symbol],
 ) -> str:
     lines = source.splitlines(keepends=True)
@@ -354,13 +361,30 @@ def rewrite_linker(
     if vram_index != rom_index + 1:
         raise LaneError("unexpected content between generated ROM and VRAM end markers")
     indent = _indent_of(lines[rom_index])
+    extension_body = "".join(
+        [
+            f"{indent}/* Normal-link extension sources. */\n",
+            f"{indent}.main_exe_extension : AT(__romPos) SUBALIGN(4)\n",
+            f"{indent}{{\n",
+            f"{indent}    __tenchu_extension_start = .;\n",
+            f"{indent}    {extension_object_glob}"
+            "(.text .text.* .rodata .rodata.* .data .data.* .sdata .sdata.*);\n",
+            f"{indent}    __tenchu_extension_end = .;\n",
+            f"{indent}}}\n",
+            f"{indent}__romPos += SIZEOF(.main_exe_extension);\n",
+            f"{indent}__romPos = ALIGN(__romPos, 4);\n",
+            f"{indent}. = ALIGN(., 4);\n",
+        ]
+    )
     lines[rom_index] = (
-        lines[rom_index]
+        extension_body
+        + lines[rom_index]
         + f"{indent}main_exe_INITIALIZED_END = .;\n"
         + make_bss_body(
             indent=indent,
             bss_input_lines=bss_input_lines,
             tail_object=new_tail_object,
+            extension_object_glob=extension_object_glob,
             aliases=aliases,
         )
     )
@@ -380,6 +404,7 @@ def generate(
     tail_output: Path,
     old_tail_object: str,
     new_tail_object: str,
+    extension_object_glob: str,
 ) -> tuple[int, int]:
     symbol_source = symbols_input.read_text()
     undefined_source = undefined_input.read_text()
@@ -428,6 +453,7 @@ def generate(
         linker_input.read_text(),
         old_tail_object=old_tail_object,
         new_tail_object=new_tail_object,
+        extension_object_glob=extension_object_glob,
         aliases=aliases,
     )
 
@@ -592,6 +618,7 @@ def arguments(argv: list[str] | None = None) -> argparse.Namespace:
     generate_parser.add_argument("--tail-out", type=Path, required=True)
     generate_parser.add_argument("--old-tail-object", required=True)
     generate_parser.add_argument("--new-tail-object", required=True)
+    generate_parser.add_argument("--extension-object-glob", required=True)
 
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--logical", type=Path, required=True)
@@ -623,6 +650,7 @@ def main(argv: list[str] | None = None) -> int:
                 tail_output=args.tail_out,
                 old_tail_object=args.old_tail_object,
                 new_tail_object=args.new_tail_object,
+                extension_object_glob=args.extension_object_glob,
             )
             print(
                 f"reloc-bss lane: moved {bss_symbols} BSS symbols; "

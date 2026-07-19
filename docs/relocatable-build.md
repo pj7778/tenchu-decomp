@@ -220,18 +220,21 @@ size, appends exactly `0x150` zero bytes at retail size, and regenerates PC,
 `t_addr`, and `t_size`. The finalized result is byte-identical to retail; the
 padding is no longer modelled as initialized storage.
 
-This is deliberately an **exact-at-retail ownership proof**, not permission to
-grow code yet. Its linker script still asserts the retail BSS start/end, `_gp`,
-heap, and pool addresses. The 122 post-padding BSS names are linker-relative
-aliases, but most do not yet come from real source storage declarations. Raw
-crt0 and SDK/data carves still embed address constants. Header regeneration is
-implemented, but a grown output is not runnable until those references and the
-retail boundary assertions are dealt with.
+`check-reloc-bss` is deliberately an **exact-at-retail verification**, while
+the generated linker itself now expresses BSS start, crt0 clear end, heap, and
+`_gp` with relative layout/collision assertions rather than retail equality
+pins. `./Build relink` exposes that artifact without a hash requirement.
+Existing inputs may grow, and new helper files under `src/main.exe/reloc/` feed
+explicit extension text/rodata/data, small-BSS, and BSS inputs instead of being
+lost to `/DISCARD/`. The 122 post-padding BSS names are linker-relative aliases,
+but most do not yet come from real source storage declarations. Raw SDK/data
+carves still embed address constants. Header regeneration is implemented, but
+a changed output is not runnable until those references are dealt with.
 
 For a growth-enabled link, BSS must be allowed to follow the grown initialized
-image, crt0's clear boundaries must be symbolic/relocatable, and the retail
-equality assertions must become relative collision assertions. Keeping
-`MemoryPool` fixed permits at most the `0xe458` bytes of immediate BSS growth;
+image; the implemented crt0 symbols and relative assertions already follow it.
+Keeping `MemoryPool` fixed permits at most the `0xe458` bytes of immediate BSS
+growth;
 larger changes require making its base/size linker-derived or deliberately
 shrinking/moving the reservation in the source that initializes it. The fixed
 handoff record at `0x80100000..0x8010005c` intentionally lies *inside* that
