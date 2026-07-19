@@ -126,6 +126,19 @@ linker owns the 555 game inputs, the complete CRT/SDK text, initialized data,
 finalizer then derives the entry point, load address, loaded size, and sector
 padding from the linked ELF.
 
+User function overrides live in `src/mod-relink/main.exe/`: a `<Name>.c`
+there is compiled by the identical pipeline into an isolated object, and the
+generated script rewrites every reference to the original object (one per
+retail section family), so the changed function occupies its original input
+position while the exact lanes keep their pristine objects and `./Build
+check` stays byte-identical. Overriding the two allocator sources is
+rejected; their normal-lane objects carry the reviewed relocation transform.
+Because any game source may now grow or shrink upstream of the SDK, the
+composed gate measures the SDK block's displacement from its own first
+section-owned symbol and requires the whole block to move rigidly by that
+word-aligned delta (the C/SDK boundary no-pad property remains an explicit
+scan), instead of predicting the delta from the six modeled objects alone.
+
 The historical focused gates remain useful exact oracles:
 
 - `check-reloc-game` proves all game functions section-owned at the retail

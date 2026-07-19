@@ -133,6 +133,42 @@ relocCLiteralReferenceObjects = map relocCLiteralReferenceObject relocCLiteralNa
 relocCLiteralAuditObjects :: [FilePath]
 relocCLiteralAuditObjects = map relocCLiteralAuditObject relocCLiteralAuditNames
 
+-- | User function overrides for the normal relink lane.  A file
+-- @src/mod-relink/main.exe/\<Name\>.c@ replaces the matched translation unit
+-- of the same name in @./Build relink@ only: it is compiled by the identical
+-- cpp|cc1|maspsx|as pipeline into an isolated directory, and every generated
+-- linker reference to the original object is rewritten to the override, so
+-- the function grows or shrinks in place in the retail input order.  The
+-- exact matching lanes never read these objects, so @./Build check@ stays
+-- byte-identical while a mod is present.  Brand-new translation units belong
+-- in @src/main.exe/reloc/@ instead.  See docs/modding-and-nonmatching.md.
+modRelinkSrcDir :: FilePath
+modRelinkSrcDir = srcDir </> "mod-relink" </> "main.exe"
+
+modRelinkDir :: FilePath
+modRelinkDir = shakeDir </> "mod-relink"
+
+modRelinkPreprocessed, modRelinkAssembly, modRelinkObject :: String -> FilePath
+modRelinkPreprocessed name = modRelinkDir </> name <.> "i"
+modRelinkAssembly name = modRelinkDir </> name <.> "s"
+modRelinkObject name = modRelinkDir </> name <.> "o"
+
+-- | Overriding the allocator sources would silently bypass their reviewed
+-- normal-lane relocation transform, so reject those names with guidance.
+modRelinkOverrideNames :: Action [String]
+modRelinkOverrideNames = do
+  sources <- getDirectoryFiles modRelinkSrcDir ["*.c"]
+  let names = map dropExtension sources
+      forbidden = filter (`elem` relocCLiteralNames) names
+  when (not (null forbidden)) $
+    fail $
+      "src/mod-relink cannot override the allocator sources "
+        <> show forbidden
+        <> "; their normal-lane objects carry the reviewed pool/capacity "
+        <> "relocation transform (docs/relocatable-build.md). Adjust "
+        <> "src/main.exe/ram_layout.h policy or edit the originals instead."
+  pure names
+
 -- | Bounded second relocation proof.  Splat emits every raw SDK text carve in
 -- 0x800601d4..0x80086764 as canonical assembly, preserving the existing C and
 -- canonical-object islands between them.  The base link is retail-exact; a
@@ -1093,6 +1129,45 @@ objRules = do
       cmd_ as asFlags ["--MD", depFile, "-o", out, assembly]
       neededAsmDeps depFile
 
+  -- Normal-relink function overrides: the same pipeline as matched game C,
+  -- compiled from src/mod-relink/main.exe into an isolated directory so the
+  -- exact lanes keep their pristine objects.
+  modRelinkDir </> "*.i" %> \out -> do
+    let name = takeBaseName out
+        src = modRelinkSrcDir </> name <.> "c"
+        header = srcDir </> "main.exe" </> "main.exe.h"
+    need [src]
+    orderOnly [header]
+    liftIO $ IO.createDirectoryIfMissing True modRelinkDir
+    withTempFile $ \makeOut -> do
+      cmd_ cpp
+        (cppFlags <>
+          [ "-MMD", "-MF", makeOut,
+            "-I", takeDirectory header
+          ])
+        src out
+      neededMakefileDependencies makeOut
+
+  modRelinkDir </> "*.s" %> \out -> do
+    let name = takeBaseName out
+        processed = modRelinkPreprocessed name
+        src = modRelinkSrcDir </> name <.> "c"
+    need [processed]
+    gpFlags <- askOracle (GpFlags src)
+    (ccExe, objectCc) <- askOracle (OriginalObjectCcProfile src)
+    withTempFile $ \ccOut -> do
+      cmd_ (FileStdin processed) (FileStdout ccOut) ccExe (ccFlags <> objectCc)
+      cmd_ (FileStdin ccOut) (FileStdout out) maspsx (maspsxFlags <> gpFlags)
+
+  modRelinkDir </> "*.o" %> \out -> do
+    let name = takeBaseName out
+        assembly = modRelinkAssembly name
+    need [assembly]
+    trackAllow ["include/*.inc"]
+    withTempFile $ \depFile -> do
+      cmd_ as asFlags ["--MD", depFile, "-o", out, assembly]
+      neededAsmDeps depFile
+
   [buildDir </> "*" </> "data" <//> "*.s.o", buildDir </> "*" </> "*.s.o"] |%> \out -> do
     let fileComponent = makeRelative buildDir out
         target = takeDirectory1 fileComponent
@@ -1630,6 +1705,16 @@ mainExtraRules = do
           relocDataTargetNames
         tool = "tools" </> "reloc_bss_lane.py"
     _generatedFiles <- getGeneratedFiles (tgGen t)
+    overrideNames <- modRelinkOverrideNames
+    let overrideArgs = concatMap
+          (\name ->
+            [ "--override-object",
+              (tBuildDir </> name <.> "c.o") <> "=" <> modRelinkObject name
+            ])
+          overrideNames
+        overrideSectionArgs = concatMap
+          (\name -> ["--ordinary-c-object-glob", modRelinkObject name])
+          overrideNames
     need [ normalRelinkSdkLinker, normalRelinkSdkSymbols, undefinedSymbols,
            relocData75F64Asm, tool, ramLayoutTool, ramLayoutHeader ]
     liftIO $ IO.createDirectoryIfMissing True (takeDirectory normalRelinkLinker)
@@ -1653,7 +1738,9 @@ mainExtraRules = do
       concatMap
         (\name -> ["--ordinary-c-object-glob", relocCLiteralObject name])
         relocCLiteralNames <>
-      replacementArgs
+      overrideSectionArgs <>
+      replacementArgs <>
+      overrideArgs
 
   normalRelinkTailObject %> \out -> do
     need [normalRelinkTailAsm]
@@ -1674,6 +1761,7 @@ mainExtraRules = do
     genFiles <- Set.fromList <$> getDirectoryFiles (genD </> srcDir) ["//*.c"]
     let cFiles = Set.toList (userFiles <> genFiles)
     assetFiles <- liftIO $ getDirectoryFilesIO (genD </> assetsDir) ["//*.bin"]
+    overrideNames <- modRelinkOverrideNames
     let oFiles = map (\f -> tBuildDir </> f <.> "o") (cFiles <> sFiles <> assetFiles)
         extensionObjects =
           map (\f -> tBuildDir </> f <.> "o") $
@@ -1681,6 +1769,7 @@ mainExtraRules = do
         sFilesExp = map (\f -> genD </> asmDir </> f) sFiles
         assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
     need $ sFilesExp <> assetFilesExp <> oFiles <> relocCLiteralObjects <>
+      map modRelinkObject overrideNames <>
       [ normalRelinkLinker, normalRelinkSymbols, normalRelinkUndefined,
         normalRelinkTailObject, undefinedFunctions, inputAuditTool,
         ramLayoutTool, ramLayoutHeader, tgSymbols mainTarget

@@ -101,8 +101,25 @@ fail…")` diagnostic, which is never hit in normal play, to make room.)
 
 ## Size-changing normal relink
 
-The static normal-link path is implemented. Edit a game source normally, add a
-helper under `src/main.exe/reloc/` when useful, then run:
+The static normal-link path is implemented, and there are two equivalent ways
+to change a function:
+
+- **Override lane (keeps `./Build check` green).** Copy the function's file to
+  `src/mod-relink/main.exe/<Name>.c` and edit the copy. Only the normal relink
+  reads that directory: the file is compiled by the identical
+  `cpp | cc1-281 | maspsx | as` pipeline and its object replaces the original
+  at the original position in the link order, so the function grows or
+  shrinks in place while the matched tree and the byte-identical reference
+  build stay pristine. A misspelled name fails script generation with
+  "override target … is not a linker input"; `vinit`/`valloc` are rejected
+  because their normal-lane objects carry the reviewed allocator relocation
+  transform (change `src/main.exe/ram_layout.h` policy instead).
+- **In-place edit.** Edit `src/main.exe/<Name>.c` directly. Same result in the
+  relink lane, but `./Build check` is red until you revert, since the exact
+  lane compiles the same file.
+
+Brand-new translation units (helpers, new subsystems) go under
+`src/main.exe/reloc/` in both cases. Then run:
 
 ```console
 $ ./Build check-relink
@@ -110,6 +127,13 @@ $ ./Build run-relink       # fast direct MAIN.EXE launch
 $ ./Build iso-relink       # package the actual normal-link executable
 $ ./Build run-iso-relink   # full SLPS/MENU/MAIN boot
 ```
+
+To verify a mod's behavior mechanically, `tools/pcsx_smoke.py` accepts
+`--watch-counter SYMBOL` (u32 must be nonzero and increasing once the main
+loop runs) and `--watch-equals SYMBOL=VALUE` (u32 must hold VALUE), with the
+addresses resolved from the relinked ELF. The worked end-to-end example — a
+grown `PadProc` calling a new TU, booted through the full disc chain — is in
+[relocatable-build.md](relocatable-build.md#real-grown-function-edit-proof).
 
 The normal lane retains the pinned compiler's ordinary output sections for
 existing `*.c.o` game objects, the two transformed allocator `.o` inputs, and

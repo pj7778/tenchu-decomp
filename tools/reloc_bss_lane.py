@@ -556,6 +556,7 @@ def rewrite_linker(
     aliases: list[Symbol],
     ordinary_c_object_globs: Sequence[str] = (),
     object_replacements: Sequence[tuple[str, str]] = (),
+    object_overrides: Sequence[tuple[str, str]] = (),
     dynamic_pool: bool = False,
     strict_orphans: bool = False,
 ) -> str:
@@ -567,6 +568,20 @@ def rewrite_linker(
         if matches != 1:
             raise LaneError(
                 f"expected one linker reference to {old_object}, found {matches}"
+            )
+        lines = [line.replace(old_object, new_object) for line in lines]
+    for old_object, new_object in object_overrides:
+        if not old_object or not new_object or old_object == new_object:
+            raise LaneError("object overrides require distinct nonempty paths")
+        # A game object is enumerated once per retail section family
+        # (.text/.data/.rodata/.bss), so an override rewrites every
+        # reference; zero references means the named function has no
+        # linker-owned object to override.
+        matches = sum(line.count(old_object) for line in lines)
+        if matches == 0:
+            raise LaneError(
+                f"override target {old_object} is not a linker input; "
+                "the overridden translation unit must already exist"
             )
         lines = [line.replace(old_object, new_object) for line in lines]
     gp_indices: list[int] = []
@@ -719,6 +734,7 @@ def generate(
     extension_object_glob: str,
     ordinary_c_object_globs: Sequence[str] = (),
     object_replacements: Sequence[tuple[str, str]] = (),
+    object_overrides: Sequence[tuple[str, str]] = (),
     dynamic_pool: bool = False,
     strict_orphans: bool = False,
 ) -> tuple[int, int, int]:
@@ -792,6 +808,7 @@ def generate(
         aliases=aliases,
         ordinary_c_object_globs=ordinary_c_object_globs,
         object_replacements=object_replacements,
+        object_overrides=object_overrides,
         dynamic_pool=dynamic_pool,
         strict_orphans=strict_orphans,
     )
@@ -1048,6 +1065,16 @@ def arguments(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="OLD=NEW",
         help="replace one exact linker input object path; repeatable",
     )
+    generate_parser.add_argument(
+        "--override-object",
+        action="append",
+        default=[],
+        metavar="OLD=NEW",
+        help=(
+            "replace every linker reference to an existing game object with "
+            "a user-modified replacement; repeatable"
+        ),
+    )
 
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--logical", type=Path, required=True)
@@ -1076,6 +1103,14 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 old_object, new_object = replacement.split("=", 1)
                 replacements.append((old_object, new_object))
+            overrides: list[tuple[str, str]] = []
+            for override in args.override_object:
+                if override.count("=") != 1:
+                    raise LaneError(
+                        f"invalid --override-object {override!r}; expected OLD=NEW"
+                    )
+                old_object, new_object = override.split("=", 1)
+                overrides.append((old_object, new_object))
             bss_symbols, aliases, initialized_symbols = generate(
                 linker_input=args.linker_in,
                 symbols_input=args.symbols_in,
@@ -1090,6 +1125,7 @@ def main(argv: list[str] | None = None) -> int:
                 extension_object_glob=args.extension_object_glob,
                 ordinary_c_object_globs=args.ordinary_c_object_glob,
                 object_replacements=replacements,
+                object_overrides=overrides,
                 dynamic_pool=args.dynamic_pool,
                 strict_orphans=args.strict_orphans,
             )

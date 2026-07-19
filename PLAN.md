@@ -233,6 +233,18 @@ MENU.EXE false positives) and supports `--watch-counter`/`--watch-equals`
 memory watches. See `docs/relocatable-build.md` §“Real grown-function edit
 proof”.
 
+**Override modding lane landed (2026-07-20).** `src/mod-relink/main.exe/`
+overrides any matched TU in the relink lane only: identical compile pipeline,
+object substituted at the original link position, `./Build check` stays
+byte-identical while the mod is present. The same PadProc+new-TU mod was
+re-proven through the override lane (check green with mod present; direct and
+full-chain smokes PASS with both watches; `check-relink` green). The
+`verify-normal-link` SDK check now measures rigid-block displacement from its
+own anchor instead of assuming only the six modeled objects can change size.
+Remaining for this thread: an automated committed regression gate that
+replays the real-edit fixture (`check-relink-realedit`), then the broader
+runtime gates (STR EOF, XA audio, gameplay, save/load, exe transitions).
+
 ### Historical 2026-07-18 frontier
 
 The snapshot below recorded the earlier 31-function frontier and is retained to

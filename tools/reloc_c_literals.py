@@ -1019,10 +1019,12 @@ def verify_normal_link(
 ) -> list[str]:
     """Verify that the no-pad C objects reached the composed normal link.
 
-    The extension section is allowed to have any size.  Movement of the SDK is
-    derived from the compiler objects' measured net text change rather than a
-    fixed address delta, so adding a normal-link helper does not weaken this
-    check.
+    The extension section is allowed to have any size, and any game source —
+    including a src/mod-relink override — may legitimately grow or shrink
+    upstream of the SDK.  The SDK block's displacement is therefore measured
+    from its own first section-owned symbol, and the check requires the whole
+    block to move rigidly by that one word-aligned delta.  Boundary padding
+    regressions are guarded separately by the explicit LONG-pad scan below.
     """
 
     shrink = text_shrink(reference_objects, objects)
@@ -1047,17 +1049,26 @@ def verify_normal_link(
     if marker and "LONG(0x00000000)" in lines[marker - 1]:
         raise AuditError("normal linker still pads the C/SDK boundary")
 
-    delta = -shrink
     sdk_symbols = _unique_section_symbols(base, SDK_TEXT_START, SDK_TEXT_END)
     if not sdk_symbols:
         raise AuditError("base link has no section-owned SDK symbols")
+    anchor = min(sdk_symbols, key=lambda symbol: (symbol.value, symbol.name))
+    anchor_shifted = variant.symbol(anchor.name)
+    delta = (anchor_shifted.value - anchor.value) & 0xFFFFFFFF
+    if delta >= 0x80000000:  # measured as a negative two's-complement move
+        delta -= 0x100000000
+    if delta % 4:
+        raise AuditError(
+            f"SDK anchor {anchor.name} moved by unaligned {delta:+d} bytes"
+        )
     for symbol in sdk_symbols:
         shifted = variant.symbol(symbol.name)
         expected = (symbol.value + delta) & 0xFFFFFFFF
         if shifted.value != expected:
             raise AuditError(
                 f"normal-link {symbol.name}=0x{shifted.value:08x}, "
-                f"expected 0x{expected:08x} ({delta:+d})"
+                f"expected 0x{expected:08x} ({delta:+d} from anchor "
+                f"{anchor.name}); the SDK block did not move rigidly"
             )
         if shifted.section_index in (SHN_UNDEF, SHN_ABS):
             raise AuditError(f"normal-link {symbol.name} is not section-owned")

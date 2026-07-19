@@ -236,6 +236,41 @@ SECTIONS
             "build/reloc-c-literals/*.o(.bss .bss.* COMMON);", output
         )
 
+    def test_object_override_rewrites_every_reference(self) -> None:
+        # A game object is enumerated once per retail section family; a user
+        # override must follow all of them so the function is replaced in
+        # place in the retail input order.
+        source = self.LINKER.replace(
+            "old/72CD0.data.s.o(.data);",
+            "old/72CD0.data.s.o(.data);\n"
+            "        object/PadProc.c.o(.text);\n"
+            "        object/PadProc.c.o(.rodata);\n"
+            "        object/PadProc.c.o(.data);\n",
+        )
+        output = lane.rewrite_linker(
+            source,
+            old_tail_object="old/72CD0.data.s.o",
+            new_tail_object="new/72CD0.reloc.s.o",
+            extension_object_glob="build/reloc/*.c.o",
+            aliases=[],
+            object_overrides=[("object/PadProc.c.o", "mod/PadProc.o")],
+        )
+        self.assertNotIn("object/PadProc.c.o", output)
+        self.assertIn("mod/PadProc.o(.text);", output)
+        self.assertIn("mod/PadProc.o(.rodata);", output)
+        self.assertIn("mod/PadProc.o(.data);", output)
+
+    def test_object_override_requires_an_existing_input(self) -> None:
+        with self.assertRaisesRegex(lane.LaneError, "not a linker input"):
+            lane.rewrite_linker(
+                self.LINKER,
+                old_tail_object="old/72CD0.data.s.o",
+                new_tail_object="new/72CD0.reloc.s.o",
+                extension_object_glob="build/reloc/*.c.o",
+                aliases=[],
+                object_overrides=[("object/Typo.c.o", "mod/Typo.o")],
+            )
+
     def test_growth_uses_relative_layout_and_collision_asserts(self) -> None:
         output = lane.rewrite_linker(
             self.LINKER,
