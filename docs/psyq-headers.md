@@ -45,7 +45,7 @@ PsyQ compatibility, and its current coverage is not an exact `libgs`/GTE ABI
 oracle. Neither should silently replace the audited shims in byte-matching
 builds.
 
-## Optional external validation
+## Optional external validation and linking
 
 A future audit lane may accept a user-supplied, appropriately licensed PsyQ 4.5
 include directory and compile against it locally. Such a lane should never
@@ -53,3 +53,10 @@ vendor or download the SDK. It must preserve the header order above, overlay
 only target-proven exceptions such as `DrawTargetS`, and finish with
 `./Build check`. The default hermetic build should continue to use the clean
 minimal shims.
+
+The same external installation may supply original `.LIB`/`.OBJ` members to an
+opt-in relocatable build. Headers and library objects solve different problems:
+the shims give game C accurate types, while converted objects retain the SDK
+code's original relocation records. See
+[`relocatable-build.md`](relocatable-build.md) for the cross-project precedent,
+the local `GS_107.OBJ` proof, and the dependency policy.

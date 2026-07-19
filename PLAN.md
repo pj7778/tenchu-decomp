@@ -15,9 +15,9 @@ byte-identical `main.exe`.
 - **Toolchain is complete for matching.** Pipeline is
   `cpp | cc1-281 -G8 | maspsx --aspsx-version=2.77 | as | ld`; reproducible/offline
   via nix (no cabal/wine). maspsx is integrated (see [`docs/toolchain.md`](docs/toolchain.md)).
-- **Every game function is carved (555/555)**; matched count is live in
-  `tools/progress.py` (**535/555 game functions, 97.17% of game-code bytes** as of
-  2026-07-19; **553/555 functions and 99.27% of bytes counting the 18
+- **Every game function is done (555/555)**; matched count is live in
+  `tools/progress.py` (**537/555 game functions, 97.90% of game-code bytes** as of
+  2026-07-19; **555/555 functions and 100% of bytes counting the 18
   canonical-asm originals**),
   whole-image byte-identical throughout (see `git log` for the
   per-function record; `tools/progress.py` for the live count). The engine is
@@ -33,10 +33,11 @@ byte-identical `main.exe`.
   tokens** on Sonnet; pick targets with `tools/triage.py` / `tools/findsimilar.py`.
 - **Partial matches** (kept via the
   NON_MATCHING convention — default build stays green byte-identical, draft
-  builds with `NON_MATCHING=<Name> ./Build`): only **two game functions remain**
-  (2026-07-19): `FUN_800519bc` and `AdtSelect`. `mission_score_screen` is now
+  builds with `NON_MATCHING=<Name> ./Build`): **no game functions remain** as
+  of 2026-07-19. `FUN_800519bc`, `AdtSelect`, and `mission_score_screen` are
   exact pure C; `FUN_8001c730` is classified as a canonical handwritten GTE
-  helper. Older headers often describe residuals as proven sub-C floors,
+  helper. Remaining guarded drafts are stock SDK or canonical-assembly work.
+  Older headers often describe residuals as proven sub-C floors,
   but repeated exact matches have falsified that conclusion. Those diagnostics
   describe one tested pseudo graph, not everything human C can express. Common
   residuals still include
@@ -110,9 +111,11 @@ types and nested-block scopes; declaration order is ambiguous at group boundarie
 must be checked against the recorded hard-register homes); the matched sibling's
 MACROS tell you which `do{}while(0)` clusters are legitimate human fences; and the target
 is a source oracle (a const/copy def next to its uses = set once = birthing bump; a load
-above a byte store = the human wrote the load first = QImode alias pin). SCOPE: main.exe
-game code only — the SDK (>=0x80060000, libgte/libgs/libapi) is stock Sony library code
-and NOT a target.
+above a byte store = the human wrote the load first = QImode alias pin). SCOPE:
+plausible original source first. The SDK (>=0x80060000, libgte/libgs/libapi) is
+stock Sony library code, so it is not a bulk C-decomp queue. It is nevertheless
+a dependency of the relocatable-build goal; prefer the exact original
+relocatable member or canonical assembly when C adds no editing value.
 
 ### Batch 2026-07-18: a broad sweep found apparent sub-C floors
 
@@ -250,13 +253,16 @@ printed this set (it defaults to `--scope game`):
   * Also present but hidden by `--max-size 2048`: **`start_demo_`** (2188) and
     **`mission_score_screen`** (4636). Raise the flag or they are invisible.
 
-**THE SDK IS NOT A TARGET (owner decision, 2026-07-17).** Everything at/above
-0x80060000 is stock Sony library code — libgte/libgs/libapi/libcard — linked in from
-prebuilt `.LIB` files. **Tenchu's original source tree never contained `libgte.c`**, so
-for those objects the ASM IS the faithful source form, exactly the argument already
-accepted for the `draw*` family. Decompiling PsyQ is a different project and ones
-already exist. `progress.py` still counts the SDK separately (116/1068) because the
-image contains it; that number is not a work queue.
+**THE SDK IS NOT A BULK C-DECOMP TARGET (revised owner direction,
+2026-07-19).** Everything at/above 0x80060000 is stock Sony library code —
+libgte/libgs/libapi/libcard — linked in from prebuilt `.LIB` files. Tenchu's
+original source tree never contained `libgte.c`, so an exact original `.OBJ`
+member or canonical relocatable assembly is an honest source input. A C match
+is still valuable when it is natural, complete-object evidence supports it, or
+we want to edit that SDK routine; it is not a prerequisite for moving the game.
+`progress.py` counts the SDK separately because the image contains it, but that
+number is not by itself the work queue. See
+[`docs/relocatable-build.md`](docs/relocatable-build.md).
 
 *Why this needed writing down — the tooling actively pointed the wrong way.*
 `--targets` ranks by similarity to already-matched code, which is a proxy for EASY, and
@@ -271,10 +277,11 @@ are byte-identical and green so they stay, and it did pay for itself twice — t
 oracle bug (a Build.hs defect that silently made compiler-profile experiments
 measure stale objects). But it is not where effort goes.
 
-**`TransMatrix` and `GsInitCoordinate2`** are parked SDK drafts; leave them. The
-"libgte is handwritten asm" idea is a hypothesis with one data point and is moot now
-that the SDK is out of scope — if it ever matters, settle it with a survey that applies
-the tells mechanically and counts, not with a story.
+**`TransMatrix` and `GsInitCoordinate2`** are parked SDK drafts; do not force
+them through C. Prefer their exact original object members for the relocatable
+lane, or retain symbolic assembly if those members cannot be proven. If their
+original source form matters, settle it with complete-object/compiler evidence,
+not a generic SDK story.
 
 **The cookbook was restructured** (audit: `docs/cookbook-audit.md`): 8,251 unrouted
 lines → `matching-cookbook.md` (1,483: contract, evidence, **router**, 19 families, park
@@ -443,16 +450,18 @@ boundary lives in the tool; refine it as library identification improves.
 is assembled from its extracted asm (INCLUDE_ASM), so the build links a
 complete, byte-identical exe at every stage — matching only ever replaces
 blobs with C. The realistic goal metric is **100% of game code DONE**, where
-done = matched C **plus** the 17 handwritten-assembly originals
+done = matched C **plus** the 18 handwritten-assembly originals
 (`config/handwritten-asm.txt`, the draw*/DrawTMD renderers) whose asm IS the
 faithful source (owner decision 2026-07-16 — see
 [`docs/gte-policy.md`](docs/gte-policy.md); `tools/progress.py` reports the
-combined `game done (C+asm)` line). For
-the SDK the options (in scene-standard order) are:
+combined `game done (C+asm)` line). For the SDK the options are:
 
-1. **Leave it as INCLUDE_ASM** — shippable "source + vendored asm" forever.
+1. **Use symbolic assembly** — a valid relocatable source form when references
+   are labels/relocations rather than embedded absolute words, and the right
+   representation for proven handwritten routines. The current generated
+   `.word` SDK data carves are byte-exact but are not yet this form.
 2. **Link original PSY-Q objects**: convert SDK `.OBJ`/`.LIB` members with
-   `psyq-obj-parser` (ships with pcsx-redux, already checked out) and let the
+   a pinned converter such as PCSX-Redux's `psyq-obj-parser` and let the
    linker use them instead of asm blobs. Needs a user-provided PSY-Q SDK
    archive (uncommitted, like the game disc). **Split this in two** — the
    halves have very different cost/benefit:
@@ -463,10 +472,10 @@ the SDK the options (in scene-standard order) are:
    - *Link-swap* (actually feeding the objects to ld): requires
      reconstructing the original member link order at our fixed addresses,
      yaml/linker-script restructuring, migrating ~1000 script-assigned
-     symbols to object definitions — and the built exe comes out byte-for-
-     byte THE SAME as today (the bytes are already in via INCLUDE_ASM). It
-     buys provenance cleanliness only; a permanent bring-your-own-SDK tax on
-     contributors/CI. Defer until "no blobs" matters as a property.
+     symbols to object definitions. At retail addresses it comes out byte-for-
+     byte the same; at new addresses its relocation records make the SDK code
+     move coherently. The default matching lane must remain independent of the
+     SDK, while an opt-in relocatable lane may accept `PSYQ_SDK`.
 3. **Opportunistic decompilation of trivial clusters** — `tools/coddog
    cluster` found e.g. 108 byte-identical `dmyGsPrstF3NL`-style stubs; one C
    file per cluster is a cheap, large jump in the SDK numbers.
@@ -483,12 +492,17 @@ the SDK the options (in scene-standard order) are:
    fine), so check a cluster's epilogue shape FIRST. Unassessed clusters:
    `SetPolyF4` ×5 (looked cc1-compatible per the interrupted agent — true
    pointer-parameter leaves), `EVENT_OBJ_BC` ×8, `funcEvSpIOE` ×8, plus many
-   2–4s. SDK lanes are paused while the focus is main.exe game code
-   (owner directive 2026-07-16).
+   2–4s. The game metric is now complete; pursue SDK C only where natural
+   complete-object evidence makes it a clean editable-source win, while the
+   external-object lane handles bulk relocation.
 
-Recommended: (1) now, chase the game-code metric, revisit (2) if a "no blobs"
-build is ever wanted; (3) whenever a quick win is nice. Progress uploading
-(frogress / decomp.dev) can consume `tools/progress.py --json` from CI later.
+Recommended: keep (1) in the hermetic reference build; implement (2) as an
+optional external-object lane for the long-term shiftability goal; use (3) for
+readability or SDK routines we intend to modify. This follows MGS and Silent
+Hill precedent and is backed by an exact-at-retail/links-at-new-address
+`GS_107.OBJ` experiment documented in `docs/relocatable-build.md`. Progress
+uploading (frogress / decomp.dev) can consume `tools/progress.py --json` from
+CI later.
 
 ## Modding / non-matching builds
 

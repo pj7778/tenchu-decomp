@@ -29,6 +29,13 @@ decisions behind the toolchain. It's the reference companion to the terse
   (adopted 2026-07-16): why COP2/GTE has no C spelling, the `src/main.exe/gte.h`
   macro layer, the whitelist (`config/gte-allowlist.txt`), enforcement, and the
   family matching order.
+- [psyq-headers.md](psyq-headers.md) — the clean minimal PsyQ ABI shims, their
+  comparison against real 4.5 headers, and why the default build does not fetch
+  or vendor Sony's SDK.
+- [relocatable-build.md](relocatable-build.md) — why shiftability does not
+  require decompiling every PsyQ routine into C, how MGS/Silent Hill/SOTN handle
+  stock SDK code, the exact `GS_107.OBJ` relocation proof, and the proposed
+  optional external-object lane.
 - [matching-get-held-buttons.md](matching-get-held-buttons.md) — a worked
   case study of trying to byte-match a real function, and what makes it hard.
 - [modding-and-nonmatching.md](modding-and-nonmatching.md) — building
@@ -50,7 +57,7 @@ decisions behind the toolchain. It's the reference companion to the terse
   generator (`tools/objdiff-report.py` / `./Build report`) + `jp_report` CI
   workflow, and standing up a self-hosted instance against a (private) repo.
 
-## Current state (verified 2026-07-13)
+## Current state (verified 2026-07-19)
 
 The disassemble → reassemble round-trip **works and is byte-identical**:
 
@@ -65,10 +72,11 @@ BUILD GREEN (byte-identical)
   script; everything is reassembled with the GCC 2.8.1 cross toolchain + GNU
   `ld` back into a **byte-identical** `main.exe`
   (sha256 `0690a5c1…3558`).
-- 402 of 555 game-code functions are **fully decompiled C functions that
-  byte-match**, covering 191332 of 302824 game-code bytes (63.18%). Run
-  `tools/progress.py` for the authoritative current count; parallel matching
-  makes handwritten totals stale quickly.
+- 537 of 555 game-code functions are **fully decompiled C functions that
+  byte-match**, covering 296872 of 303244 game-code bytes (97.90%). The other
+  18 are canonical handwritten-assembly originals, so game code is 555/555
+  done. Run `tools/progress.py` for the authoritative current count; parallel
+  SDK work makes totals stale quickly.
 
 ## What was wrong, and what got fixed
 
