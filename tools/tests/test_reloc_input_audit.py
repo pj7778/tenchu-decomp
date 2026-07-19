@@ -48,15 +48,24 @@ def _align(value: int, alignment: int = 4) -> int:
 
 
 def make_relocatable_elf(
-    path: Path, text: bytes, relocations: list[tuple[int, int]]
+    path: Path,
+    text: bytes,
+    relocations: list[tuple[int, int]],
+    extra_alloc_section: tuple[str, bytes] | None = None,
 ) -> None:
     """Write one strict ELF32/MIPS REL fixture with a real .rel.text table."""
 
-    shstrtab = b"\0.text\0.rel.text\0.symtab\0.strtab\0.shstrtab\0"
+    extra_name = extra_alloc_section[0] if extra_alloc_section else None
+    shstrtab = b"\0.text\0.rel.text\0.symtab\0.strtab\0"
+    if extra_name is not None:
+        shstrtab += extra_name.encode() + b"\0"
+    shstrtab += b".shstrtab\0"
     sh_names = {
         name: shstrtab.index(name.encode())
         for name in (".text", ".rel.text", ".symtab", ".strtab", ".shstrtab")
     }
+    if extra_name is not None:
+        sh_names[extra_name] = shstrtab.index(extra_name.encode())
     strtab = b"\0target\0"
     symtab = b"\0" * audit.SYMBOL_ENTRY.size + audit.SYMBOL_ENTRY.pack(
         1, 0, 0, 0x10, 0, audit.SHN_UNDEF
@@ -78,6 +87,9 @@ def make_relocatable_elf(
     rel_offset = append(rel_text)
     sym_offset = append(symtab)
     str_offset = append(strtab, 1)
+    extra_offset = (
+        append(extra_alloc_section[1]) if extra_alloc_section is not None else 0
+    )
     shstr_offset = append(shstrtab, 1)
     section_offset = _align(len(payload))
     payload.extend(b"\0" * (section_offset - len(payload)))
@@ -99,11 +111,28 @@ def make_relocatable_elf(
         audit.SECTION_HEADER.pack(
             sh_names[".strtab"], 3, 0, 0, str_offset, len(strtab), 0, 0, 1, 0
         ),
+    ]
+    if extra_alloc_section is not None:
+        sections.append(
+            audit.SECTION_HEADER.pack(
+                sh_names[extra_alloc_section[0]],
+                audit.SHT_PROGBITS,
+                audit.SHF_ALLOC,
+                0,
+                extra_offset,
+                len(extra_alloc_section[1]),
+                0,
+                0,
+                4,
+                0,
+            )
+        )
+    sections.append(
         audit.SECTION_HEADER.pack(
             sh_names[".shstrtab"], 3, 0, 0, shstr_offset, len(shstrtab),
             0, 0, 1, 0,
-        ),
-    ]
+        )
+    )
     for section in sections:
         payload.extend(section)
 
@@ -122,7 +151,7 @@ def make_relocatable_elf(
         0,
         audit.SECTION_HEADER.size,
         len(sections),
-        5,
+        len(sections) - 1,
     )
     payload[: len(header)] = header
     path.write_bytes(payload)
@@ -366,6 +395,28 @@ build/*.c.o(.sdata .sdata.*);
             filtered = audit.filter_loaded_selections(selections, loaded, root)
         self.assertEqual([Path(item.display).name for item in filtered], ["live.c.o"])
 
+    def test_ld_object_wildcard_matches_nested_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            top = root / "build/reloc/top.c.o"
+            nested = root / "build/reloc/nested/live.c.o"
+            top.parent.mkdir(parents=True)
+            nested.parent.mkdir(parents=True)
+            top.touch()
+            nested.touch()
+
+            selections = audit.linked_selections(
+                "build/reloc/*.c.o(.text);", root
+            )
+
+        self.assertEqual(
+            [Path(item.display) for item in selections],
+            [
+                Path("build/reloc/nested/live.c.o"),
+                Path("build/reloc/top.c.o"),
+            ],
+        )
+
     def test_map_object_absent_from_linker_inventory_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -383,6 +434,118 @@ build/*.c.o(.sdata .sdata.*);
         self.assertIn("R_MIPS", help_text)
         self.assertIn("unaligned", help_text)
         self.assertIn("+0x10004", help_text)
+
+
+class AllocSectionOwnershipTests(unittest.TestCase):
+    @staticmethod
+    def section(
+        index: int,
+        name: str,
+        *,
+        section_type: int = audit.SHT_PROGBITS,
+        flags: int = audit.SHF_ALLOC,
+        size: int = 4,
+        alignment: int = 4,
+        entry_size: int = 0,
+    ) -> audit.Section:
+        return audit.Section(
+            index=index,
+            name=name,
+            type=section_type,
+            flags=flags,
+            address=0,
+            offset=0,
+            size=size,
+            link=0,
+            info=0,
+            alignment=alignment,
+            entry_size=entry_size,
+        )
+
+    def test_alloc_debug_payload_outside_runtime_ownership_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "fault.c.o"
+            make_relocatable_elf(
+                path,
+                b"",
+                [],
+                extra_alloc_section=(".debug_payload", words(0x12345678)),
+            )
+            elf = audit.Elf32(path)
+            text_index = next(
+                section.index for section in elf.sections if section.name == ".text"
+            )
+            findings, reviewed = audit.audit_alloc_section_ownership(
+                elf.sections, {text_index}, object_name="fault.c.o"
+            )
+        self.assertEqual(reviewed, {})
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].kind, "unowned_alloc_section")
+        self.assertEqual(findings[0].section, ".debug_payload")
+
+    def test_only_structurally_exact_mips_alloc_metadata_passes(self) -> None:
+        valid_reginfo = self.section(
+            1,
+            ".reginfo",
+            section_type=audit.SHT_MIPS_REGINFO,
+            size=24,
+            alignment=4,
+            entry_size=24,
+        )
+        valid_abiflags = self.section(
+            2,
+            ".MIPS.abiflags",
+            section_type=audit.SHT_MIPS_ABIFLAGS,
+            size=24,
+            alignment=8,
+            entry_size=24,
+        )
+        malformed_reginfo = self.section(
+            3,
+            ".reginfo",
+            section_type=audit.SHT_MIPS_REGINFO,
+            size=28,
+            alignment=4,
+            entry_size=24,
+        )
+        findings, reviewed = audit.audit_alloc_section_ownership(
+            [valid_reginfo, valid_abiflags, malformed_reginfo],
+            set(),
+            object_name="metadata.o",
+        )
+        self.assertEqual(
+            reviewed,
+            {".reginfo": 1, ".MIPS.abiflags": 1},
+        )
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].section, ".reginfo")
+
+
+class CurrentRelinkIntegrationTests(unittest.TestCase):
+    def test_current_loaded_inputs_have_no_unowned_alloc_runtime_bytes(self) -> None:
+        required = (
+            audit.ROOT / audit.DEFAULT_LINKER,
+            audit.ROOT / audit.DEFAULT_ELF,
+            audit.ROOT / audit.DEFAULT_MAP,
+        )
+        if not all(path.is_file() for path in required):
+            self.skipTest("normal relink artifacts have not been built")
+
+        report = audit.collect(
+            audit.ROOT,
+            audit.DEFAULT_LINKER,
+            audit.DEFAULT_ELF,
+            audit.DEFAULT_MAP,
+        )
+        findings = report["findings"]
+        self.assertIsInstance(findings, list)
+        self.assertEqual(
+            [item for item in findings if item["kind"] == "unowned_alloc_section"],
+            [],
+        )
+        counts = report["counts"]
+        self.assertIsInstance(counts, dict)
+        self.assertGreater(counts["reviewed_alloc_metadata_sections"], 0)
 
 
 if __name__ == "__main__":

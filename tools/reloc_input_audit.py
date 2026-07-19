@@ -33,7 +33,6 @@ import argparse
 from collections import Counter
 from dataclasses import asdict, dataclass
 import fnmatch
-import glob
 import json
 import os
 from pathlib import Path
@@ -55,6 +54,8 @@ SHT_PROGBITS = 1
 SHT_SYMTAB = 2
 SHT_NOBITS = 8
 SHT_REL = 9
+SHT_MIPS_REGINFO = 0x70000006
+SHT_MIPS_ABIFLAGS = 0x7000002A
 SHF_ALLOC = 0x2
 SHF_EXECINSTR = 0x4
 SHN_UNDEF = 0
@@ -179,6 +180,7 @@ class Finding:
 @dataclass
 class Counts:
     objects: int = 0
+    reviewed_alloc_metadata_sections: int = 0
     selected_alloc_sections: int = 0
     executable_sections: int = 0
     data_sections: int = 0
@@ -406,6 +408,29 @@ def _display_path(path: Path, root: Path) -> str:
         return os.path.normpath(str(path))
 
 
+def _expand_linker_object_glob(pattern: Path) -> list[Path]:
+    """Expand an ld filename wildcard, whose ``*`` may match ``/``."""
+
+    rendered = str(pattern)
+    magic = GLOB_MAGIC_RE.search(rendered)
+    if magic is None:
+        return [pattern]
+    separator = rendered.rfind(os.sep, 0, magic.start())
+    if separator < 0:
+        search_root = Path(".")
+    elif separator == 0:
+        search_root = Path(os.sep)
+    else:
+        search_root = Path(rendered[:separator])
+    if not search_root.is_dir():
+        return []
+    return sorted(
+        path
+        for path in search_root.rglob("*")
+        if path.is_file() and fnmatch.fnmatchcase(str(path), rendered)
+    )
+
+
 def linked_selections(linker_text: str, root: Path = ROOT) -> list[ObjectSelection]:
     """Expand exact GNU-ld object tokens and union their selected sections."""
 
@@ -417,10 +442,7 @@ def linked_selections(linker_text: str, root: Path = ROOT) -> list[ObjectSelecti
             raise AuditError(f"linked object {token} has an empty section selector")
         raw_path = Path(token)
         rooted = raw_path if raw_path.is_absolute() else root / raw_path
-        if GLOB_MAGIC_RE.search(str(rooted)):
-            paths = [Path(item) for item in sorted(glob.glob(str(rooted)))]
-        else:
-            paths = [rooted]
+        paths = _expand_linker_object_glob(rooted)
         # GNU ld accepts an object glob which currently matches nothing.  It is
         # not an input object yet, so there is nothing for this audit to read.
         for path in paths:
@@ -494,6 +516,67 @@ def selected_sections(elf: Elf32, patterns: Iterable[str]) -> list[Section]:
         for section in elf.sections
         if any(fnmatch.fnmatchcase(section.name, pattern) for pattern in patterns)
     ]
+
+
+def reviewed_alloc_metadata(section: Section) -> str | None:
+    """Accept only exact, structurally valid allocatable MIPS metadata."""
+
+    expected = {
+        ".reginfo": (SHT_MIPS_REGINFO, 24, 4, 24),
+        ".MIPS.abiflags": (SHT_MIPS_ABIFLAGS, 24, 8, 24),
+    }.get(section.name)
+    if expected is None:
+        return None
+    section_type, size, alignment, entry_size = expected
+    if (
+        section.type == section_type
+        and section.flags == SHF_ALLOC
+        and section.address == 0
+        and section.size == size
+        and section.link == 0
+        and section.info == 0
+        and section.alignment == alignment
+        and section.entry_size == entry_size
+    ):
+        return section.name
+    return None
+
+
+def audit_alloc_section_ownership(
+    sections: Iterable[Section],
+    owned_indices: set[int],
+    *,
+    object_name: str,
+) -> tuple[list[Finding], Counter[str]]:
+    """Reject nonempty alloc sections not selected into a runtime owner."""
+
+    findings: list[Finding] = []
+    reviewed: Counter[str] = Counter()
+    for section in sections:
+        if not (section.flags & SHF_ALLOC) or section.size == 0:
+            continue
+        if section.index in owned_indices:
+            continue
+        metadata = reviewed_alloc_metadata(section)
+        if metadata is not None:
+            reviewed[metadata] += 1
+            continue
+        findings.append(
+            Finding(
+                kind="unowned_alloc_section",
+                object=object_name,
+                section=section.name,
+                offset="0x0",
+                word=f"0x{section.size:x}",
+                target=None,
+                detail=(
+                    "nonempty SHF_ALLOC input section is not selected by a "
+                    "normal-link runtime owner and is not exact reviewed MIPS "
+                    f"metadata (type=0x{section.type:x}, flags=0x{section.flags:x})"
+                ),
+            )
+        )
+    return findings, reviewed
 
 
 def relocation_map(relocations: Iterable[Relocation]) -> dict[int, set[int]]:
@@ -767,7 +850,17 @@ def collect(
         elf = Elf32(selection.path)
         if elf.elf_type != ET_REL:
             raise AuditError(f"{selection.display}: expected relocatable ET_REL object")
-        for section in selected_sections(elf, selection.patterns):
+        owned_sections = selected_sections(elf, selection.patterns)
+        ownership_findings, ownership_reviewed = audit_alloc_section_ownership(
+            elf.sections,
+            {section.index for section in owned_sections},
+            object_name=selection.display,
+        )
+        findings.extend(ownership_findings)
+        counts.reviewed_alloc_metadata_sections += sum(
+            ownership_reviewed.values()
+        )
+        for section in owned_sections:
             if not (section.flags & SHF_ALLOC) or section.type != SHT_PROGBITS:
                 continue
             if section.size == 0:
@@ -828,6 +921,10 @@ def render_text(report: dict[str, object]) -> str:
             f"linked objects: {counts['objects']}; selected alloc sections: "
             f"{counts['selected_alloc_sections']} "
             f"(exec={counts['executable_sections']}, data={counts['data_sections']})"
+        ),
+        (
+            "reviewed unowned alloc metadata sections: "
+            f"{counts['reviewed_alloc_metadata_sections']}"
         ),
         (
             f"direct J/JAL: {counts['direct_jumps']}; R_MIPS_26-backed: "
