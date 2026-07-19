@@ -2150,6 +2150,17 @@ phonyRules = do
 
   phony "check-relink-growth" runRelinkGrowthProbe
 
+  -- Deep-runtime gate: boot the grown auto-LBA disc unattended into a real
+  -- mission and require mission construction, a running character
+  -- simulation, and sustained CD/XA callbacks.  Opt-in: needs pcsx-redux,
+  -- the original disc, and several minutes of wall clock.
+  phony "check-relink-gameplay" $ do
+    let tool = "tools" </> "pcsx_gameplay.py"
+    runRelinkGrowthProbe
+    need [ tool, "tools" </> "pcsx-gameplay.lua",
+           "tools" </> "pcsx_smoke.py", "tools" </> "psxexe.py" ]
+    cmd_ "python3" tool ["--repack"]
+
   -- Replay the committed grown-PadProc fixture through the override
   -- machinery in an isolated composition and verify code growth, the
   -- relocated call, loaded data, a zero-finding input audit, and (unless

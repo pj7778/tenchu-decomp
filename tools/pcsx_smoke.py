@@ -218,6 +218,7 @@ def build_command(
     *,
     bios: Path | None = None,
     load_exe: bool = True,
+    lua_probe: Path | None = None,
 ) -> list[str]:
     command = [
         str(pcsx),
@@ -244,7 +245,7 @@ def build_command(
         command.extend(("-loadexe", str(exe)))
     if bios is not None:
         command.extend(("-bios", str(bios)))
-    command.extend(("-dofile", str(LUA_PROBE.resolve())))
+    command.extend(("-dofile", str((lua_probe or LUA_PROBE).resolve())))
     return command
 
 

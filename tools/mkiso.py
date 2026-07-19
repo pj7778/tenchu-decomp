@@ -76,7 +76,8 @@ def main():
         # mkpsxiso auto-packs (files after main.exe shift).
         xml = re.sub(r'\s+offs="\d+"', '', xml)
         print(f"mkiso: main.exe grew ({new_size} > {orig_size}) — using auto-LBA "
-              "layout (grown-image boot and media playback are not yet validated).")
+              "layout (validated by the boot smoke and check-relink-gameplay; "
+              "see docs/relocatable-build.md for the open runtime gates).")
 
     build_xml = os.path.join(WORK, "tenchu.build.xml")
     open(build_xml, "w").write(xml)

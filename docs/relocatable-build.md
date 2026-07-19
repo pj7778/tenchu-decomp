@@ -607,7 +607,32 @@ checkpoints:
 No CPU exception occurred. This proves that representative filename-driven
 STR decoding and XA command/callback paths follow the relocated disc layout;
 the probe did not run either asset to EOF and did not establish physical audio
-output or broad gameplay.
+output.
+
+## Gameplay gate
+
+`./Build check-relink-gameplay` goes beyond the boot smoke: it packages the
+current `+0x10004` grown image with mkiso's auto-LBA layout, boots the full
+`SLPS → MENU → MAIN` chain, drives the launcher/menu/title with JP-correct
+pad pulses (CROSS is cancel on this disc), and then requires genuine stage
+simulation on the grown executable, all through image-word-verified
+breakpoints resolved from the grown ELF:
+
+- `CreateStage` constructed a stage;
+- `ActivateHumans` ran once per rendered frame, sustained (default 600
+  dispatches ≈ twenty seconds of 30 fps simulation), with
+  `ActSTATE`/`ActNORMAL` also counted when they dispatch;
+- `cbCheckCD` streamed continuously (default 300 callbacks; the measured
+  steady state is one per vsync); and
+- no first-chance CPU exception or unexpected pause occurred at any point.
+
+The 2026-07-20 run passed with `act=3600` activator dispatches and `cb=7241`
+callbacks over ~11,000 vsyncs. `tools/pcsx_gameplay.py` accepts `--exe/--elf`
+for other artifacts, `--disc` for a pre-packaged cue, and threshold flags.
+Physical audio output, save/load, mission completion, and executable
+transitions beyond this path remain open gates; the opening-movie EOF gate
+needs a MENU.EXE-side anchor (the FMV plays before MAIN.EXE loads, outside
+MAIN's symbol space).
 
 ## Fixed contracts versus layout policy
 

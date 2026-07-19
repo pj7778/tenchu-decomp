@@ -245,9 +245,20 @@ The proof is now a committed repeatable gate: `./Build check-relink-realedit`
 replays the fixture (`tools/fixtures/relink-realedit/`) through the override
 machinery in an isolated composition and verifies growth, the relocated
 call, loaded data, a clean strict audit, and the emulator-observed counter
-(`TENCHU_REALEDIT_NO_SMOKE=1` for disc-less environments). Remaining for
-this thread: the broader runtime gates (STR EOF, XA audio, gameplay,
-save/load, exe transitions).
+(`TENCHU_REALEDIT_NO_SMOKE=1` for disc-less environments).
+
+**Gameplay runtime gate landed (2026-07-20).** `./Build check-relink-gameplay`
+boots the auto-LBA-packed `+0x10004` grown image through the full retail
+chain and, with image-word-verified breakpoints and JP-correct pad pulses
+(CROSS cancels), requires a constructed stage, `ActivateHumans` dispatching
+once per frame sustained (measured 3,600 over two emulated minutes), and
+continuous `cbCheckCD` streaming (measured 7,241), with no exception.
+PCSX-Redux Lua facts recorded in the probe: breakpoint/listener returns must
+stay referenced (GC tears down the native side — this was a hard emulator
+segfault) and callbacks must not throw (PCSX deletes the breakpoint).
+Remaining runtime gates: opening-movie EOF (needs a MENU.EXE-side anchor —
+the FMV plays before MAIN loads), physical audio, save/load, mission
+completion, and exe transitions.
 
 ### Historical 2026-07-18 frontier
 
