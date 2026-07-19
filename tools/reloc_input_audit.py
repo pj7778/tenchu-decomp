@@ -9,10 +9,12 @@ be visible as a relocation in its input object.
 The checks are deliberately narrow and machine-verifiable:
 
 * every direct ``j``/``jal`` instruction needs ``R_MIPS_26``;
+* a PC-relative branch outside its own input section needs ``R_MIPS_PC16``;
+* canonical ``$gp``-relative address uses need ``R_MIPS_GPREL16``;
 * an unrelocated LUI, optionally followed by a canonical ADDI(U), ORI, or
   load/store low half, may not form an address in movable MAIN RAM;
-* an aligned word in a linked alloc-data section which targets movable MAIN
-  needs ``R_MIPS_32``.
+* a four-byte window in compiled alloc-data which targets movable MAIN needs
+  ``R_MIPS_32`` (generated assembly remains word-aligned by design).
 
 Reviewed fixed PS1 contracts (persistent save state, executable handoff,
 scratchpad/MMIO, RAM end and initial stack) are reported but accepted.  The
@@ -20,11 +22,11 @@ PS-X EXE header's entry/load placeholders are accepted because ``psxexe.py``
 regenerates those fields after every link.  One stock libsnd arithmetic magic
 constant is accepted by exact object and value.
 
-This is a regression gate, not a type-system proof.  In particular it does
-not try to prove arbitrary register arithmetic, byte-unaligned data fields, or
-random packed assembly data.  Those limits are printed in ``--help`` and are
-covered by the separate manifest/growth gates where the current image needs
-them.
+This is a regression gate, not a type-system proof.  In particular its LUI
+scan is bounded and linear rather than control-flow-aware, and it does not try
+to prove arbitrary register arithmetic or random packed assembly data.  Those
+limits are printed in ``--help`` and are covered by the separate
+manifest/growth gates where the current image needs them.
 """
 
 from __future__ import annotations
@@ -54,6 +56,7 @@ SHT_PROGBITS = 1
 SHT_SYMTAB = 2
 SHT_NOBITS = 8
 SHT_REL = 9
+SHT_INIT_ARRAY = 14
 SHT_MIPS_REGINFO = 0x70000006
 SHT_MIPS_ABIFLAGS = 0x7000002A
 SHF_ALLOC = 0x2
@@ -64,6 +67,8 @@ R_MIPS_32 = 2
 R_MIPS_26 = 4
 R_MIPS_HI16 = 5
 R_MIPS_LO16 = 6
+R_MIPS_GPREL16 = 7
+R_MIPS_PC16 = 10
 
 ELF_HEADER = struct.Struct("<16sHHIIIIIHHHHHH")
 SECTION_HEADER = struct.Struct("<IIIIIIIIII")
@@ -89,17 +94,49 @@ INITIAL_STACK = 0x801FFFF0
 RAM_END_VALUES = frozenset({0x80200000, 0x80200008})
 
 # _SsVmSetSeqVol uses this as a multiply/divide magic value, not an address.
-# Scope the exception to the canonical stock-SDK object rather than blessing
-# the value in ordinary game C.
+# Key the exception on the canonical object, section, exact instruction
+# offsets, and exact words rather than blessing the numeric value or basename.
 SAFE_NUMERIC_CONSTANTS = {
-    ("SDK_TEXT_58164.s.o", 0x80020009): "libsnd arithmetic constant",
+    (
+        ".shake/build/main.exe/SDK_TEXT_58164.s.o",
+        ".text",
+        0x9F80,
+        0x3C148002,
+        0x9F84,
+        0x36940009,
+    ): "libsnd arithmetic constant",
 }
+
+# crt0 loads the absolute `_gp` value with a normal HI16/LO16 pair.  The low
+# instruction reads and writes gp, but it is not a gp-relative small-data use.
+# Keep that distinction exact so ordinary `addiu rt,gp,imm` still requires
+# R_MIPS_GPREL16.
+SAFE_GP_LO16_USES = frozenset(
+    {
+        (
+            ".shake/build/main.exe/CRT_SDK_4FA48.s.o",
+            ".text",
+            0xA0,
+            0x279C0000,
+        )
+    }
+)
 
 # psxexe.py regenerates PC at +0x10 and load address at +0x18 from the linked
 # ELF.  No other literal in the header is exempt.
 HEADER_PLACEHOLDERS = {
-    ("header.s.o", ".data", 0x10): "PS-X EXE entry placeholder",
-    ("header.s.o", ".data", 0x18): "PS-X EXE load placeholder",
+    (
+        ".shake/build/main.exe/header.s.o",
+        ".data",
+        0x10,
+        0x80060268,
+    ): "PS-X EXE entry placeholder",
+    (
+        ".shake/build/main.exe/header.s.o",
+        ".data",
+        0x18,
+        0x80011000,
+    ): "PS-X EXE load placeholder",
 }
 
 # The strict linker script selects these into an INFO output guarded by a
@@ -127,11 +164,12 @@ MOVABLE_BOUNDARY_SYMBOLS = frozenset(
 )
 
 # Immediate instructions whose rs register is an address base.  Treat all
-# ordinary and coprocessor loads/stores as signed-offset address uses.
+# ordinary and coprocessor loads/stores as signed-offset address uses.  On the
+# PS1's MIPS I CPU only 0x20..0x27 load a GPR; 0x30..0x37 load coprocessor
+# registers and must not be mistaken for writes to the numerically equal GPR.
 MEMORY_OPCODES = frozenset(range(0x20, 0x40))
-STORE_OPCODES = frozenset({0x28, 0x29, 0x2A, 0x2B, 0x2E, 0x2F}) | frozenset(
-    {0x38, 0x39, 0x3A, 0x3B, 0x3E, 0x3F}
-)
+GPR_LOAD_OPCODES = frozenset(range(0x20, 0x28))
+GP_ARITHMETIC_OPCODES = frozenset({8, 9, 13})
 
 
 class AuditError(RuntimeError):
@@ -203,6 +241,11 @@ class Counts:
     data_sections: int = 0
     direct_jumps: int = 0
     relocated_direct_jumps: int = 0
+    pc_relative_branches: int = 0
+    local_pc_relative_branches: int = 0
+    relocated_pc_relative_branches: int = 0
+    gp_address_uses: int = 0
+    relocated_gp_address_uses: int = 0
     symbolic_hi16: int = 0
     data_words: int = 0
     symbolic_data_words: int = 0
@@ -573,6 +616,26 @@ def audit_alloc_section_ownership(
         if not (section.flags & SHF_ALLOC):
             continue
         if section.index in owned_indices:
+            if section.type in {SHT_PROGBITS, SHT_NOBITS}:
+                continue
+            metadata = reviewed_alloc_metadata(section)
+            if metadata is not None:
+                reviewed[metadata] += 1
+                continue
+            findings.append(
+                Finding(
+                    kind="unsupported_owned_alloc_section",
+                    object=object_name,
+                    section=section.name,
+                    offset="0x0",
+                    word=f"0x{section.size:x}",
+                    target=None,
+                    detail=(
+                        "selected SHF_ALLOC input section has an unsupported "
+                        f"runtime type 0x{section.type:x}"
+                    ),
+                )
+            )
             continue
         if section.size == 0 and section.name in EXPECTED_EMPTY_INPUT_SECTIONS:
             continue
@@ -626,13 +689,54 @@ def _written_gpr(word: int) -> int | None:
     if 0x10 <= opcode <= 0x13:
         coprocessor_operation = (word >> 21) & 0x1F
         return rt if coprocessor_operation in {0, 2} else None
-    if opcode in {1, 2, 4, 5, 6, 7} or opcode in STORE_OPCODES:
+    if opcode in {1, 2, 4, 5, 6, 7}:
         return None
     if opcode in MEMORY_OPCODES:
-        return rt if opcode not in STORE_OPCODES else None
+        return rt if opcode in GPR_LOAD_OPCODES else None
     if 8 <= opcode <= 15:
         return rt
     return None
+
+
+def _pc_relative_branch(word: int) -> bool:
+    opcode = word >> 26
+    if opcode == 1 or 4 <= opcode <= 7 or 0x14 <= opcode <= 0x17:
+        return True
+    # BCzF/BCzT use coprocessor rs=8.  Other COP words are transfers or
+    # operations (notably GTE commands whose bits can resemble GPR fields).
+    return 0x10 <= opcode <= 0x13 and ((word >> 21) & 0x1F) == 8
+
+
+def _pc_relative_target(offset: int, word: int) -> int:
+    return offset + 4 + (_sign_extend_16(word & 0xFFFF) << 2)
+
+
+def _gp_address_use(word: int) -> bool:
+    opcode = word >> 26
+    return (
+        ((word >> 21) & 0x1F) == 28
+        and (opcode in MEMORY_OPCODES or opcode in GP_ARITHMETIC_OPCODES)
+    )
+
+
+def _gp_address_relocated(
+    word: int,
+    types: set[int],
+    *,
+    object_name: str,
+    section_name: str,
+    offset: int,
+) -> bool:
+    opcode = word >> 26
+    if opcode in MEMORY_OPCODES:
+        return R_MIPS_GPREL16 in types
+    # crt0 finishes its symbolic absolute `_gp` construction with
+    # `addiu gp,gp,%lo(_gp)`.  Ordinary gp-relative address formation uses
+    # R_MIPS_GPREL16; an R_MIPS_LO16 still proves this immediate is not fixed.
+    return R_MIPS_GPREL16 in types or (
+        R_MIPS_LO16 in types
+        and (object_name, section_name, offset, word) in SAFE_GP_LO16_USES
+    )
 
 
 def scan_lui_low_uses(
@@ -700,10 +804,27 @@ def _hex32(value: int) -> str:
     return f"0x{value & 0xFFFFFFFF:08x}"
 
 
-def _safe_numeric_constant(object_name: str, uses: list[LowUse]) -> str | None:
+def _safe_numeric_constant(
+    object_name: str,
+    section_name: str,
+    high_offset: int,
+    high_word: int,
+    words: list[int],
+    uses: list[LowUse],
+) -> str | None:
     if len(uses) != 1 or uses[0].kind not in {"addiu", "ori"}:
         return None
-    return SAFE_NUMERIC_CONSTANTS.get((Path(object_name).name, uses[0].target))
+    low = uses[0]
+    return SAFE_NUMERIC_CONSTANTS.get(
+        (
+            object_name,
+            section_name,
+            high_offset,
+            high_word,
+            low.offset,
+            words[low.offset // 4],
+        )
+    )
 
 
 def analyse_executable_section(
@@ -730,6 +851,61 @@ def analyse_executable_section(
         offset = index * 4
         types = relocations.get(offset, set())
         opcode = word >> 26
+
+        if _pc_relative_branch(word):
+            evidence["pc_relative_branches"] += 1
+            target = _pc_relative_target(offset, word)
+            if R_MIPS_PC16 in types:
+                evidence["relocated_pc_relative_branches"] += 1
+            elif 0 <= target < len(data):
+                # A same-input-section displacement remains correct when the
+                # complete section moves; GNU as commonly resolves it early.
+                evidence["local_pc_relative_branches"] += 1
+            else:
+                rendered_target = (
+                    f"0x{target:x}" if target >= 0 else f"-0x{-target:x}"
+                )
+                findings.append(
+                    Finding(
+                        kind="pc_relative_branch_without_r_mips_pc16",
+                        object=object_name,
+                        section=section_name,
+                        offset=f"0x{offset:x}",
+                        word=_hex32(word),
+                        target=rendered_target,
+                        detail=(
+                            "PC-relative branch leaves its input section "
+                            "without R_MIPS_PC16"
+                        ),
+                    )
+                )
+
+        if _gp_address_use(word):
+            evidence["gp_address_uses"] += 1
+            if _gp_address_relocated(
+                word,
+                types,
+                object_name=object_name,
+                section_name=section_name,
+                offset=offset,
+            ):
+                evidence["relocated_gp_address_uses"] += 1
+            else:
+                findings.append(
+                    Finding(
+                        kind="gp_address_use_without_relocation",
+                        object=object_name,
+                        section=section_name,
+                        offset=f"0x{offset:x}",
+                        word=_hex32(word),
+                        target=None,
+                        detail=(
+                            "$gp-based address use has no R_MIPS_GPREL16 "
+                            "relocation"
+                        ),
+                    )
+                )
+
         if opcode in {2, 3}:
             evidence["direct_jumps"] += 1
             if R_MIPS_26 in types:
@@ -756,7 +932,14 @@ def analyse_executable_section(
 
         high_base = (word & 0xFFFF) << 16
         uses = scan_lui_low_uses(words, index, relocations)
-        safe_constant = _safe_numeric_constant(object_name, uses)
+        safe_constant = _safe_numeric_constant(
+            object_name,
+            section_name,
+            offset,
+            word,
+            words,
+            uses,
+        )
         if safe_constant is not None:
             reviewed["numeric_constant"] += 1
             continue
@@ -818,7 +1001,13 @@ def analyse_data_section(
     reviewed: Counter[str] = Counter()
     evidence: Counter[str] = Counter()
     compiled = _compiled_object(object_name)
-    for offset in range(0, len(data) - 3, 4):
+    # Compiler-emitted packed aggregates can place a pointer at any byte
+    # offset, and ELF permits R_MIPS_32 at that exact unaligned offset.  Raw
+    # generated assembly can contain arbitrary packed assets, so keep its
+    # reviewed word-aligned policy and rely on the loaded-data manifest for
+    # exceptional byte encodings.
+    stride = 1 if compiled else 4
+    for offset in range(0, len(data) - 3, stride):
         evidence["data_words"] += 1
         types = relocations.get(offset, set())
         if R_MIPS_32 in types:
@@ -828,7 +1017,7 @@ def analyse_data_section(
         if not model.in_data_movable_ram(value, compiled=compiled):
             continue
         placeholder = HEADER_PLACEHOLDERS.get(
-            (Path(object_name).name, section_name, offset)
+            (object_name, section_name, offset, value)
         )
         if placeholder is not None:
             reviewed["psx_header_placeholder"] += 1
@@ -951,7 +1140,18 @@ def render_text(report: dict[str, object]) -> str:
             f"{counts['symbolic_hi16']}"
         ),
         (
-            f"alloc-data words: {counts['data_words']}; R_MIPS_32-backed: "
+            f"PC-relative branches: {counts['pc_relative_branches']}; "
+            f"same-section: {counts['local_pc_relative_branches']}; "
+            f"R_MIPS_PC16-backed: "
+            f"{counts['relocated_pc_relative_branches']}"
+        ),
+        (
+            f"gp address uses: {counts['gp_address_uses']}; relocation-backed: "
+            f"{counts['relocated_gp_address_uses']}"
+        ),
+        (
+            f"alloc-data four-byte windows: {counts['data_words']}; "
+            f"R_MIPS_32-backed: "
             f"{counts['symbolic_data_words']}"
         ),
         "reviewed fixed literals: "
@@ -975,11 +1175,13 @@ def parser() -> argparse.ArgumentParser:
         ),
         epilog=(
             "Scope: R_MIPS_26-backed direct J/JAL, canonical R_MIPS_HI16/"
-            "R_MIPS_LO16 LUI+low address formation, and R_MIPS_32-backed "
-            "aligned alloc-data words. Arbitrary register arithmetic and "
-            "unaligned/opaque packed fields are intentionally outside this "
-            "heuristic gate; reviewed loaded-data manifests and the +0x10004 "
-            "growth probe cover the current exceptional fields."
+            "R_MIPS_LO16 LUI+low address formation, external R_MIPS_PC16 "
+            "branches, gp-relative address uses, and R_MIPS_32-backed "
+            "compiled alloc-data windows. The LUI scan is bounded/linear; "
+            "arbitrary register arithmetic and unaligned opaque assembly "
+            "fields remain outside this heuristic gate. Reviewed loaded-data "
+            "manifests and the +0x10004 growth probe cover the current "
+            "exceptional fields."
         ),
     )
     argument_parser.add_argument("--root", type=Path, default=ROOT)

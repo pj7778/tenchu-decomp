@@ -29,6 +29,19 @@ def instruction_lw(target: int, base: int, low: int) -> int:
     return (0x23 << 26) | (base << 21) | (target << 16) | (low & 0xFFFF)
 
 
+def instruction_beq(left: int, right: int, displacement: int) -> int:
+    return (
+        (0x04 << 26)
+        | (left << 21)
+        | (right << 16)
+        | (displacement & 0xFFFF)
+    )
+
+
+def instruction_lwc2(target: int, base: int, low: int) -> int:
+    return (0x32 << 26) | (base << 21) | (target << 16) | (low & 0xFFFF)
+
+
 def words(*values: int) -> bytes:
     return struct.pack(f"<{len(values)}I", *values)
 
@@ -165,6 +178,8 @@ class ElfRelocationTruthTests(unittest.TestCase):
             0x0C000000,
             instruction_lui(2, 0),
             instruction_lw(2, 2, 0),
+            instruction_beq(2, 0, 0),
+            instruction_lw(2, 28, 0),
         )
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "symbolic.c.o"
@@ -175,6 +190,8 @@ class ElfRelocationTruthTests(unittest.TestCase):
                     (0, audit.R_MIPS_26),
                     (4, audit.R_MIPS_HI16),
                     (8, audit.R_MIPS_LO16),
+                    (12, audit.R_MIPS_PC16),
+                    (16, audit.R_MIPS_GPREL16),
                 ],
             )
             elf = audit.Elf32(path)
@@ -190,6 +207,8 @@ class ElfRelocationTruthTests(unittest.TestCase):
         self.assertEqual(findings, [])
         self.assertEqual(evidence["relocated_direct_jumps"], 1)
         self.assertEqual(evidence["symbolic_hi16"], 1)
+        self.assertEqual(evidence["relocated_pc_relative_branches"], 1)
+        self.assertEqual(evidence["relocated_gp_address_uses"], 1)
 
     def test_stripping_direct_call_relocation_fails(self) -> None:
         findings, _reviewed, _evidence = audit.analyse_executable_section(
@@ -202,6 +221,31 @@ class ElfRelocationTruthTests(unittest.TestCase):
         self.assertEqual(
             [finding.kind for finding in findings],
             ["direct_jump_without_r_mips_26"],
+        )
+
+    def test_stripping_external_branch_and_gp_relocations_fails(self) -> None:
+        text = words(
+            instruction_beq(2, 0, 0x100),
+            instruction_lw(2, 28, 0x1234),
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "stripped.c.o"
+            make_relocatable_elf(path, text, [])
+            elf = audit.Elf32(path)
+            section = next(item for item in elf.sections if item.name == ".text")
+            findings, _reviewed, _evidence = audit.analyse_executable_section(
+                elf.section_data(section),
+                audit.relocation_map(elf.relocations_for(section)),
+                model(),
+                object_name="stripped.c.o",
+                section_name=".text",
+            )
+        self.assertEqual(
+            {finding.kind for finding in findings},
+            {
+                "pc_relative_branch_without_r_mips_pc16",
+                "gp_address_use_without_relocation",
+            },
         )
 
 
@@ -265,6 +309,83 @@ class LiteralInstructionTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].target, "0x800162a4")
 
+    def test_same_section_unrelocated_branch_is_shift_safe(self) -> None:
+        findings, _reviewed, evidence = self.analyse(
+            words(instruction_beq(2, 0, 0), 0)
+        )
+        self.assertEqual(findings, [])
+        self.assertEqual(evidence["local_pc_relative_branches"], 1)
+
+    def test_gp_addiu_needs_an_address_relocation(self) -> None:
+        instruction = instruction_addiu(2, 28, 0x1234)
+        findings, _reviewed, _evidence = self.analyse(words(instruction))
+        self.assertEqual(
+            [finding.kind for finding in findings],
+            ["gp_address_use_without_relocation"],
+        )
+
+        findings, _reviewed, evidence = audit.analyse_executable_section(
+            words(instruction),
+            {0: {audit.R_MIPS_GPREL16}},
+            model(),
+            object_name="symbolic.s.o",
+            section_name=".text",
+        )
+        self.assertEqual(findings, [])
+        self.assertEqual(evidence["relocated_gp_address_uses"], 1)
+
+        findings, _reviewed, _evidence = audit.analyse_executable_section(
+            words(instruction),
+            {0: {audit.R_MIPS_LO16}},
+            model(),
+            object_name="wrong-relocation.s.o",
+            section_name=".text",
+        )
+        self.assertEqual(len(findings), 1)
+
+    def test_crt_gp_initialization_accepts_its_symbolic_lo16(self) -> None:
+        instruction = instruction_addiu(28, 28, 0)
+        findings, _reviewed, evidence = audit.analyse_executable_section(
+            bytes(0xA0) + words(instruction),
+            {0xA0: {audit.R_MIPS_LO16}},
+            model(),
+            object_name=".shake/build/main.exe/CRT_SDK_4FA48.s.o",
+            section_name=".text",
+        )
+        self.assertEqual(findings, [])
+        self.assertEqual(evidence["relocated_gp_address_uses"], 1)
+
+        findings, _reviewed, _evidence = audit.analyse_executable_section(
+            words(instruction),
+            {0: {audit.R_MIPS_LO16}},
+            model(),
+            object_name="elsewhere/CRT_SDK_4FA48.s.o",
+            section_name=".text",
+        )
+        self.assertEqual(len(findings), 1)
+
+    def test_coprocessor_load_does_not_overwrite_same_numbered_gpr(self) -> None:
+        findings, _reviewed, _evidence = self.analyse(
+            words(
+                instruction_lui(8, 0x8001),
+                instruction_lwc2(8, 9, 0),
+                instruction_ori(8, 8, 0x62A4),
+            )
+        )
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].target, "0x800162a4")
+
+    def test_mfc2_does_overwrite_its_gpr_target(self) -> None:
+        mfc2_t0 = (0x12 << 26) | (8 << 16)
+        findings, _reviewed, _evidence = self.analyse(
+            words(
+                instruction_lui(8, 0x8001),
+                mfc2_t0,
+                instruction_ori(8, 8, 0x62A4),
+            )
+        )
+        self.assertEqual(findings, [])
+
     def test_reviewed_fixed_ps1_contracts_pass(self) -> None:
         fixtures = {
             "persistent_state": words(
@@ -290,17 +411,27 @@ class LiteralInstructionTests(unittest.TestCase):
                 self.assertEqual(reviewed[expected], 1)
 
     def test_known_sdk_numeric_mask_is_narrowly_scoped(self) -> None:
-        text = words(
-            instruction_lui(20, 0x8002), instruction_ori(20, 20, 0x0009)
+        instructions = words(
+            instruction_lui(20, 0x8002),
+            instruction_ori(20, 20, 0x0009),
         )
+        text = bytes(0x9F80) + instructions
         findings, reviewed, _evidence = self.analyse(
             text, ".shake/build/main.exe/SDK_TEXT_58164.s.o"
         )
         self.assertEqual(findings, [])
         self.assertEqual(reviewed["numeric_constant"], 1)
 
-        findings, _reviewed, _evidence = self.analyse(text, "new_game_code.c.o")
-        self.assertEqual(len(findings), 1)
+        for object_name, candidate in (
+            ("elsewhere/SDK_TEXT_58164.s.o", text),
+            (".shake/build/main.exe/SDK_TEXT_58164.s.o", instructions),
+            ("new_game_code.c.o", instructions),
+        ):
+            with self.subTest(object_name=object_name, size=len(candidate)):
+                findings, _reviewed, _evidence = self.analyse(
+                    candidate, object_name
+                )
+                self.assertEqual(len(findings), 1)
 
 
 class LiteralDataTests(unittest.TestCase):
@@ -321,6 +452,28 @@ class LiteralDataTests(unittest.TestCase):
             {0: {audit.R_MIPS_32}},
             model(),
             object_name="globals.c.o",
+            section_name=".data",
+        )
+        self.assertEqual(findings, [])
+        self.assertEqual(evidence["symbolic_data_words"], 1)
+
+    def test_packed_compiled_pointer_is_scanned_at_its_exact_offset(self) -> None:
+        data = b"\x7f" + words(0x800162A4)
+        findings, _reviewed, _evidence = audit.analyse_data_section(
+            data,
+            {},
+            model(),
+            object_name="packed_globals.c.o",
+            section_name=".data",
+        )
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].offset, "0x1")
+
+        findings, _reviewed, evidence = audit.analyse_data_section(
+            data,
+            {1: {audit.R_MIPS_32}},
+            model(),
+            object_name="packed_globals.c.o",
             section_name=".data",
         )
         self.assertEqual(findings, [])
@@ -358,6 +511,26 @@ class LiteralDataTests(unittest.TestCase):
         )
         self.assertEqual(findings, [])
         self.assertEqual(reviewed["psx_header_placeholder"], 2)
+
+        findings, _reviewed, _evidence = audit.analyse_data_section(
+            bytes(data),
+            {},
+            model(),
+            object_name="elsewhere/header.s.o",
+            section_name=".data",
+        )
+        self.assertEqual(len(findings), 2)
+
+        struct.pack_into("<I", data, 0x10, 0x8006026C)
+        findings, _reviewed, _evidence = audit.analyse_data_section(
+            bytes(data),
+            {},
+            model(),
+            object_name=".shake/build/main.exe/header.s.o",
+            section_name=".data",
+        )
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].offset, "0x10")
 
 
 class LinkerInventoryTests(unittest.TestCase):
@@ -482,6 +655,25 @@ class AllocSectionOwnershipTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].kind, "unowned_alloc_section")
         self.assertEqual(findings[0].section, ".debug_payload")
+
+    def test_selected_alloc_section_with_unsupported_type_fails(self) -> None:
+        init_array = self.section(
+            1,
+            ".data",
+            section_type=audit.SHT_INIT_ARRAY,
+            size=4,
+        )
+        findings, reviewed = audit.audit_alloc_section_ownership(
+            [init_array],
+            {init_array.index},
+            object_name="constructors.c.o",
+        )
+        self.assertEqual(reviewed, {})
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(
+            findings[0].kind,
+            "unsupported_owned_alloc_section",
+        )
 
     def test_only_structurally_exact_mips_alloc_metadata_passes(self) -> None:
         valid_reginfo = self.section(
