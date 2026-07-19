@@ -68,7 +68,14 @@ GUIDANCE = [
     "Removing the INCLUDE_ASM is not evidence of a match; never report MATCH "
     "without a green `./Build clean && ./Build check`.",
 
-    "The permuter is worth ONE bounded FOREGROUND run (`timeout 300 "
+    "The permuter is a NON-LEVER for any function that `#include`s gte.h "
+    "(gte-allowlist targets): `tools/permute.py` REFUSES inline-asm functions at "
+    "the gte.h gate (permute.py:985) BEFORE it compiles — its C parser can't read "
+    "the macro layer, so it never searches the function at all and the -fno-builtin "
+    "CC_FLAGS fix changes nothing for this class. For a gte.h target, skip the "
+    "permuter and escalate STRAIGHT to RTL regardless of how small the residual is "
+    "(FUN_80057b80's 8-byte sched2 tie, FUN_80058c70's prologue tie). Otherwise: "
+    "the permuter is worth ONE bounded FOREGROUND run (`timeout 300 "
     "tools/permute.py <Name> -- --stop-on-zero -j4`; never background it, never "
     "Monitor-wait it) whenever autorules finds nothing and the residual is the "
     "SAME LENGTH. But do NOT park a same-length residual just because the permuter "
@@ -97,9 +104,11 @@ GUIDANCE = [
     "such function drops the symbol. Add a plain `D_XXXXXXXX = 0xXXXXXXXX;` to "
     "config/symbols.main.exe.txt (that file has NO comment syntax).",
 
-    "A 3-instruction `sll 16 / sra k / sra 16-k` (k!=16) is the blocked GetPad "
-    "sign-extension class — park it. The ordinary 2-instruction `sll 16 / sra K` "
-    "is just a short-indexed array's fused extend+scale and matches fine.",
+    "A 3-instruction `sll 16 / sra k / sra 16-k` (k!=16) is MATCHABLE ordinary "
+    "C in the pad family. GetPad/GetPadXY/FUN_8001b174 form an encoded value "
+    "with `port = no << 4`, then consume both halves as `port >> 4` and "
+    "`port & 3`; the shared expression naturally preserves all three shifts. "
+    "Treat the sequence as a data-model clue, never a park-on-sight class.",
 
     "Before trusting the Ghidra export's SIZE, remember two entries are "
     "under-sized (LoadCard, FUN_800593a0) and a truncated carve still builds "

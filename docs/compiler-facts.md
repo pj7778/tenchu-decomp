@@ -58,6 +58,15 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   moves, bytes identical when the multiset already matched (nullcheck).
 - **expand evaluates a binary op's operands left-to-right**, so the LEFT operand's
   pseudo is born first and lives longer (binop-operand-seed's mechanism).
+- **A constant-last element address (`addu rX,sp,rIdx; addiu rX,rX,K`) can ONLY be
+  born from an INDIRECT_REF deref via EXPAND_SUM.** `expand_expr`'s PLUS
+  (expr.c:6216) sends every NON-EXPAND_SUM pointer sum to `binop` — base-first,
+  the `addiu` materialised FIRST — and c-typeck folds `&*p` (3038), `&a[i]`
+  (3047) and `&p->member0` (3113) back to the plain sum. So **no C pointer
+  variable, `&array[i]`, or call argument can be born constant-last**: if the
+  target's element pointer is constant-last AND feeds a call arg, that shape is
+  UNREACHABLE from C, not a tie to tune (mission_score_screen's bank pairs, 65
+  bytes, now closed WITH mechanism; the M-form measured +24, plain-index −16).
 - **EXPAND_SUM special-cases a mult-by-constant subterm inside an address** —
   it expands FIRST regardless of source order; a shift spelling or a named value
   temp preserves source order (`arr[a + b*c]`). `form_sum` sorts a CONSTANT term
@@ -76,7 +85,9 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
 
 - **`promote_mode` is the IDENTITY on this target**: mips.h defines no
   `PROMOTE_MODE` and no `POINTERS_EXTEND_UNSIGNED`. Never reason about which types
-  it moves (FUN_80057b80's closed-form park proof, in its header).
+  it moves. This constrains direct formal-parameter conversion; it does not
+  constrain later ordinary local copies (the distinction that matched
+  FUN_80057b80).
 - **Narrow locals are genuine QI/HI pseudos** (`reg/v:QI`, `reg/v:HI`); a narrow
   local always needs a real extension and can never produce a bare `move` at a
   join (ActivateHumans). A `short`→`short` copy coalesces to NOTHING; routing
@@ -94,7 +105,8 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
 - **Frame slots are assigned in THREE phases**: `assign_parms` (addressable
   params) → `expand_decl` (declared locals) → reload's `alter_reg` (spilled
   pseudos, in pseudo-number order). A declared local can never sit above a reload
-  spill (FUN_80032720's park proof, in its header).
+  spill (`FUN_80032720`'s exact source confirms y/z at the first two reload
+  slots and its shifted-scroll pseudo at the third).
 - **`assign_stack_local` assigns slots in declaration order**, ascending from the
   outgoing-arg boundary, each BLKmode local rounded up to 8 bytes — slot order is
   arithmetic, not searchable (FUN_80018f00; AdtMessageBox: each separately
@@ -121,6 +133,13 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   loop notes.** `make_regs_eqv` promotes a copy's dest to canonical only if it
   outlives the block — so cse2 can fold back a copy cse1 kept
   (GetAreaMapVector). A fence can never permanently split same-value `lui`s.
+- **Naming the SENTINEL constant vs naming the FETCHED value are DIFFERENT
+  allocation levers** for a `(T*)field != (T*)SENTINEL` compare. Only naming the
+  constant (`T *one = (T *)1; if (field != one)`, ProcItemFire.c's idiom) forces a
+  separate materialising insn that participates in allocation; naming the fetched
+  value (`enemy = field;`, DamageControl.c's idiom) does not reproduce that win.
+  Test both independently before concluding a permuter's local-introduction is
+  inert (WeaponHitWeapon, verified both ways).
 - **`record_jump_equiv`** records a guard's comparison on its FIRST slt operand's
   quantity (GetConflictResult), and on a `beq reg,CONST` taken edge records
   pseudo==constant — surviving calls (ProcItemGun's literal case stores).
@@ -163,15 +182,17 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   (`move_movables` emits in `scan_loop` discovery order), and hoists land AFTER any
   insn the source already put in the preheader. **So a target preheader with a
   hoisted CONSTANT before pointer assignments proves those pointers were assigned
-  IN-LOOP, at their use sites** — a pre-loop assignment is the unreachable state.
-  This read the human structure straight off the target for SetLightningI (65->15)
-  and start_demo_.
+  IN-LOOP, at their use sites** — a pre-loop assignment is unreachable for that
+  particular pseudo. This diagnosed SetLightningI's 65->15 draft and
+  start_demo_; SetLightningI ultimately matched by replacing those manual
+  pseudos with the same-TU inline projection helpers.
 - **A `p = &Global.field` pointer set with a REG_EQUIV const note costs ZERO final
   instructions** — reload deletes it — **yet it shifts local-alloc quantity spans
   while it exists.** That makes it a legal, byte-free register-STEERING lever for a
   local-alloc rotation residual: introduce the `&Global.field` local to move the
-  qty walk without adding an instruction (SetLightningI). It is the benign cousin
-  of the mega-pseudo split.
+  qty walk without adding an instruction. It is a useful diagnostic/steering
+  device (SetLightningI's partial draft), but the exact source may instead have
+  a helper parameter identity; zero-byte steering is not evidence of authorship.
 - **A whole-function `+1` cascade of caller-saved temp choices is ONE defect, not
   N.** reload's spill-register pick is a FUNCTION-WIDE usage census
   (`order_regs_for_reload`), so one divergent cluster shifts every downstream temp
@@ -209,6 +230,14 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   `move_movables`** — the only thing that can legally sit after a hoist in a
   preheader is a giv init; a source statement can only precede the hoists
   (AddEnemy's `names_offset` non-variable).
+- **`combine_givs` can merge identical arithmetic givs from disjoint branch
+  scopes without absorbing the array base.** PutItemList's two local
+  `ItemID = i * 4` computations reduce to one integer offset initialized after
+  the hoists and incremented by four, while each branch still re-materializes
+  `ItemImage` before adding that offset. Therefore a target `la base; addu
+  base,off` at multiple loop sites does not by itself prove a hand-written
+  offset counter; the `.loop` lines `giv at A combined with giv at B` settle
+  whether the offset was compiler-created.
 - **`move_movables` emits with `emit_insn_before(loop_start)`** — a hoisted set
   escapes any enclosing fence's notes, so ballast cannot weight it (AddEnemy).
 - **Identical invariant else-arm constants COMBINE, so their hoist savings SUM**
@@ -312,8 +341,10 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   of the clique takes the Nth register, so demoting the current #1 to free its
   register for a desired #4 does not work in isolation — the freed slot goes to
   whoever is next-highest. Simulate or `--compare` the FULL resulting order before
-  spending a round on a weighting edit (SetupTelop: col/font/bits/v are a 4-clique;
-  dropping `col` alone misfires and hands `$a1` to `font`).
+  spending a round on a weighting edit (SetupTelop's scaffolded draft had a
+  col/font/bits/v 4-clique; dropping `col` alone handed `$a1` to `font`). This
+  predicts one interference graph only: SetupTelop matched after deleting the
+  fences that created that graph and restoring the original local identities.
 - **`find_reg`'s preference machinery can only promote a pseudo to a register that
   is ALREADY outside its excluded set** (global.c:900-1037) — it can never override
   a real conflict. A value crossing zero calls carries no preferences and gets
@@ -427,6 +458,15 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   LENGTH after every split (mission_score_screen: `brightness` split cleanly at
   the row, but not at the medal or number-init — both measured 4632).
 
+- **sched1 runs BEFORE local-alloc** (toplev.c:579-580: *"flag_schedule_insns means
+  schedule insns within basic blocks, before local_alloc"*; sched2 is after global).
+  So source ORDER among independent loads in a straight-line block is fixed by sched1
+  and never reaches local-alloc's priority computation — statement/declaration reorders
+  there can be codegen no-ops (three DrawHinoko micro-respellings were). This does not
+  prove a source-order floor: restoring DrawHinoko's larger human statement graph
+  (time, acceleration, scale, then position x/y/z) changed dependencies and quantity
+  identities and matched the function. Generalises the "sched1 runs before reload"
+  note, but only for the graph actually inspected.
 - **Both schedulers are BACKWARD list schedulers**: T-1 is the block's LAST slot,
   filled first — an insn picked earlier lands LATER. "Emit first" = "lose the
   ranking". **T is NOT an address index**: `clock += stalls` (3747) skips T
@@ -470,12 +510,16 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   that nothing in the block depends on is never passed to it and is **never
   bumped, whatever its REG_N_SETS**. The tell is printed: **`ref_count = 0`** in
   the `;; insn[N]` table means no `INSN_DEPEND`, i.e. live-out with no consumer
-  here. Worked example: StageEndScreen's `(set (reg/v:SI 95) (const_int 82))` —
-  `priority = 1, ref_count = 0`, bumped 0 times across 650 bumps elsewhere in the
-  same function. **So "can this constant be lifted off the floor?" is answered by
-  ref_count BEFORE REG_N_SETS**; a live-out constant with no in-block use is
-  unreachable by this lever, and giving it a consumer means changing what the C
-  does with it.
+  here. In StageEndScreen's old function-wide-coordinate draft,
+  `(set (reg/v:SI 95) (const_int 82))` had `priority = 1, ref_count = 0` and was
+  bumped 0 times across 650 bumps elsewhere in the function. **So "can this
+  particular def be lifted off the floor?" is answered by ref_count BEFORE
+  REG_N_SETS**; a live-out constant with no in-block use is unreachable by this
+  lever.  This is not a proof that the target source used the same def: the
+  matched StageEndScreen source has five block-local `x = 82` movables which
+  loop.c combines into the target's one saved-register load.  Always treat the
+  dump as truth about the compiled candidate, not proof of a unique source
+  decomposition.
 - **Read the birthing gate BACKWARDS to recover the original's variable
   structure.** Since only a `REG_N_SETS == 1` def can be bumped, and a bumped def
   is picked first and therefore lands LAST (adjacent to its uses), **a target that
@@ -500,7 +544,8 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   to class 1 (data) or 2 (anti/output), and the sort is DESCENDING. So perturbing
   a dependence's cost can only sort the DEPENDENT insn **later**. "Make the dep
   cost ≠ 1 to flip the tie" was proposed once as an open lever and is exactly
-  backwards (FUN_80057b80).
+  backwards. FUN_80057b80 confirmed the scheduler fact, then bypassed the tie by
+  defining ordered local pointer copies instead of using formal pseudos directly.
 - **All-latency-1 blocks cannot be reordered by sched** (sched.c:1521's own
   comment) — only a LOAD (cost 2) differentiates; a misplaced insn in a load-free
   block is SOURCE ORDER.
@@ -539,7 +584,14 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   if exactly ONE independent instruction is reachable in that block, it is stolen
   **wherever you put it textually** — moving it is not a lever, and a
   `do{}while(0)` fence does not help because NOTEs return 0 from `stop_search_p`
-  (the scan walks straight through). ActITEM proved this across 9 source-shape
+  (the scan walks straight through). **A rejected candidate is NOT a hard stop**
+  (reorg.c:3095-3129): only a CODE_LABEL / JUMP_INSN / BARRIER / already-filled
+  SEQUENCE / asm insn stops the scan; a candidate that merely conflicts with the
+  branch's operands has its OWN read/write set folded into the accumulator and the
+  scan CONTINUES backward — so an independent insn two or more steps back is still
+  reachable and stolen. That is why "reorder the two entry insns" is never a lever
+  when exactly one truly-independent candidate exists anywhere in the
+  backward-reachable prefix (ChasetoTarget, traced to reorg.c by UID). ActITEM proved this across 9 source-shape
   variants (4 statement positions, a fence, an if/else duplication, a De Morgan
   merge): every alternative regressed or mismatched length. **If your draft fills
   a slot the target leaves as a bare `nop`, count the independent candidates in
@@ -588,7 +640,7 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   (FUN_800519bc).
 - **`jump_optimize(insns,1,1,0)` — the only cross_jump=1 call (toplev.c:3548) —
   runs AFTER combine and AFTER allocation**: never infer pre-jump2 block
-  structure or allocation constraints from final asm (FUN_80057b80 494→8;
+  structure or allocation constraints from final asm (FUN_80057b80 494→8→0;
   ActSTICKON's "register cycle" was a jump2 artifact). jump1 hoists a common
   leading insn out of identical arms — a dead store in one arm keeps the heads
   different.
@@ -616,7 +668,12 @@ Two lanes have "remembered" gcc code that does not exist (a cost comparison in
   own address (never partially absorbing the offset).
 - **Variable division needs maspsx `--expand-div`** to reproduce ASPSX's
   `break 7` (÷0) and, for signed div, `break 6` guards; `maspsxflags.py --write`
-  syncs it (with the gp lists) from the target asm.
+  syncs it (with the gp lists) from the target asm. **Those `break` guards are a
+  post-cc1 TEXT expansion of a single `div` RTL insn — cc1's allocator and
+  scheduler see ONE instruction, not basic-block boundaries.** So when reading
+  `.greg`/`.sched` liveness around a variable division, do not treat the guard
+  branches as CFG edges; the `mflo`/operands live-range is computed as if the div
+  were one insn (PadProc).
 - **maspsx `nop # DEBUG:` comment lines QUOTE instructions** — strip `#` to EOL
   before counting anything; in a gte.h function `swc2 $17,…` is COP2 reg 17, not
   `$s1`.

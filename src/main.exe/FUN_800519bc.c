@@ -13,8 +13,8 @@
  * END PSX.SYM */
 
 /* STATUS: NON_MATCHING — complete pure-C reconstruction at the exact target
- * length (1448 bytes / 362 instructions). The guarded draft differs in 87 linked
- * bytes (down from 118), 36 aligned instruction lines in 15 blocks.
+ * length (1448 bytes / 362 instructions). The guarded draft differs in 76 linked
+ * bytes (down from 118), across 28 aligned instruction lines.
  * KEY FINDING: the `do{sequence=0;}while(0)` fence was NOT load-bearing — it walled
  * off the basic block sched2 needs in order to interleave the callee-saved register
  * spills with the init writes; removing it (plain `sequence = 0;`) let the saves
@@ -29,7 +29,7 @@
  * `do{}while(0)` (length mismatch without it) and the nested position-carrier
  * fences (regress to 100).
  * REMAINING (all greg register/schedule ties, no source lever found; rejected:
- * single-expr scroll=128, brightness explicit temp, tpage/xbase var-merge, `3*x`):
+ * single-expr scroll=128, tpage/xbase var-merge, `3*x`):
  * (1) prologue — the prefix/s2 setup schedules after the sequence/fade spills
  * instead of first, and the two init constants land in v0 where retail reuses t0
  * (xbase materialized 0xff60/ori vs retail -160/addiu); (2) four caller-saved ties
@@ -37,7 +37,7 @@
  * scroll-adjusted->a2) and v1 for the brightness `0xa0-position` intermediate (->v0)
  * — rtlguide hard-conflicts a2->v0 (p89/p96/p197), v0->v1 (p82); (3) position=counter's
  * in-place sign-extend is scheduled two insns before the GetTPage(0,0) arg moves.
- * Fuzzy: 93.09% (up from 90.88%).
+ * Fuzzy: 94.48% (up from 90.88%).
  * ROUND 2 (fresh, skeptical re-verification of the above — all CONFIRMED, not
  * refuted): tools/autorules.py unguided (73 candidates) and --guided off a fresh
  * rtlguide run (160 candidates, budget-capped beam) both report no improving
@@ -147,7 +147,70 @@
  *   including all 5 fence-unwrap candidates individually) finds no improving
  *   edit; a bounded fresh permuter run (240s search + rescore, base score
  *   1095) never beats its own base score, consistent with round 2's
- *   16457-iteration run. No orphaned permuter state left behind. */
+ *   16457-iteration run. No orphaned permuter state left behind.
+ * ROUND 4 (re-verify with the -fno-builtin permute.py CC_FLAGS fix + hunt a
+ * STRUCTURAL lever, per an owner directive that an 87B residual "hides a
+ * missing/mis-shaped block"). RESULT: the structural premise is FALSIFIED and
+ * 87 is re-confirmed as the hard floor.
+ *   - CFG IS IDENTICAL: matchdiff/asmdiff show 362 vs 362 insns, no missing or
+ *     extra branch, all 15 diff blocks are register renames + 2 local schedule
+ *     swaps (prologue prefix-order, GetTPage(0,0) arg-move vs position sign-ext).
+ *     There is no missing/mis-shaped block to find — the residual is genuinely
+ *     sub-C register allocation (t0 numeric-order, the a2->v0/v0->v1 hard-conflicts).
+ *   - FRESH permuter WITH the -fno-builtin fix (the reason this round exists):
+ *     19444 iterations, -j4, --stop-on-zero. Authoritative full-link rescore:
+ *     base.c 87 is best; every retained candidate rescores >=87 (output-860 has a
+ *     BETTER proxy score 860 but rescores to 91). The fix changed nothing; the
+ *     round-2/3 plateau claim stands.
+ *   - autorules re-run (73 candidates) — no improving edit (unchanged).
+ *   - NEW structural hypotheses tested & REJECTED (each rebuilt+remeasured):
+ *     * index-first scroll (`adjusted = D_8008ECF8[..]; adjusted += stack.scroll;`
+ *       — round 2's own "untried" suggestion): 87->102. The scroll-first split is
+ *       optimal; the reverse pairing is worse, not better.
+ *     * tpage_value as a direct `stack.tpage_base >> 16` OR a plain two-statement
+ *       capture (dropping the identical-arm `if (strip_width!=0)`): LENGTH
+ *       MISMATCH 1440 (-2 insns). That `if` is LOAD-BEARING: it is a control-flow
+ *       merge that blocks cse's store->load forwarding of the prologue
+ *       `stack.tpage_base = strip_px<<16;`, forcing the target's fresh lw/sra
+ *       reload instead of reusing strip_px. Not scaffolding — it reconstructs a
+ *       real target reload (cookbook "a redundant reload = a fresh dereference").
+ *     * shared brightness intermediate (one `bright_base` var feeding both
+ *       `(position+0xa0)*3` and `(0xa0-position)*3`): LENGTH MISMATCH 1436;
+ *       cc1 merges the arms. Target keeps them separate (branch1 intermediate on
+ *       v1, branch2 on v0 — the residual v0/v1 tie, a HARD-CONFLICT per rtlguide).
+ *     * capturing the first PathFileRead 2nd arg into a local before the inits
+ *       (to occupy v0 across the const materialisations, per round 2's hint):
+ *       87->127; it hoists the whole index calc and reshuffles the prologue.
+ *     * reorder `signed_width` birth before tpage + flatten the position-carriers
+ *       (test whether birth-order gives target's s1/s2 without the fences):
+ *       LENGTH MISMATCH 1452. Birth-order does NOT substitute for the loop_depth
+ *       ref-weighting the nested fences provide.
+ *   - FENCE VERDICT (owner asked to challenge them): the position-carrier nested
+ *     do{}while(0) is the SAME matched technique as the matched sibling
+ *     BriefingAndInventorySelectionScreen (lever #3: "NESTED do{}while(0) (two
+ *     deep)... each level adds +1 loop_depth to flow.c's ref weighting, flipping
+ *     the {v0,v1} pairing"; lever #5: do{}while(0) carrier fences). That sibling
+ *     matched at 0 WITH these. So the fences ARE "the human structure the matched
+ *     sibling shows", not invented scaffolding — KEPT. `siblingdiff --demo` found
+ *     no PSX.EXE sibling, but ROUND 5 found the renderer in demo/GAME.EXE.
+ * ROUND 5 (compiler output first, with the earlier cookbook conclusions treated
+ * as hypotheses): demo/GAME.EXE has a copy of this strip renderer at
+ * 0x800431e0..0x80043344. Its data flow is ordinary human C: `u = counter * 4`,
+ * `GetTPage(0, 0, (s16)tpage + counter, 0x100)`, an x position derived from
+ * `(s16)width - counter`, and edge brightness `(160 - x) * 3`. Literal ports of
+ * those expressions do not reproduce this build's allocation: the direct call
+ * expression scores 83 bytes and the single x expression changes the length.
+ * The pinned compiler's sched2 dump explains the four-byte call-order residual:
+ * the sign-extension and a0/a1 argument setup are equal-ready UID choices; the
+ * spelling that fixes their order also shortens the counter lifetime and loses
+ * the target's s0 position carrier after the call. A split right-edge brightness
+ * expression produces retail's v1/v0 order exactly, but jump2 cross-jumps the
+ * now-identical multiply tails (as `rtx_renumbered_equal_p` permits after reload)
+ * and shortens the function to 1436 bytes. A whole padded working struct, moving
+ * the first read, moving xbase across the call, narrow/volatile locals, and
+ * direct human constant spellings were all measured neutral or worse. The one
+ * coherent improvement retained is a named right-edge brightness intermediate;
+ * it keeps the exact CFG and length and improves 77 -> 76 bytes. */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/FUN_800519bc", FUN_800519bc);
 #else
@@ -156,13 +219,13 @@ typedef struct BackGround BackGround;
 
 typedef struct
 {
-    u16 xbase;             /* +0x00 */
-    u8 pad_02[6];          /* +0x02 */
-    s32 scroll;            /* +0x08 */
-    u16 old_pad;           /* +0x0c */
-    u8 pad_0e[2];          /* +0x0e */
-    BackGround *background;/* +0x10 */
-    s32 tpage_base;        /* +0x14 */
+    u16 xbase;
+    u8 pad_02[6];
+    s32 scroll;
+    u16 old_pad;
+    u8 pad_0e[2];
+    BackGround *background;
+    s32 tpage_base;
 } DemoScreenStack;
 
 typedef struct
@@ -230,7 +293,6 @@ void FUN_800519bc(void)
     GsIMAGE image;
     DemoScreenStack stack;
     u_long *file;
-    u8 *prefix;
     u16 pad;
     u16 previous_pad;
     s16 fade;
@@ -239,31 +301,34 @@ void FUN_800519bc(void)
     s16 sequence;
     s32 fade_step;
     s32 adjusted;
+    s32 scroll_value;
     s16 strip_width;
     u16 strip_px;
     s32 xbase_value;
     u16 tpage_result;
     s32 intensity;
-    s32 brightness;
+    u8 brightness;
+    s32 edge_brightness;
     s32 tpage_word;
     s32 tpage_value;
     s16 signed_width;
     s16 i;
 
-    prefix = (u8 *)D_800137A0;
     sequence = 0;
     fade = 0xfe;
-    stack.scroll = -0xa000;
+    scroll_value = -0xa000;
+    stack.scroll = scroll_value;
     stack.old_pad = 0;
-    stack.xbase = -0xa0;
+    scroll_value >>= 8;
+    stack.xbase = scroll_value;
 
-    file = PathFileRead(prefix,
+    file = PathFileRead((u8 *)D_800137A0,
                         D_8008EA90[PSTATE->language][PSTATE->stage].background);
     fade_step = -8;
     stack.background = FUN_8004f4f8(file);
     vfree(file);
 
-    file = PathFileRead(prefix,
+    file = PathFileRead((u8 *)D_800137A0,
                         D_8008EA90[PSTATE->language][PSTATE->stage].foreground);
     TimToDemoSprite(file, &image, &sprite);
     sprite.x = -0xa0;
@@ -415,7 +480,9 @@ brightness_within:
                         {
                             goto brightness_center;
                         }
-                        brightness = (0xa0 - position) * 3;
+                        edge_brightness = 0xa0 - position;
+                        edge_brightness *= 3;
+                        brightness = edge_brightness;
                         goto brightness_common;
 
 brightness_center:
@@ -437,8 +504,9 @@ brightness_done:
             {
                 fade_step = 8;
             }
-            adjusted = stack.scroll;
-            adjusted += D_8008ECF8[PSTATE->language][PSTATE->stage];
+            scroll_value = stack.scroll;
+            adjusted = scroll_value +
+                D_8008ECF8[PSTATE->language][PSTATE->stage];
             stack.scroll = adjusted;
             if (adjusted < 0)
             {

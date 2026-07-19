@@ -2,177 +2,25 @@
 #include "main.exe.h"
 
 /*
- * start_demo_ (0x80055d64) — load and run the post-stage demo start screen:
- * fade in its five localized sprites, accept the continue/cancel inputs,
- * then release both archives and dispatch to the selected executable.
+ * start_demo_ (0x80055d64) loads and runs the localized post-stage demo
+ * screen, fades in its sprites, handles continue/cancel input, then releases
+ * the resources and dispatches to the selected executable.
  *
- * STATUS: NON_MATCHING — complete guarded pure-C reconstruction. The draft
- * recovers the full five-state jump-table loop, including state 2's shared
- * prompt/input tail with state 3, resource ownership, timed sprite fades,
- * pad-edge detection and both cleanup paths. It has the exact 0x1a0 frame and
- * exact 2188-byte/547-instruction extent; 39 differing bytes (down from 75).
- * Build with `NON_MATCHING=start_demo_ ./Build`.
+ * STATUS: MATCHING — pure C, all 2188 bytes (547 instructions) exact.
  *
- * This pass (75 -> 39), four independent levers found via autorules +
- * permuter + regalloc.py/rtlguide, applied and re-measured one at a time:
- *   1. (75 -> 48) The state-3 `do { pad = GetRealPad(0); } while (0);` fence
- *      was actively HARMFUL, not neutral: unwrapping it (autorules
- *      fence-unwrap) let cc1 schedule the whole GsSortSprite(&gov_title,...)
- *      argument setup (a0/a1/a2 materialization) BEFORE `old_pad = pad;
- *      new_press = pad & (pad^previous_pad);` instead of after, which is what
- *      lets reorg sink the final `and` (computing new_press) into the FIRST
- *      GsSortSprite call's jal delay slot exactly as the target does
- *      (0x56444-0x56464 cluster, -27 bytes in one edit).
- *   2. (48 -> 43) A fresh, single-use `s32 clear_b = 0;` at the top of the
- *      function, passed as `ClearImage(&clear_rect, 0, 0, clear_b)` instead
- *      of a literal `0`, closes the FadeOutDirect(0x20,2,8,8,8) shared-constant
- *      cluster (0x55df4-0x55e04) — a global-allocation-priority rebalancing
- *      effect with NO textual connection to FadeOutDirect (found by the
- *      permuter; verified `color` cannot substitute for `clear_b` — reusing
- *      an existing local instead of a fresh one costs a frame slot, LENGTH
- *      MISMATCH +4). See the new cookbook rule below.
- *   3. (43 -> 42, then 42 -> 39 combined with #4) Naming the persistent[]
- *      loop's multiply subterm as `chr_offset = CHOSEN_CHARACTER * 0x20;`
- *      before `persistent[(i + chr_offset) + 0x40c]` closes the `addu`
- *      operand-order tie at 0x55dd8. Verified the ALGEBRA is irrelevant —
- *      `16 * (2 * CHOSEN_CHARACTER)` in place of `CHOSEN_CHARACTER * 0x20`
- *      compiles byte-identical to the unnamed form (cc1 folds the
- *      reassociation); only the fresh NAMED TEMP's presence moves bytes.
- *   4. (42 -> 39 combined) Pre-computing the sprintf 4th argument into
- *      `char *prefix = GOV_RESOURCE_PREFIX_PTRS[language_state[0x5e]];`
- *      (mirroring how `resource_root` is already pre-assigned) shrinks the
- *      sprintf address-materialization cluster from 11 insns/38 bytes to 9
- *      insns/35 bytes and gets the FINAL `lw a3,0(v0)` into the correct `a3`
- *      register (previously the whole chain was 8 insns of pure insert/delete
- *      against target). Order matters: `resource_root` must be assigned
- *      BEFORE `prefix`, not after (swapping costs +6 bytes, 46 vs 40).
+ * Naming the selected resource-prefix table entry (rather than only its
+ * value) gives GCC 2.8.1 the target local-allocation and sprintf argument
+ * schedule. The setup brightness and the later literal 0x80 intentionally
+ * remain separate source values; GCC hoists the latter into its own saved
+ * register. The dead prompt-attribute read is assigned to `increment`, which
+ * is overwritten before any use, reproducing retail's retained v1 load.
  *
- * Ideas tried and REJECTED (measured, not guessed):
- *   - `GOV_RESOURCE_PREFIX_PTRS[CHOSEN_LANGUAGE]` in place of
- *     `[language_state[0x5e]]` at one or both use sites: the disassembly's
- *     `%lo(CHOSEN_LANGUAGE)` label on the FIRST access and raw `0x5E` on the
- *     second is a splat SYMBOL-BY-ADDRESS relabeling artifact, not evidence
- *     of two source spellings — both sites are the same pointer-offset
- *     expression in the original. Using CHOSEN_LANGUAGE at one site only
- *     breaks the two accesses' shared `%hi` (LENGTH MISMATCH, +4); at both
- *     sites it's LENGTH-correct but 130 bytes (badly wrong shape).
- *   - `u8 suffix` instead of `s32 suffix`, and a bare pointer-arithmetic
- *     `*(GOV_RESOURCE_PREFIX_PTRS + language_state[0x5e])` instead of
- *     `GOV_RESOURCE_PREFIX_PTRS[language_state[0x5e]]`: both compile
- *     byte-identical (nullcheck confirms the type change is real codegen,
- *     just not a helpful one; cc1 folds `a[i]` and `*(a+i)` identically).
- *   - Naming `lang_idx = language_state[0x5e];` separately from `prefix`:
- *     no additional effect beyond `chr_offset` alone.
- *
- * Residual 39 bytes, 5 clusters. A full escalation round (sched/greg/lreg
- * dumps read insn-by-insn, gcc sources read at line level, 10 measured
- * respellings, one bounded permuter run: 12,492 iterations, best candidate
- * rescored 40 > base 39) reduced ALL FIVE to two proven mechanisms:
- *
- * A. Clusters 0/1/2 (0x55e7c, 0x55ea8, 0x55ec4-0x55ee8; 37 bytes) are ONE
- *    allocation story: retail has suffix in a3, ours t0. mips.h defines no
- *    REG_ALLOC_ORDER, so find_reg probes $2,$3,$4... numerically: suffix
- *    lands on a3 ONLY if v0,v1,a0,a1,a2 ALL conflict. a2's sole birth is the
- *    arg3 load-loop move `a2 <- resource_root` — so that move must sit ABOVE
- *    suffix's death (`sw suffix,16(sp)`) in POST-SCHED1 order, and the
- *    `lw a3` (prefix) must sit BELOW it. No C spelling reaches that state:
- *      - named `prefix` (this draft): expand emits the lw BEFORE the sw;
- *        sched1 cannot swap them back (sp+16 vs pseudo-pointer: 2.8.1 sched.c
- *        memrefs_conflict_p cannot see through a pseudo — no REG_BASE_VALUE
- *        tracking — so emission order is a bidirectional pin). p97 (prefix,
- *        denser allocno) takes a3 first anyway; suffix -> t0.
- *      - inline `GOV_RESOURCE_PREFIX_PTRS[language_state[0x5e]]` as the 4th
- *        arg (MEASURED 42): expand_call evaluates reg-parm ADDRESSES in its
- *        precompute loop but leaves a MEM lazy, so the lw IS emitted after
- *        the sw — the right half. But the a2 move is then the LAST-created
- *        member of the after-call ready group {a0,a1lo,a2} (all priority 1,
- *        all alu => potential_hazard equal, sched.c:1346 is function-unit
- *        blockage only), and gcc 2.8.1 sched.c schedules BACKWARD: the
- *        call-adjacent slot goes to the highest-LUID member = the a2 move.
- *        It lands BELOW the sw; a2 never conflicts; suffix -> a2 (li a2
- *        measured at 0x55e7c). The lw is launch-blocked from the adjacent
- *        slot (load next to a jal that uses the loaded reg), so it cannot
- *        take the slot instead; li-s4 (full_brightness) cannot either: with
- *        the fence it is bump-poisoned (the fence-flush absorber's pick
- *        gives it the persistent 0x7f000001 birthing bump one cycle early,
- *        placing it just BELOW the call), and without any fence the
- *        while(1) loop's LOOP_BEG flush hands the LAST pre-loop call an
- *        ANTI dep on it (sched.c:2277 loop_notes path), it drifts to the
- *        block end, and the whole setup block reallocates (679 bytes,
- *        fade_sprite s7->s6). Also measured: `root_arg = resource_root`
- *        copy (combine folds it, byte-identical); fence moved after
- *        full_brightness (bump fires at T-160, byte-identical 42);
- *        `lang_scaled = language_state[0x5e]*4` (folded, 39 unchanged).
- *    To refute: find a spelling whose post-sched1 stream orders
- *    [a2 birth] < [sw suffix,16(sp)] < [lw a3] — dump with
- *    `tools/rtldump.py start_demo_ --pass sched` and read the last ~15
- *    ready-list lines of the block containing the sprintf call.
- * B. Cluster 4 (0x55fd0, 1 byte): the volatile gov_prompt.attribute
- *    dead-read's destination is a ZERO-LENGTH local-alloc quantity; an empty
- *    interval overlaps nothing, so it always receives the first register in
- *    order (v0). Retail's v1 implies the original value LIVED into the
- *    following quantities' ranges — i.e. the loaded value had a real use.
- *    C cannot fake one: a named probe var, probe-recycled-as-h-temp, and a
- *    self-assign keepalive all compile byte-identically (cc1 interposes a
- *    temp for the volatile load and deletes the dead user-var def).
- * C. Cluster 3 (0x55f64, 1 byte): setup_brightness = -0x80 stays; plain
- *    0x80 re-measured on THIS draft: 340 bytes (CSE collapse, replicating
- *    the older 98->346 result).
- *
- * The T-162 pick (A) is this function's single remaining lever: 37 of 39
- * bytes hang off it, and every fence arrangement trades it against the
- * downstream block (the fence notes also bound cse1's extended blocks —
- * removing them lets cse run 90..658 and drift the whole setup).
- *
- * COOKBOOK RULES already reported from earlier rounds: the fresh single-use
- * constant local (clear_b) global-priority rebalance, and fence-unwrap
- * around GetRealPad. NEW REUSABLE FACTS from this round (report upstream):
- *   1. gcc 2.8.1 sched.c schedules each block BACKWARD from its last insn;
- *      "ready" = all CONSUMERS placed; the printed ready-list order is the
- *      pick order (head first); within an equal-priority group the pick goes
- *      to greater potential_hazard (memory-unit ops only), then HIGHEST
- *      LUID; the 0x7f000001 "birthing bump" persists until picked and beats
- *      every plain priority including a call's.
- *   2. expand_call emission order is fixed: reg-parm VALUES precomputed
- *      (a MEM arg stays lazy — only its address insns are emitted), then
- *      store_one_arg for stack args, then reg moves in a0..a3 order. An
- *      INLINE memory-ref argument is the only way to emit its load AFTER
- *      the stack-arg stores; a named local can never reproduce that order.
- *   3. sched.c cannot disambiguate sp+K from a pseudo-held pointer (no
- *      REG_BASE_VALUE in 2.8.1), so store-vs-load EMISSION order between
- *      them is a permanent scheduling pin in both directions.
- *   4. A do{}while(0) fence's notes also delimit cse1/cse2 extended blocks
- *      (cse "Processing block" boundaries land exactly on them), so a fence
- *      can be load-bearing for VALUE PROPAGATION far downstream, not just
- *      for scheduling: deleting one here moved 679 bytes.
- *   5. The volatile-dead-read register class (B above): dest = zero-length
- *      quantity = first free register in order, unmovable from C.
+ * The zero-trip wrappers on three state transitions are load-bearing compiler
+ * shape, plausibly left by statement-macro expansion: their four extra loop
+ * depths raise the state allocno from 11 to 15 weighted references (priority
+ * 939 versus the fade sprite's 930). Plain assignments rotate s6/s7/fp even
+ * though the emitted transition instructions are otherwise identical.
  */
-
-#ifndef NON_MATCHING
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/start_demo_", start_demo_);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/start_demo_", start_demo___override__prt_80055ee4_68447b59);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/start_demo_", switchD_800561a0__switchD);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/start_demo_", switchD_800561a0__caseD_1);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/start_demo_", switchD_800561a0__caseD_2);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/start_demo_", switchD_800561a0__caseD_3);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/start_demo_", switchD_800561a0__caseD_4);
-
-INCLUDE_ASM(".shake/gen/main.exe/asm/nonmatchings/start_demo_", switchD_800561a0__caseD_5);
-
-/* jump-table pool @ 0x80013bb0 (5 words; tables at 0x80013bb0) — stub-only, one array because the object has one .rodata section; the draft's compiled switch emits its own. */
-static const u32 start_demo__jtbl[5] = {
-    0x800561A8, 0x800561F8, 0x80056438, 0x800564EC,
-    0x80056550,
-};
-
-#else /* NON_MATCHING */
 
 typedef struct BackGround BackGround;
 typedef struct
@@ -190,11 +38,8 @@ typedef struct
 } RECT;
 
 extern u8 CHOSEN_CHARACTER;
-extern u8 CHOSEN_LANGUAGE;
 extern u8 STAGE_LAYOUT_NUMBER;
 extern u8 D_80010048;
-extern u8 ITEM_LOADOUT_BACKUP[];
-extern u8 SHOP_STOCK_STATE_BY_CHAR[];
 extern char D_80013AFC[];
 extern char D_80013B24[];
 extern char D_800137A0[];
@@ -254,7 +99,7 @@ void start_demo_(void)
     u_long *fade_archive;
     Sprite3D *fade_sprite;
     u8 *persistent;
-    u8 *language_state;
+    PersistentState *language_state;
     char *resource_root;
     u16 pad;
     u16 previous_pad;
@@ -262,15 +107,14 @@ void start_demo_(void)
     s16 shade;
     s32 state;
     s32 title_brightness;
-    s32 full_brightness;
     s32 setup_brightness;
     u32 color;
     s32 increment;
     s32 i;
     s32 suffix;
     s32 clear_b;
-    char *prefix;
     s32 chr_offset;
+    char **prefix_entry;
 
     state = 1;
     shade = 0x80;
@@ -304,29 +148,20 @@ void start_demo_(void)
     suffix = 'r';
     fade_sprite->sprite.attribute |= 0x60000000;
 
-    language_state = (u8 *)0x80010000;
+    language_state = (PersistentState *)0x80010000;
     if (CHOSEN_CHARACTER != 0)
     {
         suffix = 'a';
     }
     resource_root = D_800137A0;
-    prefix = GOV_RESOURCE_PREFIX_PTRS[language_state[0x5e]];
-    sprintf(archive_path, D_80013B24, resource_root, prefix, suffix);
-    /* Keep the loop brightness in its own pre-resource CSE region. */
-    do {
-    } while (0);
-    full_brightness = 0x80;
+    prefix_entry = &GOV_RESOURCE_PREFIX_PTRS[language_state->language];
+    sprintf(archive_path, D_80013B24, resource_root, *prefix_entry, suffix);
     fade_archive = FileRead(archive_path);
     tim = get_tim_from_archive(fade_archive, 0);
     background = FUN_8004f4f8(tim);
     gov_archive = PathFileRead(resource_root,
-                               GOV_ARCHIVE_PTRS[language_state[0x5e]]);
-    /* +128 held distinct from full_brightness/shade; a plain 0x80 here would
-     * CSE with them and collapse the frame, so keep it as -0x80 (narrows to
-     * 0x80 in the u8 sprite fields). The lone li s0,-128 vs li s0,128 is the
-     * residual cost. */
-    setup_brightness = -0x80;
-
+                               GOV_ARCHIVE_PTRS[language_state->language]);
+    setup_brightness = 0x80;
     tim = get_tim_from_archive(gov_archive, 0);
     StartDemoInitSprite(tim, &image, &gov_title);
     gov_title.y = -0x28;
@@ -341,8 +176,7 @@ void start_demo_(void)
 
     tim = get_tim_from_archive(gov_archive, 1);
     StartDemoInitSprite(tim, &image, &gov_prompt);
-    /* Preserve the retail binary's otherwise-dead attribute read. */
-    (void)*(volatile u32 *)&gov_prompt.attribute;
+    increment = *(volatile u32 *)&gov_prompt.attribute;
     gov_prompt.y = 0x5f;
     gov_prompt.x = 0;
     gov_prompt.r = setup_brightness;
@@ -400,24 +234,12 @@ void start_demo_(void)
         switch (state)
         {
         case 1:
-            do {
-                do {
-                    do {
-                        do {
-                            shade -= 2;
-                        } while (0);
-                    } while (0);
-                } while (0);
-            } while (0);
+            shade -= 2;
             if (shade <= 0)
             {
                 do {
                     do {
-                        do {
-                            do {
-                                state = 2;
-                            } while (0);
-                        } while (0);
+                        state = 2;
                     } while (0);
                 } while (0);
                 shade = 0;
@@ -432,21 +254,19 @@ void start_demo_(void)
 
         case 2:
             previous_pad = old_pad;
-            do {
-                pad = GetRealPad(0);
-            } while (0);
+            pad = GetRealPad(0);
             old_pad = pad;
             new_press = pad & (pad ^ previous_pad);
             if ((new_press & 0x20) != 0 && GameClock < 0x23b)
             {
                 state = 3;
-                gov_title.r = gov_title.g = gov_title.b = full_brightness;
+                gov_title.r = gov_title.g = gov_title.b = 0x80;
                 archive_line_1.r = archive_line_1.g = archive_line_1.b =
-                    full_brightness;
+                    0x80;
                 archive_line_2.r = archive_line_2.g = archive_line_2.b =
-                    full_brightness;
+                    0x80;
                 archive_line_3.r = archive_line_3.g = archive_line_3.b =
-                    full_brightness;
+                    0x80;
                 GsSortSprite(&gov_title, OTablePt, 0xa);
                 GsSortSprite(&archive_line_1, OTablePt, 0x50);
                 GsSortSprite(&archive_line_2, OTablePt, 0x50);
@@ -517,11 +337,15 @@ void start_demo_(void)
             GsSortSprite(&gov_prompt, OTablePt, 0x50);
             if ((new_press & 0x20) != 0)
             {
-                state = 4;
+                do {
+                    state = 4;
+                } while (0);
             }
             if ((new_press & 0x800) != 0 || GameClock >= 0xa8c)
             {
-                state = 5;
+                do {
+                    state = 5;
+                } while (0);
             }
             break;
 
@@ -559,5 +383,3 @@ void start_demo_(void)
         EndDrawing(0);
     }
 }
-
-#endif /* NON_MATCHING */

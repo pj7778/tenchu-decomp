@@ -105,7 +105,13 @@ stays NON_MATCHING (StateTransition is the worked correction).
 5. **Permuter discipline** (operating detail in matcher.md): never as an early
    decompiler — recover CFG/loops/stack/length deterministically first
    (permute.py preflights and refuses broad residuals). One bounded run for a
-   sub-C-looking residual; linked rescore is authoritative (`--rescore-only`
+   sub-C-looking residual — **but NOT for a `gte.h`/gte-allowlist function: the
+   permuter is a NON-LEVER for those at ANY residual size** (permute.py:985
+   refuses inline-asm functions before compiling — its parser can't read the
+   macro layer, so it never searches and the -fno-builtin fix is irrelevant). A
+   small residual on a gte.h function LOOKS like a permuter target and is not
+   (FUN_80057b80's 8-byte / FUN_80058c70's prologue sched2 ties) — escalate
+   STRAIGHT to RTL. linked rescore is authoritative (`--rescore-only`
    after interrupts; ControlHumanoid's real winner was proxy output-525).
    Bisect winners — they carry dead statements (bow_shoot_logic). Read a
    plateaued run's best `output-*` dirs for the single load-bearing edit
@@ -169,11 +175,16 @@ Look up what the authors wrote before drafting anything.
   `tools/access.py`); a repeated local name is a nested-block scope — and
   therefore a lifetime-boundary hint (PlayVoice's two `min`/`sec` pairs;
   AttackControl's two `enemy`s); `.NNNfake` struct tags were per-TU.
-  **PSX.SYM lists a block's locals in REVERSE declaration order** — a listed
-  `dz, dy, dx` means the source declared `long dx, dy, dz;`. Block scalars get
-  pseudos AT DECLARATION, so transcribing the listed order verbatim swaps register
-  roles (measured s0/s1 flip on SetWire). Reverse each block's list before writing
-  it.
+  **PSX.SYM local order is not a whole-block reversal rule.** SetWire's listed
+  `dz, dy, dx` had to be written as `long dx, dy, dz`, but AddEnemy is the
+  counterexample: keeping its displayed `names, ItemName, i, human, type, x, y,
+  z, r, think` order is byte-exact, while reversing the block rotates the four
+  long-lived x/i/r/y registers. This is likely sensitive to declaration groups
+  (including comma declarators), which the flat debug records do not preserve.
+  Block scalars get pseudos at declaration, so test the displayed order and
+  plausible per-group reversals against the compiler's allocation; do not
+  mechanically reverse the complete list. The recorded hard-register homes and
+  exact target bytes decide.
 - **The human structure can be the RIGHT base even when it scores WORSE**, because
   a byte-chased draft is a local optimum away from the source and can be a dead
   end. SetWire from EFFECT.C:1428's own 23 declarations measured 85 vs a banked
@@ -185,6 +196,17 @@ Look up what the authors wrote before drafting anything.
   the human base for the next round even at a small byte cost. `siblingdiff --demo`
   can even show the author editing the source between builds (SetWire's `abs`
   changed from builtin to a called flag-setting form demo→retail).
+- **A permuter win that routes a value through a dead local is usually a matched
+  SIBLING's idiom in disguise — write the human version, not the permuter's.** When
+  a candidate's real win is a variable-routing trick (routing a call return through
+  an already-declared, momentarily-dead local; capturing an old value before
+  overwrite), grep the matched siblings in the TU for the same IDIOM before adopting
+  the permuter's literal phrasing. FUN_800514d8's permuter reconstructed
+  `prev = lastpad` from scratch in an awkward position; the matched sibling
+  `update_pressed_buttons.c` already had the human form
+  (`previously_pressed = buttons->currently_pressed;`). Same bytes, real code. And a
+  same-scoring `result++; result--;` ballast alternative was rejected for it — when
+  two spellings tie, take the one a person would write.
 - **NOT every fence is scaffolding — there are THREE cases and conflating them
   damages both directions.** Before deleting a `do{}while(0)`, classify it:
   (a) **a MATCHED SIBLING'S MACRO** — grep the TU's `.h` and `.c` `#define`s for
@@ -198,6 +220,16 @@ Look up what the authors wrote before drafting anything.
   `fence-unwrap`, which sweeps each singly) measurably regresses. **KEEP it**:
   measured necessity, not macro provenance, decides (StageEndScreen's 4-nest at
   L423 scores 202→227 unwrapped; FUN_800519bc's 5 fences, no macro, cost 87→91..1012).
+  **Classify (b) vs (c) by the UNWRAPPED RESIDUAL, not the byte delta**: read the
+  asmdiff of the unwrapped version — if the regressed bytes are ENTIRELY
+  callee-saved register renames (sN↔sM shuffles, identical mnemonics/operand
+  shapes), the fence is a pure global-allocation nudge with nothing better behind
+  it → case (c), KEEP (AdtSelect's two fences unwrap to 37 bytes of pure
+  s1↔s2/s3↔s4 renames). Only when the unwrapped residual shows a genuinely
+  different or more-complete control/expression structure is it case (b). **TOOL
+  TICKET (fence-unwrap --classify)**: label each unwrapped residual "N%
+  register-rename / M% structural" to mechanize this read — currently a manual
+  asmdiff.
   **The "adopt the worse byte count" move is ONLY for case (b)** — a bare fence
   with nothing better behind it is not a reason to regress. And test fence
   clusters as SUBSETS, not singletons: FUN_800519bc's three position-carriers act
@@ -219,8 +251,17 @@ Look up what the authors wrote before drafting anything.
   function wearing the same name — and its PSX.SYM locals describe the DEMO
   body. A demo call that disappears in retail may be an INLINE EXPANSION —
   reconstruct a local `static __inline__` helper and keep the call (AfsFindFile;
-  siblingdiff reports the bigram tell). `--compose` maps target ranges across
-  demo + matched siblings at once (ActMOVE).
+  siblingdiff reports the bigram tell). The stronger version is a repeated
+  instruction island that is the body of a small function defined earlier in
+  the SAME PSX.SYM translation unit: reconstruct that function's exact scalar
+  parameters and typed output as a local inline helper instead of manually
+  expanding its statements. SetWire's two GetScreenPosition islands went
+  80→0 this way; SetLightningI's PrepareGetScreenPositionS +
+  GetScreenPositionS pair removed four compensators and went 15→0. The
+  helper boundary creates the original parameter pseudos, and a debug-proven
+  `SVECTOR *` field store retains a memory dependency that an `s32 *`/`short *`
+  reconstruction loses. `--compose` maps target ranges across demo + matched
+  siblings at once (ActMOVE).
 - **Names**: a `FUN_…` block carries the candidate name from
   `reference/psxsym-candidates.tsv` — adopt only via `tools/callmatch.py
   --verify` (it blocks a conservative subset as AMBIGUOUS; don't override with
@@ -246,12 +287,20 @@ Look up what the authors wrote before drafting anything.
   mnemonic knows a union store's width. Per-address PSX.SYM LINE events can
   distinguish a compound expression from adjacent statements when the bytes
   cannot (PadProc's `ct = -PadArrange.time++;`) — demo line tables, so require
-  cross-build agreement on the boundary.
+  cross-build agreement on the boundary. They can also break an apparent
+  register-allocation floor by recovering statement order: manually decoding
+  ACTION.C:349-358 for `SetupSpline` showed direct `key0` field assignments,
+  `key1` derived from that field, and the loop's key store before its time store.
+  That ordinary source removed a 12-byte pure-register residual and matched all
+  240 bytes; the alias fences in the parked draft had preserved the wrong value
+  identities while imitating the copy count.
 - **The matched corpus is an oracle**: grep the whole game for the target's
   SHAPE and check whether a function with that shape is already matched — its
-  source IS the answer to "what C produces this?" (FUN_80057b80's prologue
-  question: one grep). **Match on the CAUSE, not the shape** — the same oracle
-  false-positived when the mechanism (parameter USE KIND) did not transfer.
+  source is evidence for "what C produces this?" **Match on the CAUSE, not
+  only the shape**, but do not mistake a failed direct transcription for a
+  contradiction. FUN_80057b80's target prologue existed in the corpus; its
+  pointer formal could not use the narrow-parameter cause, but ordinary local
+  pointer copies reproduced the same emitted shape exactly.
 
 ## §2 THE ROUTER — residual signature → tool → family
 
@@ -276,7 +325,7 @@ prints — that habit has produced confidently wrong rounds (see cc1says below).
 | Preheader contents/order | `rtldump --loop-log` | loop.c economy §3.14 — price the gate, never argue with it |
 | Equal-priority sched tie | `sched-deps <Name>`, `schedtrace` | §3.13: what made the priorities EQUAL? sched-deps prints the group + demotion candidates; LAUNCH_PRIORITY bumps; ready-list lines are the truth |
 | Empty/odd delay slot, block-leader question | `sched-deps <Name>` (flow-vs-sched leader report), `cc1says` | §3.13 delay-slot family |
-| Prologue / parm-copy order | `schedtrace --pass sched2`, `sched-deps --pass sched2` | sched1 never sees the prologue (compiler-facts) |
+| Prologue / parm-copy order | `schedtrace --pass sched2`, `sched-deps --pass sched2` | sched1 never sees the prologue. Before changing the signature, copy formals into ordinary locals in the target order and use those locals throughout; coalescing can retain bare moves while moving their definitions out of `assign_parms` (FUN_80057b80 8→0) |
 | Target repeats a block; one of your sites matches | `asmdiff`, then diff the TARGET's sites against each other | Spelling asymmetry — stop looking at the compiler (LoadTIMpack). **TOOL TICKET (selfsim)** |
 | Frame size / slot layout | `stackplan [--emit-overlay]` | §3.7: unions, three-phase rule, slot arithmetic, spill-count residue. **TOOL TICKET (slotcalc)** |
 | Guard polarity / return island | `rtlguide` (`guard-return-island-layout`) | `terminal-guard-flip` / `if-else-invert` (index), §3.1–§3.2 |
@@ -498,6 +547,16 @@ negated. Everything else here is corollaries:
   different arguments per predecessor but shows one merged `jal`
   (DefaultActionHumanoid, DamageControl, ActSWIM — where the last residual was
   only WHICH terminal arm is the fallthrough: `terminal-arm-flip`).
+- **A shared success tail in final asm can be two ordinary source arms, and
+  both copies count for allocation before jump2 merges them.**  Write the
+  complete semantically-identical tail in each real success arm, e.g.
+  `if (mode == A) { flag = 1; field = mode; } else if (mode == B) { flag = 1;
+  field = mode; }`.  This is not an invented identical-arm fence: the arms are
+  the human control flow, and jump2 runs after allocation.  ActITEM's factored
+  guard needed a fake `flag = 0` to colour `flag` correctly, which then filled
+  a target `nop`; restoring the two valid-mode arms removed the invented local
+  and reset, retained the target allocation, cross-jumped back to one emitted
+  tail, and closed 2 → 0 bytes.
 - **A referenced `case` label is a hard cross-jump fence** — a boolean `switch`
   keeps an exceptional copy distinct where if/fences/unreferenced labels cannot
   (StateTransition; `case-fence` mechanises the two-way form). Algebraically
@@ -689,6 +748,20 @@ judgment:
   (PadProc); grouped quotient temps when the target groups the stores
   (FUN_80036284); signed fixed-point bias-and-shift spelled literally
   (SetWire). Variable division needs `--expand-div` (§3.16).
+- **Match a quotient temporary's destination width before steering its
+  allocation.** A value used only by `sb` can still be a QImode source local;
+  widening three natural color bytes to a tuned `u32/u16/u32` mix left the
+  mnemonics and stores intact but manufactured a 34-byte register rotation in
+  `FUN_80036284`. Restoring three plain `u8` temporaries made the whole first
+  fade case exact. Source mode is part of value identity even when the final
+  machine store already truncates.
+- **A repeated pure expression and a named destructive update need not have
+  the same register identity.** In `FUN_80036284` case 2, writing
+  `(duration - elapsed)` in each of three channel expressions lets CSE share a
+  separate pseudo in v1. `elapsed = duration - elapsed`, and the seemingly
+  cleaner `remaining = duration - elapsed`, both tie the value to a1 and leave
+  a 14-byte register-only residual. Trust the compiler dump before declaring
+  repeated human source impossible or replacing it with donor copies.
 - **Two loads of one short field at one address** = combine's one-use gate —
   the lever is WHICH READ COMES FIRST, not a cast (compiler-facts). An
   intervening store between a load and its first use likewise blocks combine
@@ -752,6 +825,12 @@ judgment:
   wrongly-wide prototype creates a full-width call-result pseudo that CSE
   propagates across calls (Think1ninja's `s16 Think1random`). Take prototypes
   from the matched CALLER over Ghidra (FUN_80058a54 → FUN_80058c70).
+- **An ignored SDK return still changes hard-register conflicts.** PsyQ declares
+  `MoveImage` as returning `int`; spelling it `void` emits the same call but
+  leaves v0 available to a preceding multiply result. The correct prototype
+  made that result use retail's t0 and closed the final 2 bytes of
+  `FUN_80032720`. Audit the full prototype even when no C expression consumes
+  the result.
 - **A conditional value used ONLY as a call argument is an inline ternary** in
   the argument position — a preceding if/else blocks sched1 from interleaving
   the flag with the other args (SetupSoundEffect; AVCameraSetup adds: assigning
@@ -775,7 +854,8 @@ ROTATES around a volatile, suspect the qualifier). Site-local forms, in
 preference order: a pointer-to-volatile view for one access
 (`(*(Object *volatile *)&Objects[i])->field`, UpdateEvent; StartStageSequence's
 `volatile u16 *stg_think` — `pointee-volatile` sweeps the local-pointer form);
-a volatile word view of an explicit spill slot (AddEnemy's post-call reload); a
+a volatile word view of an explicit spill slot only when independently proven
+(the former AddEnemy draft used one, but its exact human rewrite disproved it); a
 volatile-qualified parameter OBJECT for a single proven early stack read
 (CdaPlayXA). Never make a shared extern declaration volatile. Corroborate an
 otherwise-dead target load in another shipped build before encoding it
@@ -1011,6 +1091,79 @@ preference machinery, REG_N_DEATHS, reload round-robin). The craft:
   assignment into both arms so it can reuse the dead condition register
   (FUN_8001b2f4), or one function-scope local across mutually-exclusive arms to
   move the value from local- to global-alloc (ProcMiscPitfall).
+- **Containment kills a pressure lever only inside the CURRENT decomposition.**
+  Two mutually-conflicting allocnos where one's live range strictly contains the
+  other's cannot be separated by reweighting those same two allocnos; adding
+  pressure just moves the same contest. That is a useful rejection of a LOCAL
+  edit, not a proof about the original C. SetupTelop's documented four-clique
+  "floor" disappeared when the nested font fences were deleted, PSX.SYM's real
+  `u` coordinate was reused, and the glyph write/swap were restored as ordinary
+  human statements: the function stayed the exact target length and went 9→0.
+  Therefore check containment to stop tuning the present graph, then question
+  why those pseudos exist and whether a donor/fence manufactured the graph.
+  **`regalloc --local` does NOT list GLOBAL allocnos** — if the residual
+  registers are absent from its local homes, the tie is GLOBAL; cross-check
+  `--order`. Passing either diagnostic scopes the next rewrite; it never proves
+  that a different source decomposition cannot match.
+- **An interference wall rejects tuning, not restructuring.** When
+  `regalloc --local` shows the wanted register occupied by a conflicting,
+  higher-priority pseudo, no priority nudge on the loser can cross that wall;
+  shorten/delete an identity or rebuild the decomposition. Do not promote
+  "the shortening construct changed length" to "sub-C": CameraDirection's
+  parked proof did exactly that, yet deleting every donor/fence, restoring
+  PSX.SYM's `rx`/`ry`/`x`/`y` locals, and using an ordinary independent-field
+  statement order kept the exact 860-byte extent and went 7→0. A donor added
+  for length can manufacture both the conflict and the apparent length floor.
+  Run the clean-source null check before accepting any wall as a park.
+- **Local-alloc's conflict-free-window trap is a graph fact, not a source
+  impossibility.** A value born and dead inside one conflict-free window takes
+  the lowest free register; reweighting that same quantity cannot make it earn
+  a higher one. `regalloc --local` prints this accurately. The escape may be a
+  different, real identity spanning disjoint uses: DrawImpact went 4→0 by
+  reusing one ordinary `s32 work` local for byte inputs and a later coordinate
+  pointer. The later, higher-value use changed allocation of the earlier
+  fragments without a fake read or semantic no-op. Thus an empty conflict set
+  means "stop tuning this temporary"; search PSX.SYM and the human algorithm
+  for a naturally reused local before parking.
+- **A permuter no-op ref-count nudge (`z++; z--`) that lowers bytes is a
+  DIAGNOSTIC, not a fix.** When the permuter closes bytes by inserting a literal
+  no-op that only shifts a pseudo's live-range/ref-count, it has PROVEN the
+  residual is a live-range-sensitive local-alloc tie AND localised which
+  sub-cluster it repairs — read the asmdiff of the nudged version (SetLightningI's
+  `z++;z--` after the x-store fixed the `{hi,vpx,base}` address-computation half,
+  collapsing the rest to a pure x↔z swap). USE it to characterise the residual,
+  then REJECT the nudge per the human-source directive. A failed clean store
+  reorder proves only that the missing source boundary is larger than one
+  statement. SetLightningI's supposed 15-byte floor vanished when its repeated
+  projection islands were restored as the same-TU inline helpers named by
+  PSX.SYM; the helper parameter identities produced the desired allocation with
+  no carrier or no-op. The nudge tells you WHERE the current graph is sensitive;
+  it is not evidence that C cannot reach another graph. **And the
+  `-fno-builtin` permuter fix is MATERIAL, not cosmetic**: this
+  run found a 12-byte candidate two earlier "post-fix" rounds missed (they still
+  searched the wrong program) — any permuter-plateau claim dated before the fix
+  (CPP→CC_FLAGS) is void for a non-gte.h function; re-verify with a fresh run.
+- **A permuter `paramN = param` second-pointer-identity candidate: adopt-vs-reject
+  by the TARGET's register count, not the score.** Count the distinct pointer
+  registers the target's real code uses to dereference that value in the affected
+  block. If the target already uses only the pointers you have (no separate
+  register holding a second copy of the pointer), the alias is a coincidental
+  global-alloc perturbation — REJECT (DrawHinoko's `new_var`: target join block
+  dereferences only `a2`/`s0`, so a third pointer register is invented). Only if
+  the target genuinely materialises a second identity — a `move` of the pointer
+  into another callee-saved reg that LATER dereferences — does the alias reproduce
+  real structure, ADOPT (DrawBleed's `param2`: target has `move a2,s1`). Same
+  candidate SHAPE, opposite verdicts, decided by the target's registers.
+- **A v0/v1 divide-region contest is scoped to the present quantity identities.**
+  `.lreg` and `QTY_CMP_PRI` can correctly prove that no single-statement move
+  changes a color without destroying a sched1 bubble; that is a request for a
+  multi-statement human decomposition, not an irreconcilable floor. Both cited
+  twins now match. FUN_80058c70 removed an unrelated carrier, kept the packet
+  colour in a dedicated `colorWord`, and read the later GTE address directly.
+  FUN_80059008 used the real loop counter `cnt` and one two-set packet initializer
+  (`4`, then `0x96`); the multi-set quantity suppresses the birthing bump and
+  produces the exact sched1/sched2 order. Purposeful local identity and ordinary
+  reuse can change the quantity graph in ways a statement-position sweep cannot.
 - **Priorities and windows**: ballast the winner-to-be by adding an insn inside
   its live range (hoist a one-arm constant into a pre-branch variable — free
   when the target materialises it anyway, SoundEx); prefer DEMOTING the winner
@@ -1033,7 +1186,12 @@ preference machinery, REG_N_DEATHS, reload round-robin). The craft:
   "hard-conflict" (mission_score_screen's rowValue — ask which value is created
   first); source liveness across a call beats final scheduled position
   (DrawBlood; SaveCard's inverse); a pre-call narrow capture + post-call
-  widening separates a saved copy from its mask (FUN_8005778c).
+  widening separates a saved copy from its mask (FUN_8005778c). But it is the
+  order of the SETs/USES that matters, NOT the order of scalar DECLARATIONS:
+  reordering scalar local declarations is a nullcheck no-op — gcc-2.8.1 defers
+  scalar pseudo allocation to first-use, so declaration order cannot renumber
+  allocnos or break an equal-priority coloring tie (FUN_80036284; contrast
+  address-taken/stack locals, whose declaration order DOES fix slot order, §3.8).
 - **The `%hi` reload tie is `combine_regs` refusing a block-crossing pseudo**
   (compiler-facts): a shared local funnelled from both if/else arms into one
   post-join call can never tie with its `%hi` temp — call the function
@@ -1052,8 +1210,16 @@ preference machinery, REG_N_DEATHS, reload round-robin). The craft:
   is one root cause — fix the count, ignore the sites (AdtSelect).
   **TOOL TICKET (regalloc --spill-uses)**: print each use BARE vs IN-MEM — the
   discriminator that retired a wrong park verdict. **TOOL TICKET (regalloc
-  --names/--local)**: pseudo→C-name (UNIDENTIFIED when unprovable) and
-  local-alloc quantities (invisible for ControlHumanoid).
+  --names)**: pseudo→C-name (UNIDENTIFIED when unprovable). **`regalloc --local`
+  is BUILT** (2026-07-18): prints the local-alloc quantity walk (QTY_CMP_PRI
+  priorities, walk order, per-quantity conflict set), self-validating by
+  simulating block_alloc against cc1's printed `;; Register N in M` homes and
+  REFUSING (raw view only) on divergence — proven on DrawImpact (46/46 homes,
+  0 divergences). **Open ticket (conflict-source-locator)**: given a register
+  tie `target R vs ours L`, print the target window(s) where R is simultaneously
+  busy with the lower regs, and whether the tied value's live range can reach
+  that window without changing its own home — DrawImpact needed this
+  hand-correlated from `tdis`.
 - **Macros**: expanding a function-like local macro is byte-neutral BY
   CONSTRUCTION (measured: same cpp tokens, same .o sha) — expand FIRST anyway,
   because per-site variation is inexpressible through a shared spelling and the
@@ -1097,7 +1263,14 @@ fence whose depth sweep is FLAT is not a fence — delete it (AddEnemy's
   in one function (Think3escape's three), scheduling-dependency injection
   (Think3firstattack's atomic pair with a width change), alias/base decoupling
   (SetupFly), raw/cache splits (`alias = cache = raw` + identical arms,
-  GetAreaMapVector, PlayVoice).
+  GetAreaMapVector, PlayVoice). The **identical-assignment arm**
+  (`if (cond) x = E; else x = E;`, same store both arms) is specifically a cse
+  STORE→LOAD FORWARDING barrier — the loop fence above cannot do this, but the
+  control-flow merge blocks cse from forwarding a statically-known stack value, so
+  the target's fresh `lw`/`sra` reload of a field cc1 could prove survives. Use it
+  (not a fence) when the target refetches a provable field; dropping it collapses
+  to reusing the source register and SHORTENS the function (FUN_800519bc: drop →
+  −2 insns / length mismatch).
 - **Donor variants** (all erased by jump2): `allocation-donor-fence` (duplicated
   assignment under an initialized/guard-proven discriminator — FUN_80033bc0,
   Think1target, AddEnemy's weapon_entry after removing invented base locals);
@@ -1219,6 +1392,19 @@ fence whose depth sweep is FLAT is not a fence — delete it (AddEnemy's
   8-byte objects are not automatically small (whole-struct assignment wants the
   split — DoBriefingAndInventorySelection's RECT; PutMap's pointer cell as
   `[]`+`[0]` exposing the HIGH to reorg). When probing, grep `\bla\b` too.
+  For an extern BYTE the form depends on USE CONTEXT: read as an assigned lvalue
+  (`x = D[0]`) wants the ARRAY form `extern u8 D[]` (split: `lui %hi` in a reg +
+  `lbu %lo(reg)`); read in a CONDITION (`if (D != 0)`) wants the SCALAR
+  `extern u8 D;` — so one symbol legitimately takes different declarations in two
+  TUs (PadProc array 28 vs scalar 30; sibling PadShock scalar).
+- **A `lui $rN,0xHHHH` in a byte-diff may not belong to the symbol you suspect** —
+  `%hi` rounds UP when `%lo` is negative, so `lui 0x800c` can be `%hi` of a
+  `0x800bXXXX` symbol (PadProc: the `lui 0x800c` blamed on `D_8001005D` was really
+  `%hi(PadPort)`, 0x800be6d8). Decode the raw instruction word and cross-ref the
+  splat `.s` (`%hi(SYM)`) / `undefined_symbols_auto` before chasing a data-symbol
+  lead — matchdiff renders the immediate but not the owning symbol. **TOOL TICKET
+  (matchdiff/asmdiff --annotate-hi)**: tag each `lui $rN,0xHHHH` diff line with its
+  owning `%hi(SYM)` from the splat `.s` — settles these leads in one glance.
 - **A bare `lui` with NO `addiu`, reused as a base**, is a LOCAL holding a
   literal pointer cast (`(PersistentState *)0x80010000` — %lo is 0)
   (FUN_8001b2b8); a read-modify-reread absolute across a call wants a raw
@@ -1306,6 +1492,19 @@ LUID, barriers). The levers:
   promoted producers (ProcItemNingyo's `loaded_model`). Cluster of genuinely
   equal loads: reverse the source assignments as one bounded probe
   (ProcItemNingyo 6→4).
+- **A prologue-copy tie has two source layers.** `sched2` accurately reports the
+  final backward LUID/hazard choice, but it cannot prove the definitions must
+  originate in `assign_parms`. First try ordinary local copies and use the
+  locals throughout. In FUN_80057b80, `param_2 = arg_2; param_1 = arg_1;`
+  coalesces to the same bare `move s1,a1` / `move s0,a0` instructions while
+  retaining local-assignment order; the alleged rigid formal-vs-formal floor
+  went 8→0. For formal-vs-body leaders, purposeful multi-set locals are also
+  real levers: FUN_80059008's loop counter and two-set packet initializer
+  suppress the relevant birthing bump and match the target, while its twin
+  FUN_80058c70 matches with separate colour and later GTE-address identities.
+  Read `.greg`, `.sched`, and `.sched2` to verify survival/order, but treat the
+  result as a diagnosis of the current definition sites. "Both are parm
+  copies" and "one ready-list tick" are not source-level impossibility proofs.
 - **Store-to-load source dependencies beat fences**: read back the just-stored
   narrow object (`sb; andi` order with no surviving load, FileOption) — the
   memory-unit tiebreak anti-rule means [store][alu] is unreachable for
@@ -1400,6 +1599,21 @@ have matched SetBleedsDir unattended.
   that can follow a hoist — if you hand-spelled one, that's the bug (AddEnemy's
   `names_offset`). Recurring `$t`-register constants = a hoisted-then-SPILLED
   movable group (local_alloc can't produce that class).
+- **A re-materialised array base does NOT prove a hand-written offset biv.** A
+  direct `Arr[i]` still tends to become one strength-reduced POINTER giv (init
+  `p=&Arr`, then `lw 0(p)`) and can make a draft too short. But PutItemList's
+  exact source disproved the old stronger rule that the only alternative was a
+  function-wide `s += sizeof(elem)` counter. Its two branch-local identities
+  each do `ItemID = i * sizeof(Arr[0]); ItemID = *(int *)((u8 *)Arr + ItemID);`.
+  `combine_givs` merges those same arithmetic givs into ONE reduced integer
+  offset, while the symbol base remains branch-local and is re-materialised at
+  both uses. The generated giv init lands after the invariant hoists and the
+  backedge increments it by the element size. The raw `.i.loop` proof is
+  `giv at A combined with giv at B` followed by both being reduced to the same
+  new register; that evidence outranks a plausible-looking explicit counter.
+  Route this target shape by the debug scopes: repeated per-arm integer locals
+  suggest branch-local byte-offset computations; a true source offset counter
+  instead appears as a verified surviving biv (`Cannot eliminate biv N`).
 - **Unbiased cursor + surviving counter**: goto backedge + explicit preheader
   caches in target order (UpdateItemState 293→0); put a hand-rolled loop's
   invariant computation INSIDE the inner if (outer-body placement lets reorg
@@ -1475,7 +1689,7 @@ guards, no flag.
   (ProcMiscSprite's error string, 8+ pages off as a fresh literal).
 - `-fdollars-in-identifiers` is required for `reference/ghidra_types.h`.
 
-### 3.18 Toolchain boundaries — park-on-sight classes
+### 3.18 Toolchain boundaries and distinctive expression clues
 
 - **The PsyQ SDK block (0x80060000+) is a different compiler.** Trivial-frame
   epilogue tell: sp-restore BEFORE `jr ra` with a bare `nop` slot — our cc1
@@ -1485,13 +1699,17 @@ guards, no flag.
   per game (LIBGS's dmyGs* matched). Read `jr ra`'s delay slot before spending
   anything on an SDK cluster. `EVENT_OBJ_80/90/BC` are shared epilogues, not
   functions.
-- **The 3-insn sign-extension split (`sll 16 / sra k / sra 16-k`)** has no
-  natural-C form (all respellings refold; verified exhaustively) — exactly
-  three exist (GetPad, FUN_8001b174, GetPadXY), all parked; triage.py names the
-  class. Do NOT confuse with the 2-insn `sll 16 / sra K` (a short index
-  sign-extended and scaled — perfectly matchable). PClseek's `break 0x107`
-  BIOS trap likewise stays parked (no C representation; gte-policy excludes
-  it).
+- **The 3-insn split (`sll 16 / sra k / sra 16-k`) is matchable ordinary C.**
+  The former park-on-sight rule was a local-minimum error: all three game
+  examples (`GetPad`, `GetPadXY`, `FUN_8001b174`) are now exact. Their human
+  source first forms the API's encoded port (`s32 port = no << 4`) and then
+  consumes both halves in `PadPort[port >> 4][port & 3]`. Because the shared
+  encoded value has two distinct consumers, cc1 naturally retains the three
+  shifts. Treat this sequence as evidence for an encoded/shared value, not as
+  an optimizer barrier or inline-assembly boundary. The ordinary 2-insn
+  `sll 16 / sra K` remains the usual fused short extend-and-scale. PClseek's
+  `break 0x107` is a separate support-code question and must be judged from
+  its own compiler/demo evidence.
 - **GTE**: command opcodes assemble via splat's macros; matching is sanctioned
   ONLY through `src/main.exe/gte.h` for functions in
   `config/gte-allowlist.txt` (docs/gte-policy.md; tests pin containment).
@@ -1596,6 +1814,43 @@ re-check cheaply before honoring them:
   priority sink), 12→8 (a temp-before-intervening-read capture) — both verified by
   porting the semantic delta, never by score. (This does NOT license
   background-and-wait; each run is still one foreground bounded call.)
+- **Physical duplication of an instruction at several addresses does NOT mean
+  lexical duplication in the source.** When a statement is reached by `goto` from
+  several arms, `fill_simple_delay_slots` copies the shared label's LEADING insn
+  into each arm's otherwise-empty jump delay slot (freed because that arm's own
+  real insn already sank into an earlier conditional branch's slot — safe on the
+  taken path when the target immediately overwrites the register). So writing the
+  shared computation out PER-ARM — even where cc1 legitimately constant-folds it —
+  is provably wrong once any other arm reaches the same test with a non-constant
+  value: write ONE statement and `goto` every arm to it. Read the raw target `.s`
+  before assuming physical == lexical (MIPS makes the delay slot the literal next
+  insn). And a park may FILE THIS WRONG: FUN_8005aba4's own STATUS called it a
+  `lui` fold PLUS an independent v0/v1 register swap — both were the ONE cause, and
+  the register swap resolved as a side effect of removing the extra definition
+  sites (13→0, one edit). A "register tie" next to an opcode diff is often a
+  symptom of the same structural cause, not a separate lever.
+- **A field read-and-stored as ONE statement must be positioned by its READ, not
+  necessarily its STORE.** If the target's tail writes unrelated byte fields
+  (r/g/b) between a field's load and store, putting a direct
+  `dst->f = src->f;` after those byte stores reads the field too late and can make
+  the function one instruction short. Two human shapes can express the target:
+  a named local read early/stored late (DrawSmoke/DrawExplosion), or the direct
+  assignment itself written before the byte stores. DrawHinoko proves the latter:
+  sched1 keeps the load at the assignment and reorg moves its store into
+  UpdateCoordinate's delay slot, matching all bytes with no carrier and exactly
+  the locals in PSX.SYM. The old rule incorrectly named DrawHinoko as proof that a
+  local was required; its debug line table instead locates the direct rotation
+  statement before r/g/b.
+- **A branch delay slot the target fills with a leaf (`move sX,zero`) while yours
+  fills with a REMAT-STORE: try the LITERAL at that site.** When your slot holds a
+  store whose value is a reload-remat `li tN` (a spilled REG_EQUIV-const variable),
+  that store is the only reorg-movable insn before the branch and it steals the
+  slot the target reserves for the leaf. Spelling the value as a LITERAL at the
+  site serializes it through `v0`, the anti-dependence pins the store, and reorg
+  falls back to the target's fill (mission_score_screen `x = 0x66`, −12 bytes
+  across three sites). The tell: the matching sibling sites all use literals whose
+  stores are `v0`-blocked. This CONTRADICTS the usual "name a constant in a local"
+  seed — here the variable is the problem, the literal is the fix.
 - **A permuter candidate that REASSIGNS a value used as a divisor/operand across
   several later insns is disqualified — regardless of score — if the target writes
   that hard register ONCE.** One grep settles it: `grep -c '\$aN' <Name>.s` on the
@@ -1631,10 +1886,17 @@ re-check cheaply before honoring them:
 - **Diff the region a "missing piece" lives in against the CURRENT draft before
   hunting it** — the defect may be collateral from the edit that "needs" it
   (mission_score_screen round 7).
-- **Park-on-sight classes** (each with its printed/verifiable tell): SDK
-  epilogue shape; the 3-insn SIGNEXT split; `addiu r,$zero,0`; the preheader
-  priority-1 LUID tie between two hoisted constant loads (StageEndScreen,
-  ~140 bytes); INSEPARABLE pairs with no post-copy read.
+- **There are no C-source park-on-sight classes.** SDK/handwritten-assembly
+  exclusions are project-scope decisions; every compiler signature merely
+  selects the next diagnostic. A SIGNEXT split, `addiu r,$zero,0`, priority-1
+  LUID tie, or INSEPARABLE pair may close edits on the CURRENT pseudos. Before
+  parking, perform one clean-decomposition null check: remove donors/fences,
+  restore debug locals or same-TU inline helpers, and verify target length
+  again. This batch dissolved the cited prologue, containment, interference,
+  conflict-free-window, and divide-color "floors" without changing compilers;
+  StageEndScreen's supposed 140-byte preheader wall likewise disappeared when
+  five real block-local score positions reconstructed the original movable
+  group.
 - **A false PARK rule is the most expensive error shape we have** — a wrong fix
   fails loudly next round; a wrong park tells lanes to abandon functions and
   nobody re-checks. The monument: the "hard-register argmove floor — park on
@@ -1643,6 +1905,36 @@ re-check cheaply before honoring them:
   "passed" by reproducing ONE function's bytes — a model that reproduces one
   function is not thereby a general mechanism. Before adding any park-on-sight
   rule, demand a falsification a TOOL prints, not a derivation.
+- **When a park's scaffolding is dense AND a MATCHED sibling exists, rebuild
+  from the sibling — do not refine the scaffold.** A byte-chased draft that
+  carries carriers, fence-seeded value groups, brightness/raw aliases, and
+  stacked fences is usually STANDING IN for the plain variables the sibling
+  used; refining it deepens the local minimum. The move is to transcribe the
+  matched sibling's structure and re-derive, accepting a worse byte count if the
+  shape is human. Worked example (2026-07-18): `mission_score_screen` rebuilt
+  from matched `StageEndScreen`'s `DRAW_SCORE_NUMBER` macro + plain
+  `topY`/`resultX` pre-loop variables (StageEnd's `top_y`/`current_x`/`best_x`)
+  replaced `drawY` carriers, fence-seeded x-groups, a brightness-alias and 4
+  nested rankSprite fences — the plain variables lose allocation, keep their
+  REG_EQUIV constants, and reload-rematerialise them, which IS the target's
+  `li` constant shape the scaffolds were faking. +18 bytes (169→187) but ONE
+  labelled `do{}while(0)` remains where many fences stood. **A "cluster is
+  unreachable / ref_count=0" park conclusion reached on the SCAFFOLDED draft is
+  worth re-testing under the sibling structure** — the constant a carrier fakes
+  may have no consumer while the sibling's plain variable does. BUT verify the
+  target's LOAD COUNT, but do not infer one source variable from one target
+  load.  StageEndScreen is the counterexample.  Five direct `x = 0x52` stores
+  were recognized as one movable group, but `.loop` rejected it because the
+  first constant pseudo lived for only five RTL insns.  Capturing `x_` in a
+  separate block local before each current-score macro invocation lengthened
+  those real lifetimes; loop.c then combined all five movables into the one
+  persistent `s7` load seen in retail.  Per-sign block-local `ten = 10`
+  declarations put the actual movable order at `/10` magic, ten, then x, and
+  the complete function byte-matched with no dead seed or hard-register bind.
+  Thus `ref_count=0` and low LUID proved only that the function-wide
+  `current_x` draft could not move; they did not prove the target source was
+  unreachable.  The best_x neighbour's dual-life `0x80010000` pointer remains
+  faithful (clean externs still produce a length mismatch).
 - **Park format**: STATUS line with byte count, the residual's cluster
   addresses, the mechanism WITH its falsification, what was measured (numbers,
   not adjectives), and the named levers already burned. The next reader should

@@ -131,8 +131,22 @@ def permuter_readiness(diff_lines, blocks, ours, target):
         return False, (f"instruction length differs by {delta} "
                        f"({ours} vs {target})")
     if diff_lines > PREFLIGHT_MAX_LINES or blocks > PREFLIGHT_MAX_BLOCKS:
+        # A broad multi-block residual is USUALLY a structurally-wrong draft, even
+        # at exact length (accidental balance). But NOT always: a large park whose
+        # excess blocks are provably-CLOSED small clusters (e.g. unreachable bank
+        # pairs) is a legitimate scheduling/allocation target -- the block count
+        # cannot tell those apart from real structural divergence, so this stays a
+        # refusal, and `--force-early` is the override for when YOU have established
+        # the excess is closed clusters. mission_score_screen (169 B, >32 blocks)
+        # found two real wins that way. The message must point at that escape hatch
+        # for exact length, else a lane reads "broad" as "hopeless".
+        hatch = (" — but length is EXACT, so if you have CONFIRMED the excess "
+                 "blocks are closed/unreachable clusters (not structural), "
+                 "`--force-early` is the intended override" if delta == 0 else
+                 " and length differs by 1 — likely structural, not a search target")
         return False, (f"residual is still broad: {diff_lines} aligned lines in "
-                       f"{blocks} blocks (limits {PREFLIGHT_MAX_LINES}/{PREFLIGHT_MAX_BLOCKS})")
+                       f"{blocks} blocks (limits {PREFLIGHT_MAX_LINES}/"
+                       f"{PREFLIGHT_MAX_BLOCKS}){hatch}")
     return True, (f"near-final residual: {diff_lines} aligned lines in {blocks} "
                   f"blocks, length {ours}/{target}")
 
@@ -735,6 +749,10 @@ def authoritative_rescore(name, work, csh):
                                        result["source"]))
     print("\npermute: authoritative full-link rescore "
           "(whole image / function window / .text):")
+    print("permute: (the per-iteration PROXY scores streamed above are a "
+          "relocatable-object heuristic and routinely diverge from — usually "
+          "far exceed — these authoritative byte counts; trust ONLY this "
+          "rescore, never the streamed proxy best.)")
     for result in valid[:20]:
         label = os.path.relpath(result["source"], work)
         print(f"  {result['whole']:6d} / {result['window']:5d} / "

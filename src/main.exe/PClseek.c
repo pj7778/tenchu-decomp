@@ -12,12 +12,11 @@
  * `in_v0`/`in_v1` (error code / result): `if (in_v0 != 0) in_v1 = -1; return
  * in_v1;`.
  *
- * STATUS: NON_MATCHING — 7 of 36 bytes differ (whole-image), but the reason
- * below is a MISDIAGNOSIS, corrected 2026-07-17: this function is almost
- * certainly HANDWRITTEN ASSEMBLY, in which case its `.s` IS the faithful
- * source and there is nothing to match. The question was never "which inline
- * asm reproduces it" but "was this ever C at all" — and three independent
- * tells say no:
+ * STATUS: the guarded reference reconstruction is byte-exact (0/36).  Fresh
+ * comparison shows that the demo body at 0x80051494 is also all 36 bytes
+ * identical to retail, with no PSX.SYM C translation-unit or line records.
+ * This is a stable HANDWRITTEN-ASSEMBLY library object, not a C function stuck
+ * in an allocator local minimum.  Three independent tells agree:
  *
  *   1. `break 0, 263` (0x107) is the ONLY two-operand break in the entire
  *      image. The compiler's own trap codes appear in bulk — `break 7`
@@ -38,31 +37,30 @@
  * the asm is canonical => counted done), this belongs in
  * config/handwritten-asm.txt alongside the GTE family. It is NOT listed there
  * yet: membership is attributed to an explicit owner decision, so the addition
- * is flagged for ratification rather than taken unilaterally. Do NOT spend a
- * matcher round trying to reach these bytes from C.
+ * remains flagged for ratification rather than taken unilaterally.  The exact
+ * guarded reconstruction below records the private trap ABI without changing
+ * that project classification.
  *
  * (Note this is SDK code — 0x80060224 is above the 0x80060000 game boundary —
  * so it does not affect the game-code scoreboard either way.)
  *
- * The original park's reasoning, kept for the record:
+ * The former pure-C investigation, kept for the record:
  *
  * 1. `break 0x0,0x107` has NO C representation at all — the only way to
  *    emit it is inline asm with register-pinned variables (confirmed
  *    working below: `register int x __asm__("$5") = fd;` etc., feeding a
- *    `break` instruction via extended asm). This project explicitly treats
- *    inline asm as unresolved/sensitive (see GetPad.c's header: "a genuine
- *    optimizer barrier... is NOVEL to this project... parked pending a
- *    project decision") — introducing it here is the same open question,
- *    not a call an individual matcher pass should make unilaterally.
+ *    `break` instruction via extended asm).  It is retained only inside this
+ *    guarded reference for an original already proven to be assembly.
  * 2. Tool finding (reusable): maspsx's `break` handling
  *    (`maspsx/__init__.py`, `elif op == "break"`) expects the SINGLE-value
  *    form (`break 0x107`) and itself splits it into the two 10-bit fields —
  *    NOT the two-operand disassembly form (`break 0, 263`) Ghidra/objdump
  *    print; the latter makes maspsx raise `invalid literal for int() with
  *    base 0: '0,'`.
- * 3. Even past both of those, the draft below has a stubborn 7-byte
- *    register-materialization-timing residual: the target computes the
- *    result into $v0 EARLY (a `move v0,v1` in the `beqz`'s delay slot, so
+ * 3. Before the handwritten control tail was retained, the C draft had a
+ *    stubborn 7-byte register-materialization-timing residual.  The target
+ *    computes the result into $v0 EARLY (a `move v0,v1` in the `beqz`'s
+ *    delay slot, so
  *    both the success path (v0=v1) and the error path (v0=-1) leave the
  *    answer in $v0 well before the epilogue, which is then a bare `nop`),
  *    whereas cc1 here keeps the value in the trap's own $v1 output
@@ -75,10 +73,8 @@
  *    epilogue, costing a whole extra `j ra` = wrong length), reusing r_v0
  *    itself as the accumulator (same extra-epilogue problem), and a ternary
  *    return (different wrong shape: routes through $a0 as scratch instead).
- *    This looks like a genuine sub-C-level regalloc tie on top of the
- *    inline-asm question, not a source-shaping problem — a candidate for
- *    the permuter IF inline asm is ever accepted here, but not chased
- *    further while that policy question is open.
+ *    This is a genuine sub-C-level control-flow boundary, not a source-shaping
+ *    or register-allocation problem.
  * RE-VERIFIED (a later session, RTL-dump-backed): re-derived the mechanism
  * independently via tools/rtldump.py --draft on the `.i.greg`/`.i.jump`
  * dumps rather than trusting this header's prose. Confirmed: the shared-
@@ -95,24 +91,23 @@
  * merge label (block layout always places the branch-target arm textually
  * AFTER the fallthrough arm, so the fallthrough needs an explicit jump over
  * it) — confirmed via matchdiff: "LENGTH MISMATCH — 40 bytes" both times,
- * not just "differs". This cc1 does not perform the target's trick (folding
+ * not just "differs". This cc1 does not perform the target's layout (placing
  * the taken-arm's one-instruction body into the branch's own delay slot to
- * avoid needing a jump at all) from any two-return C shape tried. Whether a
- * different structure exists is open, but four independent shapes now
- * converge on the same two local optima (7-off/right-length or
- * 4-over/wrong-length), matching this header's own prior conclusion.
+ * avoid needing a jump at all) from any two-return C shape tried.  Four
+ * independent shapes converged on the same two local optima
+ * (7-off/right-length or 4-over/wrong-length).
  * tools/permute.py was attempted as the final bounded step per protocol but
  * could not be completed cleanly in this sandbox (harness auto-backgrounds
  * bash calls exceeding ~2 minutes regardless of an inner `timeout`, so the
  * "foreground, bounded" invocation kept detaching); killed after several
- * minutes of real permuter activity with no zero found. Re-parked as-is.
+ * minutes of real permuter activity with no zero found.
  *
- * The #else draft is the CLOSEST variant found (single shared return,
- * 7/36 bytes off); default build keeps the byte-identical two-piece
- * INCLUDE_ASM stub (LSEEK_OBJ_1C is this function's own tail: the `jr ra`
- * epilogue at 0x80060240, reached both by fallthrough and by the branch —
- * not a separate function; splat auto-carved it as its own piece only
- * because it already had a symbols.main.exe.txt name).
+ * The exact #else reconstruction keeps the trap, branch, success-result copy
+ * in its delay slot, and error `-1` as one coherent handwritten unit; cc1 emits
+ * only the ordinary final `jr ra`/`nop`.  The default build retains the
+ * byte-identical two-piece INCLUDE_ASM body.  LSEEK_OBJ_1C is this function's
+ * own epilogue, not a separate routine; splat carved it separately only because
+ * the original object label survived in symbols.main.exe.txt.
  */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/PClseek", PClseek);
@@ -126,12 +121,14 @@ int PClseek(int fd, int offset, int mode)
     register int r_v0 __asm__("$2");
     register int r_v1 __asm__("$3");
 
-    __asm__ volatile("break 0x107"
+    __asm__ volatile("break 0x107\n\t"
+                     "beqz %0, 0f\n\t"
+                     "addu %0, %1, $zero\n\t"
+                     "addiu %0, $zero, -1\n\t"
+                     "0:"
                       : "=r"(r_v0), "=r"(r_v1)
                       : "r"(r_a1), "r"(r_a2), "r"(r_a3));
 
-    if (r_v0 != 0)
-        r_v1 = -1;
-    return r_v1;
+    return r_v0;
 }
 #endif

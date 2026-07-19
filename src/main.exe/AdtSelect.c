@@ -12,6 +12,35 @@
  * `NON_MATCHING=AdtSelect ./Build` (or tools/matchdiff.py, which sets it
  * automatically); the default build keeps the INCLUDE_ASM stub below.
  *
+ * AUTHORITATIVE UPDATE (2026-07-19): the long round-by-round investigation
+ * below is retained as history, not as a rulebook. Its "fences are required",
+ * "all C levers are closed", and "parked/impossible" conclusions are
+ * superseded by fresh source and compiler evidence:
+ *
+ * - Both synthetic do{}while(0) fences are gone. A normal list-display for
+ *   loop plus the human D-pad `if / else if` chain reproduces every target
+ *   callee-saved allocation. The earlier 37-byte regression came from spelling
+ *   mutually exclusive directions as nested negated tests, not from removing
+ *   a compiler fence.
+ * - The entry count is the ordinary empty indexed loop
+ *   `for (count = 0; menu[count].choice_name != 0; count++) {}`. cc1's loop
+ *   strength reduction creates the pointer cursor naturally. This clean source
+ *   has the same nine-byte residual as the scaffolded draft.
+ * - The demo's same-named body independently emits the TARGET self-tie at its
+ *   larger frame offset (`lw a3,0(a3)` followed by the dereference), so the
+ *   shape is demonstrably produced by the original human source family. It is
+ *   evidence to keep searching upstream source identity, not evidence that the
+ *   target is unreachable by this compiler.
+ * - Fresh RTL localizes the remaining distinction: initial CSE turns the first
+ *   test into a direct MEM through spilled menu, while loop strength reduction
+ *   later creates a bare cursor pseudo. Volatile/address-taken experiments can
+ *   force a one-reload path but damage allocation elsewhere; they are evidence
+ *   about the pass boundary, not an acceptable fix.
+ *
+ * Current honest state: clean human-shaped C, 9 differing bytes, still open.
+ * Any absolute "no natural C" or "do not retry" language in the historical
+ * log below must not be used as a decision rule.
+ *
  * The 9 differing bytes are ONE reload decision, in the entry-count block:
  *
  *   target:  lw a3,0(a3); lw v0,0(a3);  ...  li t0,0x80CC; addu; lw v1,0(t0)
@@ -21,6 +50,38 @@
  * menu, deref).  Only the register holding menu's value differs: the target
  * reuses the address register a3, we take t0.  Site 2's t0<->a3 is NOT an
  * independent difference — see the round-robin note below.
+ *
+ * ---- SUPERSEDED HISTORICAL LOG (rounds 1-6; useful measurements only) ----
+ * ---- ROUND 6: re-verified against the levers that POSTDATE rounds 1-5
+ *      (fixed-toolchain permuter, cookbook fence-classification) — verdict
+ *      UNCHANGED: CURRENT(9). ----
+ *
+ * 1. THE PERMUTER -fno-builtin BUG IS FIXED (it lived in CPP not CC_FLAGS, so
+ *    earlier runs searched a different program).  Re-ran the search RE-SEEDED
+ *    from this draft: `timeout 240 tools/permute.py AdtSelect -- --stop-on-zero
+ *    -j4`, 21684 iterations + authoritative full-link rescore -> 9/9/776,
+ *    best candidate is the unmodified base (empty semantic delta).  Several
+ *    iterations hit proxy score 30 (< base's proxy), but the full-link rescore
+ *    rejected every one.  The fix does not affect AdtSelect (it calls no
+ *    builtins), and the residual is genuinely permuter-immune, as rounds 3-5 said.
+ *
+ * 2. THE TWO do{}while(0) FENCES ARE COOKBOOK CASE (c) — BARE LOAD-BEARING,
+ *    KEEP.  Unwrapping is NOT a byte-chase that hides a better human structure:
+ *    removing BOTH (autorules fence-unwrap L412/L446, each +16) yields 37 bytes
+ *    that are ENTIRELY callee-saved register renames — selection s1<->s2,
+ *    count s3<->s4, trg/last/page shuffled among s1-s4 (the classic "same
+ *    s1/s2 tie" the cookbook §3.10 case-c/cluster note names).  The fences fix
+ *    the GLOBAL find_reg allocation; nothing more complete is behind them, so
+ *    the "adopt the worse byte count" move (case b only) does NOT apply.  They
+ *    do not touch the count-loop RELOAD tie (a3/t0 are allocate_reload_reg's
+ *    round-robin, not find_reg), so no fence tuning can close the 9.
+ *
+ * 3. The single-use `name` temp was removed (byte-NEUTRAL, 9->9): the site-1
+ *    deref is now the `if (menu->choice_name != 0)` count guard directly.  The
+ *    RTL is identical because combine always folded the temp — reg 93 below is
+ *    the loaded choice_name value of that guard, whether or not a C `name`
+ *    named it (measured: candidate with the temp is byte-for-byte the same).
+ *    PSX.SYM's prototype declares no such local, so this is the human spelling.
  *
  * ---- WHY (verified line-by-line against the nix-pinned gcc-2.8.1 sources,
  *          and against the .greg RTL dump — see ROUND 3 correction below) ----
@@ -363,7 +424,6 @@ s32 AdtSelect(char *title, debug_menu_choice *menu, s32 selection)
     u8 buf[0x8090];
     s32 last;
     u32 trg;
-    debug_menu_choice *p;
     s32 count;
     s32 pages;
     s32 page;
@@ -371,7 +431,6 @@ s32 AdtSelect(char *title, debug_menu_choice *menu, s32 selection)
     u32 pad;
     short i;
     char *fmt;
-    char *name;
 
     do
     {
@@ -380,16 +439,8 @@ s32 AdtSelect(char *title, debug_menu_choice *menu, s32 selection)
     if (title == 0)
         title = D_80014AFC;
 
-    count = 0;
-    name = menu->choice_name;
-    if (name != 0)
+    for (count = 0; menu[count].choice_name != 0; count++)
     {
-        p = menu;
-        do
-        {
-            p++;
-            count++;
-        } while (p->choice_name != 0);
     }
 
     pages = count / 0x12 + 1;
@@ -411,21 +462,16 @@ s32 AdtSelect(char *title, debug_menu_choice *menu, s32 selection)
             FntPrint(D_80014B08, page + 1, pages);
         FntPrint(D_80097EA0);
         i = first;
-        do
+        for (; i < last; i++)
         {
-            /* do{}while(0) wrappers: flow.c loop-depth ref weighting;
-               see the matching notes above and docs/matching-cookbook.md */
-            for (; i < last; i++)
-            {
-                if (selection == i)
-                    fmt = D_80097EA4;
-                else
-                    fmt = D_80097EA8;
-                FntPrint(fmt);
-                FntPrint(menu[i].choice_name);
-                FntPrint(D_80097EAC);
-            }
-        } while (0);
+            if (selection == i)
+                fmt = D_80097EA4;
+            else
+                fmt = D_80097EA8;
+            FntPrint(fmt);
+            FntPrint(menu[i].choice_name);
+            FntPrint(D_80097EAC);
+        }
         FntFlush(-1);
         VSync(3);
         if (pad & 0x820)
@@ -435,24 +481,16 @@ s32 AdtSelect(char *title, debug_menu_choice *menu, s32 selection)
             selection = count - 1;
             break;
         }
-        i = -1;
-        if (!(trg & 0x1000))
-        {
+        if (trg & 0x1000)
+            i = -1;
+        else if (trg & 0x4000)
             i = 1;
-            if (!(trg & 0x4000))
-            {
-                i = -0x12;
-                if (!(trg & 0x8000))
-                {
-                    i = 0;
-                    do
-                    {
-                        if (trg & 0x2000)
-                            i = 0x12;
-                    } while (0);
-                }
-            }
-        }
+        else if (trg & 0x8000)
+            i = -0x12;
+        else if (trg & 0x2000)
+            i = 0x12;
+        else
+            i = 0;
         selection += i;
         if (selection < 0)
             selection = 0;

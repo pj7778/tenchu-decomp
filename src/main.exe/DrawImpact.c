@@ -24,12 +24,24 @@
  *     reg   $s0       struct Sprite3D * spr
  * END PSX.SYM */
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawImpact", DrawImpact);
-#else
-
 /*
- * STATUS: NON_MATCHING — 4 of 772 bytes differ (was 28).  Exact 772-byte /
+ * MATCH.
+ *
+ * The final 4-byte residual was not a conflict-free local-alloc floor.  The
+ * target itself uses $a0 for three disjoint roles: red's interpolation work,
+ * the green/blue start-colour inputs, and the later coordinate pointer.  One
+ * ordinary reusable `work` local for the latter two roles gives those loads
+ * the pointer call's $a0 preference and reproduces all four register fields.
+ * No priority fence, dead carrier, or no-op is needed.  The one-shot wrapper
+ * around the px capture remains load-bearing: unwrapping it changes 7 bytes
+ * in the following grouped-load block.
+ *
+ * HISTORICAL PARK RECORD (the evidence below describes the superseded
+ * checkpoint and is retained because it shows why decomposition-specific
+ * "unreachable" conclusions must be challenged):
+ *
+ * Before the final source-identity fix, 4 of 772 bytes differed (was 28).
+ * Exact 772-byte /
  * 193-instruction extent, exact physical CFG, and exact instruction sequence;
  * the residual is 4 register fields (2 clusters x 2 insns, 1 byte each),
  * mirrored across the green and blue channels: the start-colour load is $v0
@@ -166,6 +178,42 @@ INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/DrawImpact", DrawImp
  *   - `tools/reghist.py`: delta sum 0 (v0 +4 / a0 -4), a pure register-field
  *     swap, no opcode or count difference anywhere in 193 insns.
  *
+ * ROUND 4 re-ran the residual against the REPAIRED tooling (the permuter/
+ * regalloc `-fno-builtin` bug that once searched a different program is fixed;
+ * it now lives in permute.py CC_FLAGS, verified) and the new `regalloc.py
+ * --local` quantity walk.  All three confirm the park; none opens a lever.
+ *   - `regalloc.py --local` self-validates (reproduced all 46 of cc1's printed
+ *     homes, 0 divergences).  It lands the green load in block 8 as qty #1
+ *     (p131, refs 2, [10,12), pri 10000), coloured AFTER qty #0 (p126,p130,
+ *     the red `spr->r` sum, [4,8)); the two ranges are disjoint so qty #1 has
+ *     an EMPTY conflict set and takes the lowest free reg $v0.  Blue is the
+ *     identical shape in block 12 (p138).  This is the round-3 raw-.lreg
+ *     finding, now one self-validated tool call.
+ *   - Fresh bounded permuter on the FIXED program: 18979 iterations, base
+ *     score 20 never beaten; authoritative post-SIGTERM full-link rescore ties
+ *     base.c and all 5 retained candidates at exactly 4/4/772.  The fno-builtin
+ *     repair did NOT change the floor — reconfirms rounds 2/3 under the correct
+ *     program.  RESULT.md best candidate == base.c, empty semantic diff.
+ *   - NEW variant, not tested by rounds 1-3: `start` (p85) for the green/blue
+ *     LOAD only, `start2` (p86) for the product — the exact split the target's
+ *     `lbu a0 / mflo v1` shows (load and product in DIFFERENT regs).  Measured
+ *     20 bytes: extending p85 across the colour block flips its GLOBAL home
+ *     $a0 -> $a1 and exiles end_raw $a1 -> $a0 (the a0<->a1 swap is visible
+ *     across red+green+blue in the diff).  Round 1's "route through start" and
+ *     this are now both closed with the load/product split made explicit.
+ *
+ * THE UNREACHABILITY IS STRUCTURAL, stated mechanically: the green/blue loads
+ * can earn $a0 ONLY as a GLOBAL allocno whose conflict set contains $v0 AND
+ * $v1 (find_reg otherwise hands a conflict-free value the lowest free reg,
+ * $v0).  The ONLY values that conflict with $v0/$v1 are those live during the
+ * size x red INTERLEAVE (0x80033f94-0x80034018, where size's two `>>12` halves
+ * occupy $v1 then $v0) — which is exactly why RED's load earns $a0.  Green/blue
+ * are emitted AFTER that interleave, so any variable that conflicts with
+ * $v0/$v1 must span red — i.e. BE `start` (p85) — and extending p85 flips it to
+ * $a1 (measured above).  So no source structure grants green/blue's loads $a0
+ * without losing red's.  This is stronger than "conflict-free window"; it names
+ * why the ONLY conflict source is unreachable from the loads' position.
+ *
  * Do not re-open this without a genuinely new SOURCE-STRUCTURE theory: two
  * independent methods (regalloc.py's conflict list; raw .lreg block
  * liveness) now agree the load's 2-insn window is provably conflict-free on
@@ -230,7 +278,7 @@ void DrawImpact(TEffectSlot *ef)
     s32 z;
     s16 scale;
     s32 priority;
-    GsCOORDINATE2 *super;
+    s32 work;
 
     param = (RetailImpactType *)&ef->param;
     ratio = (param->count << 12) / param->time;
@@ -256,7 +304,8 @@ void DrawImpact(TEffectSlot *ef)
     }
     spr->r = (start >> 12) + (end_raw * ratio) / 0x1000;
 
-    start2 = param->start_color.channel.g * inverse;
+    work = param->start_color.channel.g;
+    start2 = work * inverse;
     end_raw = param->end_color.channel.g;
     if (start2 < 0)
     {
@@ -265,7 +314,8 @@ void DrawImpact(TEffectSlot *ef)
     start2 = start2 >> 12;
     spr->g = start2 + (end_raw * ratio) / 0x1000;
 
-    start2 = param->start_color.channel.b * inverse;
+    work = param->start_color.channel.b;
+    start2 = work * inverse;
     end_raw = param->end_color.channel.b;
     if (start2 < 0)
     {
@@ -279,14 +329,14 @@ void DrawImpact(TEffectSlot *ef)
         end = param->px;
     } while (0);
     start2 = param->py;
-    super = param->super;
+    work = (s32)param->super;
     inverse = param->pz;
-    if (super != 0)
+    if (work != 0)
     {
         *(s16 *)0x1f800020 = end;
         *(s16 *)0x1f800022 = start2;
         *(s16 *)0x1f800024 = inverse;
-        GsGetLs(super, (MATRIX *)0x1f800000);
+        GsGetLs((GsCOORDINATE2 *)work, (MATRIX *)0x1f800000);
         GsSetLsMatrix((MATRIX *)0x1f800000);
         scr.vz = (s16)RotTransPers((SVECTOR *)0x1f800020, (s32 *)&scr,
                                    (void *)0x1f800028,
@@ -329,8 +379,6 @@ void DrawImpact(TEffectSlot *ef)
     }
     param->count = param->count + 1;
 }
-
-#endif
 
 // triage: MEDIUM — 193 insns, mul/div, 5 callees, ~0.04 to ReqItemShinsoku
 // likely-relevant cookbook sections:

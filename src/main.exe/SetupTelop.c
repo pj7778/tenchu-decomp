@@ -32,10 +32,22 @@
  *     extern struct tag_TItem items[30];
  * END PSX.SYM */
 
-/* STATUS: NON_MATCHING — 9 of 1076 bytes differ (8 insns, all in loop 1).
- * (ROUND 3 improved this from 11/1076 -- see that section. ROUND 1/2 below
- * describe the ORIGINAL 3-way rotation as first found; read ROUND 3 for the
- * current, simpler 2-way shape and what actually moved.)
+/* STATUS: MATCHED — exact 1076 bytes / 269 instructions.
+ *
+ * ROUND 5 disproved the parked allocation floor by replacing the byte-chased
+ * glyph loop as one coherent source package.  The retail target preserves the
+ * demo's human structure: the PSX.SYM `u` local is the inner pixel counter;
+ * `bitmap[v][15 - u]` is one ternary assignment; and the font-selection
+ * if/else is plain control flow.  Removing the five nested one-shot fences
+ * around that selection demoted `font` naturally, so `bits`/font/u landed in
+ * the target $a1/$a2/$t0 homes with no carrier or weighting trick.  Writing
+ * `v = 0` before `fill_white = 0x7fff` then put the zero init in the guard's
+ * delay slot and closed the final two-instruction reorder.
+ *
+ * ROUNDS 1–4 below are retained as a falsified local-minimum autopsy: their
+ * priority and conflict measurements were accurate for the scaffolded draft,
+ * but their conclusions did not transfer to the human decomposition.
+ * (ROUND 3 improved that old draft from 11/1076; ROUND 4 parked it at 9.)
  *
  * Exact instruction sequence; the ORIGINAL residual (ROUND 1/2) was a 3-cycle
  * register rotation in the bitmap-fill loop:
@@ -275,11 +287,74 @@
  * loose thread is believed MOOT (it was about the old 3-way t0<->t1 puzzle,
  * which this round's fix resolved by a different mechanism), but was not
  * re-chased to confirm.
+ *
+ * ROUND 4 (base re-verified 9/1076 before + after). Task steered here with a
+ * NEW tool (`tools/regalloc.py --local`, built for a presumed "local-alloc
+ * tie") and a claim the permuter/regalloc `-fno-builtin` bug postdated ROUND 3.
+ * Chased all three; the "local-alloc tie" classification is a MISDIAGNOSIS and
+ * the tie is exactly the GLOBAL one ROUND 2/3 proved. New results:
+ *   - tools/regalloc.py --local: SELF-VALIDATED (simulated assignment
+ *     reproduced ALL 125 of cc1's printed `;; Register N in M` local homes, 0
+ *     divergences), so its model is trustworthy -- and col/font/bits/v are NOT
+ *     in the local walk at all. They appear only in --order (global) as
+ *     p86/p87/p85/p179, and the tool's own "LOCAL-ONLY (local_alloc coloured
+ *     these -- global_alloc never saw them)" list EXCLUDES them. No loop-1
+ *     block has ANY local pseudo homed to $a1 or $t0 (loop locals are all
+ *     v0/v1/a0). So there is NO local-alloc ref-weight lever: the 4-clique is
+ *     colored by GLOBAL alloc, precisely the pinned tournament already proved.
+ *     The tool AGREES with the header's hand-derived global answer by showing
+ *     the flip is not even a local-alloc question.
+ *   - the `-fno-builtin` fix IS now in regalloc.py's CC_FLAGS (its comment even
+ *     names SetupTelop's memset). Re-ran --order on the corrected tool: col
+ *     p86=16/30/21333, font p87=19/43/17674, v p85=35/111/15765, bits
+ *     p179=7/19/7368 -- IDENTICAL to ROUND 3 to the integer. The builtin fix
+ *     opens no new door for this tie (memset is in the tail; loop-1 refs are
+ *     unaffected).
+ *   - fresh bounded permuter on the corrected toolchain
+ *     (`timeout 240 tools/permute.py SetupTelop -- --stop-on-zero -j4`): 17938
+ *     iterations, authoritative full-link rescore still base.c 9/9/1076. Third
+ *     independent plateau (with ROUND 2/3).
+ *   - human-source addressing restructures (lever #3, NOT tried by prior
+ *     rounds): `bitmap[v][15-col]` -> LENGTH 1088; explicit hoisted row pointer
+ *     `row=bitmap[v]; row[15-col]` -> LENGTH 1084. Both WORSE. The byte-offset
+ *     cast form `pixel=(s16*)((u8*)bitmap+((15-col)*2+v*0x20))` is load-bearing:
+ *     the compiler's own strength-reduction makes the row-base GIV ($a0),
+ *     matching the target; an explicit `row` pseudo is NOT that GIV and inflates
+ *     the frame. Neither form touches the col/bits registers regardless.
+ *   - SHARPER "why no global-pressure lever" (this is what ROUND 3's fill_white
+ *     fix could exploit but col/bits cannot): bits is loop-INVARIANT, hoisted by
+ *     loop.c to the col-loop preheader, so its live range STRICTLY CONTAINS
+ *     col's (col is born at `col=0` inside the loop, dies at loop exit; bits is
+ *     live from the preheader through the same exit). Therefore NO third allocno
+ *     can conflict with col yet not bits -- any range overlapping col overlaps
+ *     bits. So col and bits can NEVER be register-separated by an a1-occupying
+ *     pressure allocno (the ROUND 3 mechanism); their assignment is fixed purely
+ *     by relative PRIORITY, and lower-priority-of-the-clique takes the higher
+ *     reg. col(21333) > bits(7368) => col colored first => col=$a1, bits=$t0,
+ *     full stop. Contrast fill_white, which ROUND 2 showed conflicts with v
+ *     ONLY (not the clique) -- that is exactly why fill_white WAS movable by
+ *     global pressure and col/bits are not. To flip needs bits to outrank col:
+ *     bits +5 weighted refs AND col shed to <=7 refs (-9), both pinned by the
+ *     exact-matching insn sequence. This tightens "not proven impossible" to
+ *     "unreachable by any conflict/pressure trick; only a from-scratch loop-1
+ *     RTL that re-weights col/bits WITHOUT changing the final instructions could
+ *     do it, and no such source is known." Still parked at 9.
+ *   - CLEANED the ROUND 3 tail win per lever #3 (prefer human structure, reject
+ *     scaffolding) at NO byte cost. ROUND 3 routed final_u through `north` (the
+ *     outline loop's Y-neighbour pixel local) -- semantically nonsense, pure
+ *     byte-chase. The §3.9 mechanism only needs a PREVIOUSLY-LIVE local as the
+ *     carrier; `u` (a real PSX.SYM local, and literally the U texture coordinate
+ *     being computed) is such a local and is the natural human choice. Rewrote
+ *     the tail as `u = (u16)rect.x - 0x301; TelopP.u3 = u; TelopP.u1 = u;`
+ *     (dropping the redundant final_u indirection too) -- measured 9/9/1076,
+ *     byte-identical residual (col/bits only), fill_white still correct in $t1.
+ *     So the 11->9 win is now carried by faithful source, not a fence: reusing
+ *     the U-coord variable to store the U coord. (final_u remains the col-loop
+ *     white carrier; that role is unchanged.) NEW cookbook refinement to §3.9:
+ *     when a dead-local-reuse carrier is needed, prefer the SEMANTICALLY CORRECT
+ *     previously-live local (here the U-coordinate `u`) over an arbitrary one --
+ *     any previously-live local supplies the pressure, so pick the human one.
  */
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetupTelop", SetupTelop);
-#else
-
 typedef struct
 {
     s16 x, y, w, h;
@@ -325,10 +400,7 @@ void SetupTelop(u8 *telop, short line)
     s16 n;
     s16 u;
     s16 v;
-    s16 col;
     s16 *font;
-    s16 *pixel;
-    s32 pixel_offset;
     s16 bits;
     u16 raw_bits;
     s16 north;
@@ -337,7 +409,6 @@ void SetupTelop(u8 *telop, short line)
     s32 scaled_y;
     s32 line_y;
     s32 signed_v;
-    s32 final_u;
     s32 final_v;
     s32 final_v2;
 
@@ -356,15 +427,12 @@ void SetupTelop(u8 *telop, short line)
         rect.w = 0x10;
         rect.h = 0xf;
 
-        do
+        if (*telop == 0)
         {
-            if (*telop == 0)
-            {
-                TelopP.u1 = 0;
-                TelopP.u0 = 0;
-                return;
-            }
-        } while (0);
+            TelopP.u1 = 0;
+            TelopP.u0 = 0;
+            return;
+        }
 
         n = 0;
         while (1)
@@ -374,65 +442,31 @@ void SetupTelop(u8 *telop, short line)
                 break;
             }
 
-            do
+            if (telop[n] == 0x81 && telop[n + 1] == 0x99)
             {
-                do
-                {
-                    do
-                    {
-                        do
-                        {
-                            do
-                            {
-                                if (telop[n] == 0x81 && telop[n + 1] == 0x99)
-                                {
-                                    font = D_8008F078;
-                                }
-                                else
-                                {
-                                    font = Krom2RawAdd((telop[n] << 8) | telop[n + 1]);
-                                }
-                            } while (0);
-                        } while (0);
-                    } while (0);
-                } while (0);
-            } while (0);
+                font = D_8008F078;
+            }
+            else
+            {
+                font = Krom2RawAdd((telop[n] << 8) | telop[n + 1]);
+            }
 
             if (font != (s16 *)-1)
             {
-                fill_white = 0x7fff;
                 v = 0;
+                fill_white = 0x7fff;
                 do
                 {
                     raw_bits = font[v];
                     bits = raw_bits >> 8;
                     bits |= raw_bits << 8;
-                    col = 0;
+                    u = 0;
                     do
                     {
-                        do
-                        {
-                            pixel_offset = (15 - col) * 2 + v * 0x20;
-                        } while (0);
-                        final_u = fill_white;
-                        pixel = (s16 *)((u8 *)bitmap + pixel_offset);
-                        if ((bits >> col) & 1)
-                        {
-                            *pixel = final_u;
-                        }
-                        else
-                        {
-                            *pixel = 0;
-                        }
-                        col++;
-                    } while (col < 16);
-                    do
-                    {
-                        do
-                        {
-                            v++;
-                        } while (0);
-                    } while (0);
+                        bitmap[v][15 - u] = ((bits >> u) & 1) ? fill_white : 0;
+                        u++;
+                    } while (u < 16);
+                    v++;
                 } while (v < 15);
 
                 outline_white = 0x7fff;
@@ -451,10 +485,7 @@ void SetupTelop(u8 *telop, short line)
                             bitmap[v][u] = 0x1ce7;
                         }
                     }
-                    do
-                    {
-                        u++;
-                    } while (0);
+                    u++;
                     signed_v = v;
                     if (u >= 15)
                     {
@@ -482,23 +513,21 @@ void SetupTelop(u8 *telop, short line)
         memset(&TelopP, 0xff, sizeof(TelopP));
         final_v = 0xf0 - line_y;
         final_v2 = (u8)rect.h + final_v;
-        final_u = (u16)rect.x - 0x301;
+        u = (u16)rect.x - 0x301;
         TelopP.tag.len = 9;
         TelopP.code = 0x2c;
         TelopP.u2 = 0;
         TelopP.u0 = 0;
         TelopP.v1 = final_v;
         TelopP.v0 = final_v;
-        TelopP.u3 = (north = final_u);
-        TelopP.u1 = north;
+        TelopP.u3 = u;
+        TelopP.u1 = u;
         TelopP.v3 = final_v2;
         TelopP.v2 = final_v2;
         TelopP.tpage = GetTPage(2, 0, 0x300,
                                0x1f0 - (s16)line_y);
     }
 }
-
-#endif
 
 // triage: HARD — 269 insns, 4 loop, frame 0x230, 6 callees, ~0.04 to BriefingAndInventorySelectionScreen
 // likely-relevant cookbook sections:

@@ -44,11 +44,12 @@ matching shortcut.
 4. New macros: mirror the real `INLINE_N.H` name if one exists; otherwise use
    the PsyQ naming style. Matcher agents may extend `gte.h` when their target
    needs a missing operation, and must report the addition for review.
-5. Additions to the whitelist are an owner-level decision. In particular, the
-   `GetPad`/`GetPadXY`/`FUN_8001b174` sign-extension trio and `PClseek` stay
-   OFF the list deliberately: their originals were almost certainly plain C
-   (a different compiler fold / a libsn assembly object), so asm bodies there
-   would be unfaithful. They remain parked NON_MATCHING.
+5. Additions to the whitelist are an owner-level decision. The whitelist is
+   only for genuine COP2/GTE operations; unrelated integer or support-code
+   residuals do not belong here. `GetPad`, `GetPadXY`, and `FUN_8001b174` are
+   now exact plain C through the encoded-port idiom, confirming that excluding
+   them from inline assembly was correct. `PClseek` remains a separate
+   support-code investigation, not a GTE-policy precedent.
 
 ## Verified pipeline facts (the SetDepthQ spike, 2026-07-16)
 
@@ -75,7 +76,7 @@ drawzF4 drawFT4 drawzGT3 drawzG4 drawGT4 drawzFT4 drawzGT4`, the twin pairs
 
 ## Compiled vs HANDWRITTEN split (established by the drawF3 anchor, 2026-07-16)
 
-The drawF3 anchor is 72/74 instructions exact. An early investigation called
+The best pure-C drawF3 anchor reached 72/74 instructions. An early investigation called
 both residual sites cc1-2.8.1 invariants. The equality claim was too strong:
 computing `0x304 - input_v0` in the pinned `$v1` carrier and testing that result
 for zero lets combine emit the target's `beq $v1,$v0` with no subtraction left.
@@ -88,9 +89,11 @@ expressions, cc1 2.6.3 and 2.8.1, and every current cc1-produced assembly file.
 The two words still differing in the best pure-C draft are coupled scheduling
 effects around that one reset: using `$s0` as the comparison RHS keeps the
 `move` between `cfc2` and `and` and preserves the target's delay-slot `nop`.
-One diagnostic inline `li` at the reset makes drawF3 byte-exact, but it is an
-ordinary MIPS instruction rather than a GTE operation and is not retained or
-hidden inside `gte.h`.
+The final guarded reference is 74/74 exact. Rather than inventing a fake C
+dependency, it keeps the original adjacent `cfc2 flag,$31; addiu code,$zero,0`
+and literal flag test as one coherent local handwritten unit. It is deliberately
+not hidden inside `gte.h`; the canonical assembly guard remains because the
+function's provenance is assembly.
 
 Scanning every whitelist function for the `addiu r,$zero,0` tell splits the
 family cleanly:
@@ -101,27 +104,21 @@ family cleanly:
   faithful source form. The non-ABI dispatcher also calls each handler with
   live state in `$v0/$t0/$t2-$t6/$t9/$s0`, without marshalling C arguments;
   the handlers return updated state in those same registers. drawF3's
-  5-differing-byte NON_MATCHING draft (72/74 exact) is kept as the documented
-  reference reconstruction; DO NOT clone the other 15 as ~8-byte parked drafts
-  — the owner decides the class's accounting
+  byte-exact guarded reference is kept as documentation; DO NOT clone the other
+  15 into pretend-C matching targets — the owner decides the class's accounting
   (committed-canonical-asm vs excluded) before any further lanes.
-- **COMPILED-STYLE (8)**: `SetDepthQ` (matched), the twin pairs
+- **COMPILED-STYLE (8, now all matched)**: `SetDepthQ`, the twin pairs
   `FUN_80058c70/FUN_80059008` (920 B), `FUN_80059ff4/FUN_8005a3cc` (984 B),
-  `FUN_8005961c/FUN_80059b08` (1260 B), and `FUN_80057b80` (3796 B) — 10,084
-  unmatched bytes where the gte.h layer is exactly the original mechanism.
+  `FUN_8005961c/FUN_80059b08` (1260 B), and `FUN_80057b80` (3796 B). The
+  restricted gte.h layer reproduced the original compiled mechanism for all
+  eight.
 
 ## Matching order for the family (revised)
 
 1. ~~`SetDepthQ`~~ — DONE (the spike).
-2. ~~`drawF3`~~ — anchor DONE as the documented 5-differing-byte reconstruction;
-   family conventions + macro set landed in `gte.h`.
-3. `FUN_80057b80` (3796 B, 2 GTE commands — mostly ordinary C).
-4. The three twin pairs: match one anchor per pair, clone its twin.
-   - `FUN_80058c70` (anchor of pair 1) is PARKED at 620 bytes with the target's
-     exact length and its whole loop body/cursor/counter/callee-saved roles
-     byte-exact; the residual is one caller-saved selection tie. Its twin
-     `FUN_80059008` is unstarted and should be cheap once the anchor closes
-     (the goto-loop + latency-nop + int-counter recipe transplants directly).
+2. ~~`drawF3`~~ — provenance anchor DONE; guarded reference is byte-exact.
+3. ~~`FUN_80057b80`~~ — DONE.
+4. ~~The three twin pairs~~ — all six DONE.
 
 **Two facts this family established** (detail in the cookbook):
 - **Latency nops are provenance-keyed.** `gte_<cmd>()` carries `nop;nop` (what a
@@ -136,8 +133,10 @@ family cleanly:
    source form (scene-standard, like SM64's handwritten `.s`);
    `config/handwritten-asm.txt` is the machine-readable list, `progress.py`
    counts them in the `game done (C+asm)` line, and `triage.py` hides them
-   from targets permanently. drawF3's 5-differing-byte C reconstruction
-   remains as documentation; no further C lanes for this class.
+  from targets permanently. `drawF3` now also has a byte-exact guarded
+  reference reconstruction using one coherent handwritten unit; the default
+  canonical assembly remains authoritative. No further pure-C lanes for this
+  class.
 
 ## Candidate for the handwritten class: PClseek (flagged, NOT yet added)
 
@@ -160,9 +159,11 @@ independent tells, the first quantitative:
   inexpressible in the MIPS C ABI — and the target's own branch label is
   `LSEEK_OBJ_1C`, i.e. the original object's label survived into the image.
 
-The existing park in `src/main.exe/PClseek.c` diagnosed this as "needs inline asm,
-pending a project decision". That was the wrong question: it is not *which* inline
-asm reproduces the bytes, but whether the function was ever C. It was not. The
-same correction may apply to its siblings (`PCopen`, `PCcreat`, `PCclose`,
+The guarded reference in `src/main.exe/PClseek.c` is now byte-exact (0/36), and
+the demo's independently linked body is also 36/36 identical with no C TU/line
+records. It expresses the trap, private-ABI branch, success-result delay-slot
+copy, and error result as one handwritten unit; the default assembly remains
+canonical pending manifest ratification. The same correction may apply to its
+siblings (`PCopen`, `PCcreat`, `PCclose`,
 `PCread`, `PCwrite` — all in the same PsyQ host-file-I/O family, all in the SDK
 region above 0x80060000, none of which affect the game-code scoreboard).

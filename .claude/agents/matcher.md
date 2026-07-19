@@ -14,7 +14,15 @@ primary path, and never pass an absolute path that begins with it. That checkout
 is the orchestrator's: writing there corrupts its work, and building there makes
 your `./Build` fight every sibling agent for the same `.shake/` database lock. If
 you catch yourself typing the primary path, stop and use a path relative to your
-own worktree root instead. (This has gone wrong more than once.)
+own worktree root instead. **Your Bash cwd PERSISTS across calls** — a SINGLE
+stray `cd` to the primary silently sends every later build/permuter/autorules
+there, and the Edit-block does NOT catch builds (only writes), so you get no
+error, just wrong numbers measured against the primary's UNEDITED files. Detection
+tell: if a measurement is surprising — a LENGTH MISMATCH, or your edit having no
+effect — run `pwd` BEFORE assuming it's real; you are probably building the wrong
+tree. Prefer `cd` to your worktree root ONCE at the start and never `cd` again.
+(This has gone wrong more than once, most recently a whole session's mid-run
+measurements invalidated.)
 
 **SECOND, ALWAYS: check your worktree's BASE.** Your worktree is often branched
 from a STALE commit — three consecutive rounds on one function got worktrees 20+
@@ -85,9 +93,19 @@ the baseline source on SIGTERM/SIGHUP; after any abnormal exit, verify `git diff
 and rebuild before continuing.
 
 **Run the permuter SYNCHRONOUSLY and bounded — never as a background task you then
-wait on.** Always wrap it: `nix develop --command bash -c 'timeout 240 tools/permute.py <Name> -- --stop-on-zero -j4'`.
-Set the Bash TOOL CALL's own timeout parameter WELL above the inner `timeout` (e.g.
-600000 ms).
+wait on.** Always wrap it: `nix develop --command bash -c 'timeout 240 tools/permute.py <Name> -- --stop-on-zero -j4' > /tmp/p.log 2>&1`.
+**SET THE BASH TOOL CALL's own `timeout` parameter to 600000** — this is the single
+most-missed step and the one that kills lanes. The permuter runs ~330 s (240 search +
+90 rescore + link), which EXCEEDS the Bash tool's 120 s default, so if you leave the
+default the harness auto-backgrounds the call and you are in the failure below.
+
+**IF you forget and it gets backgrounded, RECOVER — do not end your turn.** A lane that
+recovered did this and lost nothing: `pgrep -f 'permute.py <Name>'` for the live PID,
+then ONE blocking Bash call `timeout 400 tail --pid=<PID> -f /dev/null` (this blocks
+until the process exits — it is not Monitor, not a sleep-poll), then read `/tmp/p.log`.
+The lane that instead said "I'll resume when it notifies" TERMINATED and the notification
+never came. **The recovery is a single blocking wait on the PID; the fatal move is ending
+your turn.**
 
 *This is not a style preference, and here is what it costs. A PAD_init lane
 backgrounded its run, ended its turn saying it would resume when the run notified,

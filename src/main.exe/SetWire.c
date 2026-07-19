@@ -63,84 +63,12 @@
  *     extern struct ModelType *ModelHook;
  * END PSX.SYM */
 
-#ifndef NON_MATCHING
-INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/SetWire", SetWire);
-#else
 /*
- * STATUS: NON_MATCHING — 80 of 1488 bytes differ. HUMAN-STRUCTURE REWRITE
- * (the EFFECT.C:1428 experiment): written from PSX.SYM's own declarations and
- * blocks, no fences, no seed temps, no goto webs. The fully natural spelling
- * measures 85; the ONE compensator kept below (the loop cluster's zero/store
- * statement order, marked "COMPENSATOR") buys 85 -> 80. The previous 70 was
- * fence-propped (its own park refuted the fence by sched2 evidence) and is
- * banked in git history — do not resurrect it; this is the honest base.
- *
- * WHAT THE HUMAN STRUCTURE PROVED (all byte-verified this round):
- *   - The ENTIRE t/Q/R interpolation island matches from the author's own
- *     spelling: single-set `one = 0x1000`, `t = one - i*0x1000/lcount`,
- *     `Q = t*2`, `R = t*t/0x1000`, `A = one - Q + R`, `B = Q - R*2`, and
- *     x/y/z = (A*end + B*center + R*start)/0x1000 — where the old draft
- *     needed 8 temps and dead-carrier reuse. PSX.SYM's homes (t=$v0, Q=$a0,
- *     R=$a2) equal retail's for t, t*2, t*t/4096.
- *   - The priority clamp matches as a plain nested if/else with the PSX.SYM
- *     `int z` shadow (old draft: goto web). `p = z<0x4e2 ? z : 0x4e1` shape
- *     comes out of reorg's delay-slot fill on its own.
- *   - The distance block is GetVectorDistance's matched body (EFFECT.C:509)
- *     inlined; the tail is GetVectorRotation's (EFFECT.C:532) on
- *     (start, end, &rx, &ry) with pointer locals (see rxp/ryp note below).
- *   - `i * 0x1000` == `(i << 12)`; `long abs(long)`; (u16)/(s16) casts on
- *     ViewInfo reads are byte-neutral here.
- *
- * THE RESIDUAL (two clusters, both pure emission order, all priority-1
- * sched2 ties):
- *   1. Entry ViewInfo cluster (~50B, 0x2f0..0x368): retail needs allocation
- *      {x:v0, hi:v1, y:a1, z:a2, vpx:a3, vpy:v0-recycled, vpz:v1-recycled} —
- *      then every position follows from anti-deps (vpx->a3 is pinned UNDER
- *      `sw a3,0x84` = len's home save; vpy->v0 under x's death; vpz->v1
- *      under the addiu base). Ours allocates {hi:a2, vpx:v1, vpy:a1, vpz:a2}
- *      because THIS cc1's sched1 statement-sinks the single-use y/z loads
- *      below the x-store before RA runs, so vpy/vpz are born early and take
- *      a1/a2. Measured levers, all: statement order is INVISIBLE (zeros
- *      first/mid/last, x-store-first: all 85/80); subtract-first = 111;
- *      compound `-=` = 115; entry store scramble = 87; (u16)=(s16);
- *      autorules 92 candidates = 0; bounded permuter (240s+90s, post
- *      -fno-builtin) best VALID = base (its 82 "win" was `y & 0xFFu` — an
- *      lbu, semantically wrong, rejected).
- *   2. Loop store cluster (~30B, 0x6c4..0x6fc): same class; the statement-
- *      order compensator below recovers 5 of it (a 14-combo sweep of
- *      zero/store orders found zeros 18,1C,14 + stores x,z,y optimal — the
- *      same tuning the old draft carried; natural zeros + x,z,y = 82,
- *      scrambled zeros + x,y,z = 83; y-first/z-first orders shift length).
- *
- * DEMO-BUILD FACTS THIS ROUND ESTABLISHED (tools/siblingdiff.py --demo):
- *   - Demo and retail agree byte-for-byte-in-structure on BOTH residual
- *     clusters (incl. lui ViewInfo among the prologue saves and the late
- *     `sra z`) — the original source hits them from a plain spelling that
- *     this draft cannot reach; the divergence is in sched1's sink choices.
- *   - The demo loop is ROTATED (guard blez + bottom test) with `li 4096`
- *     and `&ViewInfo` HOISTED to the preheader; retail is top-test with the
- *     li in-loop. With cookbook §3.14 (user-var invariant + maybe_never)
- *     this pins the original as having a SINGLE-SET `one`-style variable,
- *     and means the author CHANGED the loop between builds (demo: plain
- *     for/while that rotated; retail: break-style that cannot).
- *   - Demo abs() was builtin/macro (inline branch+negate, NO flag); retail
- *     calls abs() and materializes the flag in $s5 — the author edited this
- *     between builds; GetVectorDistance's retail body is the proven shape.
- *
- * REUSABLE FACTS (report to orchestrator for the cookbook):
- *   - PSX.SYM lists block locals in REVERSE declaration order: writing
- *     `long dz, dy, dx;` as listed swapped s0/s1 vs target; the declared
- *     order was dx, dy, dz (pseudos are created at DECLARATION for block
- *     scalars, so multi-declarator order is codegen-relevant).
- *   - `*(&x) = v` does NOT stack-force x in this cc1: the fold beats
- *     mark_addressable (frame shrank 8 bytes, sw/lhu roundtrip vanished).
- *     A macro out-param needs a real pointer local (`int *rxp = &rx` /
- *     draft's rxp/ryp) to keep the address taken.
- *   - Rvalue pow2 division on a fresh temp (`t*t/0x1000`, sums, lcount*len)
- *     emits the IN-PLACE `bgez; addiu 0xFFF; sra` shape; only a store-back
- *     div on a user var (`dx /= 0x100`) emits the copy-in-delay shape — so
- *     the human's plain `/ONE` spellings reproduce both shapes with no
- *     explicit rounding code.
+ * MATCHED: both projection sites use the inline GetScreenPosition structure
+ * independently named by PSX.SYM earlier in EFFECT.C.  Keeping the scalar
+ * x/y/z parameters and the debug-proven SVECTOR * output together in that
+ * helper preserves the target's scheduling and register lifetimes.  It also
+ * removes the former loop-store scramble and the claimed 80-byte floor.
  */
 
 typedef struct
@@ -186,6 +114,25 @@ extern void GsSortLine(GsLINE *line, GsOT *ot, u16 priority);
 extern void UpdateCoordinate(WireModel *model);
 extern void DrawModel(WireModel *model);
 
+static inline void GetWireScreenPosition(long x, long y, long z,
+                                         SVECTOR *screen)
+{
+    MATRIX *matrix = (MATRIX *)0x1F800000;
+    SVECTOR *vector = (SVECTOR *)0x1F800020;
+
+    matrix->t[0] = 0;
+    matrix->t[1] = 0;
+    matrix->t[2] = 0;
+    vector->vx = x - (short)ViewInfo.vpx;
+    vector->vy = y - (short)ViewInfo.vpy;
+    vector->vz = z - (short)ViewInfo.vpz;
+    SetTransMatrix(matrix);
+    SetRotMatrix(&GsWSMATRIX);
+    screen->vz = (s16)RotTransPers(vector, (s32 *)screen,
+                                   (void *)0x1F800028,
+                                   (void *)0x1F80002C);
+}
+
 void SetWire(VECTOR *start, VECTOR *end, VECTOR *center, long len)
 {
     VECTOR StockCenter;
@@ -198,23 +145,7 @@ void SetWire(VECTOR *start, VECTOR *end, VECTOR *center, long len)
     GsLINE line;
     long distance;
 
-    {
-        long x, y, z;
-
-        x = start->vx;
-        y = start->vy;
-        z = start->vz;
-        *(s32 *)0x1F800014 = 0;
-        *(s32 *)0x1F800018 = 0;
-        *(s32 *)0x1F80001C = 0;
-        *(s16 *)0x1F800020 = x - (u16)ViewInfo.vpx;
-        *(s16 *)0x1F800022 = y - (u16)ViewInfo.vpy;
-        *(s16 *)0x1F800024 = z - (u16)ViewInfo.vpz;
-    }
-    SetTransMatrix((MATRIX *)0x1F800000);
-    SetRotMatrix(&GsWSMATRIX);
-    oldscr.vz = (s16)RotTransPers((SVECTOR *)0x1F800020, (s32 *)&oldscr,
-                                  (void *)0x1F800028, (void *)0x1F80002C);
+    GetWireScreenPosition(start->vx, start->vy, start->vz, &oldscr);
 
     line.attribute = 0;
     line.r = 0x50;
@@ -277,21 +208,7 @@ void SetWire(VECTOR *start, VECTOR *end, VECTOR *center, long len)
         y = (A * end->vy + B * center->vy + R * start->vy) / 0x1000;
         z = (A * end->vz + B * center->vz + R * start->vz) / 0x1000;
 
-        /* COMPENSATOR: statement order only. The human order (zeros
-         * 14,18,1C + stores x,y,z) measures +5; this order makes sched2's
-         * tie-breaks emit the target's schedule. Retail's own emitted order
-         * IS the natural one — this scramble stands in for an upstream
-         * sched1/allocation difference, not for the original text. */
-        *(s32 *)0x1F800018 = 0;
-        *(s32 *)0x1F80001C = 0;
-        *(s32 *)0x1F800014 = 0;
-        *(s16 *)0x1F800020 = x - (u16)ViewInfo.vpx;
-        *(s16 *)0x1F800024 = z - (u16)ViewInfo.vpz;
-        *(s16 *)0x1F800022 = y - (u16)ViewInfo.vpy;
-        SetTransMatrix((MATRIX *)0x1F800000);
-        SetRotMatrix(&GsWSMATRIX);
-        scr.vz = (s16)RotTransPers((SVECTOR *)0x1F800020, (s32 *)&scr,
-                                   (void *)0x1F800028, (void *)0x1F80002C);
+        GetWireScreenPosition(x, y, z, &scr);
 
         if (((s32)scr.vz << 16) > 0 && oldscr.vz > 0)
         {
@@ -345,8 +262,6 @@ void SetWire(VECTOR *start, VECTOR *end, VECTOR *center, long len)
         DrawModel(ModelHook);
     }
 }
-
-#endif
 
 // triage: HARD — 372 insns, mul/div, 9 callees, ~0.10 to GetVectorRotation
 // likely-relevant cookbook sections:

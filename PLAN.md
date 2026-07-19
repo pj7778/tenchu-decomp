@@ -16,8 +16,9 @@ byte-identical `main.exe`.
   `cpp | cc1-281 -G8 | maspsx --aspsx-version=2.77 | as | ld`; reproducible/offline
   via nix (no cabal/wine). maspsx is integrated (see [`docs/toolchain.md`](docs/toolchain.md)).
 - **Every game function is carved (555/555)**; matched count is live in
-  `tools/progress.py` (**499/555 game functions, 84.63% of game-code bytes** as of
-  2026-07-17; **516/555, 86.66% counting the 17 canonical-asm originals**),
+  `tools/progress.py` (**534/555 game functions, 95.64% of game-code bytes** as of
+  2026-07-19; **551/555 functions and 97.67% of bytes counting the 17
+  canonical-asm originals**),
   whole-image byte-identical throughout (see `git log` for the
   per-function record; `tools/progress.py` for the live count). The engine is
   the matcher-agent pipeline ([`docs/orchestration.md`](docs/orchestration.md))
@@ -30,18 +31,21 @@ byte-identical `main.exe`.
   family, and small render/util helpers. **The clean seam** (non-jump-table,
   ≤~500-byte, non-dispatch functions) matches **4–5/5 per batch at ~65–250k
   tokens** on Sonnet; pick targets with `tools/triage.py` / `tools/findsimilar.py`.
-- **Partial matches** (blocked on sub-C-level residuals, kept via the
+- **Partial matches** (kept via the
   NON_MATCHING convention — default build stays green byte-identical, draft
-  builds with `NON_MATCHING=<Name> ./Build`): **36 functions parked** (2026-07-17),
-  each root-caused in its file header. Residuals are consistently sub-C —
-  register-allocation / scheduling / reload-pass ties the source can't steer:
+  builds with `NON_MATCHING=<Name> ./Build`): only **four game functions remain**
+  (2026-07-19): `mission_score_screen`, `FUN_800519bc`, `AdtSelect`, and
+  `FUN_8001c730`. Older headers often describe residuals as proven sub-C floors,
+  but repeated exact matches have falsified that conclusion. Those diagnostics
+  describe one tested pseudo graph, not everything human C can express. Common
+  residuals still include
   the named **`la` address-materialization tie** (`%hi` in a temp vs the target
   reg — `PrepareAccess`, `cd_open`, `PlayMusicFromID`, `FUN_8004a368`),
   goto-merge copy-chains (`turn_towards_player_`, `Think3chase`), and the
-  big-handler flag/frame ties (`handle_char_state_*`/`Think3*` dispatchers,
-  ~1400–1700 bytes — the **tie-prone bucket**). The permuter is *provably immune*
-  to the reload-tie class, so these are parked (the sub-C early-stop protocol),
-  not burned on. [`docs/matching-cookbook.md`](docs/matching-cookbook.md)
+  big-handler flag/frame ties. The permuter is often immune to these late-pass
+  decisions, so fresh compiler dumps, demo homologs, original types/macros, and
+  a different human source identity take priority over local byte shaving.
+  [`docs/matching-cookbook.md`](docs/matching-cookbook.md)
   records ~60 verified matching idioms. The early sessions pinned down the real
   gp model (ASPSX gp-addresses only TU-local definitions; externs are absolute)
   and produced the reusable infrastructure in
@@ -70,42 +74,117 @@ there, expecting worse bytes at first. `tools/matcher-prompt.py` carries this as
 guidance now.
 
 Evidence it works, this session:
-- **SetWire 70 -> 80 (adopted the WORSE number):** the byte-chased 70's fence was
-  provably not original (the target refutes it), and EFFECT.C:1428's own arithmetic
-  reproduced the whole interpolation island byte-for-byte. Owner adopted the human 80 as
-  the honest, live base.
+- **SetWire 70 -> 80 -> 0:** accepting the worse human draft exposed that both
+  projection islands were the body of EFFECT.C's earlier GetScreenPosition.
+  Reconstructing that debug-proven function as a local inline helper matched all
+  1488 bytes and deleted the remaining store-order scramble.
 - **mission_score_screen 145 -> 187 (adopted the WORSE number):** ~20 of its 24 fences
   turned out to be the author's own `DRAW_SCORE_NUMBER` macro (defined in matched sibling
   StageEndScreen.c), not our scaffolding. 866 lines vs 2076.
+- **ActITEM 2 -> 0:** the two-byte park invented an `s32 item_type` and a redundant
+  `flag = 0`, contradicting PSX.SYM's four-local record.  Restoring two ordinary
+  valid-mode arms, each with the same `flag`/field writes, lets jump2 merge their
+  tails after allocation.  That keeps the target `$a1` colour and removes the
+  delay-slot instruction.  This directly falsified the function header's detailed
+  “sub-C floor” proof.
+- **AddEnemy 26 -> 0:** the 1,600-line park modelled caller saves with a scratch
+  struct, volatile reloads, cursor joins, and deep zero-code fences. The demo's
+  same-named 1,148-byte body instead exposed two ordinary sentinel scans and the
+  author's compact local reuse. Rebuilding the complete 58-line shape made gcc
+  emit both caller saves itself and matched all 1,152 retail bytes. It also
+  falsified the blanket rule that every PSX.SYM block-local list must be reversed:
+  this function matches only in the displayed order.
 - **DecodeTMD family ~620 -> 0:** the whole breakthrough was recognising the hand-rolled
   `goto` loop as a WRONG FIX propping up damage it caused (it killed the loop-depth ref
-  weighting), and the TU wanting `-fno-strength-reduce`. FUN_80058c70/FUN_80059008 -> 26;
-  FUN_80059ff4/FUN_8005a3cc -> **0**; the 1260-pair (FUN_8005961c/FUN_80059b08, 2520
-  bytes) is in flight with the recon done.
+  weighting), and the TU wanting `-fno-strength-reduce`. **FOUR of six now MATCHED:**
+  FUN_80059ff4/FUN_8005a3cc AND the 1260-pair FUN_8005961c/FUN_80059b08 all -> **0**.
+  FUN_80058c70/FUN_80059008 subsequently went **25 -> 0**. The single-statement
+  reach proof was accurate only for that decomposition: one twin uses a dedicated
+  `colorWord` instead of reusing a later GTE-address carrier; the other uses the
+  real loop counter plus one two-set packet initializer. Both ordinary local
+  decompositions reshape the quantity/birthing graph and match all 920 bytes.
 
 The levers: PSX.SYM's `BEGIN PSX.SYM` block gives the authors' own declarations (names,
-types, nested-block scopes — list order is REVERSED per block); the matched sibling's
+types and nested-block scopes; declaration order is ambiguous at group boundaries and
+must be checked against the recorded hard-register homes); the matched sibling's
 MACROS tell you which `do{}while(0)` clusters are legitimate human fences; and the target
 is a source oracle (a const/copy def next to its uses = set once = birthing bump; a load
 above a byte store = the human wrote the load first = QImode alias pin). SCOPE: main.exe
 game code only — the SDK (>=0x80060000, libgte/libgs/libapi) is stock Sony library code
 and NOT a target.
 
-## Where the work actually is now (2026-07-17)
+### Batch 2026-07-18: a broad sweep found apparent sub-C floors
 
-**38 game functions remain. That is the whole board.** `tools/findsimilar.py --targets`
-prints exactly this set (it defaults to `--scope game`):
+A 13-lane sweep across the whole value spectrum (DrawImpact 4, FUN_80057b80 8,
+AdtSelect 9, SetupTelop 9, SetLightningI 15, CameraDirection 7, FUN_80058c70/9008
+26, start_demo_ 39, PutItemList 27, PadProc 28, FUN_80036284 34, FUN_800519bc 87,
+StageEndScreen 202) re-tested every park with the repaired tooling (regalloc
+--local, the `-fno-builtin`-fixed permuter). Its immediate result was 0 full
+matches and well-characterised ties in the structures tested. The follow-up
+human-source pass then falsified most of the closest "floors": SetupTelop,
+DrawImpact, CameraDirection, FUN_80057b80, FUN_80058c70, FUN_80059008,
+SetLightningI, SetWire, DrawBleed, and ControlTraceLine are now exact. These
+outcomes are the durable result: compiler diagnostics prove properties of a
+pseudo graph, not that the original human decomposition cannot create another.
+The observed tie taxonomy is documented in the cookbook — local-alloc
+(conflict-free-window, containment, interference-wall), sched1 LUID wall, sched2
+emission-order (prologue parm-copy, biv-init), dbr delay-slot, reload round-robin,
+hard-conflict register renames, register-coloring cascade. Residual SIZE does not
+indicate structural-vs-tie: even 87-byte FUN_800519bc is identical-CFG register
+renames.
 
-    game code            500/555   functions (90.09%)   257176/303244  bytes (84.81%)
-    game done (C+asm)    517/555   functions              (the 17 canonical-asm draw*)
+**What still moves, and what doesn't.** The `-fno-builtin` permuter fix is the ONE
+lever that produced progress: it found StageEndScreen 202->199 (a human-plausible
+named coordinate variable earlier rounds' buggy permuter missed). But on most ties
+its wins are non-human seed-temp/no-op scaffolds (SetLightningI 12, FUN_80036284
+16/12, FUN_80058c70 22) — all correctly REJECTED per the human-source directive; the
+clean park is the honest state. The human-source discipline held in every lane.
+
+The batch's original conclusion that the frontier had moved off "match more
+parks" is withdrawn. The productive frontier was changing source identity at a
+larger scale than the permuter searched: same-TU inline helpers, ordered local
+copies of formals, direct control-flow tails, and purpose-specific reused locals.
+DrawBleed and ControlTraceLine both matched after their bounded searches had
+reported floors; the DecodeTMD twins matched after their one-statement proof;
+FUN_80057b80 matched after a quantified signature proof. Continue to rank by
+value and evidence, but treat every park as a falsifiable claim about one graph.
+
+## Where the work actually is now (2026-07-19)
+
+Fresh `tools/progress.py` and `tools/findsimilar.py --targets --by-value` leave
+exactly four game-code functions:
+
+| Function | Size | Authoritative current draft |
+|---|---:|---|
+| `mission_score_screen` | 4636 | exact length; 32 differing bytes / 14 instructions; ordinary shared score-drawing macro structure is under active reconstruction |
+| `FUN_800519bc` | 1448 | exact length; 76 differing bytes / 28 instructions in seven clusters; demo homolog confirms an ordinary renderer loop |
+| `AdtSelect` | 776 | exact length; nine differing bytes in one huge-frame reload decision; clean indexed count loop and ordinary D-pad control flow |
+| `FUN_8001c730` | 220 | 212-byte draft; 36 aligned lines in ten blocks; compiler evidence identifies ordinary Hermite evaluation plus GTE matrix packing |
+
+All four are active in the current four-slot flywheel. Compiler output and
+shipping/demo bytes remain the gate. Cookbook rules and old “unreachable”
+claims are hypotheses, especially when they were derived from a scaffolded
+local minimum.
+
+### Historical 2026-07-18 frontier
+
+The snapshot below recorded the earlier 31-function frontier and is retained to
+explain the source-identity breakthroughs. Its counts and target ranking are no
+longer current.
+
+**31 game functions remained after ActITEM.** `tools/findsimilar.py --targets`
+printed this set (it defaults to `--scope game`):
+
+    game code            507/555   functions (91.35%)   263272/303244  bytes (86.82%)
+    game done (C+asm)    524/555   functions              (the 17 canonical-asm draw*)
 
   * **THE BYTES ARE IN THE BIG ONES — rank by SIZE, not by residual**
     (`tools/findsimilar.py --targets --by-value`). The counter is ALL-OR-NOTHING per
     function: a park at 97% exact contributes ZERO matched bytes, because the default
     build still links its stub. So the payoff is the function's FULL SIZE.
 
-        6084  15.2%  StageEndScreen        (residual 203 — 96.7% exact)
-        4636  26.9%  mission_score_screen  (residual 239 — 94.8% exact)
+        6084  15.2%  StageEndScreen        (residual 199 — cluster B confirmed uncollectable)
+        4636  26.9%  mission_score_screen  (residual 187 — HUMAN-STRUCTURE rewrite, see below)
         3796  36.4%  FUN_80057b80          (residual   8)
         2188  41.8%  start_demo_           (residual  75 — 96.6% exact)
         1448  49.2%  FUN_800519bc          (residual  87 — 94.0% exact)
@@ -123,10 +202,33 @@ prints exactly this set (it defaults to `--scope game`):
     (`addiu s7,zero,0x52`) emitted early, displacing 46 slots by +4 — 168 of its 202
     bytes — and it is unreachable, because the insn has `ref_count = 0` (nothing in
     the block consumes it) so `adjust_priority` is never called on it and the birthing
-    bump cannot lift it off priority 1. If that holds, StageEndScreen's 6084 bytes are
-    not collectable at any price, and the prize ranking should move to
-    `mission_score_screen` (4636) or `FUN_80057b80` (3796, residual 8). **Read the
-    dominant cluster's mechanism before spending a round on size alone.**
+    bump cannot lift it off priority 1. **CONFIRMED 2026-07-18** (sched-deps: ref=0
+    tool-verified; `.loop`: the div-magic is hoisted but current_x is NOT, so its
+    low source-LUID makes sched1 emit it first — a genuine un-raisable sched1 LUID
+    wall, not a scaffold artifact). So StageEndScreen's cluster B (168 of its bytes)
+    is not collectable at any price; the prize ranking moves to `FUN_80057b80`
+    (3796, residual 8 — also a proven sched2 wall) and the medium structural
+    residuals. **Read the dominant cluster's mechanism before spending a round on
+    size alone.**
+
+    **Worked example of the human-source lever paying off (2026-07-18):
+    `mission_score_screen` was rebuilt from scratch to the shape of its MATCHED
+    sibling `StageEndScreen` — the `DRAW_SCORE_NUMBER` macro family, plain
+    `topY`/`resultX` pre-loop variables (StageEnd's `top_y`/`current_x`/`best_x`),
+    an s16 `stageItem` lh.** The banked byte-chased draft (169) had propped itself
+    up with `drawY` carriers, fence-seeded x-groups, a brightness-alias scaffold,
+    and 4 nested fences for the rankSprite flip. The rewrite is +18 bytes (187) but
+    the function is guarded (INCLUDE_ASM ships the ORIGINAL bytes, so `./Build check`
+    stays byte-identical GREEN — the raw image is unchanged), and it collapses the
+    scaffolding to ONE labelled `do{}while(0)`. This is the directive in action:
+    prefer the sibling-derived human shape that escapes the carrier/fence local
+    minimum over a lower byte count built on invented constructs. **The reverse
+    transfer to StageEndScreen was TESTED (2026-07-18) and FAILED**: its cluster-B
+    constant `current_x` is a PERSISTENT s7 (loaded once, 5 reads = a sched1 LUID
+    wall), NOT a REG_EQUIV rematerialiser like the sibling's `resultX` — the two
+    were conflated. The lesson generalised into cookbook §4: verify the target's
+    LOAD COUNT before assuming a cluster is the mission_score_screen case. (The
+    permuter fix still bought StageEndScreen 202→199 on an UNRELATED cluster.)
   * **33 parked drafts** — each root-caused in its own `.c` header, closest at 1-10
     residual bytes. Residuals are overwhelmingly sub-C (allocation / scheduling /
     reload ties), which is why the tooling investment has overtaken target-picking as
@@ -135,9 +237,12 @@ prints exactly this set (it defaults to `--scope game`):
     unreachability proof fell to a tiebreak rule that was simply wrong, and
     SetupSpline's "permuter plateaued" was a crash. Re-check cheaply before honoring
     one (cookbook §4).
-  * **5 undrafted** — `FUN_80059008` (920), `FUN_8005961c` (1260), `FUN_80059b08`
-    (1260), `FUN_80059ff4` (984), `FUN_8005a3cc` (984). Never attempted. The pairs of
-    equal size are worth checking for clone relationships first.
+  * **The DecodeTMD primitive-renderer family (updated 2026-07-18)** — all six
+    members now MATCH: FUN_8005961c/FUN_80059b08 (1260 each),
+    FUN_80059ff4/FUN_8005a3cc (984 each), and FUN_80058c70/FUN_80059008
+    (920 each). The final pair closed by replacing decompiler carrier reuse with
+    coherent colour/counter/initializer identities; their former v0/v1 floor was
+    decomposition-relative.
   * Also present but hidden by `--max-size 2048`: **`start_demo_`** (2188) and
     **`mission_score_screen`** (4636). Raise the flag or they are invisible.
 
