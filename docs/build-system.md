@@ -108,7 +108,7 @@ default build and does not yet permit a runnable grown image: the raw SDK
 owners, fixed PS-EXE header, and fixed BSS layout remain unchanged. See
 [`relocatable-build.md`](relocatable-build.md).
 
-`check-reloc-bss` composes with that first gate. It emits a logical initialized
+`check-reloc-bss` composes with the game and SDK-prefix gates. It emits a logical initialized
 prefix at `.shake/build/tenchu/main_reloc_bss.logical` plus an ELF/map, then
 checks a real linker-owned NOLOAD BSS, an explicit NOLOAD `MemoryPool`
 reservation, and every known BSS symbol. The PS-X EXE finalizer reads

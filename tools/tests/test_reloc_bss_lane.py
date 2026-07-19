@@ -169,6 +169,9 @@ HEAP_START {heap_type} ffffffff800cdbac
 MemoryPool B ffffffff800dc000
 _gp T ffffffff80097698 8
 __load_start T ffffffff80011000
+main T ffffffff800162a4
+Exec T ffffffff800601d4
+GsInitCoord2param T ffffffff800650d4
 """
 
     READELF_OUTPUT = """\

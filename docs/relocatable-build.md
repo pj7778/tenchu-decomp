@@ -183,8 +183,9 @@ that large-shift proof.
 
 ### Implemented second gate: linker-owned BSS boundaries
 
-`./Build check-reloc-bss` composes with `check-reloc-game` and proves the next
-piece of layout ownership. It converts the zero-filled end of generated
+`./Build check-reloc-bss` builds on the linker-owned game and canonical
+SDK-prefix scripts, then proves the next piece of layout ownership. It converts
+the zero-filled end of generated
 `72CD0.data.s` to a NOBITS input, moves the C `.bss` inputs into a following
 NOLOAD output section, removes the corresponding fixed symbol-script
 assignments, and represents the virtual-memory pool as an explicit NOLOAD

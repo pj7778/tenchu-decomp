@@ -1155,7 +1155,8 @@ mainExtraRules = do
   -- Second normal-link proof: turn the zero-filled end of 72CD0 into a real
   -- NOBITS input, move every C .bss input into a following NOLOAD output, and
   -- reserve the fixed virtual-memory pool explicitly. Inputs are generated
-  -- from the already linker-owned game lane so the two proofs compose.
+  -- from the canonical SDK-prefix lane, which already composes with the
+  -- linker-owned game lane, so this artifact carries all three proofs.
   [relocBssLinker, relocBssSymbols, relocBssUndefined, relocBssTailAsm] &%> \_outs -> do
     let t = mainTarget
         genD = tgGenDir t
@@ -1164,12 +1165,12 @@ mainExtraRules = do
         oldTailObject = tgBuildDir t </> "data" </> "72CD0.data.s.o"
         tool = "tools" </> "reloc_bss_lane.py"
     _generatedFiles <- getGeneratedFiles (tgGen t)
-    need [relocGameLinker, relocGameSymbols, undefinedSymbols, tailSource, tool]
+    need [relocSdkBaseLinker, relocSdkBaseSymbols, undefinedSymbols, tailSource, tool]
     liftIO $ IO.createDirectoryIfMissing True relocBssDir
     cmd_ "python3" tool
       [ "generate",
-        "--linker-in", relocGameLinker,
-        "--symbols-in", relocGameSymbols,
+        "--linker-in", relocSdkBaseLinker,
+        "--symbols-in", relocSdkBaseSymbols,
         "--undefined-in", undefinedSymbols,
         "--tail-in", tailSource,
         "--linker-out", relocBssLinker,
@@ -1386,7 +1387,7 @@ phonyRules = do
         undefinedSymbols = tgGenDir t </> metaDir </> "undefined_symbols_auto.main.exe.txt"
         tool = "tools" </> "reloc_bss_lane.py"
     need [ mainRelocBssLogical, mainRelocBssExe, mainRelocBssElf,
-           tgImage t, relocGameSymbols,
+           tgImage t, relocSdkBaseSymbols,
            undefinedSymbols, tool ]
     StdoutTrim ref <- cmd "sha256sum" (tgImage t)
     StdoutTrim finalized <- cmd "sha256sum" mainRelocBssExe
@@ -1404,7 +1405,7 @@ phonyRules = do
         "--logical", mainRelocBssLogical,
         "--reference", tgImage t,
         "--elf", mainRelocBssElf,
-        "--symbols-in", relocGameSymbols,
+        "--symbols-in", relocSdkBaseSymbols,
         "--undefined-in", undefinedSymbols
       ]
     putInfo "check-reloc-bss: linker-owned BSS/pool and finalized PS-X EXE are retail-exact"

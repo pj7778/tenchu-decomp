@@ -509,6 +509,9 @@ def validate_elf(
 
     boundary_expectations = {
         "__load_start": (MAIN_LOAD_ADDRESS, set("TtRrDd")),
+        "main": (0x800162A4, {"T", "t"}),
+        "Exec": (0x800601D4, {"T", "t"}),
+        "GsInitCoord2param": (0x800650D4, {"T", "t"}),
         "__bss_start": (BSS_START, {"B", "b"}),
         "__bss_end": (BSS_END, {"B", "b"}),
         "HEAP_START": (HEAP_START, {"B", "b"}),
