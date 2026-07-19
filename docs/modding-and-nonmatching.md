@@ -53,7 +53,7 @@ because this is a *partial* decomp with a fixed memory layout:
 In short: a fixed-layout partial decomp can absorb *substitutions* but not
 *insertions*.
 
-## Making a mod run: `./Build mod` — patch in place
+## Existing convenience lane: `./Build mod` — patch in place
 
 Non-matching behaviour changes (a decompiled function edited however you like) are
 handled by **overwriting the function in place**, wired in as the `mod` target:
@@ -80,14 +80,12 @@ same size, PS-EXE header untouched — so the disc rebuild keeps forced LBAs and
 on any emulator or real hardware. `src/main.exe/` (the matching decomp) is untouched;
 mods live only in `src/mod/main.exe/`.
 
-**Why in place and not relocated.** A grown function shifts every later address, and
-there's nowhere safe to put relocated code: right after the image (`0x80098000`) is the
-game's bss (globals → `HEAP_START = 0x800cdbac`, then heap, then stack `0x801ffff0`),
-which crt0 zeroes and the game writes; there's no reusable hole inside the 2 MB image
-(even the 17 KB zero run at `0x80089fed` is the live `EffectSlot`/`ModelSlot` buffers);
-and the disc is packed with no free sectors, so a bigger `MAIN.EXE` shifts the streamed
-movies/XA and hangs the cutscenes (see [building-an-iso.md](building-an-iso.md)). So the
-one edit a fixed-layout partial decomp can absorb is a **same-slot substitution**.
+This target is intentionally in-place. It is useful before the normal-link lane
+is complete, but it is not the architecture for size-changing edits and it does
+not use trampolines or a hidden mod region. A genuine relink can move code,
+loaded data, BSS, and linker-derived boundaries within the executable's RAM
+budget; the obstacle is making every in-image reference relocation-aware, not
+finding a permanent fixed-address cave.
 
 **If it doesn't fit**, `./Build mod` aborts with the overage, e.g.:
 
@@ -100,13 +98,25 @@ Trim the function — drop debug/log calls, simplify Ghidra-isms — until it fi
 worked example `ProcItemKusuri.c` drops the original's `AdtMessageBox("item dispose
 fail…")` diagnostic, which is never hit in normal play, to make room.)
 
-### Later: grow in place by decompiling more
+## Size-changing goal: a normal relink
 
-Once the data around a function is fully symbolic (no raw pointers / fixed addresses
-into that region), a uniform shift of everything after it becomes self-consistent, and
-functions can grow without fitting the original slot. That's the natural end-state of
-the decomp — not required for same-slot mods, just where genuinely-larger changes
-become possible.
+`./Build check-reloc-game` is the first exact-at-retail proof for that path. It
+removes fixed address assignments for all 555 game inputs and lets GNU `ld` own
+their symbols; the resulting executable still matches retail byte-for-byte.
+It does **not** yet make a grown image runnable. Remaining work is tracked in
+[relocatable-build.md](relocatable-build.md):
+
+- convert raw CRT/SDK instruction words into original relocatable objects or
+  canonical symbolic assembly;
+- make pointer-bearing loaded data symbolic, including interior pointers;
+- give loaded data, BSS, `_gp`, startup clear bounds, and heap boundaries to the
+  linker while retaining only reviewed fixed MMIO/cross-executable addresses;
+- regenerate the PS-X EXE entry/load-size fields after link; and
+- validate the 2 MiB RAM ceiling, complete executable handoff chain, and media
+  playback on a repacked disc.
+
+At that point an ordinary function can grow and the linker can choose the new
+layout. No call-site trampoline scheme is part of that design.
 
 ## Running a modified exe
 

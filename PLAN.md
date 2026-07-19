@@ -56,8 +56,11 @@ byte-identical `main.exe`.
   `li→addiu` fix. The compiler is the canonical decompals `gcc-2.8.1-psx`,
   nix-pinned and verified equivalent to real Sony `CC1PSX.EXE` (decomp.me
   `psyq4.3`) — see `compiler-fidelity` in the toolchain doc.
-- **Modding + emulator loop works:** `./Build mod` (grow functions) and
-  `./Build iso`/`iso-mod` (bootable disc for pcsx-redux). See docs/.
+- **Same-slot modding + emulator loop works:** `./Build mod` patches functions
+  in place and rejects anything larger than the retail slot;
+  `./Build iso`/`iso-mod` produce a bootable disc for pcsx-redux. The genuine
+  size-changing normal-link lane is separate work; `./Build check-reloc-game`
+  is its first exact-at-retail ownership gate. See docs/.
 - **decomp.dev progress reporting wired up:** `./Build report` /
   `tools/objdiff-report.py` emit a valid objdiff v2 report (verified against the
   real `report.proto` with protoc); `.github/workflows/report.yml` uploads it as
@@ -434,9 +437,12 @@ Detailed dev docs live in [`docs/`](docs/). Ranked next steps:
 5. **CI**: a GitHub Actions job running `nix develop --command ./Build check`.
 6. **Per-function tooling**: `diff_settings.py` (asm-differ is in the devShell),
    `objdiff.json`, an `m2ctx.py` context generator, a `make <obj>` shim.
-7. **Growth-mod streaming safety** (if `iso-mod` movies/XA glitch): keep `main.exe`
-   same-size on disc by relocating the mod region into a separate disc file rather
-   than appending — see the caveat in [`docs/building-an-iso.md`](docs/building-an-iso.md).
+7. **Grown-image disc validation:** once the normal-link lane can emit a larger
+   executable, validate the complete `SLPS -> MENU -> MAIN` chain, STR movies,
+   and representative XA playback on an auto-packed image. Current inspection
+   has not proved that Tenchu embeds absolute stream LBAs; do not treat that as
+   either guaranteed safe or a known blocker. See
+   [`docs/building-an-iso.md`](docs/building-an-iso.md).
 
 ## Progress & the SDK endgame
 
@@ -522,7 +528,9 @@ CI later.
 `./Build iso` rebuilds the game's CD image with our `main.exe` (via mkpsxiso,
 packaged in `nix/mkpsxiso.nix`) → a `.bin`/`.cue` for pcsx-redux. Matching build →
 data track byte-identical to the original except `main.exe`; `./Build iso-mod`
-puts the grown `main_mod.exe` on the disc (auto-LBA). Needs the original disc
+puts the same-size, in-place-patched `main_mod.exe` on the disc. `mkiso.py` can
+auto-pack a larger explicitly supplied executable, but that path still needs
+full boot/media validation. Needs the original disc
 (`TENCHU_CUE=…` or under `disks/`/`~/tenchu-iso/`). See
 [`docs/building-an-iso.md`](docs/building-an-iso.md).
 

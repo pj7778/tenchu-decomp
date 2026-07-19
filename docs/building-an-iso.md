@@ -31,14 +31,17 @@ $ ./Build run-iso-mod    # FAITHFUL: repack the disc with the modded main.exe an
 (tools/mkmod.py) compiles each `src/mod/main.exe/<fn>.c`, links it at the function's
 *original* address, and overwrites that function's bytes — the function has to fit in
 its original slot (up to the next symbol), so `main_mod.exe` is **exactly the same
-size** as `main.exe`. That matters because the disc is packed with **no free sectors**:
-`MAIN.EXE` is a 271-sector slot at LBA 319, immediately followed by `TRIAL/ENDING.EXE`,
-`DATA.VOL`, and the `MOVIE/*.STR` + `XA/*.XA` streams. A *bigger* `MAIN.EXE` would shove
-them all to new LBAs, and streamed cutscenes seek by absolute sector, so they'd read the
-wrong data and hang (right after the loading screen). Because the modded exe is the same
-size, mkiso keeps **forced LBAs** — the mod disc is byte-identical to the original except
-`MAIN.EXE`'s sectors, so the full `SLPS→MENU→MAIN` boot and every cutscene work, on any
-emulator or real hardware.
+size** as `main.exe`. That lets mkiso retain every dumped `offs=` placement: the
+rebuilt data track is byte-identical to the original except `MAIN.EXE`'s sectors.
+
+A larger explicitly supplied executable cannot fit the original 271-sector
+`MAIN.EXE` slot. `tools/mkiso.py` handles that mechanically by removing forced
+offsets and letting mkpsxiso auto-pack the data track. The resulting disc-layout
+change is not yet an end-to-end-supported gameplay path. A source audit found
+file-name lookup (`CdSearchFile`) and relative clip offsets, and did not prove
+embedded absolute starting LBAs for the large streams, but that is not a runtime
+proof. Before calling a grown image supported, test the complete
+`SLPS→MENU→MAIN` handoff, STR playback, and representative XA playback.
 
 If a modded function outgrows its slot, `./Build mod` aborts and tells you by how many
 bytes — trim it (drop debug logging, simplify) until it fits. See
@@ -89,6 +92,11 @@ supply a real BIOS and opt in:
   forced LBAs — the data track is byte-identical to the original except `main.exe`'s
   sectors, exactly like `./Build iso`. So the full boot chain and all streamed
   movies/XA work; `run-iso-mod` is the faithful way to play a mod.
+
+- **A larger executable passed directly to `tools/mkiso.py --exe ...`** is
+  auto-packed. This is the intended packaging mechanism for the future normal
+  relink, but its boot and media behavior remains a required validation gate,
+  not a proven failure and not yet a supported `./Build` target.
 
 ## How it works
 

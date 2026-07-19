@@ -104,8 +104,10 @@ latent bugs. Fixed in this batch of work (see `build-system.md` for detail):
 - **maspsx integrated** — `cpp | cc1-281 -G8 | maspsx | as`, so functions using
   integer division / `$gp`-relative globals can byte-match. wine dropped. See
   [toolchain.md](toolchain.md).
-- **`./Build mod`** — grow/modify functions runnably via trampolines + a mod
-  region. See [modding-and-nonmatching.md](modding-and-nonmatching.md).
+- **`./Build mod`** — compile selected mod sources and patch them into their
+  original slots. This is a same-size convenience lane, not the size-changing
+  normal relink. See
+  [modding-and-nonmatching.md](modding-and-nonmatching.md).
 - **`./Build iso` / `iso-mod`** — rebuild a bootable `.bin`/`.cue` for pcsx-redux.
   See [building-an-iso.md](building-an-iso.md).
 

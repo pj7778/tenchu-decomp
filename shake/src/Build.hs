@@ -1074,7 +1074,7 @@ phonyRules = do
   -- Each of these is just a `need` on a real file target now, so the exe/mod/iso
   -- are (re)built only when their inputs change — `run-iso` no longer repacks the
   -- ~750 MB image every launch. `mod` -> main_mod.exe; `iso`/`iso-mod` -> the
-  -- bootable .bin/.cue (matching vs grown build). See docs/modding-and-nonmatching.md
+  -- bootable .bin/.cue (matching vs same-slot mod). See docs/modding-and-nonmatching.md
   -- and docs/building-an-iso.md.
   phony "mod" $ need [mainModExe]
   phony "iso" $ need [tenchuCue]
@@ -1100,8 +1100,8 @@ phonyRules = do
     launchIso [] tenchuCue
 
   -- main_mod.exe is patched in place (same size as main.exe), so the mod disc keeps
-  -- forced LBAs and is byte-faithful except our function — streamed cutscenes and the
-  -- full SLPS→MENU→MAIN boot all work. See docs/modding-and-nonmatching.md.
+  -- the dumped file layout and is byte-faithful except our function. See
+  -- docs/modding-and-nonmatching.md.
   phony "run-iso-mod" $ do
     need [tenchuModCue]
     launchIso [] tenchuModCue
