@@ -11,9 +11,11 @@ and checks the resulting objects and linked bytes:
 * links shifted by ``+4`` and ``+0x10004`` retarget every pointer, including a
   carry across the high 16 bits.
 
-The ordinary matching inputs are read-only.  The proof uses isolated temporary
-assembly and object files under ``.shake/build/reloc-data`` and is not a
-runnable whole-executable growth lane.
+The ordinary matching inputs are read-only. The proof uses isolated temporary
+assembly and object files under ``.shake/build/reloc-data``. The composed
+``./Build relink`` lane consumes persistent copies made by the same transformer;
+this tool remains its stricter per-relocation oracle, not a runnable-growth
+claim by itself.
 """
 
 from __future__ import annotations

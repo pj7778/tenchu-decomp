@@ -38,6 +38,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+from typing import Sequence
 
 
 INITIALIZED_END = 0x80097EB0
@@ -290,8 +291,18 @@ def rewrite_linker(
     new_tail_object: str,
     extension_object_glob: str,
     aliases: list[Symbol],
+    object_replacements: Sequence[tuple[str, str]] = (),
 ) -> str:
     lines = source.splitlines(keepends=True)
+    for old_object, new_object in object_replacements:
+        if not old_object or not new_object or old_object == new_object:
+            raise LaneError("object replacements require distinct nonempty paths")
+        matches = sum(line.count(old_object) for line in lines)
+        if matches != 1:
+            raise LaneError(
+                f"expected one linker reference to {old_object}, found {matches}"
+            )
+        lines = [line.replace(old_object, new_object) for line in lines]
     gp_indices: list[int] = []
     for index, line in enumerate(lines):
         assignment = ASSIGNMENT_RE.fullmatch(line.rstrip("\r\n"))
@@ -405,6 +416,7 @@ def generate(
     old_tail_object: str,
     new_tail_object: str,
     extension_object_glob: str,
+    object_replacements: Sequence[tuple[str, str]] = (),
 ) -> tuple[int, int]:
     symbol_source = symbols_input.read_text()
     undefined_source = undefined_input.read_text()
@@ -455,6 +467,7 @@ def generate(
         new_tail_object=new_tail_object,
         extension_object_glob=extension_object_glob,
         aliases=aliases,
+        object_replacements=object_replacements,
     )
 
     atomic_write(linker_output, rewritten_linker)
@@ -619,6 +632,13 @@ def arguments(argv: list[str] | None = None) -> argparse.Namespace:
     generate_parser.add_argument("--old-tail-object", required=True)
     generate_parser.add_argument("--new-tail-object", required=True)
     generate_parser.add_argument("--extension-object-glob", required=True)
+    generate_parser.add_argument(
+        "--replace-object",
+        action="append",
+        default=[],
+        metavar="OLD=NEW",
+        help="replace one exact linker input object path; repeatable",
+    )
 
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--logical", type=Path, required=True)
@@ -639,6 +659,14 @@ def main(argv: list[str] | None = None) -> int:
     args = arguments(argv)
     try:
         if args.command == "generate":
+            replacements: list[tuple[str, str]] = []
+            for replacement in args.replace_object:
+                if replacement.count("=") != 1:
+                    raise LaneError(
+                        f"invalid --replace-object {replacement!r}; expected OLD=NEW"
+                    )
+                old_object, new_object = replacement.split("=", 1)
+                replacements.append((old_object, new_object))
             bss_symbols, aliases = generate(
                 linker_input=args.linker_in,
                 symbols_input=args.symbols_in,
@@ -651,6 +679,7 @@ def main(argv: list[str] | None = None) -> int:
                 old_tail_object=args.old_tail_object,
                 new_tail_object=args.new_tail_object,
                 extension_object_glob=args.extension_object_glob,
+                object_replacements=replacements,
             )
             print(
                 f"reloc-bss lane: moved {bss_symbols} BSS symbols; "

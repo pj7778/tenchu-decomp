@@ -290,9 +290,9 @@ also needs to:
 Therefore “all game functions are source” and “the executable is shiftable” are
 separate milestones. PsyQ C coverage should not be used as a proxy for either.
 
-The reviewed loaded-data slices now have a standalone implementation and build
-gate in [`relocatable-data.md`](relocatable-data.md). They turn 32 exact
-interior string references into `R_MIPS_32` relocations and prove retail,
-`+4`, and `+0x10004` links without changing the default build. This is a
-pattern for migrating the remaining pointer-bearing data, not yet a runnable
-whole-executable growth lane.
+The reviewed loaded-data slices have a strict standalone build gate in
+[`relocatable-data.md`](relocatable-data.md), and the same transformed objects
+are now part of `./Build relink`. They turn 32 exact interior references into
+`R_MIPS_32` relocations and prove retail, `+4`, and `+0x10004` links without
+changing the default build. This is a pattern for migrating the remaining 152
+pointer-bearing words, not yet a runnable whole-executable growth claim.

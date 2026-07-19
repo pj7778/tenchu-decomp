@@ -151,6 +151,32 @@ SECTIONS
             output,
         )
 
+    def test_substitutes_reviewed_data_objects_exactly_once(self) -> None:
+        source = self.LINKER.replace(
+            "old/72CD0.data.s.o(.data);",
+            "old/207C.data.s.o(.data);\n        old/72CD0.data.s.o(.data);",
+        )
+        output = lane.rewrite_linker(
+            source,
+            old_tail_object="old/72CD0.data.s.o",
+            new_tail_object="new/72CD0.reloc.s.o",
+            extension_object_glob="build/reloc/*.c.o",
+            aliases=[],
+            object_replacements=[("old/207C.data.s.o", "new/207C.reloc.s.o")],
+        )
+        self.assertNotIn("old/207C.data.s.o", output)
+        self.assertIn("new/207C.reloc.s.o(.data);", output)
+
+        with self.assertRaisesRegex(lane.LaneError, "expected one linker reference"):
+            lane.rewrite_linker(
+                self.LINKER,
+                old_tail_object="old/72CD0.data.s.o",
+                new_tail_object="new/72CD0.reloc.s.o",
+                extension_object_glob="build/reloc/*.c.o",
+                aliases=[],
+                object_replacements=[("missing.data.s.o", "new.data.s.o")],
+            )
+
     def test_pool_and_transient_handoff_intentionally_overlap(self) -> None:
         self.assertLess(lane.MEMORY_POOL_START, lane.HANDOFF_START)
         self.assertLess(lane.HANDOFF_END, lane.MEMORY_POOL_END)

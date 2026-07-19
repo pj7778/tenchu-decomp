@@ -101,7 +101,7 @@ $ tools/reloc_data.py \
 reloc-data: validated 32 pointer words and 28 exact targets across 3 files
 ```
 
-Or write separate assembly inputs for a future normal-link lane:
+Or write separate assembly inputs directly:
 
 ```console
 $ tools/reloc_data.py \
@@ -122,7 +122,12 @@ reloc-data-lane: verified 32 R_MIPS_32 pointer words, 28 exact targets, and 3 li
 check-reloc-data: reviewed pointer tables are retail-exact and shift-relocatable
 ```
 
-This is an object/data relocation proof, not a runnable grown PS-X EXE.
+The same manifest transformation is composed into `./Build relink`: its
+`207C`, `2EB0`, and `72CD0` objects replace the literal generated inputs, with
+the BSS transform applied after the `72CD0` pointer rewrite. The standalone
+gate remains the stricter per-record and controlled-shift oracle. This removes
+32 blockers from the real relink, but does not make the remaining raw pointers
+or code safe.
 
 ## Binutils proof
 
@@ -151,7 +156,7 @@ $ python3 -m unittest -v \
 
 Applying the manifest to the current generated `72CD0.data.s` reduces its live
 literal-pointer candidates from 184 to 152. The ordinary generated input is
-unchanged; this count describes the standalone transformed lane.
+unchanged; the composed normal relink consumes the transformed copy.
 
 ## Scaling without inventing source
 

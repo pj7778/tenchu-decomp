@@ -115,6 +115,21 @@ relocBssTailAsm = relocBssDir </> "generated" </> "72CD0.bss.s"
 -- cannot mistake it for a splat-owned target input.
 relocBssTailObject = relocBssDir </> "obj" </> "72CD0.bss.s.o"
 
+-- Reviewed pointer-bearing data copies used by the composed normal relink.
+-- 72CD0 is transformed here first, then the BSS lane applies its NOBITS split
+-- to that copy so both transformations survive in one object.
+relocIntegratedDataDir :: FilePath
+relocIntegratedDataDir = relocBssDir </> "data"
+
+relocData207CAsm, relocData2EB0Asm, relocData72CD0Asm :: FilePath
+relocData207CAsm = relocIntegratedDataDir </> "207C.data.s"
+relocData2EB0Asm = relocIntegratedDataDir </> "2EB0.data.s"
+relocData72CD0Asm = relocIntegratedDataDir </> "72CD0.data.s"
+
+relocData207CObject, relocData2EB0Object :: FilePath
+relocData207CObject = relocBssDir </> "obj" </> "207C.data.s.o"
+relocData2EB0Object = relocBssDir </> "obj" </> "2EB0.data.s.o"
+
 -- | The modded (non-matching) build: hooked functions patched in place by
 -- tools/mkmod.py, so it stays the same size as main.exe (disc rebuild is faithful).
 mainModExe :: FilePath
@@ -1152,6 +1167,31 @@ mainExtraRules = do
     need [input]
     cmd_ objcopy objcopyFlags [input, out]
 
+  [relocData207CAsm, relocData2EB0Asm, relocData72CD0Asm] &%> \_outs -> do
+    let t = mainTarget
+        dataDir = tgGenDir t </> asmDir </> "data"
+        manifest = configDir </> "reloc-data.main.exe.json"
+        tool = "tools" </> "reloc_data.py"
+        inputs = map (dataDir </>)
+          ["207C.data.s", "2EB0.data.s", "72CD0.data.s"]
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    need $ [manifest, tool] <> inputs
+    cmd_ "python3" tool
+      [ "--manifest", manifest,
+        "--input-dir", dataDir,
+        "--output-dir", relocIntegratedDataDir
+      ]
+
+  [relocData207CObject, relocData2EB0Object] |%> \out -> do
+    let source = if out == relocData207CObject
+          then relocData207CAsm
+          else relocData2EB0Asm
+    need [source]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    withTempFile $ \depFile -> do
+      cmd_ as asFlags ["--MD", depFile, "-o", out, source]
+      neededAsmDeps depFile
+
   -- Second normal-link proof: turn the zero-filled end of 72CD0 into a real
   -- NOBITS input, move every C .bss input into a following NOLOAD output, and
   -- reserve the fixed virtual-memory pool explicitly. Inputs are generated
@@ -1162,8 +1202,10 @@ mainExtraRules = do
         genD = tgGenDir t
         tBuildDir = tgBuildDir t
         undefinedSymbols = genD </> metaDir </> "undefined_symbols_auto.main.exe.txt"
-        tailSource = genD </> asmDir </> "data" </> "72CD0.data.s"
+        tailSource = relocData72CD0Asm
         oldTailObject = tgBuildDir t </> "data" </> "72CD0.data.s.o"
+        old207CObject = tgBuildDir t </> "data" </> "207C.data.s.o"
+        old2EB0Object = tgBuildDir t </> "data" </> "2EB0.data.s.o"
         tool = "tools" </> "reloc_bss_lane.py"
     _generatedFiles <- getGeneratedFiles (tgGen t)
     need [relocSdkBaseLinker, relocSdkBaseSymbols, undefinedSymbols, tailSource, tool]
@@ -1180,7 +1222,9 @@ mainExtraRules = do
         "--tail-out", relocBssTailAsm,
         "--old-tail-object", oldTailObject,
         "--new-tail-object", relocBssTailObject,
-        "--extension-object-glob", tBuildDir </> "reloc" </> "*.c.o"
+        "--extension-object-glob", tBuildDir </> "reloc" </> "*.c.o",
+        "--replace-object", old207CObject <> "=" <> relocData207CObject,
+        "--replace-object", old2EB0Object <> "=" <> relocData2EB0Object
       ]
 
   relocBssTailObject %> \out -> do
@@ -1209,7 +1253,8 @@ mainExtraRules = do
         assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
     need $ sFilesExp <> assetFilesExp <> oFiles <>
       [ relocBssLinker, relocBssSymbols, relocBssUndefined,
-        relocBssTailObject, undefinedFunctions
+        relocBssTailObject, relocData207CObject, relocData2EB0Object,
+        undefinedFunctions
       ]
     liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
     cmd_ ld ldFlags
@@ -1396,6 +1441,7 @@ phonyRules = do
     let t = mainTarget
         undefinedSymbols = tgGenDir t </> metaDir </> "undefined_symbols_auto.main.exe.txt"
         tool = "tools" </> "reloc_bss_lane.py"
+    need ["check-reloc-data"]
     need [ mainRelocBssLogical, mainRelocBssExe, mainRelocBssElf,
            tgImage t, relocSdkBaseSymbols,
            undefinedSymbols, tool ]
