@@ -14,13 +14,15 @@
  * END PSX.SYM */
 
 /* STATUS: NON_MATCHING — clean pure-C reconstruction at the exact target
- * length (1448 bytes / 362 instructions), currently 7 differing linked bytes
- * across 6 instructions. There are no allocator-only no-op loop fences: the
+ * length (1448 bytes / 362 instructions), currently 3 differing linked bytes
+ * across 2 instructions. There are no allocator-only no-op loop fences: the
  * normal fade update and guarded strip loop recover the target frame naturally.
  * Writing the first PathFileRead before all state initializers is the key natural
  * live-range split: cc1 hoists those independent writes around the call into the
  * target's exact prologue order. Explicit, ordinary base/scale temporaries make
- * both edge-brightness arms byte-exact; only three renderer register ties remain.
+ * both edge-brightness arms byte-exact. Scoped signed 32-bit renderer values
+ * recover the target tpage/width allocation and load-delay nop; only the xbase
+ * reload's caller-saved scratch register remains.
  *
  * HISTORICAL NOTES BELOW ARE SUPERSEDED and retained only as an experiment log.
  * KEY FINDING: the `do{sequence=0;}while(0)` fence was NOT load-bearing — it walled
@@ -323,16 +325,12 @@ void FUN_800519bc(void)
     s32 scroll_value;
     s16 strip_width;
     u16 strip_px;
-    u16 tpage_result;
     s32 intensity;
     u8 brightness;
     s32 left_brightness;
     s32 scaled_left_brightness;
     s32 edge_brightness;
     s32 scaled_brightness;
-    s32 tpage_word;
-    s32 tpage_value;
-    s16 signed_width;
     s16 i;
 
     file = PathFileRead((u8 *)D_800137A0,
@@ -436,20 +434,15 @@ void FUN_800519bc(void)
             counter = strip_width - 4;
             if (counter >= 0)
             {
-                tpage_word = tpage_base;
-                if (strip_width == 0)
-                    tpage_value = tpage_word >> 16;
-                else
-                    tpage_value = tpage_word >> 16;
-                signed_width = strip_width;
+                s32 renderer_tpage = tpage_base >> 16;
+                s32 renderer_width = (s16)strip_width;
                 do
                 {
                         sprite.u = counter << 2;
-                        tpage_result = GetTPage(0, 0,
-                            tpage_value + (s16)counter, 0x100);
-                        page_x = signed_width - (s16)counter;
+                        sprite.tpage = GetTPage(0, 0,
+                            renderer_tpage + (s16)counter, 0x100);
+                        page_x = renderer_width - (s16)counter;
                         page_x <<= 3;
-                        sprite.tpage = tpage_result;
                         page_x = xbase - page_x;
                         sprite.x = page_x;
                         page_x <<= 16;
