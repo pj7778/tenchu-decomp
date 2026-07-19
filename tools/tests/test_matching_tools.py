@@ -5668,6 +5668,7 @@ class BuildConfigurationTests(unittest.TestCase):
         re = __import__("re")
         groups = {
             "LIBMCRD.OBJ": "libmcrdObjectMembers",
+            "GS_105.OBJ": "gs105ObjectMembers",
             "GS_106.OBJ": "gs106ObjectMembers",
             "GS_110.OBJ": "gs110ObjectMembers",
             "GS_111.OBJ": "gs111ObjectMembers",
@@ -5733,6 +5734,9 @@ class BuildConfigurationTests(unittest.TestCase):
         self.assertEqual(permute.cc_executable_for("AdtGetDisp"), "cc1-280")
         self.assertEqual(
             permute.cc_executable_for("GsSetProjection"), "cc1-272"
+        )
+        self.assertEqual(
+            permute.cc_executable_for("GsMapModelingData"), "cc1-281"
         )
         self.assertEqual(permute.cc_executable_for("GsSetAmbient"), "cc1-272")
         self.assertEqual(permute.cc_executable_for("GsDrawOt"), "cc1-272")

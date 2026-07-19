@@ -154,7 +154,15 @@ bytes and 140 jump-table bytes exactly. GCC 2.8.1 changes the block-copy
 registers, table-base materialisation, and shared-return branches, leaving 117
 differing bytes despite identical semantics.
 
-### GS_125.OBJ: compiler-invariant default profile
+### GS_105.OBJ and GS_125.OBJ: compiler-invariant default profiles
+
+PsyQ 4.5's `GS_105.OBJ` has one public member, `GsMapModelingData`, and its
+complete relocation-free 0x70-byte text is byte-identical to Tenchu. The
+natural implementation marks the TMD header as mapped, takes the object count
+with `count = *model++`, and rebases the canonical `TMD_STRUCT` vertex, normal,
+and primitive pointers. GCC 2.7.2, 2.8.0, and 2.8.1 all emit the same symbolic
+instruction stream for this source, so the object stays on the default compiler
+with no exceptional flags.
 
 PsyQ 4.5's `GS_125.OBJ` has one public member, `GsGetWorkBase`, and its complete
 16-byte text is byte-identical to Tenchu after relocation. The natural

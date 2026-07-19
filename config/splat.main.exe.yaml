@@ -727,6 +727,7 @@ segments:
       - [0x54A80, c, GsMulCoord2]
       - [0x54B00, c, GsMulCoord3]
       - { start: 0x54B80, type: data, linker_section_order: .text }
+      - [0x54D54, c, GsMapModelingData]
       - [0x54DC4, c, GsSetProjection]
       - { start: 0x54DE4, type: data, linker_section_order: .text }
       - [0x5529C, c, GS_107_OBJ_4B8]

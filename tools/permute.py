@@ -79,6 +79,9 @@ ORIGINAL_OBJECT_MEMBERS = {
         "MemCardCallback", "MemCardSync", "MemCardCreateFile",
         "MemCardFormat",
     ),
+    "GS_105.OBJ": (
+        "GsMapModelingData",
+    ),
     "GS_106.OBJ": (
         "GsSetProjection",
     ),
@@ -115,6 +118,7 @@ ORIGINAL_OBJECT_MEMBERS = {
 }
 ORIGINAL_OBJECT_CC_FLAGS = {
     "LIBMCRD.OBJ": ("-mno-split-addresses",),
+    "GS_105.OBJ": (),
     "GS_106.OBJ": (),
     "GS_110.OBJ": (),
     "GS_111.OBJ": (),
