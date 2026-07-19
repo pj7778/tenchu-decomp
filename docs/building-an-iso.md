@@ -21,10 +21,13 @@ On first use the disc is dumped once with `dumpsxiso` into `TENCHU_ISO_WORK`
 $ nix develop            # provides mkpsxiso + dumpsxiso (packaged in nix/mkpsxiso.nix)
 $ ./Build iso            # matching main.exe -> .shake/build/tenchu/tenchu.{bin,cue}
 $ ./Build iso-mod        # modded main.exe   -> .shake/build/tenchu/tenchu-mod.{bin,cue}
+$ ./Build iso-relink     # normal relink     -> .shake/build/tenchu/tenchu-relink.{bin,cue}
 $ ./Build run            # FAST: -loadexe main.exe over the original disc (no repack)
 $ ./Build run-iso        # FAITHFUL: repack the disc with main.exe and boot it
 $ ./Build run-mod        # fast, -loadexe the modded main.exe
 $ ./Build run-iso-mod    # FAITHFUL: repack the disc with the modded main.exe and boot it
+$ ./Build run-relink     # fast, -loadexe the normal-link main_relink.exe
+$ ./Build run-iso-relink # full boot from the auto-packed relink disc
 ```
 
 **Mods are patched in place, so the disc stays faithful.** `./Build mod`
@@ -34,20 +37,29 @@ its original slot (up to the next symbol), so `main_mod.exe` is **exactly the sa
 size** as `main.exe`. That lets mkiso retain every dumped `offs=` placement: the
 rebuilt data track is byte-identical to the original except `MAIN.EXE`'s sectors.
 
-A larger explicitly supplied executable cannot fit the original 271-sector
-`MAIN.EXE` slot. `tools/mkiso.py` handles that mechanically by removing forced
-offsets and letting mkpsxiso auto-pack the data track. The resulting disc-layout
-change is not yet an end-to-end-supported gameplay path. A source audit found
-file-name lookup (`CdSearchFile`) and relative clip offsets, and did not prove
-embedded absolute starting LBAs for the large streams, but that is not a runtime
-proof. Before calling a grown image supported, test the complete
-`SLPS→MENU→MAIN` handoff, STR playback, and representative XA playback.
+A larger relink cannot fit the original 271-sector `MAIN.EXE` slot.
+`iso-relink` uses `tools/mkiso.py`, which handles that mechanically by removing
+forced offsets and letting mkpsxiso auto-pack the data track.
+
+The static executable/media audit supports this design more strongly than a
+generic “LBAs might be embedded” warning:
+
+- RUN reads the fixed `0x80100000` handoff record and `Exec` starts the loaded
+  executable at the PC from its PS-X header; neither calls a fixed retail MAIN
+  entry address;
+- MAIN's AFS/XA paths use filenames and `CdSearchFile`/`CdlFILE` positions; and
+- MENU/SLPS/ENDING STR paths likewise search by filename and consume returned
+  file positions.
+
+That is static evidence, not an emulator result. Before calling a grown disc
+runtime-proven, test the complete `SLPS→MENU→MAIN` handoff, representative STR
+playback, and representative XA playback with `run-iso-relink`.
 
 If a modded function outgrows its slot, `./Build mod` aborts and tells you by how many
 bytes — trim it (drop debug logging, simplify) until it fits. See
 [modding-and-nonmatching.md](modding-and-nonmatching.md).
 
-Two ways to launch:
+The matching and relink lanes each have a fast and a full-boot launch:
 
 - **`./Build run`** (fast) mounts the original disc and `-loadexe`s our `main.exe`
   over it — no ISO repack, so the edit→test loop is just `./Build run`. Because
@@ -57,11 +69,18 @@ Two ways to launch:
 - **`./Build run-iso`** (faithful) boots the repacked disc (our `MAIN.EXE` swapped
   in), running the real `SLPS_019.01 → … → MAIN.EXE`. You can also load `tenchu.cue`
   by hand (drag it into pcsx-redux, or *File → Open Disk Image*).
+- **`./Build run-relink`** is the same fast direct-load path for
+  `main_relink.exe`. The normal-link finalizer has already regenerated its
+  header PC/load/size fields.
+- **`./Build run-iso-relink`** boots `tenchu-relink.cue` through the real
+  launcher chain. When `main_relink.exe` outgrows retail, this is the
+  auto-packed image whose full boot and media paths need validation.
 
-`tenchu.{bin,cue}` (and `tenchu-mod.{bin,cue}`) are real Shake targets, so `iso` /
-`run-iso` **repack only when the exe changed** — repeated `run-iso` launches don't
-rebuild the ~750 MB image. The one thing not tracked is a swap of the *original*
-disc (mkiso.py discovers it dynamically): `./Build clean` to force a repack then.
+`tenchu.{bin,cue}`, `tenchu-mod.{bin,cue}`, and
+`tenchu-relink.{bin,cue}` are real Shake targets, so the ISO launchers **repack
+only when their executable changed**—repeated launches do not rebuild the
+~750 MB image. The one thing not tracked is a swap of the *original* disc
+(`mkiso.py` discovers it dynamically): `./Build clean` to force a repack then.
 
 `run` finds the emulator via `$PCSX_REDUX`, then `pcsx-redux` on `PATH`, then
 `~/programming/pcsx-redux/pcsx-redux`; extra emulator flags go in `$PCSX_REDUX_ARGS`.
@@ -93,10 +112,11 @@ supply a real BIOS and opt in:
   sectors, exactly like `./Build iso`. So the full boot chain and all streamed
   movies/XA work; `run-iso-mod` is the faithful way to play a mod.
 
-- **A larger executable passed directly to `tools/mkiso.py --exe ...`** is
-  auto-packed. This is the intended packaging mechanism for the future normal
-  relink, but its boot and media behavior remains a required validation gate,
-  not a proven failure and not yet a supported `./Build` target.
+- **`./Build iso-relink`** puts `main_relink.exe` on the disc. A retail-sized
+  output retains forced placement; a larger output is auto-packed. Packaging is
+  implemented, and static code inspection supports the relocated file
+  positions, but the grown image's full boot plus STR/XA behavior remains a
+  required runtime validation gate.
 
 ## How it works
 

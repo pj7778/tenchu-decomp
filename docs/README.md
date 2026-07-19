@@ -35,11 +35,12 @@ decisions behind the toolchain. It's the reference companion to the terse
 - [relocatable-build.md](relocatable-build.md) — why shiftability does not
   require decompiling every PsyQ routine into C, how MGS/Silent Hill/SOTN handle
   stock SDK code, the exact `GS_107.OBJ` relocation proof, the implemented
-  linker-owned game/SDK-text/BSS gates, and the remaining path to a grown
-  executable.
+  linker-owned game/SDK/data/BSS layout, dynamic pool, zero-finding audit, and
+  complete `+0x10004` GNU-ld growth proof.
 - [relocatable-data.md](relocatable-data.md) — the loaded-data pointer
   inventory, exact-interior-label policy, and the manifest-driven
-  `R_MIPS_32` table slices with a standalone retail/`+4`/`+0x10004` gate.
+  208-word `R_MIPS_32` set—including byte-packed and unaligned cases—with a
+  standalone retail/`+4`/`+0x10004` gate.
 - [psx-exe-finalizer.md](psx-exe-finalizer.md) — the PS-X EXE
   finalizer/validator used by the normal-link BSS proof: ELF/map symbol
   resolution, sector padding, regenerated PC/load/size fields, and header
@@ -49,10 +50,10 @@ decisions behind the toolchain. It's the reference companion to the terse
 - [matching-get-held-buttons.md](matching-get-held-buttons.md) — a worked
   case study of trying to byte-match a real function, and what makes it hard.
 - [modding-and-nonmatching.md](modding-and-nonmatching.md) — building
-  non-matching binaries (behaviour changes, debug): what works (same-size edits)
-  and how to handle growth.
-- [building-an-iso.md](building-an-iso.md) — `./Build iso` / `iso-mod`: rebuild a
-  bootable CD image (`.bin`/`.cue`) for pcsx-redux with our `main.exe`.
+  non-matching binaries (behaviour changes, debug): fixed-slot edits versus the
+  implemented normal size-changing relink.
+- [building-an-iso.md](building-an-iso.md) — `iso`, `iso-mod`, and `iso-relink`:
+  rebuild a bootable CD image (`.bin`/`.cue`) for pcsx-redux with our executable.
 - [permuter.md](permuter.md) — `tools/permute.py`: run decomp-permuter to
   byte-match register-allocation-hard functions.
 - [ghidra-bridge.md](ghidra-bridge.md) — pull decompiled C from your Ghidra
@@ -87,6 +88,14 @@ BUILD GREEN (byte-identical)
   18 are canonical handwritten-assembly originals, so game code is 555/555
   done. Run `tools/progress.py` for the authoritative current count; parallel
   SDK work makes totals stale quickly.
+- The separate `./Build relink` lane is now a genuine normal GNU-ld link, not a
+  patch/trampoline scheme. Complete SDK text carries 7,540 relocations, the
+  reviewed data manifest carries 208 pointer relocations, movable ABS/raw
+  address findings are zero, BSS and allocator capacity are linker-derived,
+  ordinary pinned-C small/common sections are retained near `_gp`, and
+  `check-relink` proves a complete `+0x10004` growth with a regenerated PS-X
+  header. Runtime validation of a grown full-boot disc remains distinct from
+  that static proof.
 
 ## What was wrong, and what got fixed
 
@@ -114,10 +123,16 @@ latent bugs. Fixed in this batch of work (see `build-system.md` for detail):
   [modding-and-nonmatching.md](modding-and-nonmatching.md).
 - **`./Build iso` / `iso-mod`** — rebuild a bootable `.bin`/`.cue` for pcsx-redux.
   See [building-an-iso.md](building-an-iso.md).
+- **`./Build relink` / `check-relink` / `iso-relink`** — allow ordinary linked
+  layout changes, reject movable fixed-address regressions, prove a 64-KiB-
+  crossing growth, and package the result for direct or full-boot testing. See
+  [relocatable-build.md](relocatable-build.md).
 
 ## Next step
 
-Resume with the preflight and live-target selection in
-[`flywheel-handoff.md`](flywheel-handoff.md). Do not select work from this
-README's dated progress count or an old `NON_MATCHING` comment without checking
+For shiftability, the next empirical gate is `run-relink` followed by an
+auto-packed `run-iso-relink` full boot with representative STR and XA playback.
+For source matching/provenance work, resume with the preflight and live-target
+selection in [`flywheel-handoff.md`](flywheel-handoff.md); do not select work
+from this README's dated count or an old `NON_MATCHING` comment without checking
 the current source and `tools/triage.py` first.

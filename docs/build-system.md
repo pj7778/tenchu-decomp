@@ -87,11 +87,17 @@ works from anywhere in the tree.
 ```console
 ./Build                 # build .shake/build/tenchu/main.exe
 ./Build check           # build + assert sha256 == disks/tenchu/main.exe
-./Build check-reloc-game  # alternate normal link: game symbols are linker-owned
-./Build check-reloc-bss   # alternate link: BSS/pool are real NOBITS regions
-./Build relink            # experimental normal GNU-ld/finalized PS-X EXE output
-./Build check-relink      # verify no-pad C/SDK/data/BSS/header composition
-./Build check-reloc-c-literals # natural C address expressions carry/apply relocs
+./Build relink          # normal GNU-ld/finalized PS-X EXE; changed sizes allowed
+./Build check-relink    # relink + header + zero-findings audit + 0x10004 growth proof
+./Build check-relink-growth # run the full GNU-ld growth proof directly
+./Build run-relink      # fast emulator launch of the normal-link executable
+./Build iso-relink      # auto-pack the normal-link executable into a disc image
+./Build run-iso-relink  # boot that disc through the real launcher chain
+./Build check-reloc-game      # focused exact linker-owned-game oracle
+./Build check-reloc-c-literals # focused symbolic-C relocation oracle
+./Build check-reloc-sdk       # complete canonical SDK retail/+4 oracle
+./Build check-reloc-data      # 208 reviewed data pointers, three layouts
+./Build check-reloc-bss       # exact linker-owned BSS/pool/header oracle
 ./Build all             # build all six executables
 ./Build check-all       # build + assert sha256 for all six
 ./Build clean           # remove .shake/{gen,build,processed}
@@ -106,47 +112,59 @@ stays main-only because `tools/matchdiff.py` calls it once per iteration.
 `check-reloc-game` is an opt-in exact-at-retail proof lane. It generates a
 filtered symbol script and a linker script with section-relative anchors for
 all 555 game inputs, then writes
-`.shake/build/tenchu/main_reloc_game.exe{,.elf}`. It does not replace the
-default build and does not yet permit a runnable grown image: the raw SDK
-owners, fixed PS-EXE header, and fixed BSS layout remain unchanged. See
-[`relocatable-build.md`](relocatable-build.md).
+`.shake/build/tenchu/main_reloc_game.exe{,.elf}`. It remains a useful bounded
+oracle, but `relink` is the complete size-changing composition; do not infer the
+current project state from the deliberately limited game-only artifact.
 
-`check-reloc-bss` composes with the game and SDK-prefix gates. It emits a logical initialized
-prefix at `.shake/build/tenchu/main_reloc_bss.logical` plus an ELF/map, then
-checks a real linker-owned NOLOAD BSS, an explicit NOLOAD `MemoryPool`
-reservation, and every known BSS symbol. The PS-X EXE finalizer reads
+`check-reloc-bss` composes with the game and complete SDK-text gates. It emits a
+logical initialized prefix at `.shake/build/tenchu/main_reloc_bss.logical` plus
+an ELF/map, then checks a real linker-owned NOLOAD BSS, an explicit retail
+NOLOAD `MemoryPool` reservation, and every known BSS symbol. The PS-X EXE finalizer reads
 `__SN_ENTRY_POINT` and `__load_start` from that ELF, derives the load size, and
 adds the required sector padding; the resulting
 `.shake/build/tenchu/main_reloc_bss.exe` is byte-exact at retail layout. This is
-still a retail-address ownership proof, not a runnable grown executable. See
-the BSS layout and remaining blockers in
-[`relocatable-build.md`](relocatable-build.md#implemented-second-gate-linker-owned-bss-boundaries).
+intentionally the retail-address oracle. The normal relink uses the same owned
+boundaries with a dynamic pool; see
+[`relocatable-build.md`](relocatable-build.md#bss-allocator-and-ps-x-header).
 
 `./Build relink` builds a distinct no-boundary-pad GNU-ld/finalizer artifact at
 `.shake/build/tenchu/main_relink.exe`. It consumes the globally defined natural
-C variants before the canonical SDK and linker-owned layout transforms instead
-of reusing the retail-exact BSS artifact. Existing functions may grow, and new
-helper sources under `src/main.exe/reloc/` are collected into ordinary
-text/rodata/data, small-BSS, and BSS sections. The linker uses relative
-BSS/heap/GP assertions and rejects collision with the fixed `MemoryPool`. This
-target is an integration surface, not yet a claim that changed images run:
-remaining raw SDK/data and literal-reference blockers are tracked in
-`relocatable-build.md`.
+C variants before the complete canonical SDK, ten reviewed loaded-data
+replacements, and linker-owned layout transforms instead of reusing the
+retail-exact BSS artifact. Existing functions may grow, and helper sources under
+`src/main.exe/reloc/` join the normal link. BSS follows the initialized image;
+the allocator keeps its fixed upper bound but advances its base and recomputes
+its word capacity after the retail headroom is consumed. The finalizer derives
+the PS-X entry/load/size fields from the actual result.
+
+The normal generator also retains sections that an ordinary edit can newly
+introduce into an existing game C object. `.sdata` stays in the loaded gp-near
+extension; `.sbss`/`.scommon` stays in the gp-near BSS prefix; and
+`.bss.*`/GNU `COMMON` remains owned at BSS end. An integration test runs the
+pinned cc1/maspsx/assembler/linker chain over small and large initialized,
+tentative, static, const, float, and double objects. This is support for normal
+pinned-toolchain C sections, not arbitrary custom section attributes or growth
+beyond the RAM/linker assertions.
 
 `./Build check-relink` verifies that composition without assuming a fixed
 extension size: it derives the game-text delta from the actual compiler
 objects, requires every unique section-owned canonical-SDK symbol to follow,
-checks the applied C HI/LO records and dynamic extension/BSS boundaries, and
-validates the finalized PS-X EXE header. It also reports the still-absolute
-loaded targets (`D_80097D70`, `CamState`, and `StageChar`) as explicit runtime
-blockers.
+checks applied C HI/LO records and dynamic extension/BSS/pool boundaries, and
+validates the finalized PS-X EXE header. It then runs
+`tools/reloc_audit.py --fail-on-findings` and the complete growth probe. The
+current audit has zero movable ABS definitions, literal jumps, adjacent HI/LO
+candidates, or literal loaded pointers. The default `0x10004` probe checks
+7,706 section-owned layout symbols, all 208 manifest pointers, a real HI16
+carry, dynamic pool shrinkage, and the regenerated header after a full GNU-ld
+link.
 
 `check-reloc-c-literals` is the focused compiler-input half of that lane. It
 builds six matched sources under the single global `TENCHU_RELOCATABLE`
-variant, audits their ELF HI16/LO16 records, substitutes them in a controlled
+variant, audits their ELF HI16/LO16 records (including linker-derived
+`MemoryPoolCapacity` in both allocator paths), substitutes them in a controlled
 link, and verifies the linked addresses. The exact lane keeps its matching
-branches. The controlled link pads the net 12-byte shrink before the still-raw
-SDK, so this is not yet the arbitrary-growth linker.
+branches. Its bounded pad isolates this focused oracle only; `relink` has no
+such pad.
 
 ## The other five executables
 

@@ -59,8 +59,13 @@ byte-identical `main.exe`.
 - **Same-slot modding + emulator loop works:** `./Build mod` patches functions
   in place and rejects anything larger than the retail slot;
   `./Build iso`/`iso-mod` produce a bootable disc for pcsx-redux. The genuine
-  size-changing normal-link lane is separate work; `./Build check-reloc-game`
-  is its first exact-at-retail ownership gate. See docs/.
+  size-changing lane is now `./Build relink`: complete SDK/data/BSS ownership,
+  dynamic allocator capacity, a zero-finding widened address audit, regenerated
+  PS-X headers, ordinary pinned-C small/common section retention, and a full
+  `+0x10004` GNU-ld growth proof are composed under `./Build check-relink`.
+  `iso-relink`/`run-iso-relink` are wired for the next full-boot runtime
+  validation. See
+  [`docs/relocatable-build.md`](docs/relocatable-build.md).
 - **decomp.dev progress reporting wired up:** `./Build report` /
   `tools/objdiff-report.py` emit a valid objdiff v2 report (verified against the
   real `report.proto` with protoc); `.github/workflows/report.yml` uploads it as
@@ -437,11 +442,14 @@ Detailed dev docs live in [`docs/`](docs/). Ranked next steps:
 5. **CI**: a GitHub Actions job running `nix develop --command ./Build check`.
 6. **Per-function tooling**: `diff_settings.py` (asm-differ is in the devShell),
    `objdiff.json`, an `m2ctx.py` context generator, a `make <obj>` shim.
-7. **Grown-image disc validation:** once the normal-link lane can emit a larger
-   executable, validate the complete `SLPS -> MENU -> MAIN` chain, STR movies,
-   and representative XA playback on an auto-packed image. Current inspection
-   has not proved that Tenchu embeds absolute stream LBAs; do not treat that as
-   either guaranteed safe or a known blocker. See
+7. **Grown-image disc validation:** the normal-link lane now emits and
+   machine-checks a larger executable. Validate the complete
+   `SLPS -> MENU -> MAIN` chain, STR movies, and representative XA playback with
+   `run-iso-relink`. Static inspection supports auto-packing: RUN consumes the
+   fixed handoff then the loaded PS-X header PC, while the AFS/XA/STR paths use
+   filenames and `CdSearchFile`/`CdlFILE` positions rather than a fixed MAIN
+   entry or stream-start LBA. Treat that as evidence, not a substitute for the
+   runtime gate. See
    [`docs/building-an-iso.md`](docs/building-an-iso.md).
 
 ## Progress & the SDK endgame
@@ -465,10 +473,10 @@ combined `game done (C+asm)` line). For the SDK the options are:
 1. **Use symbolic assembly** — a valid relocatable source form when references
    are labels/relocations rather than embedded absolute words, and the right
    representation for proven handwritten routines. **Implemented through the
-   standalone SDK text stream at `0x800601d4..0x800834d0`:** all raw `.text`
-   inputs before `72CD0.data.s` are now canonical assembly, retail-exact, and
-   covered by a `+4` linked relocation proof. `72CD0.data.s` itself still begins
-   with raw SDK instructions and is the explicit next boundary.
+   complete SDK text stream at `0x800601d4..0x80086764`:** 20 canonical objects
+   carry 7,540 relocation records, remain retail-exact, and pass a `+4` linked
+   proof. Loaded data now begins at the separate `75F64.data.s` input; there is
+   no remaining raw `72CD0` instruction boundary.
 2. **Link original PSY-Q objects**: convert SDK `.OBJ`/`.LIB` members with
    a pinned converter such as PCSX-Redux's `psyq-obj-parser` and let the
    linker use them instead of asm blobs. Needs a user-provided PSY-Q SDK
@@ -502,14 +510,15 @@ combined `game done (C+asm)` line). For the SDK the options are:
    `SetPolyF4` ×5 (looked cc1-compatible per the interrupted agent — true
    pointer-parameter leaves), `EVENT_OBJ_BC` ×8, `funcEvSpIOE` ×8, plus many
    2–4s. The game metric is now complete; pursue SDK C only where natural
-   complete-object evidence makes it a clean editable-source win, while the
-   external-object lane handles bulk relocation.
+   complete-object evidence makes it a clean editable-source win. Canonical
+   assembly already handles bulk relocation; the external-object lane is an
+   optional provenance/source-form improvement.
 
-Recommended: keep (1) in the hermetic reference build; expand the now-working
-`GS_107.OBJ` implementation of (2) into an optional external-object lane for
-the long-term shiftability goal; use (3) for
-readability or SDK routines we intend to modify. This follows MGS and Silent
-Hill precedent and is backed by an exact-at-retail/links-at-new-address
+Recommended: keep (1) in the hermetic reference and normal-link builds; expand
+the now-working `GS_107.OBJ` implementation of (2) only when better original
+provenance is worth the external SDK dependency; use (3) for readability or
+SDK routines we intend to modify. This follows MGS and Silent Hill precedent
+and is backed by an exact-at-retail/links-at-new-address
 `GS_107.OBJ` lane documented in `docs/psyq-object-lane.md` and
 `docs/relocatable-build.md`. Progress
 uploading (frogress / decomp.dev) can consume `tools/progress.py --json` from
@@ -525,6 +534,10 @@ CI later.
   `main_mod.exe` stays the same size and the disc rebuild stays byte-faithful.
   See [`docs/modding-and-nonmatching.md`](docs/modding-and-nonmatching.md) and
   `tools/mkmod.py`.
+- **Size-changing edits**: `./Build relink` is the normal GNU-ld artifact;
+  `check-relink` runs the zero-finding address audit and complete `+0x10004`
+  growth proof, `run-relink` launches it directly, and
+  `iso-relink`/`run-iso-relink` package and boot it through the real disc chain.
 
 ## Running in an emulator (`./Build iso`)
 

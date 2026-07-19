@@ -3,17 +3,21 @@
 You don't always want a byte-match — modifying behaviour, adding debug output,
 cheats, etc. This documents what works today and how to make deviations run.
 
-## Building a non-matching binary
+## Choose the build contract
 
-`./Build` already builds regardless of matching — only `./Build check` compares
-the sha256. So the mod workflow is just:
+The default and relink commands have deliberately different jobs:
 
 ```console
-$ # edit src/main.exe/<fn>.c however you like
-$ ./Build            # produces .shake/build/tenchu/main.exe (no hash gate)
+$ ./Build             # reference layout/matching branches; same-size edits only
+$ ./Build mod         # patch selected same-slot sources into main_mod.exe
+$ ./Build relink      # normal GNU-ld layout; functions/data/BSS may move
+$ ./Build check-relink # structural audit plus full +0x10004 growth proof
 ```
 
-`check` is only for verifying a decomp still matches; ignore it while modding.
+`./Build check` is only for verifying that the reference decomp still matches
+retail. It is not the size-changing mod gate. For a normal source edit, build
+`main_relink.exe` and launch it with `run-relink` or package it with
+`iso-relink`.
 
 ## What works: same-size edits (verified)
 
@@ -28,30 +32,27 @@ Same-size covers a lot: changing constants/immediates, swapping a branch
 condition, changing which register/field is used, reordering independent ops,
 tweaking arithmetic. Prefer these when you want a drop-in behaviour change.
 
-## What breaks: size-changing edits (and why)
+## Why size changes break the reference lane
 
 Adding or removing instructions (e.g. a `printf` debug line, an extra call)
 **changes the function's size**. Verified: adding a second call to
 `get_held_buttons` grew the binary by 8 bytes and made ~68% of the file differ —
 because everything laid out **after** the edited function shifts down by 8.
 
-The build still succeeds (it links), but the result is **not runnable as-is**,
-because this is a *partial* decomp with a fixed memory layout:
+The reference build may still link, but that artifact is **not the right
+runtime contract** for a size change:
 
 - The linker script places sections **sequentially** from `0x80011000`, so a
   function that grows pushes every later function and data block down.
-- The data is a **mix**: splat has resolved ~1300+ pointers in the first data
-  block alone to **symbolic** references (jump tables, function pointers) that
-  the linker relocates — but thousands of other words are still **raw** bytes,
-  including pointers it hasn't symbolised yet, plus a set of **fixed** addresses
-  in `config/symbols.main.exe.txt` / `undefined_symbols_auto`.
+- The reference data is a mix of symbolic directives and retail raw bytes, and
+  its symbol scripts intentionally retain fixed retail assignments.
 - When code shifts, the symbolic references move with it but the raw/fixed ones
   don't. The two disagree → the binary is internally inconsistent → it crashes.
 - The PS-EXE header's `.text` size (`0x00087000`, hardcoded in the generated
   `header.s`) also no longer matches the grown image.
 
-In short: a fixed-layout partial decomp can absorb *substitutions* but not
-*insertions*.
+In short: the exact reference lane can absorb *substitutions* but is not the
+normal-link lane for *insertions*.
 
 ## Existing convenience lane: `./Build mod` — patch in place
 
@@ -80,12 +81,11 @@ same size, PS-EXE header untouched — so the disc rebuild keeps forced LBAs and
 on any emulator or real hardware. `src/main.exe/` (the matching decomp) is untouched;
 mods live only in `src/mod/main.exe/`.
 
-This target is intentionally in-place. It is useful before the normal-link lane
-is complete, but it is not the architecture for size-changing edits and it does
+This target is intentionally in-place. It remains useful for a minimal
+byte-faithful disc diff, but it is not the architecture for size-changing edits and it does
 not use trampolines or a hidden mod region. A genuine relink can move code,
 loaded data, BSS, and linker-derived boundaries within the executable's RAM
-budget; the obstacle is making every in-image reference relocation-aware, not
-finding a permanent fixed-address cave.
+budget.
 
 **If it doesn't fit**, `./Build mod` aborts with the overage, e.g.:
 
@@ -98,25 +98,47 @@ Trim the function — drop debug/log calls, simplify Ghidra-isms — until it fi
 worked example `ProcItemKusuri.c` drops the original's `AdtMessageBox("item dispose
 fail…")` diagnostic, which is never hit in normal play, to make room.)
 
-## Size-changing goal: a normal relink
+## Size-changing normal relink
 
-`./Build check-reloc-game` is the first exact-at-retail proof for that path. It
-removes fixed address assignments for all 555 game inputs and lets GNU `ld` own
-their symbols; the resulting executable still matches retail byte-for-byte.
-It does **not** yet make a grown image runnable. Remaining work is tracked in
-[relocatable-build.md](relocatable-build.md):
+The static normal-link path is implemented. Edit a game source normally, add a
+helper under `src/main.exe/reloc/` when useful, then run:
 
-- convert raw CRT/SDK instruction words into original relocatable objects or
-  canonical symbolic assembly;
-- make pointer-bearing loaded data symbolic, including interior pointers;
-- give loaded data, BSS, `_gp`, startup clear bounds, and heap boundaries to the
-  linker while retaining only reviewed fixed MMIO/cross-executable addresses;
-- regenerate the PS-X EXE entry/load-size fields after link; and
-- validate the 2 MiB RAM ceiling, complete executable handoff chain, and media
-  playback on a repacked disc.
+```console
+$ ./Build check-relink
+$ ./Build run-relink       # fast direct MAIN.EXE launch
+$ ./Build iso-relink       # package the actual normal-link executable
+$ ./Build run-iso-relink   # full SLPS/MENU/MAIN boot
+```
 
-At that point an ordinary function can grow and the linker can choose the new
-layout. No call-site trampoline scheme is part of that design.
+The normal lane retains the pinned compiler's ordinary output sections for
+both existing game objects and new helper files. That includes small and large
+initialized/tentative globals, statics, const/float/double data,
+`.sdata`/`.sbss`/`.scommon`, `.bss.*`, and GNU `COMMON`; gp-small objects are
+kept within signed GPREL16 reach. “Whatever C” is scoped to those normal
+toolchain sections and available PS1 RAM, not arbitrary custom section
+attributes or unlimited data.
+
+The composed linker owns all 555 game inputs, the complete CRT/SDK stream,
+initialized data, `_gp`, BSS, allocator boundaries, and the PS-X header. The
+reviewed data transform supplies 208 `R_MIPS_32` pointer records. The widened
+audit reports zero movable absolute symbols, literal jumps, adjacent address
+pairs, or data pointers.
+
+`check-relink` also performs a real GNU-ld link with `0x10004` bytes inserted
+after `main.c.o`. That proof checks 7,706 owned symbols, all 208 loaded pointers,
+HI16 carry behavior, BSS movement, dynamic allocator shrinkage, and a changed
+PS-X entry/load size. The linker chose PC `0x80070260` and `t_size=0x97000` for
+the grown fixture; no per-function slot, cave, trampoline, or fixed downstream
+address is involved.
+
+This is static/link-time proof, not yet a claim that every grown gameplay path
+has run successfully. Growth remains bounded by the PS1 RAM map, the fixed
+cross-executable handoff, allocator/stack space, and MIPS relocation ranges.
+The auto-packed disc path has static support for filename-based
+`CdSearchFile`/`CdlFILE` positions, but the full boot plus representative STR
+and XA playback remain runtime validation gates. See
+[relocatable-build.md](relocatable-build.md) and
+[building-an-iso.md](building-an-iso.md).
 
 ## Running a modified exe
 
@@ -128,3 +150,7 @@ your function (see [building-an-iso.md](building-an-iso.md)):
 - `./Build run-iso-mod` — **faithful**: repacks the disc with `main_mod.exe` (forced
   LBAs, streamed cutscenes intact) and runs the full `SLPS→MENU→MAIN` boot. Use this
   to actually play a mod.
+
+For a size-changing normal link, use `run-relink` for the fast direct launch and
+`run-iso-relink` for the full launcher/media path. Those commands consume
+`main_relink.exe`, not the fixed-slot mod artifact.
