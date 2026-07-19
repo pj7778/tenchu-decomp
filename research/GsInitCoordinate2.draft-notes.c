@@ -18,10 +18,10 @@
 extern MATRIX GsIDMATRIX;
 
 /*
- * STATUS: NON_MATCHING — LENGTH MISMATCH, 27 insns vs the target's 28. The
- * SEMANTICS are right (Ghidra agrees, and the struct-copy expansion, the WORLD
- * test, and the base->super reload all reproduce); the residual is address
- * materialisation + register choice, and it is one insn, not a byte tie.
+ * STATUS: NON_MATCHING IN THE REPOSITORY PROFILE, but the C below is exact under
+ * Sony's real PsyQ 4.3 CC1PSX.EXE (`2.7.2.SN32.3.7 Build 0001`). Its 28
+ * instructions, relocations, and linked bytes all reproduce the target. The
+ * default PsyQ 4.4/4.5 2.8.1 compiler still emits only 27 instructions:
  *
  *   TARGET                        OURS
  *     move  a3,a1                 (absent)
@@ -39,10 +39,42 @@ extern MATRIX GsIDMATRIX;
  * at all (a0..a3, v0, v1), so our t0 says we hold one more value live than it
  * does, at the point where the address is formed.
  *
- * So the question is the ADDRESS SHAPE, not the copy: what makes cc1 form
- * &GsIDMATRIX in place rather than through a second register? See the cookbook's
- * addressing-shape family and `tools/maspsxflags.py` (already run, no gp-extern
- * needed). Everything else is already exact.
+ * This does NOT justify selecting 2.7.2 for this function alone. The original
+ * PsyQ 4.5 MATRIX.OBJ contains ten public functions, in this order:
+ *
+ *   GsInitCoordinate2, GsInitCoord2param, GsSetLsMatrix, GsSetLightMatrix,
+ *   GsSetLightMatrix2, GsMulCoord0, GsMulCoord2, GsMulCoord3, print_matrix,
+ *   print_vector
+ *
+ * (DSTACK is the same member's 128-byte BSS object; GsSetNearClip is the next
+ * archive member, GS_101.OBJ.) Compiler selection must therefore be made for
+ * all ten functions as one object.
+ *
+ * The whole-object check rejects the packaged 4.3 compiler: unchanged, already
+ * exact C for GsSetLsMatrix and GsMulCoord0/2/3 reproduces every target
+ * instruction except the non-leaf return. Build 0001 emits
+ *
+ *     addiu sp,sp,N; jr ra; nop
+ *
+ * where the target and 2.8.1 emit
+ *
+ *     jr ra; addiu sp,sp,N
+ *
+ * Explicit delayed-branch/scheduler flags, optimisation levels, and natural
+ * explicit-return spellings do not change that 2.7.2 epilogue. Applying a
+ * compiler override just to GsInitCoordinate2 would hide this contradiction.
+ *
+ * Primary archive evidence explains why a tempting single-version attribution
+ * fails. PsyQ 4.3 LIBGS stores the routines as separate MATRIX1..11.OBJ members:
+ * MATRIX2's GsInitCoordinate2 core is the exact 2.7.2 shape above, while
+ * MATRIX4/7/8/9 have the target's 2.8.1-style filled return slots. After
+ * removing each member's section-end alignment, all ten 4.3 text cores are
+ * byte-identical to the corresponding slices of the combined PsyQ 4.4/4.5
+ * MATRIX.OBJ; the 4.4 and 4.5 objects are themselves byte-identical. The
+ * library member therefore preserves mixed historical code-generation
+ * provenance (or an unavailable internal compiler build), despite being one
+ * linker object in the game. Until one executable reproduces every carved
+ * member, keep the normal whole-object profile and this correct source guarded.
  */
 #ifndef NON_MATCHING
 INCLUDE_ASM("config/../.shake/gen/main.exe/asm/nonmatchings/GsInitCoordinate2", GsInitCoordinate2);
