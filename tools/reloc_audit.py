@@ -28,7 +28,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # BSS meets HEAP_START.
 MAIN_START = 0x80011000
 LEADING_DATA_END = 0x80016134
-GAME_CODE_END = 0x80060268
+# AdtSelect ends at 0x800601d4.  Exec and the small PC* wrappers immediately
+# after it are PsyQ/runtime inputs too; __SN_ENTRY_POINT is not the SDK boundary.
+GAME_CODE_END = 0x800601D4
 CODE_END = 0x80086764
 LOADED_END = 0x80098000
 MOVABLE_END = 0x800CDBAC
