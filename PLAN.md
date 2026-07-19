@@ -431,7 +431,17 @@ Best remaining leads, roughly in value order:
 1. **Match more functions.** Every batch of function renames unlocks more data symbols
    (`datamatch.py` can only see a global through a function named on both sides).
    Re-run `tools/datamatch.py` after each; it proposes zero today because it has
-   harvested everything the current 997 shared names reach.
+   harvested everything the current shared names reach. **Re-verified at 555/555
+   (2026-07-20):** the full four-matcher sweep yielded one genuinely new name
+   (`SsUtKeyOffV`, adopted green; four other proposals were stale-snapshot
+   duplicates of already-adopted names), zero multi-vote data proposals, and 48
+   recorded single-vote data candidates. The 73 remaining unnamed retail
+   functions are structurally out of the demo's reach (canonical draw*/GTE
+   bodies, DecodeTMD-family renderers, SDK leaves absent from the demo). The
+   next real unlock is lead 2 below: naming MENU.EXE/ENDING.EXE creates new
+   shared edges — the unplaced demo TUs (OPENING.C, MOJI.C, the
+   `get_stream`/`strInit` STR family) live there, which is also where the
+   opening-movie FMV player was traced during the runtime-gate work.
 2. **`MENU.EXE` / `ENDING.EXE`.** The 61 unplaced demo functions — `OPENING.C`,
    `OPMOVIE.C`, `MOJI.C` — are presumably there; the demo was one monolithic
    `PSX.EXE`. The same four matchers apply. The build now carries all six
