@@ -40,7 +40,6 @@
  * GsLinkObject4((u_long)(adr + 2), &base->object, 0);`).
  */
 extern void *valloc(u32 size);
-extern MATRIX *RotMatrixYXZ(SVECTOR *r, MATRIX *m);
 
 typedef struct
 {

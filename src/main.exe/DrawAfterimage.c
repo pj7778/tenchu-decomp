@@ -130,7 +130,6 @@ typedef struct
     POLY_GT4 poly;        /* 0x24 */
 } AfterimageType;
 
-extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 extern SVECTOR UnitVector;
 extern GsOT *OTablePt;
 

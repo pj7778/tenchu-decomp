@@ -56,7 +56,6 @@ extern s16 SR;
 extern u16 Attrib;
 extern s32 (*AttackFunc[])(void);
 
-extern s32 SquareRoot0(s32 value);
 extern s16 SuccessionAttack(s32 distance, s16 degree);
 extern s16 Think3attack(void);
 extern s16 turn_towards_player_(s32 x_diff, s32 z_diff);

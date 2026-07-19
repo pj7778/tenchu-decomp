@@ -258,7 +258,6 @@ typedef struct
 extern GsSPRITE D_800BEAA8[];
 extern GsOT *OTablePt;
 extern void GetScreenPosition(s32 x, s32 y, s32 z, SVECTOR *scr);
-extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 
 void DrawImpact(TEffectSlot *ef)
 {

@@ -88,9 +88,6 @@ extern ModelType *D_80097F34;
 extern VECTOR *GetAbsolutePosition(ModelType *model, s32 x, s32 y, s32 z);
 extern void FUN_80037e0c(Humanoid *human, s32 mode);
 extern void DrawSplash(TEffectSlot *ef);
-extern MATRIX *RotMatrixYXZ(SVECTOR *rotation, MATRIX *matrix);
-extern MATRIX *ScaleMatrix(MATRIX *matrix, VECTOR *scale);
-extern s32 RotTransPers(SVECTOR *vector, s32 *screen, s32 *p, s32 *flag);
 void DrawShadow(Humanoid *human)
 {
     VECTOR scale;

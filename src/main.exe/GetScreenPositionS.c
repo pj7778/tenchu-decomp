@@ -57,7 +57,6 @@
  */
 
 extern GsRVIEW2 ViewInfo;
-extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 
 void GetScreenPositionS(s32 arg0, s32 arg1, s32 arg2, s32 *arg3)
 {

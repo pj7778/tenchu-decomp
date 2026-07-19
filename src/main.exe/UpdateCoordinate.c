@@ -28,7 +28,6 @@
  * its Euler rotation, then clear the GsCOORDINATE2 dirty flag. `dim` survives
  * the RotMatrixYXZ call (callee-saved $s0) for the trailing flg store.
  */
-extern MATRIX *RotMatrixYXZ(SVECTOR *r, MATRIX *m);
 
 void UpdateCoordinate(ModelType *dim)
 {

@@ -96,7 +96,6 @@
  */
 
 extern void DrawTMD(GsDOBJ2 *obj, GsOT *ot, s32 mode);
-extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 extern short SkipFrame;
 extern SVECTOR UnitVector;
 extern GsOT *OTablePt;

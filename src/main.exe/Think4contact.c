@@ -47,7 +47,6 @@ extern s16 SR;
 extern s16 Attrib;
 extern s16 Degree;
 extern s16 Think4abandon(void);
-extern s32 SquareRoot0(s32 x);
 
 s16 Think4contact(void)
 {

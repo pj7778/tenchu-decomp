@@ -215,9 +215,6 @@ extern GsRVIEW2 ViewInfo;
 extern POLY_F4 plyBleed;
 extern GsOT *OTablePt;
 extern MATRIX GsWSMATRIX;
-extern void SetTransMatrix(MATRIX *m);
-extern void SetRotMatrix(MATRIX *m);
-extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 
 void DrawBleed(TEffectSlot *ef)
 {

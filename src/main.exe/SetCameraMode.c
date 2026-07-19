@@ -111,10 +111,6 @@ extern s32 scratch_trans_1f800094[2];
 extern void GetVectorRotation(VECTOR *start, VECTOR *end, s32 *rx, s32 *ry);
 extern short FUN_8002fd9c(Humanoid *h);
 extern int FUN_80039ddc(VECTOR *a, VECTOR *b, int c, int d);
-extern void RotMatrixYXZ(SVECTOR *r, MATRIX *m);
-extern void SetRotMatrix(MATRIX *m);
-extern void SetTransMatrix(MATRIX *m);
-extern void RotTrans(SVECTOR *v0, VECTOR *v1, long *flag);
 
 
 void SetCameraMode(s32 mode)

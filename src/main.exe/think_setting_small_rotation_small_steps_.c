@@ -28,7 +28,6 @@ extern think_func_ *Think4Func[];
 
 extern s16 turn_towards_player_(s32 x_diff, s32 z_diff);
 extern s16 GetDirection(s32 x_diff, s32 z_diff, s16 rotation);
-extern s32 SquareRoot0(s32 value);
 extern int rand(void);
 extern s16 Sound(Humanoid *human, s16 seid);
 extern Humanoid *BreedLife(s16 type, s32 x, s32 y, s32 z, s32 rotation);

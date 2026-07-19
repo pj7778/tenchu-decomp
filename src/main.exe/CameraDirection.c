@@ -55,8 +55,6 @@ extern GsRVIEW2 ViewInfo;
 
 extern void GetPadXY(s16 no, s16 *x, s16 *y);
 extern void SetCameraMode(s32 mode);
-extern s32 rsin(s32 angle);
-extern s32 rcos(s32 angle);
 extern void RotateVectorS(SVECTOR *vec, s32 rx, s32 ry, s32 rz);
 extern void FUN_80030644(VECTOR *pos, s32 amount);
 

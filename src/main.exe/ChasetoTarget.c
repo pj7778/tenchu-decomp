@@ -36,8 +36,6 @@
 extern short Attrib;
 extern long Distance;
 extern int rand(void);
-extern s32 rcos(s32 a);
-extern s32 rsin(s32 a);
 
 short ChasetoTarget(long length)
 {

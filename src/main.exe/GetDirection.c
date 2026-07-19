@@ -47,7 +47,6 @@
  * the "mid-range" not-taken path, where `result` is already the default)
  * as well as the shared join reached by the "too high"/"too low" paths.
  */
-extern s32 ratan2(s32 a, s32 b);
 
 s16 GetDirection(s32 dx, s32 dz, s32 roty)
 {

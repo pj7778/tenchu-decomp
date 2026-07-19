@@ -13,7 +13,6 @@
  * needs callmatch --verify plus a separate commit.
  */
 extern MATRIX _LC;
-extern void SetColorMatrix(MATRIX *m);
 
 /* MATCHING: the GS_107.OBJ compiler profile reconstructs the library backend's
  * symbolic-address block-move split. See docs/toolchain.md. */

@@ -107,8 +107,6 @@ extern void EndDrawing(s32 arg);
 extern void DisposeBG(void *background);
 extern void FUN_800515b0(GsSPRITE *number, s32 value, s16 x, s32 y,
                          s32 mode);
-extern s32 rcos(s32 angle);
-extern s32 rsin(s32 angle);
 extern void FadeOutDirect(s16 time, s16 attribute, u8 r, u8 g, u8 b);
 extern void FUN_80038ce0(void);
 extern void FUN_800514d8(void);

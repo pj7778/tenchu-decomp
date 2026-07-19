@@ -17,8 +17,6 @@
  * matrix via SetTransMatrix, then sets the current rotation matrix to the
  * global world-space matrix GsWSMATRIX.
  */
-extern void SetTransMatrix(MATRIX *m);
-extern void SetRotMatrix(MATRIX *m);
 extern MATRIX GsWSMATRIX;
 
 void PrepareGetScreenPositionS(void)

@@ -16,8 +16,6 @@
  * END PSX.SYM */
 
 extern s32 GameClock;
-extern void RotTrans(SVECTOR *in, VECTOR *out, long *flag);
-extern void ApplyRotMatrix(SVECTOR *in, VECTOR *out);
 extern void FUN_8003562c(TEffectSlot *ef);
 extern void DrawImpact(TEffectSlot *ef);
 

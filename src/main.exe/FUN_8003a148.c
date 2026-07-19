@@ -53,7 +53,6 @@
  */
 extern GsOT *OTablePt;
 extern void GetScreenPosition(s32 x, s32 y, s32 z, s32 *out);
-extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 
 void FUN_8003a148(GsSPRITE *sp, s32 x, s32 y, s32 z, s32 size, GsCOORDINATE2 *coord, short d)
 {

@@ -7,8 +7,6 @@
  * parts, then add m1's translation back in component-wise. Both matrices are
  * cached in callee-saved registers across the two calls.
  */
-extern void ApplyMatrixLV(MATRIX *m, VECTOR *v0, VECTOR *v1);
-extern void MulMatrix2(MATRIX *m0, MATRIX *m1);
 
 void GsMulCoord2(MATRIX *m1, MATRIX *m2)
 {

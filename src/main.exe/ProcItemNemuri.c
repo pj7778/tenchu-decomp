@@ -38,7 +38,6 @@ extern void Sound(Humanoid *human, s32 id);
 extern void SetBleeds(VECTOR *pos, s32 grange, short srange, s32 n,
                       int time, long col);
 extern long GetAreaMapLevel(u_long *area, long x, long y, long z, int mode);
-extern s32 rsin(s32 angle);
 extern s16 Think1sleep(void);
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's

@@ -21,9 +21,6 @@ extern s32 DrawTMDmode;
 extern ModelType *LOCAL_COORDINATES_;
 
 extern void FUN_80037e0c(Humanoid *human, s32 mode);
-extern MATRIX *RotMatrixYXZ(SVECTOR *rotation, MATRIX *matrix);
-extern MATRIX *ScaleMatrix(MATRIX *matrix, VECTOR *scale);
-extern s32 RotTransPers(SVECTOR *vector, s32 *screen, s32 *p, s32 *flag);
 extern void DrawTMD(GsDOBJ2 *object, GsOT *ot, s32 mode);
 
 void death_camera_something_(Humanoid *human)

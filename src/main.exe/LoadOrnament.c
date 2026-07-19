@@ -49,7 +49,6 @@ typedef struct
 } WorldType;
 
 extern void *valloc(u32 size);
-extern MATRIX *RotMatrixYXZ(SVECTOR *r, MATRIX *m);
 extern SVECTOR UnitVector;
 extern WorldType World;
 

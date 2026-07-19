@@ -71,10 +71,6 @@ extern GsRVIEW2 ViewInfo;
 extern MATRIX GsWSMATRIX;
 extern GsOT *OTablePt;
 
-extern void SetTransMatrix(MATRIX *matrix);
-extern void SetRotMatrix(MATRIX *matrix);
-extern s32 RotTransPers(SVECTOR *vector, s32 *screen, void *p, void *flag);
-extern s32 SquareRoot0(s32 value);
 extern long abs(long value);
 extern int rand(void);
 extern void *memset(void *dst, int value, u32 size);

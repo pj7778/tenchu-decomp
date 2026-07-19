@@ -89,7 +89,6 @@ extern TCameraStatus CamState;
 extern GsRVIEW2 ViewInfo;
 extern unsigned long *GlobalAreaMap;
 
-extern void VectorNormalSS(SVECTOR *v0, SVECTOR *v1);
 extern VECTOR *GetAreaMapPassage(unsigned long *area, VECTOR *pos, SVECTOR *vect, short n);
 
 void SnapCameraTargetVector(void)

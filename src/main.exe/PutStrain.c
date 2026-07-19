@@ -41,7 +41,6 @@ extern GsSPRITE D_800C0874;
 extern u16 D_80097F68;
 
 extern s16 SoundEx(VECTOR *locate, s16 seid);
-extern s32 rsin(u32 ang);
 
 /*
  * PutStrain (0x8004a8f0) — draws the "strain" HUD icon at (x,y): a

@@ -61,9 +61,6 @@ extern char D_80097A08[];
 extern char D_80097A0C[];
 
 extern void GetVectorRotation(VECTOR *start, VECTOR *end, s32 *rx, s32 *ry);
-extern void RotMatrixYXZ(SVECTOR *r, MATRIX *m);
-extern void SetRotMatrix(MATRIX *m);
-extern void ApplyRotMatrix(SVECTOR *in, VECTOR *out);
 extern long GetAreaMapLevel(unsigned long *area, long x, long y, long z,
                             int mode);
 void AntiWall(GsRVIEW2 *vinfo, GsRVIEW2 *target)

@@ -56,7 +56,6 @@
  *    pass to reproduce ASPSX's guarded `div` sequences.
  */
 
-extern void MulMatrix(MATRIX *left, MATRIX *right);
 
 void ArrangeLocalMatrix(ModelType *model, MATRIX *matrix)
 {

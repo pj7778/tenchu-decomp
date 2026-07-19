@@ -50,7 +50,6 @@
  * folding them together. `limit` then keeps j in v1 through the inner loop.
  */
 extern void *valloc(u32 size);
-extern MATRIX *RotMatrixYXZ(SVECTOR *r, MATRIX *m);
 extern void SystemOut(char *msg);
 extern char D_80011064[]; /* "NO MODEL ARCHIVE DATA" */
 

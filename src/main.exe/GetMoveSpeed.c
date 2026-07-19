@@ -43,8 +43,6 @@
  *    io/o resign locals — this function does no -0x100 byte-resign), so
  *    their (int) promotion is deferred to each expression's first use.
  */
-extern s32 rsin(s32 a);
-extern s32 rcos(s32 a);
 
 void GetMoveSpeed(SVECTOR *vect, short ry, short ordr, short side)
 {

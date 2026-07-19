@@ -7,8 +7,6 @@
  * translation through m1 straight into m3's translation slot, composes into m3,
  * then adds m1's translation back in place.
  */
-extern void ApplyMatrixLV(MATRIX *m, VECTOR *v0, VECTOR *v1);
-extern void MulMatrix0(MATRIX *m0, MATRIX *m1, MATRIX *m2);
 
 void GsMulCoord0(MATRIX *m1, MATRIX *m2, MATRIX *m3)
 {

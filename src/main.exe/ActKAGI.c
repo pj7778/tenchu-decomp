@@ -101,8 +101,6 @@ extern TCameraStatus CamState;
 
 extern s32 FUN_8004a368(s32 mode, Humanoid *human);
 extern s16 GetDirection(s32 dx, s32 dz, s32 roty);
-extern s32 SquareRoot0(s32 value);
-extern s32 ratan2(s32 y, s32 x);
 extern s32 SetFlyWire(VECTOR *start, VECTOR *end);
 extern void SetWire(VECTOR *start, VECTOR *end, VECTOR *center, s32 length);
 extern void ReqItemUse(PARAM_ITEM_USE *item);

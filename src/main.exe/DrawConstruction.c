@@ -104,7 +104,6 @@ extern char D_80012148[];
 extern char D_80097A98[];
 extern char D_80097AA0[];
 
-extern void SetRotMatrix(MATRIX *m);
 extern s32 IsVisible(s32 x, s32 y, s32 z, s32 range);
 extern void AdtMessageBox(char *message);
 extern void DrawTMD(GsDOBJ2 *obj, GsOT *ot, s32 mode);

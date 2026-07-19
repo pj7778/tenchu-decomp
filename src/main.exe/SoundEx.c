@@ -119,8 +119,6 @@ typedef struct
 
 extern SoundEffect *StageSE;
 
-extern s32 SquareRoot0(s32 x);
-extern s32 ratan2(s32 y, s32 x);
 extern short PlaySE(SoundEffect *se, short pt, long dv);
 
 short SoundEx(VECTOR *locate, short seid)

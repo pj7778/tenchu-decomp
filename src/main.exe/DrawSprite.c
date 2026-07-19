@@ -124,7 +124,6 @@ typedef struct
     GsSPRITE sprite;      /* +0x68 */
 } Sprite3D;
 
-extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 extern SVECTOR UnitVector;
 extern GsOT *OTablePt;
 extern s32 DrawTMDmode;

@@ -47,7 +47,6 @@ typedef struct
     GsCOORDINATE2 locate;        /* 0x00 */
 } OrnamentType;
 
-extern MATRIX *RotMatrixYXZ(SVECTOR *r, MATRIX *m);
 extern SVECTOR UnitVector;
 
 void UpdateOrnament(OrnamentType *objp, short ry)

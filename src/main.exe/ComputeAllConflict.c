@@ -51,7 +51,6 @@ extern s16 ConflictObjects;
 
 extern ModelType World;
 
-extern void RotTrans(SVECTOR *v0, VECTOR *sxy, long *flag);
 extern void *memset(void *s, int c, u32 n);
 
 /*

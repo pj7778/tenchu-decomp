@@ -57,9 +57,6 @@ extern GsSPRITE sprSplash;
 extern GsOT *OTablePt;
 extern SVECTOR D_80097A50[];
 
-extern void SetTransMatrix(MATRIX *matrix);
-extern void SetRotMatrix(MATRIX *matrix);
-extern s32 RotTransPers(SVECTOR *vector, s32 *screen, void *p, void *flag);
 extern void SetBleedsDir(VECTOR *pos, SVECTOR *vec, short grange, short n,
                          int time, long col);
 extern void *memset(void *dst, int value, u32 size);

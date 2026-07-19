@@ -75,7 +75,6 @@
  *    signed value still loads `lhu`).
  */
 extern void *valloc(u32 size);
-extern MATRIX *RotMatrixYXZ(SVECTOR *r, MATRIX *m);
 extern void SystemOut(char *msg);
 extern char D_8001107C[]; /* "NO SOURCE MODEL ARCHIVE DATA" */
 

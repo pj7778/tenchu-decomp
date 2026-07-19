@@ -11,7 +11,6 @@ extern u32 *GlobalAreaMap;
 extern s32 FRAMES_UNTIL_END_OF_ALERT;
 
 extern s16 GetDirection(s32 dx, s32 dz, s16 roty);
-extern s32 SquareRoot0(s32 value);
 extern VECTOR *GetAreaMapPassage(u32 *area, VECTOR *pos, SVECTOR *vect,
                                  s16 scale);
 extern s16 Sound(Humanoid *human, s16 id);

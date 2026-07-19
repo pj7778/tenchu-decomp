@@ -43,7 +43,6 @@ extern u16 Attrib;
 extern s32 FRAMES_UNTIL_END_OF_ALERT;
 extern u8 D_80010058;
 
-extern s32 SquareRoot0(s32 value);
 extern s16 GetDirection(s32 dx, s32 dz, s16 roty);
 extern s16 SetNowMotion(Humanoid *human, s16 mid, s16 move);
 extern s16 Sound(Humanoid *human, s16 id);

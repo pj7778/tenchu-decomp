@@ -9,8 +9,6 @@
  * no separate temp (cookbook's cached-pointer rule, same shape as
  * LoadTIMpackAndFree).
  */
-extern void SetRotMatrix(MATRIX *m);
-extern void SetTransMatrix(MATRIX *m);
 
 void GsSetLsMatrix(MATRIX *mp)
 {

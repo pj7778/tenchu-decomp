@@ -82,11 +82,6 @@ extern MATRIX GsWSMATRIX;
 extern GsOT *OTablePt;
 extern WireModel *ModelHook;
 
-extern void SetTransMatrix(MATRIX *matrix);
-extern void SetRotMatrix(MATRIX *matrix);
-extern s32 RotTransPers(SVECTOR *vector, s32 *screen, void *p, void *flag);
-extern s32 SquareRoot0(s32 value);
-extern s32 ratan2(s32 y, s32 x);
 extern long abs(long value);
 extern void GsSortLine(GsLINE *line, GsOT *ot, u16 priority);
 extern void UpdateCoordinate(WireModel *model);

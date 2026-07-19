@@ -63,9 +63,6 @@
 
 extern GsRVIEW2 ViewInfo;
 extern MATRIX GsWSMATRIX;
-extern void SetTransMatrix(MATRIX *m);
-extern void SetRotMatrix(MATRIX *m);
-extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 extern void DrawTargetS(s32 x, s32 y, s32 z, s32 arg3);
 
 void DrawTarget(s32 arg0, s32 arg1, s32 arg2, s32 arg3)

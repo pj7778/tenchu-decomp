@@ -92,8 +92,6 @@ extern s16 GetConflictResult(ModelType *model, s16 index);
 extern s16 GetDirection(s32 x, s32 z, s16 rotate);
 extern s16 SetNowMotion(Humanoid *human, s16 motion, s16 move);
 extern s16 Sound(Humanoid *human, s16 id);
-extern s32 rsin(s32 angle);
-extern s32 rcos(s32 angle);
 
 short DefaultActionHumanoid(Humanoid *human)
 {
