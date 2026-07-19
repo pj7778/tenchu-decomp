@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "description": "First exact-interior-label slice for MAIN.EXE loaded data",
+  "description": "Reviewed exact-interior-label slices for MAIN.EXE loaded data",
   "entries": [
     {
       "source_file": "72CD0.data.s",
@@ -73,6 +73,222 @@
       "target_address": "0x800135ac",
       "target_owner": "D_8001359C",
       "symbol": "stage_animation_prefix_default"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef28",
+      "source_owner": "ITEM_SEL_SPRITE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013824",
+      "target_owner": "D_800137A0",
+      "symbol": "item_selection_sprite_path_english"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef2c",
+      "source_owner": "ITEM_SEL_SPRITE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013800",
+      "target_owner": "D_800137A0",
+      "symbol": "item_selection_sprite_path_french"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef30",
+      "source_owner": "ITEM_SEL_SPRITE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x800137dc",
+      "target_owner": "D_800137A0",
+      "symbol": "item_selection_sprite_path_italian"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef34",
+      "source_owner": "ITEM_SEL_SPRITE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x800137b8",
+      "target_owner": "D_800137A0",
+      "symbol": "item_selection_sprite_path_japanese"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef38",
+      "source_owner": "RS_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013968",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rs_tim_path_english"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef3c",
+      "source_owner": "RS_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013948",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rs_tim_path_french"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef40",
+      "source_owner": "RS_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013928",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rs_tim_path_italian"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef44",
+      "source_owner": "RS_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013908",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rs_tim_path_japanese"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef48",
+      "source_owner": "RANK_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x800139f4",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rank_archive_path_english"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef4c",
+      "source_owner": "RANK_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x800139d0",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rank_archive_path_french"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef50",
+      "source_owner": "RANK_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x800139ac",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rank_archive_path_italian"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef54",
+      "source_owner": "RANK_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013988",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rank_archive_path_japanese"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef58",
+      "source_owner": "RANKS_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x800139f4",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rank_archive_path_english"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef5c",
+      "source_owner": "RANKS_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x800139d0",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rank_archive_path_french"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef60",
+      "source_owner": "RANKS_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x800139ac",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rank_archive_path_italian"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef64",
+      "source_owner": "RANKS_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013988",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "rank_archive_path_japanese"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef68",
+      "source_owner": "TRN_SPRITE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013a84",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "trn_sprite_path_english"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef6c",
+      "source_owner": "TRN_SPRITE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013a60",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "trn_sprite_path_french"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef70",
+      "source_owner": "TRN_SPRITE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013a3c",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "trn_sprite_path_italian"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef74",
+      "source_owner": "TRN_SPRITE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013a18",
+      "target_owner": "ITEM_HELP_TIM_PATHS",
+      "symbol": "trn_sprite_path_japanese"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef88",
+      "source_owner": "GOV_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013af0",
+      "target_owner": "D_80013AC0",
+      "symbol": "gov_archive_name_english"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef8c",
+      "source_owner": "GOV_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013ae4",
+      "target_owner": "D_80013AC0",
+      "symbol": "gov_archive_name_french"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef90",
+      "source_owner": "GOV_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013ad8",
+      "target_owner": "D_80013AC0",
+      "symbol": "gov_archive_name_italian"
+    },
+    {
+      "source_file": "72CD0.data.s",
+      "source_address": "0x8008ef94",
+      "source_owner": "GOV_ARCHIVE_PTRS",
+      "target_file": "2EB0.data.s",
+      "target_address": "0x80013acc",
+      "target_owner": "D_80013AC0",
+      "symbol": "gov_archive_name_japanese"
     }
   ]
 }

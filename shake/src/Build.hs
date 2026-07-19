@@ -1420,6 +1420,27 @@ phonyRules = do
       ]
     putInfo "check-reloc-bss: linker-owned BSS/pool and finalized PS-X EXE are retail-exact"
 
+  -- Standalone loaded-data proof.  The manifest transformer works on copies of
+  -- Splat output, so the matching build remains untouched.  The verifier
+  -- requires one R_MIPS_32 at every reviewed source word and links the touched
+  -- data inputs at retail, +4, and +0x10004 addresses.
+  phony "check-reloc-data" $ do
+    let t = mainTarget
+        dataDir = tgGenDir t </> asmDir </> "data"
+        manifest = configDir </> "reloc-data.main.exe.json"
+        transform = "tools" </> "reloc_data.py"
+        tool = "tools" </> "reloc_data_lane.py"
+        inputs = map (dataDir </>)
+          ["207C.data.s", "2EB0.data.s", "72CD0.data.s"]
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    need $ [manifest, transform, tool, "include" </> "macro.inc"] <> inputs
+    cmd_ "python3" tool
+      [ "--manifest", manifest,
+        "--input-dir", dataDir,
+        "--work-dir", buildDir </> "reloc-data"
+      ]
+    putInfo "check-reloc-data: reviewed pointer tables are retail-exact and shift-relocatable"
+
   -- Optional, evidence-preserving lane for the complete stock GS_107.OBJ.
   -- Nothing proprietary is fetched or tracked: point this one target at a
   -- local PsyQ LIBGS.LIB.  The tool verifies both archive and member hashes,

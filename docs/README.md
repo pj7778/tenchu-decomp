@@ -38,8 +38,8 @@ decisions behind the toolchain. It's the reference companion to the terse
   linker-owned game/SDK-prefix/BSS gates, and the remaining path to a grown
   executable.
 - [relocatable-data.md](relocatable-data.md) — the loaded-data pointer
-  inventory, exact-interior-label policy, and the first manifest-driven
-  `R_MIPS_32` slice with `+4`/`+0x10004` linker proofs.
+  inventory, exact-interior-label policy, and the manifest-driven
+  `R_MIPS_32` table slices with a standalone retail/`+4`/`+0x10004` gate.
 - [psx-exe-finalizer.md](psx-exe-finalizer.md) — the PS-X EXE
   finalizer/validator used by the normal-link BSS proof: ELF/map symbol
   resolution, sector padding, regenerated PC/load/size fields, and header

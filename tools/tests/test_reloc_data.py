@@ -72,21 +72,68 @@ class Fixture:
 
 
 class RewriteTests(unittest.TestCase):
-    def test_repository_manifest_is_the_reviewed_eight_word_slice(self) -> None:
+    def test_repository_manifest_contains_only_reviewed_named_tables(self) -> None:
         entries = reloc_data.load_manifest(ROOT / "config/reloc-data.main.exe.json")
-        self.assertEqual(len(entries), 8)
+        self.assertEqual(len(entries), 32)
         self.assertEqual(
             {entry.source_owner for entry in entries},
-            {"STAGE_SOUND_PREFICES", "STAGE_ANIMATION_PREFICES"},
+            {
+                "STAGE_SOUND_PREFICES",
+                "STAGE_ANIMATION_PREFICES",
+                "ITEM_SEL_SPRITE_PTRS",
+                "RS_ARCHIVE_PTRS",
+                "RANK_ARCHIVE_PTRS",
+                "RANKS_ARCHIVE_PTRS",
+                "TRN_SPRITE_PTRS",
+                "GOV_ARCHIVE_PTRS",
+            },
         )
         self.assertEqual(
             {entry.target_owner for entry in entries},
-            {"D_80013500", "D_8001359C"},
+            {
+                "D_80013500",
+                "D_8001359C",
+                "D_800137A0",
+                "ITEM_HELP_TIM_PATHS",
+                "D_80013AC0",
+            },
         )
         self.assertEqual(
             {entry.source_address for entry in entries},
-            set(range(0x8008EA58, 0x8008EA78, 4)),
+            set(range(0x8008EA58, 0x8008EA78, 4))
+            | set(range(0x8008EF28, 0x8008EF78, 4))
+            | set(range(0x8008EF88, 0x8008EF98, 4)),
         )
+        self.assertEqual(
+            len({(entry.target_file, entry.target_address) for entry in entries}),
+            28,
+        )
+        new_symbols = {
+            entry.symbol for entry in entries if entry.source_address >= 0x8008EF28
+        }
+        self.assertEqual(
+            new_symbols,
+            {
+                *(f"item_selection_sprite_path_{language}" for language in
+                  ("english", "french", "italian", "japanese")),
+                *(f"rs_tim_path_{language}" for language in
+                  ("english", "french", "italian", "japanese")),
+                *(f"rank_archive_path_{language}" for language in
+                  ("english", "french", "italian", "japanese")),
+                *(f"trn_sprite_path_{language}" for language in
+                  ("english", "french", "italian", "japanese")),
+                *(f"gov_archive_name_{language}" for language in
+                  ("english", "french", "italian", "japanese")),
+            },
+        )
+        for language in ("english", "french", "italian", "japanese"):
+            self.assertEqual(
+                sum(
+                    entry.symbol == f"rank_archive_path_{language}"
+                    for entry in entries
+                ),
+                2,
+            )
 
     def test_rewrite_inserts_exact_label_and_symbolic_word(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

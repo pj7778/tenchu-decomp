@@ -1,18 +1,21 @@
 # Relocatable loaded data
 
-`tools/reloc_audit.py` found a conservative set of 185 aligned literal words
-in loaded data that point back into the movable MAIN.EXE image. This is a much
-cleaner problem than the raw-code candidates:
+`tools/reloc_audit.py` initially found a conservative set of 185 aligned
+literal words in loaded data that point back into the movable MAIN.EXE image.
+The current generated-input topology reports 184; use the live audit rather
+than treating either historical count as an invariant. This is a much cleaner
+problem than the raw-code candidates:
 
-- all 185 source words are in trailing owner `72CD0.data.s`;
-- all 185 targets are in the leading-data range;
+- every initial and current candidate source word is in trailing owner
+  `72CD0.data.s`;
+- every target is in the leading-data range;
 - the targets inspected so far are exact string or string-pool entry starts;
   and
 - the generated owner around a target is often broader than the object being
   addressed, so rewriting a pointer as `D_800xxxxx + addend` would invent an
   ownership claim.
 
-The owner distribution is useful for batching the work:
+The initial owner distribution is useful for batching the work:
 
 | Generated source owner | Pointers |
 |---|---:|
@@ -65,17 +68,28 @@ changed pointer literals, duplicate sources, symbol/target conflicts, and
 attempts to overwrite the generated input directory all fail before any
 output is written.
 
-## First slice
+## Reviewed slices
 
-The committed manifest covers two clear, game-owned four-entry tables:
+The committed manifest covers eight clear, game-owned language tables. The
+first slice was:
 
 - `STAGE_SOUND_PREFICES` at `0x8008EA58..0x8008EA64`; and
 - `STAGE_ANIMATION_PREFICES` at `0x8008EA68..0x8008EA74`.
 
-Their eight targets are the default, Italian, French, and English path strings
-inside generated owners `D_80013500` and `D_8001359C`. The names are supported
-by the source table names and literal string contents. No wider type or
-top-level target symbol is inferred.
+The second slice adds six adjacent, named four-entry tables:
+
+- `ITEM_SEL_SPRITE_PTRS`;
+- `RS_ARCHIVE_PTRS`;
+- `RANK_ARCHIVE_PTRS` and `RANKS_ARCHIVE_PTRS`, which deliberately share the
+  same four targets;
+- `TRN_SPRITE_PTRS`; and
+- `GOV_ARCHIVE_PTRS`.
+
+Their strings spell the English, French, Italian, and Japanese filenames in
+the same order as the tables. Together the two slices cover 32 pointer words
+and 28 exact targets across `207C.data.s`, `2EB0.data.s`, and
+`72CD0.data.s`. The names are supported by the source table names and literal
+string contents. No wider type or top-level target symbol is inferred.
 
 Validate the manifest against a generated tree without writing anything:
 
@@ -84,7 +98,7 @@ $ tools/reloc_data.py \
     --manifest config/reloc-data.main.exe.json \
     --input-dir .shake/gen/main.exe/asm/data \
     --check
-reloc-data: validated 8 pointer words and 8 exact targets across 2 files
+reloc-data: validated 32 pointer words and 28 exact targets across 3 files
 ```
 
 Or write separate assembly inputs for a future normal-link lane:
@@ -96,22 +110,34 @@ $ tools/reloc_data.py \
     --output-dir .shake/build/reloc-data/asm
 ```
 
-Only the two touched files are emitted. This prototype is intentionally not
-wired into `./Build`; the default matching lane still consumes Splat's files
-unchanged.
+Only the three touched files are emitted. The default matching lane still
+consumes Splat's files unchanged.
+
+The standalone build gate applies the transform to temporary copies, assembles
+the touched objects, and performs the controlled links described below:
+
+```console
+$ ./Build check-reloc-data
+reloc-data-lane: verified 32 R_MIPS_32 pointer words, 28 exact targets, and 3 link layouts across 3 files
+check-reloc-data: reviewed pointer tables are retail-exact and shift-relocatable
+```
+
+This is an object/data relocation proof, not a runnable grown PS-X EXE.
 
 ## Binutils proof
 
 The proof uses GNU MIPS assembler and linker output, not a source-level
 assumption:
 
-- unmodified `72CD0.data.s.o` has 343 `.rel.data` records;
-- the rewritten object has 351, with the eight additions all `R_MIPS_32`
-  against the new exact target symbols;
-- each target symbol is section-relative in `207C.data.s.o` at the expected
-  interior offset, never `ABS`;
-- a retail-address partial link reproduces the eight shipped pointer words;
-- moving both loaded-data inputs by `+4` increments every pointer by `+4`; and
+- in the current generated tree, unmodified `72CD0.data.s.o` has 403
+  `R_MIPS_32` records and the rewritten object has 435;
+- the 32 additions are individually required to be `R_MIPS_32` at their exact
+  reviewed source offsets and against their exact target symbols;
+- each target symbol is section-relative at the expected interior offset in
+  `207C.data.s.o` or `2EB0.data.s.o`, never `ABS`;
+- a retail-address partial link reproduces all 32 shipped pointer words;
+- moving all touched loaded-data inputs by `+4` increments every pointer by
+  `+4`; and
 - moving them by `+0x10004` increments every pointer by `+0x10004`, including
   the high-word carry.
 
@@ -119,17 +145,19 @@ The focused test performs the same assemble/readelf/link checks with hermetic
 fixtures when MIPS binutils are available:
 
 ```console
-$ python3 -m unittest -v tools.tests.test_reloc_data
+$ python3 -m unittest -v \
+    tools.tests.test_reloc_data tools.tests.test_reloc_data_lane
 ```
 
-After this slice, the audit's literal-pointer count falls from 185 to 177 and
-the trailing input's symbolic-word count rises from 343 to 351.
+Applying the manifest to the current generated `72CD0.data.s` reduces its live
+literal-pointer candidates from 184 to 152. The ordinary generated input is
+unchanged; this count describes the standalone transformed lane.
 
 ## Scaling without inventing source
 
 Continue by coherent owner, not by blindly replacing every aligned word. The
-next strong candidates are `CD_comstr`/`CD_intstr`, `ThinkDB`, and the named
-four-entry archive/sprite tables. For every batch:
+next strong candidates are `CD_comstr`/`CD_intstr`, `ThinkDB`, and the repeated
+language/stage records under `D_8008EA90`. For every batch:
 
 1. confirm the exact target directive and enclosing owner;
 2. name the exact interior object, not an enclosing blob plus a guessed addend;
