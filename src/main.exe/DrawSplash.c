@@ -51,19 +51,7 @@
  *   it as a distinct int local from the outer long coordinate.
  */
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-    s32 rz;
-    GsCOORDINATE2 *super;
-} TViewInfo;
-
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern MATRIX GsWSMATRIX;
 extern GsSPRITE sprSplash;
 extern GsOT *OTablePt;

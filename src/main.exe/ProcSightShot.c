@@ -69,23 +69,13 @@
  */
 typedef struct
 {
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} SightViewInfo;
-
-typedef struct
-{
     u16 rx;
     u16 pad0;
     u16 ry;
     u16 pad1;
 } SightRotation;
 
-extern SightViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern GsSPRITE TargetSprite;
 extern GsOT *OTablePt;
 
@@ -193,7 +183,7 @@ sight_mode:
         model = item->owner->model;
         if (count == 0)
         {
-            SightViewInfo *view;
+            GsRVIEW2 *view;
 
             param.type = item->type;
             param.user = item->owner;

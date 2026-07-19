@@ -211,17 +211,7 @@
  * dropping the ViewInfo `(short)` casts (-> 512); volatile scratchpad
  * stores (536 / 524 / 524, non-monotonic, no form found that lands 532).
  */
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} TViewInfo;
-
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern POLY_F4 plyBleed;
 extern GsOT *OTablePt;
 extern MATRIX GsWSMATRIX;

@@ -73,21 +73,11 @@
 
 typedef struct
 {
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} WireViewInfo;
-
-typedef struct
-{
     GsCOORDINATE2 locate;
     SVECTOR rotate;
 } WireModel;
 
-extern WireViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern MATRIX GsWSMATRIX;
 extern GsOT *OTablePt;
 extern WireModel *ModelHook;

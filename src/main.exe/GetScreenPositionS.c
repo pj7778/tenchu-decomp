@@ -38,10 +38,8 @@
  * (Scratchpad+0/Scratchpad+0x10). RotTransPers's returned OTZ (depth) gets
  * written to arg3's second word (`arg3[1]`, i.e. +4 bytes).
  *
- * ViewInfo.vpx/vpy/vpz are item.h-style proven TViewInfo fields (s32,
- * matching Ghidra's own independently-built GsRVIEW2 — see
- * ReqItemDefault.c). Reused here as a local typedef (not a shared header)
- * matching this repo's per-TU convention for this struct.
+ * ViewInfo.vpx/vpy/vpz are canonical GsRVIEW2 `long` fields (s32 on PsyQ,
+ * matching Ghidra's independently-built GsRVIEW2 — see ReqItemDefault.c).
  *
  * Matching notes (docs/matching-cookbook.md):
  *  - `arg0 - (short)ViewInfo.vpx` is a NARROWING use (the result stores
@@ -58,17 +56,7 @@
  *    symbol's `%lo()` (always `addiu`).
  */
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} TViewInfo;
-
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 
 void GetScreenPositionS(s32 arg0, s32 arg1, s32 arg2, s32 *arg3)

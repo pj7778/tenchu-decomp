@@ -89,14 +89,8 @@
  *    target's stack slot assignment (call args at the lower addresses).
  */
 
-typedef struct
-{
-    s32 vpx, vpy, vpz; /* 0x00 */
-    s32 vrx, vry, vrz; /* 0x0C */
-} TViewInfo;
-
 extern long GameClock;
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern void SetSnow(long *arg0, u16 *arg1, s32 arg2, u8 arg3);
 extern void *memset(void *s, int c, u32 n);
 

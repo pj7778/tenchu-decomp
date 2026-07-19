@@ -87,12 +87,6 @@
 
 typedef struct
 {
-    s32 vpx, vpy, vpz;           /* 0x00 */
-    s32 vrx, vry, vrz;           /* 0x0C */
-} TViewInfo;
-
-typedef struct
-{
     VECTOR TargetVector;         /* 0x00 */
     Humanoid *Owner;             /* 0x10 (lw @80031980) */
     s32 Mode;                    /* 0x14 (sw @800319c8) */
@@ -103,7 +97,7 @@ typedef struct
 } TCameraStatus;
 
 extern TCameraStatus CamState;
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 /* Critical-hit camera placements: 4 poses x 4 SVECTORs each. */
 extern SVECTOR D_80089F50[][4];
 /* Scratchpad work objects (0x1F800040 rotation SVECTOR, 0x1F800080 MATRIX

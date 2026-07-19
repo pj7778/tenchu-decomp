@@ -81,21 +81,8 @@ typedef struct
     u8 Valiation;                /* 0x20 */
 } TCameraStatus;
 
-/* Current view position + rotation target (Ghidra: ViewInfo, a global with
- * more fields than shown elsewhere); only vpx/vpy/vpz and vrx/vry/vrz are
- * read here, as two overlapping VECTOR views (offset 0 and offset 0xC). */
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} TViewInfo;
-
 extern TCameraStatus CamState;
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern VECTOR D_80012258[];
 extern void GetVectorRotation(VECTOR *from, VECTOR *to, s32 *rx, s32 *ry);
 extern void RotateVector(VECTOR *v, s32 rx, s32 ry, s32 rz);

@@ -40,7 +40,7 @@
  * written to arg3's second word (`arg3[1]`, i.e. +4 bytes) — identical tail
  * to the twin.
  *
- * ViewInfo.vpx/vpy/vpz: item.h-style proven TViewInfo fields (s32, matching
+ * ViewInfo.vpx/vpy/vpz: canonical GsRVIEW2 `long` fields (s32 on PsyQ,
  * Ghidra's own independently-built GsRVIEW2 — see ReqItemDefault.c/
  * GetScreenPositionS.c). SetTransMatrix/SetRotMatrix each take a single MATRIX*
  * (PrepareGetScreenPositionS.c proves both signatures); the OTHER a-registers still
@@ -57,17 +57,7 @@
  *    GetScreenPositionS.c precedent).
  */
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} TViewInfo;
-
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern MATRIX GsWSMATRIX;
 extern void SetTransMatrix(MATRIX *m);
 extern void SetRotMatrix(MATRIX *m);

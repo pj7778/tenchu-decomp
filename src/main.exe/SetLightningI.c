@@ -67,17 +67,7 @@
  * fence, pointer carriers, and the purported 15-byte allocation floor.
  */
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} LightningViewInfo;
-
-extern LightningViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern MATRIX GsWSMATRIX;
 extern GsOT *OTablePt;
 

@@ -61,17 +61,7 @@
  * value live in a register instead of round-tripping through the stack.
  */
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} TViewInfo;
-
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern MATRIX GsWSMATRIX;
 extern void SetTransMatrix(MATRIX *m);
 extern void SetRotMatrix(MATRIX *m);
