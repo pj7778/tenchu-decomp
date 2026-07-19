@@ -7,6 +7,7 @@
 0x8001423c	68	vgetfreesize	main	-
 0x80014280	80	vcalloc	main	-
 0x800142d0	260	vfree	main	-
+0x80014400	328	InitGraphicsSystem	calls-contain	psxsym
 0x8001482c	760	LoadModelArchive	main	-
 0x80014cdc	420	CreateCloneModelArchive	main	-
 0x80014e80	464	SetupSprite	main	-
@@ -64,6 +65,9 @@
 0x8001813c	188	update_pressed_buttons	main	-
 0x80018250	60	FUN_8001b2b8	main	-
 0x8001828c	160	InitPadControl	main	-
+0x800187a0	296	open_stream	calls-exact	psxsym
+0x800188c8	124	close_stream	calls-exact	psxsym
+0x800189b4	112	strInit	calls-exact	psxsym
 0x80018e94	184	SetupSE	main	-
 0x80018f4c	76	DisposeSE	main	-
 0x8001907c	160	SetupSoundEffect	main	-

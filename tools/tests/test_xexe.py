@@ -69,5 +69,44 @@ class MergeHitsTests(unittest.TestCase):
         self.assertEqual(new[0][0], "strNext")
 
 
+class CallPlacementHelperTests(unittest.TestCase):
+    def test_jal_target_decodes_within_the_pc_region(self) -> None:
+        word = 0x0C000000 | ((0x80014548 & 0x0FFFFFFF) >> 2)
+        self.assertEqual(xexe.jal_target(word, 0x80020000), 0x80014548)
+        self.assertIsNone(xexe.jal_target(0x27BDFFE8, 0x80020000))  # addiu
+
+    def test_named_callees_collects_only_named_targets_in_range(self) -> None:
+        import struct
+
+        base = 0x80011000
+        words = [
+            0x0C000000 | ((0x80011100 & 0x0FFFFFFF) >> 2),  # jal named
+            0x00000000,
+            0x0C000000 | ((0x80011200 & 0x0FFFFFFF) >> 2),  # jal unnamed
+            0x03E00008,
+        ]
+        blob = bytes(0x800) + b"".join(struct.pack("<I", w) for w in words)
+        names = {0x80011100: "StSetRing"}
+        self.assertEqual(
+            xexe.named_callees(blob, base, base, len(words) * 4, names),
+            ("StSetRing",),
+        )
+
+    def test_candidates_are_jal_targets_split_at_anchors(self) -> None:
+        import struct
+
+        base = 0x80011000
+        # One jal to base+0x20 (a candidate), one to an anchored address.
+        words = [
+            0x0C000000 | (((base + 0x20) & 0x0FFFFFFF) >> 2),
+            0x0C000000 | (((base + 0x40) & 0x0FFFFFFF) >> 2),
+        ] + [0] * 30
+        blob = bytes(0x800) + b"".join(struct.pack("<I", w) for w in words)
+        anchors = {base + 0x40: (0x10, "Named")}
+        candidates = xexe.candidate_functions(blob, base, anchors)
+        self.assertIn((base + 0x20, 0x20), candidates)  # capped at the anchor
+        self.assertNotIn(base + 0x40, [c[0] for c in candidates])
+
+
 if __name__ == "__main__":
     unittest.main()

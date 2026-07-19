@@ -7,6 +7,7 @@
 0x8001403c	68	vgetfreesize	main	-
 0x80014080	80	vcalloc	main	-
 0x800140d0	260	vfree	main	-
+0x80014200	328	InitGraphicsSystem	calls-contain	psxsym
 0x8001462c	760	LoadModelArchive	main	-
 0x80014adc	420	CreateCloneModelArchive	main	-
 0x80014c80	464	SetupSprite	main	-
@@ -58,12 +59,16 @@
 0x80017854	128	CdaStop	main	-
 0x800178d4	100	CdaGetCurrentLength	main	-
 0x8001795c	104	FUN_8004fc08	main	-
+0x800179c4	472	ComPad	calls-exact	psxsym
 0x80017b9c	368	PadProc	main	-
 0x80017d0c	292	GetCommand	main	-
 0x80017e30	268	SetCommand	main	-
 0x80017f70	188	update_pressed_buttons	main	-
 0x80018084	60	FUN_8001b2b8	main	-
 0x800180c0	160	InitPadControl	main	-
+0x800185d4	336	open_stream	calls-exact	psxsym
+0x80018724	124	close_stream	calls-exact	psxsym
+0x80018810	112	strInit	calls-exact	psxsym
 0x80018cf0	184	SetupSE	main	-
 0x80018da8	76	DisposeSE	main	-
 0x80019458	88	FUN_8005e8f0	main	-
@@ -73,6 +78,7 @@
 0x80019b84	80	initialise_font	main	-
 0x80019bd4	164	FUN_800576e8	main	-
 0x80019c78	388	FUN_8005778c	main	-
+0x8001a050	140	SetupSoundEffect	calls-exact	psxsym
 0x8001a10c	956	SaveCard	main	-
 0x8001a500	148	FUN_80056e30	main	-
 0x8001a594	84	DeleteCard	main	-
