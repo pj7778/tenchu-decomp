@@ -26,9 +26,10 @@
  * screen clip box.
  *
  * Matching notes: applies the FUN_80059ff4 recipe verbatim (read that
- * header); -fno-strength-reduce for this TU (Build.hs ccExtraFlags +
- * permute.py CC_EXTRA_FLAGS). New vs the leaf: work lives as TWO variables
- * (work + the prim copy — the packet accesses go through prim, the context
+ * header). The original TMD_P_TNG4 record type keeps the normal strength-
+ * reduced loop on the target's single cursor; the former function-only flag
+ * was compensating for decompiler-style byte offsets. New vs the leaf: work
+ * lives as TWO variables (work + the prim copy — the packet accesses go through prim, the context
  * fields through work); flagAddr is a precomputed loop invariant (used by
  * BOTH gte_stflg sites); the 52-byte POLY_GT4 struct assignment emits a
  * 3-chunk movstrsi loop + 4-byte remainder.
@@ -62,7 +63,7 @@ u_long *FUN_8005961c(u_short *param_1, u_long param_2, u_long *param_3, int para
     u8 *codeAddr;
     s32 codeVal;
     u_long *sz0Ptr;
-    u8 *rec;
+    TMD_P_TNG4 *record;
     u_long *rgbPtr;
     u_long *otSlot;
     u32 idx0, idx1, idx2;
@@ -76,35 +77,35 @@ u_long *FUN_8005961c(u_short *param_1, u_long param_2, u_long *param_3, int para
         codeAddr = work + 4;
         codeVal = 0x3C;
         sz0Ptr = (u_long *)(work + 0x5C);
-        rec = (u8 *)param_1 + 0x20;
+        record = (TMD_P_TNG4 *)param_1;
         do {
-            idx0 = *(u16 *)(rec + 4);
-            idx1 = *(u16 *)(rec + 6);
-            idx2 = *(u16 *)(rec + 8);
+            idx0 = record->v0;
+            idx1 = record->v1;
+            idx2 = record->v2;
             gte_ldv3((SVECTOR *)(idx0 * 8 + param_2), (SVECTOR *)(idx1 * 8 + param_2),
                      (SVECTOR *)(idx2 * 8 + param_2));
             gte_rtpt();
 
-            *(s32 *)(prim + 0xC) = *(s32 *)(rec - 0x1C);
-            *(s32 *)(prim + 0x18) = *(s32 *)(rec - 0x18);
-            *(s32 *)(prim + 0x24) = *(s32 *)(rec - 0x14);
+            *(s32 *)(prim + 0xC) = *(s32 *)&record->tu0;
+            *(s32 *)(prim + 0x18) = *(s32 *)&record->tu1;
+            *(s32 *)(prim + 0x24) = *(s32 *)&record->tu2;
             gte_stflg(flagAddr);
             if (*(s32 *)(work + 0x74) < 0) goto next;
 
             gte_nclip();
-            *(s32 *)(prim + 4) = *(s32 *)(rec - 0xC);
+            *(s32 *)(prim + 4) = *(s32 *)&record->r0;
             codeAddr[3] = codeVal;
             gte_stopz((u_long *)(work + 0x80));
             if (*(s32 *)(work + 0x80) <= 0) goto next;
 
             gte_stsxy3_gt3(prim);
-            gte_ldv0((SVECTOR *)(*(u16 *)(rec + 0xA) * 8 + param_2));
+            gte_ldv0((SVECTOR *)(record->v3 * 8 + param_2));
             gte_rtps();
 
-            *(s32 *)(prim + 0x30) = *(s32 *)(rec - 0x10);
-            *(s32 *)(prim + 0x10) = *(s32 *)(rec - 8);
-            *(s32 *)(prim + 0x1C) = *(s32 *)(rec - 4);
-            *(s32 *)(prim + 0x28) = *(s32 *)rec;
+            *(s32 *)(prim + 0x30) = *(s32 *)&record->tu3;
+            *(s32 *)(prim + 0x10) = *(s32 *)&record->r1;
+            *(s32 *)(prim + 0x1C) = *(s32 *)&record->r2;
+            *(s32 *)(prim + 0x28) = *(s32 *)&record->r3;
             gte_stflg(flagAddr);
             if (*(s32 *)(work + 0x74) < 0) goto next;
 
@@ -237,7 +238,7 @@ u_long *FUN_8005961c(u_short *param_1, u_long param_2, u_long *param_3, int para
 
         next:
             param_4--;
-            rec += 0x2C;
+            record++;
         } while (param_4 != 0);
     }
     return param_3;

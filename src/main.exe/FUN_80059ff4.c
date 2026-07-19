@@ -25,13 +25,13 @@
  *
  * Matching notes (this file applies the FUN_80058c70 recipe; read that
  * header for the full mechanism account):
- *  - -fno-strength-reduce FOR THIS TU (Build.hs ccExtraFlags + permute.py
- *    CC_EXTRA_FLAGS). Tell in THIS leaf: the target walks ONE record cursor
- *    (t5, offsets -12..+8, bumped 0x1c in the loop-back delay slot); with SR
- *    on, loop.c reduces the rec-relative giv class into a second base the
- *    target provably lacks (the old draft's t8=a0+12 alongside t9=a0+16).
- *    Real do-while loop notes stay ON (ref weighting drives the priority
- *    allocation that fills every caller-saved register).
+ *  - The original TMD_P_TNF3 record type is the source-level identity behind
+ *    the target's ONE record cursor (t5, bumped by sizeof(TMD_P_TNF3) in the
+ *    loop-back delay slot). Normal -O2 strength reduction is correct. The old
+ *    byte-pointer draft split named fields into a second GIV and falsely made
+ *    -fno-strength-reduce look necessary for this artificial file. Real
+ *    do-while loop notes stay ON (ref weighting drives the priority allocation
+ *    that fills every caller-saved register).
  *  - The 40-byte packet copy is a STRUCT ASSIGNMENT, not a hand loop:
  *    mips.c expand_block_move (40 > 2*MAX_MOVE_BYTES) emits copy_addr_to_reg
  *    copies (move t2,a2 / move t0,t3), final_src (addiu a0,t0,0x20), a
@@ -112,7 +112,7 @@ u_long *FUN_80059ff4(u_short *param_1, u_long param_2, u_long *param_3, int para
     s32 codeVal;
     u_long *sz0Ptr;
     u_long *sz1Ptr;
-    u8 *rec;
+    TMD_P_TNF3 *record;
     u_long *rgbPtr;
     u_long *otSlot;
     u32 idx0, idx1, idx2;
@@ -126,26 +126,26 @@ u_long *FUN_80059ff4(u_short *param_1, u_long param_2, u_long *param_3, int para
         codeVal = 0x34;
         sz0Ptr = (u_long *)(work + 0x5C);
         sz1Ptr = (u_long *)(work + 0x60);
-        rec = (u8 *)param_1 + 0x10;
+        record = (TMD_P_TNF3 *)param_1;
         do {
-            idx0 = *(u16 *)(rec + 4);
-            idx1 = *(u16 *)(rec + 6);
-            idx2 = *(u16 *)(rec + 8);
+            idx0 = record->v0;
+            idx1 = record->v1;
+            idx2 = record->v2;
             gte_ldv3((SVECTOR *)(idx0 * 8 + param_2), (SVECTOR *)(idx1 * 8 + param_2),
                      (SVECTOR *)(idx2 * 8 + param_2));
             gte_rtpt();
 
-            *(s32 *)(prim + 0xC) = *(s32 *)(rec - 12);
-            *(s32 *)(prim + 0x18) = *(s32 *)(rec - 8);
-            *(s32 *)(prim + 0x24) = *(s32 *)(rec - 4);
-            *(s32 *)(prim + 4) = *(s32 *)rec;
+            *(s32 *)(prim + 0xC) = *(s32 *)&record->tu0;
+            *(s32 *)(prim + 0x18) = *(s32 *)&record->tu1;
+            *(s32 *)(prim + 0x24) = *(s32 *)&record->tu2;
+            *(s32 *)(prim + 4) = *(s32 *)&record->r0;
             codeAddr[3] = codeVal;
             gte_stflg((u_long *)(work + 0x74));
             if (*(s32 *)(work + 0x74) < 0) goto next;
 
             gte_nclip();
-            *(s32 *)(prim + 0x10) = *(s32 *)rec;
-            *(s32 *)(prim + 0x1C) = *(s32 *)rec;
+            *(s32 *)(prim + 0x10) = *(s32 *)&record->r0;
+            *(s32 *)(prim + 0x1C) = *(s32 *)&record->r0;
             gte_stopz((u_long *)(work + 0x80));
             if (*(s32 *)(work + 0x80) <= 0) goto next;
 
@@ -248,7 +248,7 @@ u_long *FUN_80059ff4(u_short *param_1, u_long param_2, u_long *param_3, int para
 
         next:
             param_4--;
-            rec += 0x1C;
+            record++;
         } while (param_4 != 0);
     }
     return param_3;
