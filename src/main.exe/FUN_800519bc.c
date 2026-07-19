@@ -12,9 +12,16 @@
  *     extern short SkipFrame;
  * END PSX.SYM */
 
-/* STATUS: NON_MATCHING — complete pure-C reconstruction at the exact target
- * length (1448 bytes / 362 instructions). The guarded draft differs in 71 linked
- * bytes (down from 118), across 25 aligned instruction lines.
+/* STATUS: NON_MATCHING — clean pure-C reconstruction at the exact target
+ * length (1448 bytes / 362 instructions), currently 58 differing linked bytes
+ * across 23 instructions. There are no allocator-only no-op loop fences: the
+ * normal fade update and guarded strip loop recover the target frame naturally.
+ * Initializing scroll/xbase before the first PathFileRead and the transient
+ * sequence/fade/pad/fade-step state after it is the key real live-range split.
+ * The residual is a 43-byte multiset-equal prologue reorder plus four small
+ * renderer register-allocation clusters (15 bytes total).
+ *
+ * HISTORICAL NOTES BELOW ARE SUPERSEDED and retained only as an experiment log.
  * KEY FINDING: the `do{sequence=0;}while(0)` fence was NOT load-bearing — it walled
  * off the basic block sched2 needs in order to interleave the callee-saved register
  * spills with the init writes; removing it (plain `sequence = 0;`) let the saves
@@ -298,20 +305,23 @@ void FUN_800519bc(void)
     GsIMAGE strip_image;
     GsSPRITE sprite;
     GsIMAGE image;
-    DemoScreenStack stack;
+    u16 xbase;
+    s32 scroll;
+    u16 old_pad;
+    BackGround *background;
+    s32 tpage_base;
     u_long *file;
     u16 pad;
     u16 previous_pad;
     s16 fade;
     s16 counter;
-    s32 position;
+    s32 page_x;
     s16 sequence;
     s32 fade_step;
     s32 adjusted;
     s32 scroll_value;
     s16 strip_width;
     u16 strip_px;
-    s32 xbase_value;
     u16 tpage_result;
     s32 intensity;
     u8 brightness;
@@ -322,18 +332,15 @@ void FUN_800519bc(void)
     s16 signed_width;
     s16 i;
 
-    sequence = 0;
-    fade = 0xfe;
-    scroll_value = -0xa000;
-    stack.scroll = scroll_value;
-    stack.old_pad = 0;
-    scroll_value >>= 8;
-    stack.xbase = scroll_value;
-
+    scroll = -0xa000;
+    xbase = (u16)(scroll >> 8);
     file = PathFileRead((u8 *)D_800137A0,
                         D_8008EA90[PSTATE->language][PSTATE->stage].background);
+    sequence = 0;
+    fade = 0xfe;
+    old_pad = 0;
     fade_step = -8;
-    stack.background = FUN_8004f4f8(file);
+    background = FUN_8004f4f8(file);
     vfree(file);
 
     file = PathFileRead((u8 *)D_800137A0,
@@ -356,13 +363,13 @@ void FUN_800519bc(void)
     sprite.w = 0x10;
     sprite.y = -0x68;
     FUN_80038ce0();
-    stack.tpage_base = (s32)strip_px << 16;
+    tpage_base = (s32)strip_px << 16;
 
     while (1)
     {
+        previous_pad = old_pad;
         pad = GetRealPad(0);
-        previous_pad = stack.old_pad;
-        stack.old_pad = pad;
+        old_pad = pad;
         if ((pad & (pad ^ previous_pad) & 0x820) != 0)
         {
             fade_step = 8;
@@ -382,7 +389,8 @@ void FUN_800519bc(void)
             FUN_8004f6c0(0x10);
         }
 
-        if (fade >= 0xff)
+        page_x = fade;
+        if (page_x >= 0xff)
         {
             break;
         }
@@ -391,7 +399,7 @@ void FUN_800519bc(void)
         switch (sequence)
         {
         case 0:
-            if (fade == 0)
+            if (page_x == 0)
             {
                 s16 music;
 
@@ -423,56 +431,39 @@ void FUN_800519bc(void)
 
         case 3:
             counter = strip_width - 4;
-            do
+            if (counter >= 0)
             {
-                if (counter >= 0)
+                tpage_word = tpage_base;
+                if (strip_width == 0)
+                    tpage_value = tpage_word >> 16;
+                else
+                    tpage_value = tpage_word >> 16;
+                signed_width = strip_width;
+                do
                 {
-                    tpage_word = stack.tpage_base;
-                    if (strip_width != 0)
-                        tpage_value = tpage_word >> 16;
-                    else
-                        tpage_value = tpage_word >> 16;
-                    signed_width = strip_width;
-                    do
-                    {
                         sprite.u = counter << 2;
-                        position = counter << 16;
-                        position >>= 16;
                         tpage_result = GetTPage(0, 0,
-                            tpage_value + position, 0x100);
-                        do
-                        {
-                            do
-                            {
-                                do
-                                {
-                                    position = signed_width - position;
-                                } while (0);
-                            } while (0);
-                            xbase_value = stack.xbase;
-                            position *= 8;
-                            do
-                            {
-                                sprite.tpage = tpage_result;
-                            } while (0);
-                            position = xbase_value - position;
-                        } while (0);
-                        sprite.x = position;
-                        position <<= 16;
-                        position >>= 16;
-                        if (position < -0xa0)
+                            tpage_value + (s16)counter, 0x100);
+                        page_x = signed_width - (s16)counter;
+                        page_x <<= 3;
+                        sprite.tpage = tpage_result;
+                        page_x = xbase - page_x;
+                        sprite.x = page_x;
+                        page_x <<= 16;
+                        page_x >>= 16;
+                        if (page_x < -0xa0)
                         {
                             goto brightness_zero;
                         }
-                        if (position >= -0x78)
+                        if (page_x >= -0x78)
                         {
                             goto brightness_normal;
                         }
-                        brightness = (position + 0xa0) * 3;
+                        brightness = (page_x + 0xa0) * 3;
                         goto brightness_left_store;
 
 brightness_normal:
-                        if (position <= 0xa0)
+                        if (page_x <= 0xa0)
                         {
                             goto brightness_within;
                         }
@@ -484,11 +475,11 @@ brightness_zero:
                         goto brightness_done;
 
 brightness_within:
-                        if (position < 0x79)
+                        if (page_x < 0x79)
                         {
                             goto brightness_center;
                         }
-                        scaled_brightness = edge_brightness = 0xa0 - position;
+                        scaled_brightness = edge_brightness = 0xa0 - page_x;
                         scaled_brightness <<= 1;
                         scaled_brightness += edge_brightness;
                         brightness = scaled_brightness;
@@ -514,36 +505,31 @@ brightness_done:
                         GsSortSprite(&sprite, OTablePt, 1);
                         counter -= 4;
                         sprite.x += 8;
-                    } while (counter >= 0);
-                }
-            } while (0);
+                } while (counter >= 0);
+            }
 
             if ((CdaStatus.status & 0x60) == 0)
             {
                 fade_step = 8;
             }
-            scroll_value = stack.scroll;
+            scroll_value = scroll;
             adjusted = scroll_value +
                 D_8008ECF8[PSTATE->language][PSTATE->stage];
-            stack.scroll = adjusted;
+            scroll = adjusted;
             if (adjusted < 0)
             {
                 adjusted += 0xff;
             }
-            stack.xbase = (u32)adjusted >> 8;
+            xbase = (u32)adjusted >> 8;
             break;
         }
 
-        DrawBG(stack.background);
+        DrawBG(background);
         fade += fade_step;
         if (fade < 0)
-        {
             fade = 0;
-        }
         else if (fade > 0xff)
-        {
             fade = 0xff;
-        }
         intensity = fade & 0xff;
         if (fade != 0)
         {
@@ -554,7 +540,7 @@ brightness_done:
         EndDrawing(0);
     }
 
-    DisposeBG(stack.background);
+    DisposeBG(background);
 }
 
 #endif
