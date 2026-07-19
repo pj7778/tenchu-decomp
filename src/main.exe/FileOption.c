@@ -63,6 +63,8 @@
  *
  * gp smalls of this TU: SystemFlag (Build.hs maspsxGpExterns + permute.py).
  * EngageLevel/StageID/D_80010058 are other TUs' smalls -> absolute macros.
+ * `TENCHU_RELOCATABLE` selects a direct symbolic D_80097D70 expression for
+ * the normal link; the numeric `hi` local exists only to preserve retail bytes.
  */
 
 typedef struct { debug_menu_choice e[20]; } MENU_FILE_TBL;      /* 0xA0 */
@@ -95,6 +97,7 @@ extern char D_8001453C[];   /* "save ok?" */
 extern char D_80014548[];   /* "save no?" */
 extern char D_8001423C[];   /* "select music" */
 extern char D_800145A8[];   /* "layout no" */
+extern char D_80097D70[];   /* "%d" */
 
 extern s32 AdtSelect(char *title, debug_menu_choice *menu, s32 mode);
 extern void lePackEnemyLayout(u8 *buf, s32 size);
@@ -122,7 +125,9 @@ void FileOption(void)
     debug_menu_choice *p;
     debug_menu_choice *q;
     char *s;
+#ifndef TENCHU_RELOCATABLE
     char *hi;
+#endif
     MENU_FILE_TBL m1;
     MENU_SAVELOAD_TBL m2;
     MENU_FLAYOUT_TBL m3;
@@ -183,13 +188,19 @@ void FileOption(void)
         break;
     case 9:
         i = 0;
+#ifndef TENCHU_RELOCATABLE
         hi = (char *)0x80090000;
+#endif
         q = (debug_menu_choice *)buf;
         p = q;
         s = (char *)(buf + 0x510);
         for (; i < 0xA1; i++)
         {
+#ifdef TENCHU_RELOCATABLE
+            sprintf(s, D_80097D70, i);
+#else
             sprintf(s, hi + 0x7D70, i);
+#endif
             p->choice_name = s;
             p->choice_number = i;
             p++;

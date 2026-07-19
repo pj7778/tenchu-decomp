@@ -65,6 +65,45 @@ relocGameDir = buildDir </> "reloc-game"
 relocGameLinker = relocGameDir </> "main.exe.ld"
 relocGameSymbols = relocGameDir </> "symbols.main.exe.txt"
 
+-- | Matching-only numeric address constructions remain in five exact C
+-- objects.  The normal relink compiles the same sources under one build-wide
+-- define into this isolated directory, where an ELF audit requires symbolic
+-- HI16/LO16 relocations.  A separate substitution probe shifts game functions
+-- while padding before the still-raw SDK; the retail-exact proof stays intact.
+relocCLiteralDir :: FilePath
+relocCLiteralDir = shakeDir </> "reloc-c-literals"
+
+relocCLiteralLinker :: FilePath
+relocCLiteralLinker = relocCLiteralDir </> "main.exe.ld"
+
+mainRelocCLiteralExe, mainRelocCLiteralElf, mainRelocCLiteralMap :: FilePath
+mainRelocCLiteralExe = buildDir </> "tenchu" </> "main_reloc_c_literals.exe"
+mainRelocCLiteralElf = mainRelocCLiteralExe <.> "elf"
+mainRelocCLiteralMap = mainRelocCLiteralExe <.> "map"
+
+relocCLiteralNames :: [String]
+relocCLiteralNames =
+  [ "SelectCameraOwnerOption",
+    "FileOption",
+    "ProcItemShinsoku",
+    "ActivateHumans",
+    "vinit"
+  ]
+
+relocCLiteralPreprocessed, relocCLiteralAssembly, relocCLiteralObject :: String -> FilePath
+relocCLiteralPreprocessed name = relocCLiteralDir </> name <.> "i"
+relocCLiteralAssembly name = relocCLiteralDir </> name <.> "s"
+relocCLiteralObject name = relocCLiteralDir </> name <.> "o"
+
+relocCLiteralReferenceObject :: String -> FilePath
+relocCLiteralReferenceObject name = buildDir </> "main.exe" </> name <.> "c.o"
+
+relocCLiteralObjects :: [FilePath]
+relocCLiteralObjects = map relocCLiteralObject relocCLiteralNames
+
+relocCLiteralReferenceObjects :: [FilePath]
+relocCLiteralReferenceObjects = map relocCLiteralReferenceObject relocCLiteralNames
+
 -- | Bounded second relocation proof.  Splat emits every raw SDK text carve in
 -- 0x800601d4..0x800834d0 as canonical assembly, preserving the existing C and
 -- canonical-object islands between them.  The base link is retail-exact; a
@@ -835,6 +874,30 @@ neededAsmDeps :: FilePath -> Action ()
 neededAsmDeps depFile =
   needed . map normaliseEx . concatMap snd . parseMakefile =<< liftIO (readFile depFile)
 
+-- | Read the variant objects themselves: source/assembly text is useful for
+-- diagnosis, but ELF relocation records are the normal-link contract.
+verifyRelocCLiteralObjects :: Action ()
+verifyRelocCLiteralObjects = do
+  let tool = "tools" </> "reloc_c_literals.py"
+      objectArgs = concatMap
+        (\name -> ["--object", name <> "=" <> relocCLiteralObject name])
+        relocCLiteralNames
+  need $ tool : relocCLiteralObjects
+  cmd_ "python3" tool ("verify-objects" : objectArgs)
+
+verifyRelocCLiteralLink :: Action ()
+verifyRelocCLiteralLink = do
+  let tool = "tools" </> "reloc_c_literals.py"
+      objectArgs = concatMap
+        (\name -> ["--object", name <> "=" <> relocCLiteralObject name])
+        relocCLiteralNames
+  need [tool, mainRelocGameElf, mainRelocCLiteralElf, mainRelocCLiteralExe]
+  cmd_ "python3" tool
+    ([ "verify-linked",
+       "--base-elf", mainRelocGameElf,
+       "--variant-elf", mainRelocCLiteralElf
+     ] <> objectArgs)
+
 main :: IO ()
 main = do
   topD <- getProjectRoot
@@ -871,6 +934,54 @@ rules = do
 
 objRules :: Rules ()
 objRules = do
+  -- Compile the bounded normal-link C variant under one global define.  The
+  -- five source files choose natural symbolic expressions in this lane while
+  -- the ordinary processed/build directories retain their exact-match source.
+  relocCLiteralDir </> "*.i" %> \out -> do
+    let name = takeBaseName out
+        src = srcDir </> "main.exe" </> name <.> "c"
+        header = srcDir </> "main.exe" </> "main.exe.h"
+    when (name `notElem` relocCLiteralNames) $
+      fail $ "unexpected relocatable-C input " <> name
+    need [src]
+    orderOnly [header]
+    liftIO $ IO.createDirectoryIfMissing True relocCLiteralDir
+    withTempFile $ \makeOut -> do
+      cmd_ cpp
+        (cppFlags <>
+          [ "-DTENCHU_RELOCATABLE",
+            "-MMD", "-MF", makeOut,
+            "-I", takeDirectory header
+          ])
+        src out
+      neededMakefileDependencies makeOut
+
+  relocCLiteralDir </> "*.s" %> \out -> do
+    let name = takeBaseName out
+        processed = relocCLiteralPreprocessed name
+        src = srcDir </> "main.exe" </> name <.> "c"
+    when (name `notElem` relocCLiteralNames) $
+      fail $ "unexpected relocatable-C assembly " <> name
+    need [processed]
+    gpFlags <- askOracle (GpFlags src)
+    (ccExe, objectCc) <- askOracle (OriginalObjectCcProfile src)
+    withTempFile $ \ccOut -> do
+      cmd_ (FileStdin processed) (FileStdout ccOut)
+        ccExe (ccFlags <> objectCc)
+      cmd_ (FileStdin ccOut) (FileStdout out)
+        maspsx (maspsxFlags <> gpFlags)
+
+  relocCLiteralDir </> "*.o" %> \out -> do
+    let name = takeBaseName out
+        assembly = relocCLiteralAssembly name
+    when (name `notElem` relocCLiteralNames) $
+      fail $ "unexpected relocatable-C object " <> name
+    need [assembly]
+    trackAllow ["include/*.inc"]
+    withTempFile $ \depFile -> do
+      cmd_ as asFlags ["--MD", depFile, "-o", out, assembly]
+      neededAsmDeps depFile
+
   [buildDir </> "*" </> "data" <//> "*.s.o", buildDir </> "*" </> "*.s.o"] |%> \out -> do
     let fileComponent = makeRelative buildDir out
         target = takeDirectory1 fileComponent
@@ -1101,6 +1212,65 @@ mainExtraRules = do
     need [mainRelocGameElf]
     cmd_ objcopy objcopyFlags [mainRelocGameElf, mainRelocGameExe]
 
+  -- Substitute the five natural symbolic-C objects into the linker-owned game
+  -- lane.  Their text is 16 bytes smaller in total, so a file-backed boundary
+  -- pad keeps the not-yet-movable SDK at retail placement.  This is a linked
+  -- relocation probe, not the final arbitrary-growth layout.
+  relocCLiteralLinker %> \out -> do
+    let tool = "tools" </> "reloc_c_literals.py"
+        objectArgs = concatMap
+          (\name -> ["--object", name <> "=" <> relocCLiteralObject name])
+          relocCLiteralNames
+        referenceArgs = concatMap
+          (\name ->
+            [ "--reference-object",
+              name <> "=" <> relocCLiteralReferenceObject name
+            ])
+          relocCLiteralNames
+    need $ [relocGameLinker, tool] <>
+      relocCLiteralObjects <> relocCLiteralReferenceObjects
+    cmd_ "python3" tool
+      ([ "generate-linker",
+         "--linker-in", relocGameLinker,
+         "--linker-out", out
+       ] <> referenceArgs <> objectArgs)
+
+  mainRelocCLiteralElf %> \out -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedSymbols = genD </> metaDir </> "undefined_symbols_auto.main.exe.txt"
+        undefinedFunctions = genD </> metaDir </> "undefined_functions_auto.main.exe.txt"
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    sFiles <- liftIO $ getDirectoryFilesIO (genD </> asmDir) ["*.s", "data/*.s"]
+    cFiles <- liftIO $ do
+      userFiles <- Set.fromList <$> getDirectoryFilesIO (tgSrcDir t) ["//*.c"]
+      genFiles <- Set.fromList <$> getDirectoryFilesIO (genD </> srcDir) ["//*.c"]
+      pure $ Set.toList (userFiles <> genFiles)
+    assetFiles <- liftIO $ getDirectoryFilesIO (genD </> assetsDir) ["//*.bin"]
+    let oFiles = map (\f -> tBuildDir </> f <.> "o") (cFiles <> sFiles <> assetFiles)
+        sFilesExp = map (\f -> genD </> asmDir </> f) sFiles
+        assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
+    need $ sFilesExp <> assetFilesExp <> oFiles <> relocCLiteralObjects <>
+      [ relocCLiteralLinker, relocGameSymbols,
+        undefinedSymbols, undefinedFunctions
+      ]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    cmd_ ld ldFlags
+      [ "-o", out,
+        "-Map", mainRelocCLiteralMap,
+        "-T", relocCLiteralLinker,
+        "-T", relocGameSymbols,
+        "-T", undefinedSymbols,
+        "-T", undefinedFunctions,
+        "--no-check-sections",
+        "-nostdlib"
+      ]
+
+  mainRelocCLiteralExe %> \_out -> do
+    need [mainRelocCLiteralElf]
+    cmd_ objcopy objcopyFlags [mainRelocCLiteralElf, mainRelocCLiteralExe]
+
   [relocSdkBaseLinker, relocSdkBaseSymbols] &%> \_outs -> do
     let tool = "tools" </> "reloc_sdk_lane.py"
     need [relocGameLinker, relocGameSymbols, tool]
@@ -1318,7 +1488,7 @@ phonyRules = do
     liftIO $
       removeFiles
         "."
-        [genDir, buildDir, processedDir]
+        [genDir, buildDir, processedDir, relocCLiteralDir]
 
   phony "extract_main.exe" $ do
     need [mainGen]
@@ -1385,10 +1555,20 @@ phonyRules = do
   -- runnable; `check-reloc-bss` is the exact-at-retail structural check.
   phony "relink" $ need [mainRelocBssExe]
 
+  -- Focused input gate for the first five matching-C address constructions.
+  -- It deliberately audits a separate, globally-defined normal-link variant;
+  -- the retail `check` continues to compile the exact-match branches.
+  phony "check-reloc-c-literals" $ do
+    verifyRelocCLiteralObjects
+    verifyRelocCLiteralLink
+    putInfo "check-reloc-c-literals: five symbolic-C objects carry and apply linker relocations"
+
   -- Opt-in exact-at-retail gate for the normal linker-owned game-symbol lane.
   -- This deliberately does not claim that a grown image is runnable yet: raw
   -- SDK code, the fixed PS-EXE header, and fixed BSS symbols are later stages.
   phony "check-reloc-game" $ do
+    verifyRelocCLiteralObjects
+    verifyRelocCLiteralLink
     need [mainRelocGameExe, tgImage mainTarget]
     StdoutTrim ref <- cmd "sha256sum" (tgImage mainTarget)
     StdoutTrim ours <- cmd "sha256sum" mainRelocGameExe
@@ -1401,7 +1581,7 @@ phonyRules = do
     when (ourSha /= refSha) $
       fail $ unwords ["Expected", mainRelocGameExe, "to have sha256 of", refSha,
                       "but it's", ourSha]
-    putInfo "check-reloc-game: linker-owned game symbols are retail-exact"
+    putInfo "check-reloc-game: linker-owned game symbols are retail-exact; symbolic-C inputs verified"
 
   -- Bounded canonical-assembly proof for the SDK/CRT text stream through the
   -- input immediately before raw 72CD0.data.s.  The retail-address link must

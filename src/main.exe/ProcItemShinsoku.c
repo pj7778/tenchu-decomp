@@ -66,6 +66,9 @@
  *    and one after the effect call that clobbers v0.
  *  - The first mode-2 motion check dereferences `item->owner` directly; sharing
  *    the later pad-control `human` local changes a0 to a2 at all three loads.
+ *  - `TENCHU_RELOCATABLE` restores the human-shaped `CamState.Owner` access.
+ *    The duplicated numeric camera base remains a reference-match scaffold,
+ *    not a claim about the original C.
  */
 
 typedef struct
@@ -87,6 +90,21 @@ typedef struct
 } ShinsokuMapVector;
 
 extern u_long *GlobalAreaMap;
+
+#ifdef TENCHU_RELOCATABLE
+typedef struct
+{
+    VECTOR TargetVector;
+    Humanoid *Owner;
+    s32 Mode;
+    s16 DirectionRX;
+    s16 DirectionRY;
+    s32 OldMode;
+    u8 Valiation;
+} TCameraStatus;
+
+extern TCameraStatus CamState;
+#endif
 
 extern s16 SetNowMotion(Humanoid *human, s16 mid, s16 move);
 extern void Sound(Humanoid *human, s32 sound);
@@ -192,7 +210,9 @@ void ProcItemShinsoku(tag_TItem *item)
         u16 buttons;
         s32 rotate;
         VECTOR *apos;
+#ifndef TENCHU_RELOCATABLE
         u32 *camera_base;
+#endif
 
         if (item->owner->motion->mid != 0xf05)
         {
@@ -252,13 +272,19 @@ void ProcItemShinsoku(tag_TItem *item)
             ((VECTOR *)launch_buf)->vy -= 300;
             FUN_8003944c((VECTOR *)launch_buf, 0, 0x2000, 0x5000,
                          0x808080, 0, 0, -30, 0x10, 3);
+#ifndef TENCHU_RELOCATABLE
             camera_base = (u32 *)0x80090000;
+#endif
         }
+#ifndef TENCHU_RELOCATABLE
         else
         {
             camera_base = (u32 *)0x80090000;
         }
         if (*(Humanoid **)((u8 *)camera_base - 0x6100) == item->owner)
+#else
+        if (CamState.Owner == item->owner)
+#endif
         {
             SetCameraMode(0xb);
         }

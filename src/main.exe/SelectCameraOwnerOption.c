@@ -83,6 +83,10 @@
  *    offset — verified against the .map). Bound a fresh
  *    `D_80097D70 = 0x80097D70;` in config/symbols.main.exe.txt per the
  *    cookbook's drifted-symbol recipe rather than fight the wrong auto-name.
+ *
+ * `TENCHU_RELOCATABLE` is a build-lane switch, not an original-source claim.
+ * The reference lane retains the byte-matching high-half scaffold above; the
+ * normal-link lane uses the ordinary symbolic `D_80097D70` expression.
  */
 typedef struct
 {
@@ -119,6 +123,7 @@ void SelectCameraOwnerOption(void)
         iVar2 = 0;
         if (0 < Humans)
         {
+#ifndef TENCHU_RELOCATABLE
             union
             {
                 struct
@@ -128,11 +133,16 @@ void SelectCameraOwnerOption(void)
                 } parts;
                 char *pointer;
             } hi = {{0, 0x8009}};
+#endif
 
             ppHVar4 = HumanGroup;
             buffer = msg;
         inner_loop:
+#ifdef TENCHU_RELOCATABLE
+            sprintf(buffer, D_80097D70, iVar2);
+#else
             sprintf(buffer, hi.pointer + 0x7D70, iVar2);
+#endif
             targets[iVar2].choice_name = buffer;
             pHVar1 = *ppHVar4;
             ppHVar4 = ppHVar4 + 1;

@@ -90,6 +90,7 @@ works from anywhere in the tree.
 ./Build check-reloc-game  # alternate normal link: game symbols are linker-owned
 ./Build check-reloc-bss   # alternate link: BSS/pool are real NOBITS regions
 ./Build relink            # experimental normal GNU-ld/finalized PS-X EXE output
+./Build check-reloc-c-literals # natural C address expressions carry/apply relocs
 ./Build all             # build all six executables
 ./Build check-all       # build + assert sha256 for all six
 ./Build clean           # remove .shake/{gen,build,processed}
@@ -127,6 +128,13 @@ small-BSS, and BSS sections. The linker uses relative BSS/heap/GP assertions and
 rejects collision with the fixed `MemoryPool`. This target is an integration
 surface, not yet a claim that changed images run: remaining raw SDK/data and
 literal-reference blockers are tracked in `relocatable-build.md`.
+
+`check-reloc-c-literals` is the focused compiler-input half of that lane. It
+builds five matched sources under the single global `TENCHU_RELOCATABLE`
+variant, audits their ELF HI16/LO16 records, substitutes them in a controlled
+link, and verifies the linked addresses. The exact lane keeps its matching
+branches. The controlled link pads the net 16-byte shrink before the still-raw
+SDK, so this is not yet the arbitrary-growth linker.
 
 ## The other five executables
 

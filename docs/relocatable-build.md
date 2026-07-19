@@ -131,6 +131,56 @@ fixed BSS address range would be consumed. Passing `check-reloc-game` therefore
 proves the first prerequisite, not a runnable size-changing build. The
 remaining stages below are still required.
 
+### Implemented game-C address input gate
+
+Five otherwise matched C files used numeric address construction solely to
+hold retail code generation: `SelectCameraOwnerOption` and `FileOption` built
+the `D_80097D70` format-string address from `0x80090000`,
+`ProcItemShinsoku` did the same for `CamState.Owner`, `ActivateHumans` did it
+for `StageChar`, and `vinit` used literal `0x800dc000` for `MemoryPool`. The
+literal instructions had no ELF relocation records, so moving the pointed-to
+data or pool would silently leave stale pointers.
+
+`./Build check-reloc-c-literals` compiles those same sources under one global
+`TENCHU_RELOCATABLE` definition. There are no per-function compiler options:
+the variant uses the normal object/TU compiler profiles and ordinary symbolic
+C expressions. The retail branches remain byte-matching scaffolds; the
+conditional is transitional and is not a claim that either spelling is the
+original source.
+
+The gate reads the compiler-produced ELF objects and requires these records:
+
+```text
+SelectCameraOwnerOption  D_80097D70  HI16=1 LO16=1
+FileOption               D_80097D70  HI16=1 LO16=1
+ProcItemShinsoku         CamState    HI16=2 LO16=1
+ActivateHumans           StageChar   HI16=1 LO16=1
+vinit                    MemoryPool  HI16=1 LO16=1
+```
+
+It also rejects the corresponding unrelocated literal `LUI` high halves. The
+two `CamState` HI16 records are expected compiler output: the high half is
+materialised on both sides of a call and shares one LO16 field load.
+
+This is a linked proof, not just an object-table check. The five natural
+objects are substituted into the linker-owned game lane. `ActivateHumans` and
+`SelectCameraOwnerOption` are each eight bytes smaller, so downstream game
+symbols move by 8 then 16 bytes and remain section-owned. A deliberate
+16-byte file-backed pad at the game/SDK boundary restores `Exec` to its retail
+address, isolating the later raw SDK while this bounded probe is green. The
+verifier reads the final ELF instructions and proves that all five symbolic
+references resolve to their targets. It also proves that the existing
+`R_MIPS_32` data relocation in `AdtPadRead` follows the 16-byte movement of
+`AdtDmyPadRead`; every other post-`Exec` file-backed byte remains unchanged.
+
+That boundary pad is neither a trampoline nor the final normal-link layout.
+The target data symbols and `MemoryPool` still have fixed script assignments;
+the achievement here is that these C inputs no longer embed those placements.
+Once data/BSS/pool ownership moves to the linker and the remaining raw ranges
+are relocation-aware, the pad can disappear and the symbols can move normally.
+`check-reloc-game` includes this input/link proof as well as its retail-exact
+ownership check.
+
 ### Implemented second gate: canonical CRT/SDK text
 
 The CRT/PsyQ text stream at virtual addresses

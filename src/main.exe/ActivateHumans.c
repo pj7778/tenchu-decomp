@@ -116,6 +116,10 @@ extern s32 GetAreaMapLevel(u_long *area, s32 x, s32 y, s32 z, s32 mode);
  *    Measured: drop `final = 0;` or hoist it out of the arm -> 1604 bytes (the
  *    copy vanishes); `human ? active : active` -> 1604 (fold-const collapses
  *    `a ? b : b`); `if (target)` instead of `if (human)` -> 10 bytes.
+ *
+ * `TENCHU_RELOCATABLE` bypasses only the matching-specific StageChar high-base
+ * fence and uses the declared StageChar array. It is a normal-link source
+ * variant, not evidence that the exact retail source used either spelling.
  */
 void ActivateHumans(void)
 {
@@ -135,7 +139,9 @@ void ActivateHumans(void)
     s32 level;
     s16 j;
     StageCharType *stage_char;
+#ifndef TENCHU_RELOCATABLE
     StageCharType *stage_hi;
+#endif
     ModelType *model;
 
     target = CamState.Owner;
@@ -169,6 +175,7 @@ void ActivateHumans(void)
     {
         n = 6;
     }
+#ifndef TENCHU_RELOCATABLE
     if (target)
     {
         i = 0;
@@ -181,6 +188,10 @@ void ActivateHumans(void)
     }
 
     stage_char = (StageCharType *)((u8 *)stage_hi - 0x1924);
+#else
+    i = 0;
+    stage_char = StageChar;
+#endif
     D_80097F44 = n;
     D_80097F42 = 0;
 human_loop:
@@ -299,7 +310,11 @@ active_done:
         human->type == 0x83)
     {
         j = 0;
+#ifdef TENCHU_RELOCATABLE
+        if (stage_char[0].stage != -1)
+#else
         if (*(s16 *)((u8 *)stage_hi - 0x1924) != -1)
+#endif
         {
             do
             {
