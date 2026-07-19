@@ -466,6 +466,17 @@ Best remaining leads, roughly in value order:
    trial.exe, only 4 of them ours), because the two builds place data at different
    addresses, so anything touching a global re-links differently. The C is what
    transfers, not the bytes.
+
+   **Composed naming landed (2026-07-20):** `xexe.py --merged-tsv` copies our
+   current adopted names first (splat + config overlays) and lets demo
+   PSX.EXE names fill only unclaimed ranges, disagreements reported. The
+   committed inventories are `reference/xexe-menu.exe.tsv` (598 ours + 34
+   demo) and `reference/xexe-ending.exe.tsv` (623 + 25), including the `St*`
+   stream-ring API and `GsTMDfast*` renderers. The evolved
+   OPENING/OPMOVIE/MOJI bodies (`get_stream`, `strInit`, `PutMoji`,
+   `Opening`) resist body identity; the next step for them is generalizing
+   `callmatch` to `--target menu.exe` anchored on these ~640 names — which
+   would also hand the movie-EOF runtime gate its MENU-side anchor.
 3. **The `statics` list** (73 functions, 231 objects) should feed `tools/gpsyms.py`: a
    `static` never gets a `%gp` extern.
 4. **The SLD stream** (per-instruction line deltas) and the `0x90`/`0x92` block markers
