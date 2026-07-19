@@ -94,6 +94,61 @@ class PcsxSmokeTests(unittest.TestCase):
                 smoke.ProbeAddresses(0x80070260, 0x800162A4, 0x8002ADAC),
             )
 
+    def test_resolves_optional_memory_watches_from_the_elf(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            exe = base / "mod.exe"
+            elf = base / "mod.elf"
+            header = bytearray(0x20)
+            header[:8] = b"PS-X EXE"
+            struct.pack_into("<I", header, 0x10, 0x8006026C)
+            exe.write_bytes(header)
+            elf.touch()
+            table = {
+                "main": 0x800162A4,
+                "PadProc": 0x8001ADA4,
+                "ModTickCount": 0x80098020,
+                "ModMagic": 0x80097EB4,
+            }
+            metadata = mock.Mock()
+            metadata.symbol.side_effect = table.__getitem__
+            with mock.patch("tools.pcsx_smoke.psxexe.read_elf_metadata", return_value=metadata):
+                addresses = smoke.resolve_probe_addresses(
+                    exe,
+                    elf,
+                    watch_counter_symbol="ModTickCount",
+                    watch_equals=("ModMagic", 0x600DF00D),
+                )
+            self.assertEqual(addresses.watch_counter, 0x80098020)
+            self.assertEqual(addresses.watch_equals, 0x80097EB4)
+            self.assertEqual(addresses.watch_equals_value, 0x600DF00D)
+
+    def test_watch_equals_spec_parsing_accepts_any_base_and_rejects_junk(self) -> None:
+        self.assertEqual(
+            smoke.parse_watch_equals("ModMagic=0x600DF00D"),
+            ("ModMagic", 0x600DF00D),
+        )
+        self.assertEqual(smoke.parse_watch_equals("Count=42"), ("Count", 42))
+        for spec in ("NoValue", "=5", "Sym=", "Sym=notanint", "Sym=0x1FFFFFFFF"):
+            with self.assertRaises(smoke.SmokeError):
+                smoke.parse_watch_equals(spec)
+
+    def test_exe_word_reader_maps_addresses_through_the_header(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "image.exe"
+            header = bytearray(0x800)
+            header[:8] = b"PS-X EXE"
+            struct.pack_into("<I", header, 0x18, 0x80011000)  # t_addr
+            struct.pack_into("<I", header, 0x1C, 0x1000)  # t_size
+            payload = bytearray(0x1000)
+            struct.pack_into("<I", payload, 0x804, 0x27BDFFE8)
+            path.write_bytes(bytes(header) + bytes(payload))
+            self.assertEqual(smoke.read_exe_word(path, 0x80011804), 0x27BDFFE8)
+            with self.assertRaisesRegex(smoke.SmokeError, "outside the loaded image"):
+                smoke.read_exe_word(path, 0x80013000)
+            with self.assertRaisesRegex(smoke.SmokeError, "outside the loaded image"):
+                smoke.read_exe_word(path, 0x80010FFC)
+
     def test_command_is_headless_isolated_and_can_boot_disc_without_loadexe(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             temp = Path(directory)

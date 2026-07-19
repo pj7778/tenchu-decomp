@@ -652,8 +652,13 @@ def rewrite_linker(
         raise LaneError("unexpected content between generated ROM and VRAM end markers")
     indent = _indent_of(lines[rom_index])
     extension_lines = [
-            f"{indent}/* Normal-link extension sources. */\n",
-            f"{indent}.main_exe_extension : AT(__romPos) SUBALIGN(4)\n",
+            f"{indent}/* Normal-link extension sources. The explicit ALIGN(4)\n",
+            f"{indent} * address pins the section to the already-4-aligned VMA\n",
+            f"{indent} * cursor: without it ld raises the section address to the\n",
+            f"{indent} * largest input alignment while AT(__romPos) stays dense,\n",
+            f"{indent} * and every loaded byte from here on lands below its ELF\n",
+            f"{indent} * address in RAM. */\n",
+            f"{indent}.main_exe_extension ALIGN(4) : AT(__romPos) SUBALIGN(4)\n",
             f"{indent}{{\n",
             f"{indent}    __tenchu_extension_start = .;\n",
     ]

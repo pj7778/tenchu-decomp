@@ -14,12 +14,30 @@ local function requiredNumber(name)
     return number
 end
 
+local function optionalNumber(name)
+    local value = os.getenv(name)
+    return value and tonumber(value) or nil
+end
+
 local entryAddress = requiredNumber("TENCHU_SMOKE_ENTRY")
 local mainAddress = requiredNumber("TENCHU_SMOKE_MAIN")
 local loopAddress = requiredNumber("TENCHU_SMOKE_LOOP")
+local entryWord = optionalNumber("TENCHU_SMOKE_ENTRY_WORD")
+local mainWord = optionalNumber("TENCHU_SMOKE_MAIN_WORD")
+local loopWord = optionalNumber("TENCHU_SMOKE_LOOP_WORD")
 local requiredFrames = requiredNumber("TENCHU_SMOKE_FRAMES")
 local requiredLoops = requiredNumber("TENCHU_SMOKE_LOOPS")
 local autoPad = os.getenv("TENCHU_SMOKE_AUTOPAD") == "1"
+local watchCounterAddress = optionalNumber("TENCHU_SMOKE_WATCH_COUNTER")
+local watchEqualsAddress = optionalNumber("TENCHU_SMOKE_WATCH_EQUALS_ADDR")
+local watchEqualsValue = optionalNumber("TENCHU_SMOKE_WATCH_EQUALS_VALUE")
+
+local ffi = require("ffi")
+local function readU32(address)
+    -- 2 MiB main RAM, mirrored across KUSEG/KSEG0/KSEG1 bases.
+    local base = ffi.cast("uint8_t*", PCSX.getMemPtr())
+    return tonumber(ffi.cast("uint32_t*", base + bit.band(address, 0x1fffff))[0])
+end
 
 local pad
 local padButtons
@@ -43,6 +61,9 @@ TenchuSmoke = {
     frames = 0,
     failed = false,
     passed = false,
+    watchFirst = nil,
+    watchLast = nil,
+    equalsLast = nil,
 }
 
 local function fail(message)
@@ -56,8 +77,16 @@ local function fail(message)
     PCSX.quit(1)
 end
 
-local function oneShot(counter, breakpoint)
+-- On the disc path SLPS and MENU code occupy the same RAM before MAIN.EXE
+-- loads, so executing a probe address is only evidence once the instruction
+-- word there matches the image the wrapper selected.
+local function imageWordPresent(address, word)
+    return word == nil or readU32(address) == word
+end
+
+local function oneShot(counter, breakpoint, address, word)
     return function()
+        if not imageWordPresent(address, word) then return true end
         TenchuSmoke[counter] = TenchuSmoke[counter] + 1
         if counter == "mainHits" then releaseAutoPad() end
         TenchuSmoke[breakpoint]:disable()
@@ -66,11 +95,17 @@ local function oneShot(counter, breakpoint)
 end
 
 TenchuSmoke.entryBreakpoint = PCSX.addBreakpoint(
-    entryAddress, "Exec", 4, "", oneShot("entryHits", "entryBreakpoint"), "Tenchu smoke entry")
+    entryAddress, "Exec", 4, "",
+    oneShot("entryHits", "entryBreakpoint", entryAddress, entryWord),
+    "Tenchu smoke entry")
 TenchuSmoke.mainBreakpoint = PCSX.addBreakpoint(
-    mainAddress, "Exec", 4, "", oneShot("mainHits", "mainBreakpoint"), "Tenchu smoke main")
+    mainAddress, "Exec", 4, "",
+    oneShot("mainHits", "mainBreakpoint", mainAddress, mainWord),
+    "Tenchu smoke main")
 TenchuSmoke.loopBreakpoint = PCSX.addBreakpoint(
     loopAddress, "Exec", 4, "", function()
+        if TenchuSmoke.mainHits == 0 then return true end
+        if not imageWordPresent(loopAddress, loopWord) then return true end
         TenchuSmoke.loopHits = TenchuSmoke.loopHits + 1
         if TenchuSmoke.loopHits >= requiredLoops then
             TenchuSmoke.loopBreakpoint:disable()
@@ -113,19 +148,61 @@ TenchuSmoke.vsyncListener = PCSX.Events.createEventListener(
         -- only frames after the per-frame loop probe has actually fired.
         if TenchuSmoke.loopHits == 0 then return end
         TenchuSmoke.frames = TenchuSmoke.frames + 1
+        if watchCounterAddress then
+            local sample = readU32(watchCounterAddress)
+            if TenchuSmoke.watchFirst == nil then
+                TenchuSmoke.watchFirst = sample
+            end
+            TenchuSmoke.watchLast = sample
+        end
+        if watchEqualsAddress then
+            TenchuSmoke.equalsLast = readU32(watchEqualsAddress)
+        end
         if TenchuSmoke.frames < requiredFrames then return end
+        local watchCounterOk = not watchCounterAddress or
+            (TenchuSmoke.watchLast ~= nil and TenchuSmoke.watchLast > 0 and
+             TenchuSmoke.watchLast > TenchuSmoke.watchFirst)
+        local watchEqualsOk = not watchEqualsAddress or
+            TenchuSmoke.equalsLast == watchEqualsValue
         if TenchuSmoke.entryHits ~= 0 and
            TenchuSmoke.mainHits ~= 0 and
-           TenchuSmoke.loopHits >= requiredLoops then
+           TenchuSmoke.loopHits >= requiredLoops and
+           watchCounterOk and watchEqualsOk then
             TenchuSmoke.passed = true
+            local watchReport = ""
+            if watchCounterAddress then
+                watchReport = string.format(
+                    " watchCounter=%d..%d",
+                    TenchuSmoke.watchFirst, TenchuSmoke.watchLast)
+            end
+            if watchEqualsAddress then
+                watchReport = watchReport ..
+                    string.format(" watchEquals=0x%08x", TenchuSmoke.equalsLast)
+            end
             print(string.format(
-                "TENCHU_SMOKE PASS entry=%d main=%d frames=%d loops=%d cycles=%s",
+                "TENCHU_SMOKE PASS entry=%d main=%d frames=%d loops=%d cycles=%s%s",
                 TenchuSmoke.entryHits, TenchuSmoke.mainHits, TenchuSmoke.frames,
-                TenchuSmoke.loopHits, tostring(PCSX.getCPUCycles())))
+                TenchuSmoke.loopHits, tostring(PCSX.getCPUCycles()), watchReport))
             PCSX.quit(0)
+        elseif TenchuSmoke.frames > requiredFrames + 600 then
+            -- The base conditions or a memory watch never converged within a
+            -- generous post-loop window; report what was actually observed.
+            fail(string.format(
+                "watch conditions unmet counter=%s..%s equals=%s",
+                tostring(TenchuSmoke.watchFirst), tostring(TenchuSmoke.watchLast),
+                tostring(TenchuSmoke.equalsLast)))
         end
     end)
 
+local armedWatch = ""
+if watchCounterAddress then
+    armedWatch = string.format(" watchCounter=0x%08x", watchCounterAddress)
+end
+if watchEqualsAddress then
+    armedWatch = armedWatch .. string.format(
+        " watchEquals=0x%08x==0x%08x", watchEqualsAddress, watchEqualsValue)
+end
 print(string.format(
-    "TENCHU_SMOKE armed entry=0x%08x main=0x%08x loop=0x%08x frames=%d loops=%d",
-    entryAddress, mainAddress, loopAddress, requiredFrames, requiredLoops))
+    "TENCHU_SMOKE armed entry=0x%08x main=0x%08x loop=0x%08x frames=%d loops=%d%s",
+    entryAddress, mainAddress, loopAddress, requiredFrames, requiredLoops,
+    armedWatch))

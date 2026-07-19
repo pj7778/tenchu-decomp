@@ -244,6 +244,35 @@ threshold, static objects, const arrays, float/double constants, explicit
 `.scommon`, and GNU `COMMON`. It also verifies that every small symbol remains
 within signed GPREL16 reach of `_gp`.
 
+### Loaded-image congruence
+
+`objcopy -O binary` lays the payload out by LMA while the PS-X loader maps
+that file linearly at `t_addr`, so every loaded section must keep one constant
+LMA-to-VMA offset. The first real extension content broke this: GNU `ld`
+raised `.main_exe_extension`'s VMA to the largest input alignment (16 for
+compiler `.sdata`) while its `AT(__romPos)` cursor stayed dense, so every
+loaded byte from the extension onward sat 12 bytes below its ELF address in
+RAM — the linked ELF was internally consistent and every static audit passed,
+but the booted image executed displaced bytes. The synthetic `+0x10004` growth
+proof had never exposed this because its fixture occupies an ordinary input
+boundary *inside* `.main_exe`.
+
+Two guards now hold the invariant:
+
+- the generated script pins the section address explicitly
+  (`.main_exe_extension ALIGN(4) : AT(__romPos)`), so the VMA can never
+  outrun the LMA cursor; and
+- `tools/psxexe.py` refuses to finalize any ELF whose file-bearing PSX-range
+  `PT_LOAD` segments do not share one `paddr - vaddr` delta
+  (`require_congruent_load_layout`), which makes this whole class of
+  displaced-image bug a hard build failure on every lane that produces a
+  PS-X EXE.
+
+A linker-script `ASSERT` was tried first and rejected: assignment-embedded
+asserts are evaluated in intermediate `ld` passes where `LOADADDR` is not yet
+final, and they false-fire on layouts whose final values are congruent. The
+program-header check examines only the finished link.
+
 Accordingly, “write any C” means ordinary C compiled by this pinned pipeline,
 using its normal output sections and fitting the reviewed RAM/relocation
 limits. It does not promise arbitrary custom section attributes, unsupported
@@ -454,6 +483,40 @@ This proves that GNU `ld` can choose a larger internal layout, including a
 is still bounded by PS1 RAM, the fixed handoff/pool/stack contracts, MIPS
 relocation ranges, and whatever new source the user adds.
 
+## Real grown-function edit proof
+
+The synthetic growth fixture proves the linker; the acceptance test for the
+actual modding goal — *edit an existing function, make it bigger, add new
+code and data, link, and play* — was run with a real edit on 2026-07-20:
+
+- `PadProc` (an existing matched game function, called every frame) gained a
+  call to a brand-new translation unit, growing its object by two
+  instructions;
+- `src/main.exe/reloc/mod_probe.c` added `ModProbeTick()` plus two new
+  globals: a zero-initialized `.sbss` counter incremented every call and a
+  `.sdata` word initialized to `0x600DF00D`;
+- `./Build relink` linked it with zero input-audit findings (one more object,
+  one more relocation-backed `JAL`, two more relocation-backed `$gp` uses),
+  and `./Build check-relink` passed its composed gates including the
+  `+0x10004` growth proof stacked on top of the edit.
+
+Runtime verification used the extended smoke probe on both paths:
+
+```text
+direct:    TENCHU_SMOKE PASS entry=1 main=1 frames=10 loops=3 …
+           watchCounter=1..10 watchEquals=0x600df00d
+full disc: SLPS_019.01 → MENU.EXE → MAIN.EXE (repacked disc)
+           TENCHU_SMOKE PASS entry=1 main=1 frames=10 loops=3 …
+           watchCounter=1..10 watchEquals=0x600df00d
+```
+
+`--watch-counter SYMBOL` requires the u32 at the ELF-resolved symbol to be
+nonzero and increasing while the main loop runs — the grown function's new
+code demonstrably executes every frame. `--watch-equals SYMBOL=VALUE` proves
+new initialized data loads at its linked address. This run is also what
+exposed the loaded-image congruence bug above: the first boot executed
+displaced bytes that no static gate had rejected.
+
 ## Emulator smoke proof
 
 The current `+0x10004` artifact has also passed two bounded, non-interactive
@@ -495,6 +558,16 @@ first-chance CPU exception or unexpected pause, requires two calls to the moved
 `PadProc`, and then requires five later VSyncs. It uses the interpreter,
 debugger, software GPU, isolated temporary memory cards, and the OpenBIOS
 fallback unless `--bios` is supplied.
+
+The probe's breakpoints are image-verified: on the disc path SLPS and MENU
+code occupy the same RAM before MAIN.EXE loads, and a bare
+address-execution breakpoint can fire on unrelated menu instructions. The
+wrapper therefore reads the instruction word at each probe address out of the
+selected EXE and the Lua callbacks only count a hit when RAM holds that word;
+main-loop hits additionally require `main` to have been verifiably reached
+first. Optional `--watch-counter`/`--watch-equals` memory watches (addresses
+resolved from the selected ELF, sampled each VSync once the loop runs) gate
+the PASS verdict and are reported in it.
 
 This proves direct execution and the auto-packed
 `SLPS_019.01 → MENU.EXE → MAIN.EXE` handoff through the grown main loop.

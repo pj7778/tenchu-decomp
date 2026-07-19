@@ -218,6 +218,21 @@ that topology, extend the contract with compiler/linker evidence instead of
 weakening or bypassing it. The exact procedure and proof limits are in
 `docs/relocatable-build.md`.
 
+**Real-edit end-to-end proof landed (2026-07-20).** A genuine grown-function
+edit — `PadProc` +2 instructions calling a brand-new `reloc/` TU with a new
+`.sbss` counter and `.sdata` magic — passed `relink`, `check-relink` (with
+the growth proof stacked on top), and image-verified PCSX-Redux boots on both
+the direct and full `SLPS → MENU → MAIN` repacked-disc paths, with the new
+code observed executing every frame (`watchCounter=1..10`,
+`watchEquals=0x600df00d`). The run exposed and fixed a real displaced-image
+bug (extension section LMA/VMA divergence) that every static gate had missed;
+loaded-image congruence is now enforced by the generated script's pinned
+extension address and a hard `psxexe.py` program-header check on every
+finalized EXE. The smoke probe now image-verifies its breakpoints (immune to
+MENU.EXE false positives) and supports `--watch-counter`/`--watch-equals`
+memory watches. See `docs/relocatable-build.md` §“Real grown-function edit
+proof”.
+
 ### Historical 2026-07-18 frontier
 
 The snapshot below recorded the earlier 31-function frontier and is retained to

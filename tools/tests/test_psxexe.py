@@ -272,6 +272,55 @@ class MetadataTests(unittest.TestCase):
             self.assertEqual(metadata.symbol("_start"), ENTRY)
             self.assertEqual(metadata.symbol("__load_start"), LOAD)
             self.assertEqual(metadata.load_address(), LOAD)
+            self.assertEqual(
+                metadata.load_segments,
+                ((0, 0, 0x40), (LOAD, LOAD, 0x900)),
+            )
+
+    def _metadata_with_segments(
+        self, segments: tuple[tuple[int, int, int], ...]
+    ) -> psxexe.ElfMetadata:
+        return psxexe.ElfMetadata(
+            path=Path("fixture.elf"),
+            entry=ENTRY,
+            load_addresses=(LOAD,),
+            alloc_addresses=(LOAD,),
+            symbols={},
+            load_segments=segments,
+        )
+
+    def test_congruent_load_layout_accepts_dense_rom_at_chain(self) -> None:
+        # objcopy -O binary lays out by LMA while the PS-X loader maps that
+        # file linearly at t_addr, so LMA minus VMA must be one constant.
+        metadata = self._metadata_with_segments(
+            (
+                (0, 0, 0x800),  # header pseudo-segment is outside PSX RAM
+                (0x80011000, 0x800, 0x86EB4),
+                (0x80097EB4, 0x876B4, 0x1C),
+            )
+        )
+        metadata.require_congruent_load_layout()
+
+    def test_congruent_load_layout_rejects_displaced_segment(self) -> None:
+        # The regression shape: ld aligned the extension VMA to 16 while its
+        # AT() cursor stayed dense, displacing all following loaded bytes.
+        metadata = self._metadata_with_segments(
+            (
+                (0x80011000, 0x800, 0x86EB4),
+                (0x80097EC0, 0x876B4, 0x1C),
+            )
+        )
+        with self.assertRaisesRegex(psxexe.PsxExeError, "displaced"):
+            metadata.require_congruent_load_layout()
+
+    def test_congruent_load_layout_ignores_empty_segments(self) -> None:
+        metadata = self._metadata_with_segments(
+            (
+                (0x80011000, 0x800, 0x86EB4),
+                (0x80097EC0, 0x876B4, 0),  # NOLOAD/BSS carries no file bytes
+            )
+        )
+        metadata.require_congruent_load_layout()
 
     def test_map_accepts_both_common_symbol_spellings(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

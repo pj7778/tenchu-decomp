@@ -214,7 +214,12 @@ SECTIONS
             f"{lane.MEMORY_POOL_HEADER_WORDS});",
             output,
         )
-        self.assertIn(".main_exe_extension : AT(__romPos)", output)
+        # The explicit ALIGN(4) address pins the extension VMA to the dense
+        # AT(__romPos) LMA cursor; ld's implicit input-alignment raise would
+        # otherwise displace every loaded byte after it in RAM.  The final
+        # authority on that congruence is psxexe.require_congruent_load_layout,
+        # which checks the linked program headers on every finalized EXE.
+        self.assertIn(".main_exe_extension ALIGN(4) : AT(__romPos)", output)
         self.assertIn("build/reloc/*.c.o(.text .text.*", output)
         self.assertIn("build/main.exe/*.c.o(.sdata .sdata.*);", output)
         self.assertIn("build/reloc-c-literals/*.o(.sdata .sdata.*);", output)

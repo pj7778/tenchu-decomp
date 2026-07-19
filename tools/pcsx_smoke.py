@@ -50,6 +50,9 @@ class ProbeAddresses:
     entry: int
     main: int
     loop: int
+    watch_counter: int | None = None
+    watch_equals: int | None = None
+    watch_equals_value: int | None = None
 
 
 @dataclass(frozen=True)
@@ -136,21 +139,75 @@ def read_psx_exe_entry(path: Path) -> int:
     return entry
 
 
+def read_exe_word(path: Path, address: int) -> int:
+    """Read the u32 the PS-X EXE will place at ``address`` once loaded.
+
+    The probe breakpoints verify these image words at runtime: on the disc
+    path SLPS/MENU code occupies the same RAM before MAIN.EXE, so an
+    execution of the bare address is not yet evidence that our executable
+    is running.
+    """
+    data = path.read_bytes()
+    if len(data) < 0x800 or data[:8] != PSX_EXE_MAGIC:
+        raise SmokeError(f"{path}: not a complete PS-X EXE header")
+    t_addr, t_size = struct.unpack_from("<II", data, 0x18)
+    if not t_addr <= address <= t_addr + t_size - 4:
+        raise SmokeError(
+            f"{path}: address 0x{address:08x} is outside the loaded image "
+            f"0x{t_addr:08x}..0x{t_addr + t_size:08x}"
+        )
+    offset = 0x800 + (address - t_addr)
+    if offset + 4 > len(data):
+        raise SmokeError(f"{path}: image truncated at 0x{address:08x}")
+    return struct.unpack_from("<I", data, offset)[0]
+
+
+def parse_watch_equals(spec: str) -> tuple[str, int]:
+    """Parse ``SYMBOL=VALUE`` (any int base) for the equality watch."""
+    symbol, separator, raw_value = spec.partition("=")
+    if not separator or not symbol or not raw_value:
+        raise SmokeError(f"--watch-equals expects SYMBOL=VALUE, got: {spec}")
+    try:
+        value = int(raw_value, 0)
+    except ValueError as error:
+        raise SmokeError(f"--watch-equals value is not an integer: {spec}") from error
+    if not 0 <= value <= 0xFFFFFFFF:
+        raise SmokeError(f"--watch-equals value must fit in 32 bits: {spec}")
+    return symbol, value
+
+
 def resolve_probe_addresses(
     exe: Path,
     elf: Path,
     *,
     main_symbol: str = "main",
     loop_symbol: str = "PadProc",
+    watch_counter_symbol: str | None = None,
+    watch_equals: tuple[str, int] | None = None,
 ) -> ProbeAddresses:
     entry = read_psx_exe_entry(exe)
     try:
         metadata = psxexe.read_elf_metadata(elf)
         main = metadata.symbol(main_symbol)
         loop = metadata.symbol(loop_symbol)
+        watch_counter = (
+            metadata.symbol(watch_counter_symbol)
+            if watch_counter_symbol is not None
+            else None
+        )
+        watch_equals_address = (
+            metadata.symbol(watch_equals[0]) if watch_equals is not None else None
+        )
     except (OSError, psxexe.PsxExeError) as error:
         raise SmokeError(str(error)) from error
-    return ProbeAddresses(entry=entry, main=main, loop=loop)
+    return ProbeAddresses(
+        entry=entry,
+        main=main,
+        loop=loop,
+        watch_counter=watch_counter,
+        watch_equals=watch_equals_address,
+        watch_equals_value=watch_equals[1] if watch_equals is not None else None,
+    )
 
 
 def build_command(
@@ -301,6 +358,20 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                         help="required calls to the main-loop PadProc probe")
     parser.add_argument("--main-symbol", default="main")
     parser.add_argument("--loop-symbol", default="PadProc")
+    parser.add_argument(
+        "--watch-counter", metavar="SYMBOL",
+        help=(
+            "require the u32 at SYMBOL (resolved from the selected ELF) to be "
+            "nonzero and to increase while the main loop runs"
+        ),
+    )
+    parser.add_argument(
+        "--watch-equals", metavar="SYMBOL=VALUE",
+        help=(
+            "require the u32 at SYMBOL (resolved from the selected ELF) to "
+            "equal VALUE once the game is running"
+        ),
+    )
     args = parser.parse_args(argv)
     if args.timeout is not None and args.timeout <= 0:
         parser.error("--timeout must be positive")
@@ -322,9 +393,23 @@ def run(argv: Sequence[str] | None = None) -> int:
         cue = discover_cue(args.cue)
         bios = _existing_file(args.bios, "BIOS") if args.bios else None
         _existing_file(LUA_PROBE, "PCSX smoke Lua probe")
-        addresses = resolve_probe_addresses(
-            exe, elf, main_symbol=args.main_symbol, loop_symbol=args.loop_symbol
+        watch_equals = (
+            parse_watch_equals(args.watch_equals)
+            if args.watch_equals is not None
+            else None
         )
+        addresses = resolve_probe_addresses(
+            exe, elf, main_symbol=args.main_symbol, loop_symbol=args.loop_symbol,
+            watch_counter_symbol=args.watch_counter, watch_equals=watch_equals,
+        )
+    except SmokeError as error:
+        print(f"pcsx-smoke: {error}", file=sys.stderr)
+        return 2
+
+    try:
+        entry_word = read_exe_word(exe, addresses.entry)
+        main_word = read_exe_word(exe, addresses.main)
+        loop_word = read_exe_word(exe, addresses.loop)
     except SmokeError as error:
         print(f"pcsx-smoke: {error}", file=sys.stderr)
         return 2
@@ -335,11 +420,21 @@ def run(argv: Sequence[str] | None = None) -> int:
             "TENCHU_SMOKE_ENTRY": str(addresses.entry),
             "TENCHU_SMOKE_MAIN": str(addresses.main),
             "TENCHU_SMOKE_LOOP": str(addresses.loop),
+            "TENCHU_SMOKE_ENTRY_WORD": str(entry_word),
+            "TENCHU_SMOKE_MAIN_WORD": str(main_word),
+            "TENCHU_SMOKE_LOOP_WORD": str(loop_word),
             "TENCHU_SMOKE_FRAMES": str(args.frames),
             "TENCHU_SMOKE_LOOPS": str(args.loop_hits),
             "TENCHU_SMOKE_AUTOPAD": "1" if args.repack else "0",
         }
     )
+    if addresses.watch_counter is not None:
+        environment["TENCHU_SMOKE_WATCH_COUNTER"] = str(addresses.watch_counter)
+    if addresses.watch_equals is not None:
+        environment["TENCHU_SMOKE_WATCH_EQUALS_ADDR"] = str(addresses.watch_equals)
+        environment["TENCHU_SMOKE_WATCH_EQUALS_VALUE"] = str(
+            addresses.watch_equals_value
+        )
 
     emulator_timeout = (
         args.timeout if args.timeout is not None else (180.0 if args.repack else 60.0)

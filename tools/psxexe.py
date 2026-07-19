@@ -292,6 +292,7 @@ class ElfMetadata:
     load_addresses: tuple[int, ...]
     alloc_addresses: tuple[int, ...]
     symbols: Mapping[str, int]
+    load_segments: tuple[tuple[int, int, int], ...] = ()
 
     def symbol(self, name: str) -> int:
         try:
@@ -299,6 +300,33 @@ class ElfMetadata:
         except KeyError as error:
             raise PsxExeError(f"{self.path}: ELF has no defined symbol {name!r}") from error
         return normalize_address(value, f"ELF symbol {name}")
+
+    def require_congruent_load_layout(self) -> None:
+        """Reject file-bearing segments whose LMA diverges from their VMA.
+
+        ``objcopy -O binary`` lays the payload out by LMA while the PS-X
+        loader maps that file linearly at the RAM load address, so every
+        loaded segment must keep one constant LMA-to-VMA offset.  A linker
+        script that aligns a section's VMA without advancing its ``AT``
+        cursor silently displaces all following loaded bytes in RAM.
+        """
+        psx_segments = [
+            (vaddr, paddr, filesz)
+            for vaddr, paddr, filesz in self.load_segments
+            if filesz and 0x80000000 <= vaddr < 0xC0000000
+        ]
+        if len(psx_segments) < 2:
+            return
+        base_vaddr, base_paddr, _ = psx_segments[0]
+        for vaddr, paddr, filesz in psx_segments[1:]:
+            if paddr - base_paddr != vaddr - base_vaddr:
+                raise PsxExeError(
+                    f"{self.path}: loaded segment at 0x{vaddr:08x} has file "
+                    f"placement 0x{paddr:08x}, but congruence with the segment "
+                    f"at 0x{base_vaddr:08x} (file 0x{base_paddr:08x}) requires "
+                    f"0x{base_paddr + (vaddr - base_vaddr):08x}; the linked "
+                    "image would load displaced in RAM"
+                )
 
     def load_address(self) -> int:
         candidates = self.load_addresses or self.alloc_addresses
@@ -358,15 +386,18 @@ def read_elf_metadata(path: Path) -> ElfMetadata:
     require(not (shoff and shnum == 0), f"{path}: extended ELF section counts are unsupported")
 
     load_addresses: list[int] = []
+    load_segments: list[tuple[int, int, int]] = []
     if phnum:
         require(phentsize == expected_phentsize, f"{path}: unexpected program-header size")
         _checked_slice(data, phoff, phentsize * phnum, f"{path}: program headers")
         for index in range(phnum):
             values = struct.unpack_from(ph_format, data, phoff + index * phentsize)
             if elf_class == 1:
-                p_type, _, vaddr, _, filesz = values[:5]
+                p_type, _, vaddr, paddr, filesz = values[:5]
             else:
-                p_type, _, _, vaddr, _, filesz = values[:6]
+                p_type, _, _, vaddr, paddr, filesz = values[:6]
+            if p_type == 1:
+                load_segments.append((vaddr, paddr, filesz))
             if p_type == 1 and filesz and vaddr:
                 load_addresses.append(vaddr)
 
@@ -443,6 +474,7 @@ def read_elf_metadata(path: Path) -> ElfMetadata:
         load_addresses=tuple(load_addresses),
         alloc_addresses=tuple(alloc_addresses),
         symbols=symbols,
+        load_segments=tuple(load_segments),
     )
 
 
@@ -518,6 +550,8 @@ def resolve_layout(args: argparse.Namespace, *, require_complete: bool) -> Resol
     )
 
     elf = read_elf_metadata(args.elf) if args.elf else None
+    if elf is not None:
+        elf.require_congruent_load_layout()
     metadata_path = args.elf or args.map
 
     def symbol_value(name: str) -> int:
