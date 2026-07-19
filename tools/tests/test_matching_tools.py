@@ -5672,6 +5672,7 @@ class BuildConfigurationTests(unittest.TestCase):
             "GS_110.OBJ": "gs110ObjectMembers",
             "GS_111.OBJ": "gs111ObjectMembers",
             "GS_113.OBJ": "gs113ObjectMembers",
+            "GS_122.OBJ": "gs122ObjectMembers",
             "GS_107.OBJ": "gs107ObjectMembers",
             "ADT.OBJ": "adtObjectMembers",
         }
@@ -5729,6 +5730,7 @@ class BuildConfigurationTests(unittest.TestCase):
         self.assertEqual(permute.cc_executable_for("GsSetAmbient"), "cc1-272")
         self.assertEqual(permute.cc_executable_for("GsDrawOt"), "cc1-272")
         self.assertEqual(permute.cc_executable_for("GsClearOt"), "cc1-272")
+        self.assertEqual(permute.cc_executable_for("GsGetTimInfo"), "cc1-272")
         for member in permute.ORIGINAL_OBJECT_MEMBERS["GS_107.OBJ"]:
             self.assertEqual(
                 permute.cc_executable_for(member), "cc1-281-gs107"

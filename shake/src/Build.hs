@@ -589,6 +589,13 @@ gs113ObjectMembers =
   [ "GsClearOt"
   ]
 
+-- GS_122.OBJ also has one public member. Its complete 0xF0-byte text,
+-- including the local return label and trailing alignment, is Tenchu's slot.
+gs122ObjectMembers :: [String]
+gs122ObjectMembers =
+  [ "GsGetTimInfo"
+  ]
+
 originalObjectCcFlags :: FilePath -> [String]
 originalObjectCcFlags src
   | name `elem` libmcrdObjectMembers = ["-mno-split-addresses"]
@@ -596,6 +603,7 @@ originalObjectCcFlags src
   | name `elem` gs110ObjectMembers = []
   | name `elem` gs111ObjectMembers = []
   | name `elem` gs113ObjectMembers = []
+  | name `elem` gs122ObjectMembers = []
   | name `elem` gs107ObjectMembers = ["-mno-split-addresses"]
   | name `elem` adtObjectMembers = []
   | otherwise = []
@@ -627,6 +635,7 @@ originalObjectCcExecutable src
   | takeBaseName src `elem` gs110ObjectMembers = "cc1-272"
   | takeBaseName src `elem` gs111ObjectMembers = "cc1-272"
   | takeBaseName src `elem` gs113ObjectMembers = "cc1-272"
+  | takeBaseName src `elem` gs122ObjectMembers = "cc1-272"
   | takeBaseName src `elem` gs107ObjectMembers = "cc1-281-gs107"
   | takeBaseName src `elem` adtObjectMembers = "cc1-280"
   | otherwise = ccDefault
