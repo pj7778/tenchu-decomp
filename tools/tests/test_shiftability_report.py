@@ -10,12 +10,11 @@ from tools import shiftability_report as report
 class SourceDebtTests(unittest.TestCase):
     def test_live_conditionals_equal_the_reviewed_non_blocking_debt(self) -> None:
         debt = report.collect_source_debt(report.ROOT)
-        self.assertEqual(debt["count"], 5)
+        self.assertEqual(debt["count"], 0)
         self.assertEqual(debt["initial_inventory"], 6)
-        self.assertEqual(
-            debt["categories"],
-            {"exact_opcode_conflict": 2, "source_reconstruction": 3},
-        )
+        self.assertEqual(debt["resolved_from_initial_inventory"], 6)
+        self.assertEqual(debt["categories"], {})
+        self.assertEqual(debt["entries"], [])
         self.assertTrue(
             all(not entry["normal_relink_blocker"] for entry in debt["entries"])
         )

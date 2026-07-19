@@ -130,8 +130,8 @@ The historical focused gates remain useful exact oracles:
 
 - `check-reloc-game` proves all game functions section-owned at the retail
   layout;
-- `check-reloc-c-literals` proves the compiler records for five matching-only
-  numeric-address variants and ordinary symbolic `ProcItemShinsoku`;
+- `check-reloc-c-literals` proves four ordinary exact symbolic C objects and
+  the two bounded allocator assembly transformations;
 - `check-reloc-sdk` proves the canonical SDK stream at retail and `+4`;
 - `check-reloc-data` proves every reviewed pointer at retail, `+4`, and
   `+0x10004`; and
@@ -144,7 +144,8 @@ the no-pad link, PS-X header, widened fixed-address audit, and a complete
 
 `./Build shiftability-report` presents those checks as one human/agent work
 queue. BLOCKER means a relocation, ownership, layout, or growth proof failed;
-DEBT is an exact-vs-normal source variant whose normal object is already safe;
+DEBT is reserved for an exact-vs-normal source variant whose normal object is
+already safe; the current source-variant inventory is zero of the initial six.
 CONTRACT and POLICY distinguish intentional addresses from stale internal
 pointers. `python3 tools/shiftability_report.py --json` exposes the same result
 for tooling. The default command runs the growth proof; `--no-growth` is
@@ -152,51 +153,34 @@ explicitly reported as a partial static-only result.
 
 ## Compiler-produced C references
 
-Five otherwise matched functions still need alternate normal-link objects.
-Three C files construct retail addresses numerically to hold cc1's matching
-schedule; the normal lane compiles those translation units with one build-wide
-`TENCHU_RELOCATABLE` definition and ordinary symbolic C. `vinit` and `valloc`
-instead use shared `VMEM_DEFAULT_POOL`/`VMEM_DEFAULT_CAPACITY` names, with the
-unavoidable exact-vs-symbolic representation selected once in `vmemory.h`.
-`ProcItemShinsoku` has already collapsed to one ordinary symbolic source: its
-CamState relocations resolve to the exact retail words when the exact linker
-pins CamState. There are no function-specific compiler flags. The compiler
-currently emits and the gate requires:
+All six functions in the original exact-vs-normal debt inventory now have one
+C source spelling. `SelectCameraOwnerOption`, `FileOption`, and
+`ActivateHumans` were collapsed to one exact symbolic C spelling without the
+numeric high-half scaffolds. `FileOption` and `SelectCameraOwnerOption` recover
+the debug-symbol array shapes; `ActivateHumans` remains a compiler-calibrated
+reconstruction rather than a claim about the author's exact spelling. Together
+with the already unified `ProcItemShinsoku`, they are ordinary objects in both
+build lanes: the exact
+linker pins their symbols to the shipped addresses, while the normal linker is
+free to move them. There are no `TENCHU_RELOCATABLE` source branches and no
+function-specific compiler flags. The focused gate requires this inventory:
 
 ```text
 SelectCameraOwnerOption  D_80097D70         HI16=1 LO16=1
 FileOption               D_80097D70         HI16=1 LO16=1
 ProcItemShinsoku         CamState            HI16=2 LO16=1  (ordinary object)
-ActivateHumans           StageChar           HI16=1 LO16=1
+ActivateHumans           StageChar           HI16=1 LO16=2
 vinit                    MemoryPool          HI16=1 LO16=1
 vinit                    MemoryPoolCapacity  HI16=1 LO16=1
-valloc                   MemoryPool          HI16=1 LO16=2
+valloc                   MemoryPool          HI16=1 LO16=1
 valloc                   MemoryPoolCapacity  HI16=1 LO16=1
 ```
 
-`MemoryPoolCapacity` is a linker-defined scalar exposed through the usual
-embedded-C symbol-address idiom. The exact allocator definitions retain the
-retail address and derived `0x47ffe` word count; neither literal is present in
-the normal-link allocator paths. With the current sources the five replacement objects shrink
-the game stream by 12 bytes; ordinary `ProcItemShinsoku` has zero size delta.
-The no-pad relink moves every later owned input by that amount.
-`check-relink` reports 3,739 unique section-owned SDK symbols following the
-change and resolves all eight target pairs in the final ELF. Its fixed ordinary
-object contract additionally requires ProcItemShinsoku's CamState HI16 records
-at text offsets `0x394` and `0x40c` and its LO16 record at `0x410`.
-
-The five remaining source variants are not all the same kind of debt. The
-three per-source switches are `SelectCameraOwnerOption`, `FileOption`, and
-`ActivateHumans`; their current direct symbolic forms change cc1's register
-allocation, scheduling, or frame shape.
-Those forms do not match, but that is not proof that human-written symbolic C
-cannot match; they remain source-reconstruction problems and may be local
-minima created by the numeric scaffolds.
-
-`vinit` and `valloc` have a harder opcode conflict today. Retail constructs the
-pool pointer and capacity as integer literals with `LUI`/`ORI`, while a generic
-MIPS symbol address uses `R_MIPS_HI16`/`R_MIPS_LO16` with `LUI`/`ADDIU`. At the
-retail pool address, `vinit` has exactly these three linked word differences:
+`vinit` and `valloc` also keep one exact C spelling. Compiler output shows that
+their original-looking integer constants naturally produce `LUI`/`ORI`, while
+a generic MIPS symbol expression produces `R_MIPS_HI16`/`R_MIPS_LO16` with
+`LUI`/`ADDIU`. At the retail pool address, the generic spelling changes these
+three words in `vinit`:
 
 ```text
 text+0x0c  retail 3c02800d  symbolic 3c02800e
@@ -206,13 +190,36 @@ text+0x2c  retail 34427ffe  symbolic 24427ffe
 
 The first symbolic high half carries because the low half `0xc000` is consumed
 by sign-extending `ADDIU`; the other two differences are `ORI` versus `ADDIU`.
-The linker can fill instruction immediates but cannot change an opcode.
-`valloc` also rematerializes the pool low half and grows by one instruction.
-Consequently those two functions cannot use their current generic symbolic C
-unconditionally while preserving retail bytes. Their function bodies now use
-one semantic allocator interface, but eliminating the underlying build-lane
-choice needs a genuinely different representation or an explicit decision to
-relax the exact lane, not merely more retail linker pins.
+Writing a second C variant to obtain those opcodes also disturbed `valloc`'s
+schedule and added an instruction, so it was the wrong abstraction boundary.
+
+The reference lane therefore compiles the raw-constant allocator C unchanged.
+For the normal lane only, a fail-fast transform operates on the compiler's
+generated assembly after maspsx. It recognizes exactly one reviewed pool and
+one capacity materialization in each allocator, changes the pair's maspsx
+spelling from the exact `li`/`ori` form to explicit `lui %hi(symbol)` and
+`addiu %lo(symbol)`, and lets the assembler emit standard relocations directly
+against `MemoryPool` and `MemoryPoolCapacity`. It rejects an unexpected pattern,
+or count instead of guessing. The focused exact oracle additionally pins the
+reviewed relocation offsets and text sizes; the normal `check-relink` gate
+relaxes those layout assertions so an unrelated source edit may grow these
+functions while retaining relocation, opcode, and raw-literal checks. No linker
+alias is involved.
+
+This preserves cc1's register allocation and schedule and keeps `vinit` at
+`0x54` bytes and `valloc` at `0x1cc` bytes. The normal focused inventory is
+therefore two transformed replacement objects plus four ordinary exact
+symbolic objects, with no stream shrink or boundary pad. `MemoryPoolCapacity`
+remains a linker-defined scalar, and all eight target pairs are checked after
+linking. The ordinary-object contract additionally fixes each reviewed
+relocation offset, including `ProcItemShinsoku`'s CamState HI16 records at text
+offsets `0x394` and `0x40c` and its LO16 record at `0x410`.
+
+The assembly transformation is not a trampoline, a compiler-flag exception,
+or a source fork. It is the narrow conversion required to make two proven
+integer-literal materializations relocatable while retaining one plausible
+original C source. The exact-vs-normal source-debt count is consequently zero
+of the initial six.
 
 ## Ordinary C output-section coverage
 
@@ -221,8 +228,8 @@ instructions. The generated retail linker enumerates each existing game
 object's base `.text`, `.rodata`, `.data`, and `.bss`, but cc1's pinned `-G8`
 pipeline can also emit new small/common sections when an edit adds a global.
 The normal-link generator therefore collects the missing sections from both
-compiler-produced game-object families: ordinary `*.c.o` inputs and the five
-explicitly enumerated `TENCHU_RELOCATABLE` replacement `*.o` inputs:
+compiler-produced game-object families: ordinary `*.c.o` inputs and the two
+explicitly enumerated transformed allocator replacement `*.o` inputs:
 
 - `.sdata`/`.sdata.*` joins the loaded extension near `_gp`;
 - `.sbss`/`.sbss.*`/`.scommon` joins the gp-near BSS prefix; and
@@ -359,10 +366,11 @@ C and headers (comments and the authority header itself are excluded).
 
 This authority intentionally excludes section-owned objects such as
 `StageChar`, `CamState`, and `D_80097D70`. They must remain linker symbols so
-their addresses follow ordinary code/data growth. The `0x80090000` values in
-three exact-source schedules are compiler scaffolds, not a semantic globals
-base. Likewise, `0x800dc000` is the virtual allocator's preferred retail floor,
-not the start of PS1 RAM; the normal linker may advance it.
+their addresses follow ordinary code/data growth. Earlier matching attempts
+used `0x80090000` scaffolds for those objects; recovering the human-shaped
+symbolic source removed that local minimum. Likewise, `0x800dc000` is the
+virtual allocator's preferred retail floor, not the start of PS1 RAM; the
+normal linker may advance it.
 
 There are three different kinds of “base,” and treating them alike creates
 stale pointers:

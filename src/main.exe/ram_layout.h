@@ -11,8 +11,9 @@
  *
  * Section-owned objects such as StageChar, CamState, and D_80097D70 are NOT
  * layout constants.  Normal code must name their linker symbols so ordinary
- * growth moves them.  In particular, the 0x80090000 high-half scaffolds in
- * three matching sources do not describe a real "game globals" base.
+ * growth moves them.  Earlier matching attempts used 0x80090000 high-half
+ * scaffolds for three such objects; those removed local minima never described
+ * a real "game globals" base.
  */
 
 #define TENCHU_MAIN_LOAD_ADDRESS              0x80011000

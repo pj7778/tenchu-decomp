@@ -24,6 +24,14 @@ class FakeElf:
         self.path = Path("fixture.elf")
         self._values = values
         self._words = words or {}
+        self.symbols = [
+            FakeSymbol(
+                name,
+                raw[0] if isinstance(raw, tuple) else raw,
+                raw[1] if isinstance(raw, tuple) else 1,
+            )
+            for name, raw in values.items()
+        ]
 
     def symbol(self, name: str) -> FakeSymbol:
         raw = self._values[name]
@@ -38,15 +46,17 @@ class FakeElf:
 
 
 class RelocGrowthProbeTests(unittest.TestCase):
-    def test_c_object_inventory_uses_ordinary_proc_item_shinsoku(self) -> None:
-        self.assertEqual(
-            reloc_growth_probe.C_OBJECTS["ProcItemShinsoku"],
-            Path(".shake/build/main.exe/ProcItemShinsoku.c.o"),
-        )
-        self.assertEqual(
-            reloc_growth_probe.C_OBJECTS["FileOption"],
-            Path(".shake/reloc-c-literals/FileOption.o"),
-        )
+    def test_c_object_inventory_separates_transforms_from_ordinary_objects(self) -> None:
+        for name in reloc_c_literals.ORDINARY_OBJECT_SPECS:
+            self.assertEqual(
+                reloc_growth_probe.C_OBJECTS[name],
+                Path(".shake/build/main.exe") / f"{name}.c.o",
+            )
+        for name in reloc_c_literals.REPLACEMENT_OBJECT_SPECS:
+            self.assertEqual(
+                reloc_growth_probe.C_OBJECTS[name],
+                Path(".shake/reloc-c-literals") / f"{name}.o",
+            )
 
     def test_extension_inputs_mirror_recursive_user_and_generated_union(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -83,6 +93,40 @@ class RelocGrowthProbeTests(unittest.TestCase):
                     for relative in expected_sources
                 ],
             )
+
+    def test_owned_movement_separates_coincident_initialized_and_bss_bounds(self) -> None:
+        growth = 0x10004
+        bss_delta = 0x10010
+        base = FakeElf(
+            {
+                "__load_start": (0x1000, 2),
+                reloc_growth_probe.FIRST_SHIFTED_SYMBOL: (0x1100, 2),
+                "LoadedTail": (0x1FFC, 2),
+                "__tenchu_extension_end": (0x2000, 2),
+                "main_exe_INITIALIZED_END": (0x2000, 3),
+                "__bss_start": (0x2000, 3),
+                "BssFirst": (0x2000, 3),
+                "__bss_end": (0x3000, 3),
+            }
+        )
+        grown = FakeElf(
+            {
+                "__load_start": (0x1000, 2),
+                reloc_growth_probe.FIRST_SHIFTED_SYMBOL: (0x1100 + growth, 2),
+                "LoadedTail": (0x1FFC + growth, 2),
+                "__tenchu_extension_end": (0x2000 + growth, 2),
+                "main_exe_INITIALIZED_END": (0x2000 + growth, 3),
+                "__bss_start": (0x2000 + bss_delta, 3),
+                "BssFirst": (0x2000 + bss_delta, 3),
+                "__bss_end": (0x3000 + bss_delta, 3),
+            }
+        )
+        self.assertEqual(
+            reloc_growth_probe.verify_all_owned_movement(
+                base, grown, growth, bss_delta  # type: ignore[arg-type]
+            ),
+            8,
+        )
 
     def test_extension_inputs_require_each_source_backed_object(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

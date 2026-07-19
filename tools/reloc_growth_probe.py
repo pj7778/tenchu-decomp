@@ -308,12 +308,21 @@ def verify_all_owned_movement(
     initialized_end = base.symbol("main_exe_INITIALIZED_END").value
     bss_start = base.symbol("__bss_start").value
     bss_end = base.symbol("__bss_end").value
+    bss_section = base.symbol("__bss_start").section_index
 
     checked = 0
     for name, before in base_symbols.items():
         if load_start <= before.value < first_shifted:
             delta = 0
-        elif first_shifted <= before.value <= initialized_end:
+        elif first_shifted <= before.value < initialized_end:
+            delta = growth
+        elif before.value == initialized_end and (
+            before.section_index != bss_section
+            or name == "main_exe_INITIALIZED_END"
+        ):
+            # A zero alignment gap gives initialized-end and BSS-start symbols
+            # the same value. Section ownership separates them, except GNU ld
+            # assigns main_exe_INITIALIZED_END to the following BSS section.
             delta = growth
         elif bss_start <= before.value <= bss_end:
             delta = bss_delta
@@ -570,8 +579,8 @@ def count_hi16_carries(
             addend = next(iter(addends))
             before = (base.symbol(target_name).value + addend) & 0xFFFFFFFF
             after = (grown.symbol(target_name).value + addend) & 0xFFFFFFFF
-            before_high = ((before + 0x8000) >> 16) & 0xFFFF
-            after_high = ((after + 0x8000) >> 16) & 0xFFFF
+            before_high = reloc_c_literals.relocated_hi16(before)
+            after_high = reloc_c_literals.relocated_hi16(after)
             if before_high != after_high:
                 carries += 1
     if require_carry and carries == 0:
@@ -808,6 +817,7 @@ def execute(args: argparse.Namespace) -> ProbeReport:
             reloc_c_literals.ElfObject(path),
             reloc_c_literals.OBJECT_SPECS[name],
             name,
+            strict_layout=False,
         )
     linked_reports = reloc_c_literals.verify_linked_relocations(
         grown_elf, object_paths

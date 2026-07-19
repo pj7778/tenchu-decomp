@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""Audit the first symbolic-C address fixes used by the normal relink lane.
+"""Audit the six compiler-produced address fixes used by the normal relink.
 
-Five retail-matching sources still contain numeric address materialisation
-chosen solely to reproduce the shipped instruction schedule.  With
-``TENCHU_RELOCATABLE`` defined, those translation units use ordinary symbolic C
-instead.  ``ProcItemShinsoku`` now uses symbolic C in its ordinary object too:
-at the retail CamState address its relocations resolve byte-identically.  The
-allocator pair additionally consumes a linker-derived ``MemoryPoolCapacity``
-count, so neither the pool base nor its retail size is embedded in normal-link
-code.  This verifier reads all six ELF objects directly and requires the
-expected MIPS HI16/LO16 relocation records.  It also rejects unrelocated
-matching-only address high halves and the old ``0x47ffe`` pool-capacity
-materialisation in these bounded objects.
+Four retail-matching functions now use one exact symbolic C source and
+their ordinary exact objects carry the required relocations.  Compiler output
+proves that the allocator pair's plausible raw-constant source must instead
+emit LUI/ORI.  The normal lane therefore applies one bounded, fail-fast
+LUI/ORI-to-symbolic-LUI/ADDIU transform after cc1/maspsx, preserving its
+register allocation, schedule, and exact text size.  This verifier reads all
+six ELF objects directly and requires the reviewed MIPS HI16/LO16 records.  It
+also rejects unrelocated matching-only address high halves and the old
+``0x47ffe`` pool-capacity materialisation in the transformed allocator objects.
 
 This remains a bounded object/link-input gate.  The composed normal-link gate
 separately verifies the canonical SDK stream, reviewed loaded data, linker-owned
@@ -24,6 +22,7 @@ import argparse
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import struct
 
 try:
@@ -50,7 +49,7 @@ SECTION_HEADER = struct.Struct("<IIIIIIIIII")
 SYMBOL_ENTRY = struct.Struct("<IIIBBH")
 REL_ENTRY = struct.Struct("<II")
 
-EXPECTED_TEXT_SHRINK = 12
+EXPECTED_TEXT_SHRINK = 0
 EXPECTED_LINKER_REFERENCES = 4
 FIRST_SDK_TEXT_INPUT = ".shake/build/main.exe/LIBAPI_4F9D4.s.o(.text);"
 SHN_ABS = 0xFFF1
@@ -67,24 +66,42 @@ POOL_CAPACITY_PROVISION = (
     "PROVIDE(MemoryPoolCapacity = "
     f"0x{RETAIL_MEMORY_POOL_CAPACITY:08x});\n"
 )
+ALLOCATOR_RELOCATION_SYMBOLS = {
+    MEMORY_POOL_START: "MemoryPool",
+    RETAIL_MEMORY_POOL_CAPACITY: "MemoryPoolCapacity",
+}
+ALLOCATOR_LITERAL_COUNTS = {
+    "vinit": {symbol: 1 for symbol in ALLOCATOR_RELOCATION_SYMBOLS.values()},
+    "valloc": {symbol: 1 for symbol in ALLOCATOR_RELOCATION_SYMBOLS.values()},
+}
+ALLOCATOR_TEXT_SIZES = {"vinit": 0x54, "valloc": 0x1CC}
+LI_ASM_RE = re.compile(
+    r"^(?P<indent>\s*)li\s+\$(?P<reg>[0-9]+),"
+    r"(?P<value>-?(?:0[xX][0-9A-Fa-f]+|[0-9]+))"
+    r"(?P<tail>[ \t]*(?:#.*)?)$"
+)
+ORI_ASM_RE = re.compile(
+    r"^(?P<indent>\s*)ori\s+\$(?P<dst>[0-9]+),\$(?P<src>[0-9]+),"
+    r"(?P<value>-?(?:0[xX][0-9A-Fa-f]+|[0-9]+))"
+    r"(?P<tail>[ \t]*(?:#.*)?)$"
+)
 
-# The natural objects start at the same place as their exact counterparts, then
-# move later functions by the cumulative eight-byte shrink in ActivateHumans
-# and SelectCameraOwnerOption.  A 12-byte boundary pad deliberately restores
-# the still-raw SDK to retail placement.
+# The remaining generated normal objects retain their exact text sizes.  Keep
+# the linked-symbol inventory explicit so the focused substitution lane proves
+# that property instead of assuming it from object sizes alone.
 LINKED_SYMBOL_DELTAS = {
     "valloc": 0,
-    "vinit": 4,
-    "ActivateHumans": 4,
-    "DrawConstruction": -4,
-    "ProcItemShinsoku": -4,
-    "ReqItemShinsoku": -4,
-    "SelectCameraOwnerOption": -4,
-    "LayoutEnemyOption": -12,
-    "FileOption": -12,
-    "debug_menu_stage_option": -12,
-    "AdtSelect": -12,
-    "AdtDmyPadRead": -12,
+    "vinit": 0,
+    "ActivateHumans": 0,
+    "DrawConstruction": 0,
+    "ProcItemShinsoku": 0,
+    "ReqItemShinsoku": 0,
+    "SelectCameraOwnerOption": 0,
+    "LayoutEnemyOption": 0,
+    "FileOption": 0,
+    "debug_menu_stage_option": 0,
+    "AdtSelect": 0,
+    "AdtDmyPadRead": 0,
     "Exec": 0,
 }
 
@@ -131,28 +148,39 @@ class SourceVariantDebt:
 
 
 REPLACEMENT_OBJECT_SPECS = {
-    "SelectCameraOwnerOption": ObjectSpec(
-        {"D_80097D70": {R_MIPS_HI16: 1, R_MIPS_LO16: 1}}, (0x8009,)
-    ),
-    "FileOption": ObjectSpec(
-        {"D_80097D70": {R_MIPS_HI16: 1, R_MIPS_LO16: 1}}, (0x8009,)
-    ),
-    "ActivateHumans": ObjectSpec(
-        {"StageChar": {R_MIPS_HI16: 1, R_MIPS_LO16: 1}}, (0x8009,)
-    ),
     "vinit": ObjectSpec(
         {
             "MemoryPool": {R_MIPS_HI16: 1, R_MIPS_LO16: 1},
             "MemoryPoolCapacity": {R_MIPS_HI16: 1, R_MIPS_LO16: 1},
         },
         (MEMORY_POOL_START >> 16,),
+        {
+            "MemoryPool": {
+                R_MIPS_HI16: (0xC,),
+                R_MIPS_LO16: (0x10,),
+            },
+            "MemoryPoolCapacity": {
+                R_MIPS_HI16: (0x28,),
+                R_MIPS_LO16: (0x2C,),
+            },
+        },
     ),
     "valloc": ObjectSpec(
         {
-            "MemoryPool": {R_MIPS_HI16: 1, R_MIPS_LO16: 2},
+            "MemoryPool": {R_MIPS_HI16: 1, R_MIPS_LO16: 1},
             "MemoryPoolCapacity": {R_MIPS_HI16: 1, R_MIPS_LO16: 1},
         },
         (MEMORY_POOL_START >> 16,),
+        {
+            "MemoryPool": {
+                R_MIPS_HI16: (0x1C,),
+                R_MIPS_LO16: (0x20,),
+            },
+            "MemoryPoolCapacity": {
+                R_MIPS_HI16: (0x24,),
+                R_MIPS_LO16: (0x28,),
+            },
+        },
     ),
 }
 
@@ -160,40 +188,48 @@ REPLACEMENT_OBJECT_SPECS = {
 # categories record what the compiler and relocation output currently prove;
 # they are not a claim that the remaining retail source is unrecoverable.
 SOURCE_RECONSTRUCTION = "source_reconstruction"
-EXACT_OPCODE_CONFLICT = "exact_opcode_conflict"
-SOURCE_VARIANT_DEBT = {
-    "SelectCameraOwnerOption": SourceVariantDebt(
-        SOURCE_RECONSTRUCTION,
-        "symbolic C relinks safely, but its human-written retail source shape "
-        "has not yet been recovered from compiler output",
-    ),
-    "FileOption": SourceVariantDebt(
-        SOURCE_RECONSTRUCTION,
-        "symbolic C relinks safely, but its human-written retail source shape "
-        "has not yet been recovered from compiler output",
-    ),
-    "ActivateHumans": SourceVariantDebt(
-        SOURCE_RECONSTRUCTION,
-        "symbolic C relinks safely, but its human-written retail source shape "
-        "has not yet been recovered from compiler output",
-    ),
-    "vinit": SourceVariantDebt(
-        EXACT_OPCODE_CONFLICT,
-        "retail ORI address materialisation conflicts with ABI HI16/LO16 "
-        "relocation output; the symbolic variant uses ADDIU",
-    ),
-    "valloc": SourceVariantDebt(
-        EXACT_OPCODE_CONFLICT,
-        "retail ORI address materialisation conflicts with ABI HI16/LO16 "
-        "relocation output; the symbolic variant uses ADDIU",
-    ),
-}
+SOURCE_VARIANT_DEBT: dict[str, SourceVariantDebt] = {}
+
+# These generated normal objects intentionally differ after cc1, without a
+# source variant.  The bounded transform inventory and relocation contract are
+# the executable review boundary for that compiler-output rewrite.
+ASSEMBLY_RELOCATION_TRANSFORMS = frozenset(ALLOCATOR_LITERAL_COUNTS)
 
 # ProcItemShinsoku's human-shaped CamState.Owner expression is already
 # byte-identical after the exact linker applies these records, so its ordinary
 # object is audited but never replaced.  The compiler births CamState's high
 # half on both sides of a call, then shares the one field load.
 ORDINARY_OBJECT_SPECS = {
+    "ActivateHumans": ObjectSpec(
+        {"StageChar": {R_MIPS_HI16: 1, R_MIPS_LO16: 2}},
+        (0x8009,),
+        {
+            "StageChar": {
+                R_MIPS_HI16: (0x144,),
+                R_MIPS_LO16: (0x148, 0x3EC),
+            }
+        },
+    ),
+    "SelectCameraOwnerOption": ObjectSpec(
+        {"D_80097D70": {R_MIPS_HI16: 1, R_MIPS_LO16: 1}},
+        (0x8009,),
+        {
+            "D_80097D70": {
+                R_MIPS_HI16: (0x30,),
+                R_MIPS_LO16: (0x44,),
+            }
+        },
+    ),
+    "FileOption": ObjectSpec(
+        {"D_80097D70": {R_MIPS_HI16: 1, R_MIPS_LO16: 1}},
+        (0x8009,),
+        {
+            "D_80097D70": {
+                R_MIPS_HI16: (0x2D8,),
+                R_MIPS_LO16: (0x2EC,),
+            }
+        },
+    ),
     "ProcItemShinsoku": ObjectSpec(
         {"CamState": {R_MIPS_HI16: 2, R_MIPS_LO16: 1}},
         (0x8009,),
@@ -213,22 +249,113 @@ class AuditError(RuntimeError):
     """An ELF or relocation-lane invariant failed."""
 
 
+def _line_ending(line: str) -> str:
+    return "\r\n" if line.endswith("\r\n") else "\n"
+
+
+def relocate_allocator_literals(source: str, description: str) -> str:
+    """Turn cc1's exact LUI/ORI constants into ABI symbolic address pairs.
+
+    The retail C source really does use integer constants, which is why cc1
+    selects ORI instead of the ABI symbol-address ADDIU.  The normal-link lane
+    keeps the compiler-produced register allocation and schedule, but changes
+    that pair to the standard relocation-bearing LUI/ADDIU spelling.  This
+    remains correct across every low-half carry without changing the C source.
+    """
+
+    expected = ALLOCATOR_LITERAL_COUNTS.get(description)
+    if expected is None:
+        raise AuditError(f"{description}: not a reviewed allocator transform")
+    lines = source.splitlines(keepends=True)
+    output: list[str] = []
+    counts: Counter[str] = Counter()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        body = line.rstrip("\r\n")
+        high = LI_ASM_RE.fullmatch(body)
+        if high is not None and index + 1 < len(lines):
+            low_line = lines[index + 1]
+            low_body = low_line.rstrip("\r\n")
+            low = ORI_ASM_RE.fullmatch(low_body)
+            if (
+                low is not None
+                and low.group("dst") == high.group("reg")
+                and low.group("src") == high.group("reg")
+            ):
+                high_value = int(high.group("value"), 0) & 0xFFFFFFFF
+                low_value = int(low.group("value"), 0) & 0xFFFF
+                combined = high_value | low_value
+                symbol = ALLOCATOR_RELOCATION_SYMBOLS.get(combined)
+                if symbol is not None:
+                    indent = high.group("indent")
+                    register = high.group("reg")
+                    output.extend(
+                        [
+                            f"{indent}lui\t${register},%hi({symbol})"
+                            f" # symbolic high{_line_ending(line)}",
+                            f"{low.group('indent')}addiu\t${register},${register},"
+                            f"%lo({symbol}) # symbolic low"
+                            f"{_line_ending(low_line)}",
+                        ]
+                    )
+                    counts[symbol] += 1
+                    index += 2
+                    continue
+        if high is not None:
+            value = int(high.group("value"), 0) & 0xFFFFFFFF
+            symbol = ALLOCATOR_RELOCATION_SYMBOLS.get(value)
+            if symbol is not None:
+                indent = high.group("indent")
+                register = high.group("reg")
+                ending = _line_ending(line)
+                output.extend(
+                    [
+                        f"{indent}lui\t${register},%hi({symbol})"
+                        f" # symbolic high{ending}",
+                        f"{indent}addiu\t${register},${register},%lo({symbol})"
+                        f" # symbolic low{ending}",
+                    ]
+                )
+                counts[symbol] += 1
+                index += 1
+                continue
+        output.append(line)
+        index += 1
+
+    if dict(counts) != expected:
+        rendered = ", ".join(
+            f"{name}={counts.get(name, 0)}/{count}"
+            for name, count in sorted(expected.items())
+        )
+        raise AuditError(
+            f"{description}: allocator literal transform inventory differs: "
+            + rendered
+        )
+    return "".join(output)
+
+
 def validate_source_variant_debt_inventory(
     debt: dict[str, SourceVariantDebt] = SOURCE_VARIANT_DEBT,
     replacement_specs: dict[str, ObjectSpec] = REPLACEMENT_OBJECT_SPECS,
+    assembly_transforms: frozenset[str] = ASSEMBLY_RELOCATION_TRANSFORMS,
 ) -> None:
-    """Require every replacement object to have exactly one reviewed reason."""
+    """Require one non-overlapping reason for every replacement object."""
 
-    missing = sorted(set(replacement_specs) - set(debt))
-    extra = sorted(set(debt) - set(replacement_specs))
-    if missing or extra:
+    overlap = sorted(set(debt) & set(assembly_transforms))
+    reviewed = set(debt) | set(assembly_transforms)
+    missing = sorted(set(replacement_specs) - reviewed)
+    extra = sorted(reviewed - set(replacement_specs))
+    if overlap or missing or extra:
         details = []
+        if overlap:
+            details.append("overlap " + ", ".join(overlap))
         if missing:
             details.append("missing " + ", ".join(missing))
         if extra:
             details.append("extra " + ", ".join(extra))
         raise AuditError(
-            "source-variant debt inventory differs from replacement objects: "
+            "replacement-object reason inventory differs: "
             + "; ".join(details)
         )
 
@@ -457,8 +584,20 @@ def find_literal_pool_capacity(text: bytes) -> list[int]:
     return findings
 
 
-def verify_contract(elf: ElfObject, spec: ObjectSpec, description: str) -> str:
+def verify_contract(
+    elf: ElfObject,
+    spec: ObjectSpec,
+    description: str,
+    *,
+    strict_layout: bool = True,
+) -> str:
     text = elf.section_data(".text")
+    expected_size = ALLOCATOR_TEXT_SIZES.get(description)
+    if strict_layout and expected_size is not None and len(text) != expected_size:
+        raise AuditError(
+            f"{description}: transformed text is 0x{len(text):x} bytes, "
+            f"expected exact-size 0x{expected_size:x}"
+        )
     relocations = elf.relocations(".rel.text")
     hi_offsets = {
         relocation.offset
@@ -483,7 +622,7 @@ def verify_contract(elf: ElfObject, spec: ObjectSpec, description: str) -> str:
                 f"expected {expected}"
             )
 
-        if spec.relocation_offsets is not None:
+        if strict_layout and spec.relocation_offsets is not None:
             for relocation_type, expected_offsets in spec.relocation_offsets.get(
                 symbol_name, {}
             ).items():
@@ -511,11 +650,50 @@ def verify_contract(elf: ElfObject, spec: ObjectSpec, description: str) -> str:
                 raise AuditError(
                     f"{description}: HI16 at 0x{relocation.offset:x} is not LUI"
                 )
-            if relocation.type == R_MIPS_LO16 and opcode not in (0x09, 0x23):
-                raise AuditError(
-                    f"{description}: LO16 at 0x{relocation.offset:x} is neither "
-                    "ADDIU nor LW"
+            if relocation.type == R_MIPS_LO16:
+                allowed = (
+                    (0x09,)
+                    if description in ALLOCATOR_TEXT_SIZES
+                    else (0x09, 0x21, 0x23)
                 )
+                if opcode not in allowed:
+                    expected_name = (
+                        "ADDIU"
+                        if description in ALLOCATOR_TEXT_SIZES
+                        else "ADDIU, LH, or LW"
+                    )
+                    raise AuditError(
+                        f"{description}: LO16 at 0x{relocation.offset:x} is not "
+                        f"{expected_name}"
+                    )
+
+        if description in ALLOCATOR_TEXT_SIZES:
+            high_relocations = [
+                relocation
+                for relocation in relocations
+                if relocation.symbol == symbol_name
+                and relocation.type == R_MIPS_HI16
+            ]
+            low_relocations = [
+                relocation
+                for relocation in relocations
+                if relocation.symbol == symbol_name
+                and relocation.type == R_MIPS_LO16
+            ]
+            if len(high_relocations) == 1:
+                high_word = instruction_word(
+                    text, high_relocations[0].offset, description
+                )
+                high_register = (high_word >> 16) & 0x1F
+                for relocation in low_relocations:
+                    low_word = instruction_word(text, relocation.offset, description)
+                    low_source = (low_word >> 21) & 0x1F
+                    low_destination = (low_word >> 16) & 0x1F
+                    if low_source != high_register or low_destination != high_register:
+                        raise AuditError(
+                            f"{description}: {symbol_name} LUI/ADDIU register "
+                            "chain is not self-contained"
+                        )
 
     for high_half in spec.literal_high_halves:
         literals = find_literal_high_halves(text, hi_offsets, high_half=high_half)
@@ -631,6 +809,18 @@ def generate_linker(
 def sign_extend_16(value: int) -> int:
     value &= 0xFFFF
     return value - 0x10000 if value & 0x8000 else value
+
+
+def relocated_hi16(value: int) -> int:
+    """Return the R_MIPS_HI16 immediate paired with a signed LO16 use."""
+
+    return ((value + 0x8000) >> 16) & 0xFFFF
+
+
+def reconstruct_lui_addiu(high: int, low: int) -> int:
+    """Model the linked LUI/ADDIU pair used by normal allocator objects."""
+
+    return ((high << 16) + sign_extend_16(low)) & 0xFFFFFFFF
 
 
 def memory_pool_start_for_bss(bss_end: int) -> int:
@@ -779,7 +969,7 @@ def verify_linked_relocations(
                 )
             addend = next(iter(addends))
             target = (variant.symbol(target_name).value + addend) & 0xFFFFFFFF
-            expected_high = ((target + 0x8000) >> 16) & 0xFFFF
+            expected_high = relocated_hi16(target)
             expected_low = target & 0xFFFF
 
             for relocation in target_relocations:
@@ -797,6 +987,13 @@ def verify_linked_relocations(
                         f"linked {function_name} {target_name} relocation at "
                         f"0x{relocation.offset:x} has 0x{immediate:04x}, "
                         f"expected 0x{expected_immediate:04x}"
+                    )
+            if target_name in {"MemoryPool", "MemoryPoolCapacity"}:
+                reconstructed = reconstruct_lui_addiu(expected_high, expected_low)
+                if reconstructed != target:
+                    raise AuditError(
+                        f"linked {function_name} {target_name} pair reconstructs "
+                        f"0x{reconstructed:08x}, expected 0x{target:08x}"
                     )
             reports.append(f"{function_name}->{target_name}=0x{target:08x}")
     return reports
@@ -979,20 +1176,35 @@ def arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    relocate_allocator = subparsers.add_parser(
+        "relocate-allocator-assembly",
+        help="convert exact allocator LUI/ORI pairs to ABI symbolic pairs",
+    )
+    relocate_allocator.add_argument(
+        "--name", choices=sorted(ALLOCATOR_LITERAL_COUNTS), required=True
+    )
+    relocate_allocator.add_argument("--input", type=Path, required=True)
+    relocate_allocator.add_argument("--output", type=Path, required=True)
+
     verify_objects = subparsers.add_parser(
         "verify-objects",
-        help="audit five replacement objects and one ordinary symbolic object",
+        help="audit two transformed and four ordinary reviewed objects",
     )
     verify_objects.add_argument(
         "--object",
         action="append",
         default=[],
         metavar="NAME=PATH",
-        help="one of the fixed symbolic-C object inputs",
+        help="one of the six reviewed compiler-object inputs",
+    )
+    verify_objects.add_argument(
+        "--allow-layout-changes",
+        action="store_true",
+        help="retain relocation safety checks but relax exact offsets/text sizes",
     )
 
     generate = subparsers.add_parser(
-        "generate-linker", help="substitute the natural objects in the game lane"
+        "generate-linker", help="substitute transformed allocator objects"
     )
     generate.add_argument("--linker-in", type=Path, required=True)
     generate.add_argument("--linker-out", type=Path, required=True)
@@ -1006,8 +1218,7 @@ def arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "--no-boundary-pad",
         action="store_true",
         help=(
-            "substitute the natural objects without restoring their text shrink; "
-            "used only by the composed normal relink"
+            "do not add a focused boundary pad; used by the composed normal relink"
         ),
     )
 
@@ -1039,15 +1250,35 @@ def arguments(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = arguments(argv)
     try:
-        if args.command == "verify-objects":
+        if args.command == "relocate-allocator-assembly":
+            transformed = relocate_allocator_literals(
+                args.input.read_text(), args.name
+            )
+            atomic_write(args.output, transformed)
+            print(
+                f"reloc-c-literals: {args.name} exact LUI/ORI constants "
+                "now use ABI symbolic relocations"
+            )
+        elif args.command == "verify-objects":
             objects = parse_objects(args.object)
             reports = [
-                verify_contract(ElfObject(objects[name]), OBJECT_SPECS[name], name)
+                verify_contract(
+                    ElfObject(objects[name]),
+                    OBJECT_SPECS[name],
+                    name,
+                    strict_layout=not args.allow_layout_changes,
+                )
                 for name in sorted(OBJECT_SPECS)
             ]
+            layout_mode = (
+                "with layout checks relaxed"
+                if args.allow_layout_changes
+                else "at their exact retail layouts"
+            )
             print(
-                "reloc-c-literals: verified five replacement objects and "
-                "one ordinary symbolic object"
+                f"reloc-c-literals: verified {len(REPLACEMENT_OBJECT_SPECS)} "
+                f"transformed and {len(ORDINARY_OBJECT_SPECS)} ordinary objects "
+                f"{layout_mode}"
             )
             for report in reports:
                 print(f"  {report}")
@@ -1069,13 +1300,15 @@ def main(argv: list[str] | None = None) -> int:
             )
             if args.no_boundary_pad:
                 print(
-                    "reloc-c-literals: substituted five symbolic-C objects; "
+                    f"reloc-c-literals: substituted "
+                    f"{len(REPLACEMENT_OBJECT_SPECS)} transformed objects; "
                     f"left compiler text delta {-shrink:+d} bytes linker-owned"
                 )
             else:
                 print(
-                    "reloc-c-literals: substituted five symbolic-C objects; "
-                    f"restored SDK boundary with {shrink} bytes"
+                    f"reloc-c-literals: substituted "
+                    f"{len(REPLACEMENT_OBJECT_SPECS)} transformed objects; "
+                    f"focused boundary pad is {shrink} bytes"
                 )
         elif args.command == "verify-linked":
             objects = parse_objects(args.object)

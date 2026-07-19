@@ -93,7 +93,7 @@ BUILD GREEN (byte-identical)
   patch/trampoline scheme. Complete SDK text carries 7,540 relocations, the
   reviewed data manifest carries 208 pointer relocations, movable ABS/raw
   address findings are zero, BSS and allocator capacity are linker-derived,
-  ordinary and replacement-C small/common sections are retained near `_gp`,
+  ordinary and transformed-allocator small/common sections are retained near `_gp`,
   unsupported allocatable sections fail loudly, and `relink` itself audits the
   exact 731 map-loaded inputs for relocation-backed calls, address formation,
   and data pointers with zero findings. The recursive user/generated extension

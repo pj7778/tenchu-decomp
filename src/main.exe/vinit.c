@@ -62,10 +62,11 @@
  *    pointer is read directly (no separate `p` local caching it): it changes
  *    across the addr==0 branch, so cc1 cannot keep it live in a register
  *    across that join and reloads gp_rel fresh at the point of use.
- *  - VMEM_DEFAULT_POOL/VMEM_DEFAULT_CAPACITY centralize the one necessary
- *    exact-vs-linked representation choice in vmemory.h. The normal expansion
- *    uses linker-owned MemoryPool/MemoryPoolCapacity; the exact expansion uses
- *    the central retail policy constants. The function body is identical.
+ *  - VMEM_DEFAULT_POOL/VMEM_DEFAULT_CAPACITY name the central retail policy
+ *    constants which compiler output proves were used here.  The normal-link
+ *    build keeps this one source and changes only the resulting LUI/ORI pairs
+ *    to standard relocation-bearing LUI/ADDIU pairs; the function's register
+ *    allocation, schedule, and 0x54-byte size stay unchanged.
  */
 
 void vinit(void *adr, u32 size)

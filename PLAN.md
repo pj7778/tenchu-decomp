@@ -17,7 +17,7 @@ byte-identical `main.exe`.
   via nix (no cabal/wine). maspsx is integrated (see [`docs/toolchain.md`](docs/toolchain.md)).
 - **Every game function is done (555/555)**; matched count is live in
   `tools/progress.py` (**537/555 game functions, 97.90% of game-code bytes** as of
-  2026-07-19; **555/555 functions and 100% of bytes counting the 18
+  2026-07-20; **555/555 functions and 100% of bytes counting the 18
   canonical-asm originals**),
   whole-image byte-identical throughout (see `git log` for the
   per-function record; `tools/progress.py` for the live count). The engine is
@@ -60,8 +60,8 @@ byte-identical `main.exe`.
   in place and rejects anything larger than the retail slot;
   `./Build iso`/`iso-mod` produce a bootable disc for pcsx-redux. The genuine
   size-changing lane is now `./Build relink`: complete SDK/data/BSS ownership,
-  dynamic allocator capacity, regenerated PS-X headers, ordinary and
-  replacement-C small/common section retention, and a mandatory post-`ld`
+  dynamic allocator capacity, regenerated PS-X headers, compiler-produced C
+  small/common section retention, and a mandatory post-`ld`
   input audit are composed under `./Build relink`. Its exact 731 map-loaded
   objects contain 767 owned allocatable PROGBITS sections, 1,462 structurally
   reviewed MIPS metadata sections, 6,918/6,918 relocation-backed direct jumps,
@@ -179,25 +179,44 @@ reported floors; the DecodeTMD twins matched after their one-statement proof;
 FUN_80057b80 matched after a quantified signature proof. Continue to rank by
 value and evidence, but treat every park as a falsifiable claim about one graph.
 
-## Where the work actually is now (2026-07-19)
+## Current resume point (2026-07-20)
 
-Fresh `tools/progress.py` and `tools/findsimilar.py --targets --by-value` leave
-exactly two game-code functions:
+The game-code matching queue is empty. Live output is 537/555 game functions in
+exact C plus 18/555 canonical handwritten-assembly originals, or 555/555 and
+100% of game-code bytes done. `tools/findsimilar.py --targets --by-value`
+returns zero game candidates. `FUN_800519bc`, `AdtSelect`, and
+`mission_score_screen` are exact C; `FUN_8001c730` is the eighteenth canonical
+GTE assembly body. Do not restart the old matching flywheel from the historical
+target lists below.
 
-| Function | Size | Authoritative current draft |
-|---|---:|---|
-| `FUN_800519bc` | 1448 | exact length; 76 differing bytes / 28 instructions in seven clusters; demo homolog confirms an ordinary renderer loop |
-| `AdtSelect` | 776 | exact length; nine differing bytes in one huge-frame reload decision; clean indexed count loop and ordinary D-pad control flow |
+The normal-link shiftability queue is also empty in the current bounded proof:
 
-`mission_score_screen` closed at 0/4636 from one shared function-scope sprite
-attribute identity. `FUN_8001c730` is the eighteenth canonical assembly body:
-the post-demo helper has no PSX.SYM function record, reads GTE MAC registers
-directly, and requires hand scheduling when forced through C.
+- `./Build shiftability-report` reports zero active blockers and exact-vs-normal
+  source debt `0/6`.
+- `ActivateHumans`, `FileOption`, `SelectCameraOwnerOption`, and
+  `ProcItemShinsoku` are ordinary exact symbolic C objects. Their reviewed
+  globals carry real linker relocations.
+- `vinit` and `valloc` use the same human-shaped C in exact and normal builds.
+  The normal lane applies one bounded, fail-fast post-compiler rewrite from the
+  retail pool and capacity LUI/ORI materialisations in each function to
+  standard symbolic LUI/ADDIU pairs. There are no per-source
+  `TENCHU_RELOCATABLE` branches,
+  per-function compiler flags, or linker encoding aliases.
+- `./Build check-relink` passes the complete input/final-image audits and a
+  `+0x10004` ordinary GNU-ld growth proof. The proof moves BSS, allocator base
+  and capacity, PS-X header entry/size, 208 loaded pointers, and four HI16
+  carries with zero movable-address findings.
+- `./Build check` remains retail byte-identical; `./Build report` succeeds;
+  the full Python suite has 595 passing tests.
 
-Both remaining functions are active in the current four-slot flywheel. Compiler output and
-shipping/demo bytes remain the gate. Cookbook rules and old “unreachable”
-claims are hypotheses, especially when they were derived from a scaffolded
-local minimum.
+Resume shiftability work by running `./Build shiftability-report` first and
+working only its `BLOCKERS` section. `DEBT` must remain zero; `CONTRACT` and
+`POLICY` are reviewed boundaries, not work items. Normal verification permits
+function sizes and offsets to change, but deliberately retains the reviewed
+relocation counts and allocator-transform inventory. If a real edit changes
+that topology, extend the contract with compiler/linker evidence instead of
+weakening or bypassing it. The exact procedure and proof limits are in
+`docs/relocatable-build.md`.
 
 ### Historical 2026-07-18 frontier
 
@@ -413,69 +432,31 @@ Best remaining leads, roughly in value order:
 
 Detailed dev docs live in [`docs/`](docs/). Ranked next steps:
 
-0. **The `Act*` character-action family — one coherent batch. TU NOW
-   ESTABLISHED.** `ActSYURI` (676 B) and `ActHANG` (700 B, jump table) are
-   MATCHED (commit pending) — these proved the shared TU facts, so the remaining
-   11 (`ActNORMAL`, `ActMOVE`, `ActSQUAT`, `ActACTION`, `ActITEM`, `ActATTACK`,
-   `ActENGAGE`, `ActCHASE`, `ActDAMAGE`, `ActSWIM`, `ActSTICKON`, `ActSTATE`) are
-   now much cheaper — Sonnet-viable for the mid-size ones, Fable only for
-   `ActATTACK` (6.6 KB, the single biggest unmatched function in the game).
-   Established facts:
-   - **gp smalls** are MOTION.C's own: `dtM, Me_MOTION_C, motID, D_80097F0E`
-     (+ `dtV, dtL, dtPAD` as used per function; `tools/gpsyms.py <Name>` after a
-     build). **`StagePlayer` and `GlobalAreaMap` stay ABSOLUTE, not gp.** Add
-     every sibling's Build.hs + permute.py entry together and `tools/symcheck.py`
-     after each, or a converted stub silently relocates the shared data region.
-   - **Structs — item.h is already complete for this family**: `MotionManager`
-     (`mid`@0/`count`@2/`loop`@4), `Humanoid` (`attribute`@4, `pad.trig`@0x14,
-     `model`@0x58), `ModelArchiveType.object`@0x68. PSX.SYM's `PARAM_ITEM_LAUNCH`
-     == item.h's `PARAM_ITEM_USE`.
-   - **Idioms** (see cookbook): jump-table dispatch on `mid` is
-     `switch ((short)(ptr->mid - 0xA00))`; `D_80097F0E = 1;` is written literally
-     per if/else arm (never hoisted); load-width is per-SITE not per-TU; case
-     bodies lay in source order (read the order off piece memory order).
-   - `ActSTICKON` and `DamageControl` additionally divide by a variable (target
-     asm has `div`+`break` guards), so they need `extra "<Name>" =
-     ["--expand-div"]` in Build.hs and permute.py — see the cookbook's
-     `--expand-div` rule. `HumanActionControl` (the dispatcher) is drafted with
-     the full list; use it plus the two matched siblings as templates.
-
-1. **Reverse more functions.** The pipeline is now proven end-to-end on a
-   gp-using function (`Think1sleep`). Use `tools/reverse.py <name> --ghidra-export
-   .shake/ghidra-export` to split the next one, turn Ghidra's C in the comment into
-   matching C (its return type + accumulator *types* matter — `Think1sleep` needed
-   `short`/`ushort`, not `s32`), and lean on `tools/permute.py` for residual
-   register allocation. `.shake/ghidra-export/c/<addr>.c` is the reference.
-2. **decomp-permuter is wired in** (`tools/permute.py`) — see
-   [`docs/permuter.md`](docs/permuter.md). (Note: for pure register-allocation
-   ties it can stall; the faster path is often reading Ghidra's C for the right
-   *variable types/count*, as with `Think1sleep`'s single `ushort` accumulator.)
-3. **Commit the disassembly**: move splat's asm to a committed `asm/main.exe/` and
+0. **Choose the next product goal explicitly.** There is no active game-match or
+   static shiftability blocker. For a real game-code change, build with
+   `./Build relink`, gate with `./Build check-relink`, package with
+   `./Build iso-relink`, and add any newly observed relocation topology to the
+   reviewed contract. Do not create a new exact/normal source spelling.
+1. **Broaden grown-image runtime validation.** Direct and full-chain boot, main
+   loop, one STR decode, and XA setup/callback have passed. EOF, physical audio,
+   broader gameplay, save/load, and later executable transitions remain release
+   gates; see `docs/building-an-iso.md`.
+2. **Recover/decompile the other executables.** `MENU.EXE`, `ENDING.EXE`, and
+   `TRIAL.EXE` are the next genuine source-recovery frontier. Generalize the
+   name-recovery tools' hard-coded `main.exe` target before bulk use; the
+   PSX.SYM and cross-executable leads are recorded above.
+3. **Treat PSY-Q provenance as optional SDK work, not a game-code queue.** Keep
+   canonical relocatable assembly in the hermetic lane. Identify/link original
+   `.OBJ`/`.LIB` members only when exact provenance or editability justifies the
+   external SDK dependency; see `docs/psyq-object-lane.md`.
+4. **Commit the disassembly only if the operator preference changes**: move
+   splat's asm to a committed `asm/main.exe/` and
    set splat `base_path: .` so a fresh clone is self-contained.
    (NOTE: the operator prefers keeping `.shake/gen` regenerated-on-demand; only do
    this if that changes — [`docs/project-layout.md`](docs/project-layout.md).)
-4. ~~Pin `tools/cc1-281`~~ **DONE** — nix `fetchurl` of decompals/old-gcc 0.17
-   `gcc-2.8.1-psx` (sha256-pinned, `cc1-281` on PATH); the committed binary is
-   gone (it was a wrong build — see [`docs/toolchain.md`](docs/toolchain.md)).
-5. **CI**: a GitHub Actions job running `nix develop --command ./Build check`.
-6. **Per-function tooling**: `diff_settings.py` (asm-differ is in the devShell),
-   `objdiff.json`, an `m2ctx.py` context generator, a `make <obj>` shim.
-7. **Grown-image disc validation — boot/main loop and representative media
-   checkpoints DONE.** The
-   `+0x10004` image passes direct `-loadexe` and an auto-LBA
-   `SLPS -> MENU -> MAIN` smoke at entry `0x80070260`, ELF-derived `main`, moved
-   `PadProc`, and post-loop VSyncs without a first-chance exception. The
-   harness is `tools/pcsx_smoke.py`; exact reproducible commands are in the ISO
-   doc. On the same disc, `OPEN06.STR` ran at relocated LBA 46,593 (`+32`) with
-   active MDEC calls, and `STAGES.XA` ran at relocated LBA 119,130 (`+32`) with
-   CD command/callback activity, without a CPU exception. Neither was run to
-   EOF; physical audio output, broader gameplay, and later executable
-   transitions remain release gates. Static inspection also
-   supports auto-packing: RUN consumes the fixed handoff then the loaded PS-X
-   header PC, while the AFS/XA/STR paths use filenames and
-   `CdSearchFile`/`CdlFILE` positions rather than a fixed MAIN entry or
-   stream-start LBA. See
-   [`docs/building-an-iso.md`](docs/building-an-iso.md).
+5. **CI**: add a GitHub Actions job running
+   `nix develop --command ./Build check`, followed by the relocatable gates when
+   their runtime is acceptable.
 
 ## Progress & the SDK endgame
 

@@ -204,6 +204,7 @@ def collect_compiler_references(root: Path) -> dict[str, object]:
             reloc_c_literals.ElfObject(path),
             reloc_c_literals.OBJECT_SPECS[name],
             name,
+            strict_layout=False,
         )
 
     retail = reloc_c_literals.ElfObject(resolve(root, RETAIL_LAYOUT_ELF))
@@ -255,7 +256,10 @@ def collect_compiler_references(root: Path) -> dict[str, object]:
 def collect_source_debt(root: Path) -> dict[str, object]:
     source_root = root / "src/main.exe"
     discovered: dict[str, list[int]] = {}
-    for source in sorted(source_root.rglob("*.c")):
+    sources = sorted(
+        set(source_root.rglob("*.c")) | set(source_root.rglob("*.h"))
+    )
+    for source in sources:
         lines = [
             line_number
             for line_number, line in enumerate(source.read_text().splitlines(), 1)
@@ -274,7 +278,7 @@ def collect_source_debt(root: Path) -> dict[str, object]:
         missing = ", ".join(sorted(expected_conditional_paths - actual_paths)) or "none"
         extra = ", ".join(sorted(actual_paths - expected_conditional_paths)) or "none"
         raise ReportError(
-            "per-source TENCHU_RELOCATABLE inventory differs from reviewed debt: "
+            "source-level TENCHU_RELOCATABLE inventory differs from reviewed debt: "
             f"missing {missing}; extra {extra}"
         )
 
@@ -763,9 +767,14 @@ def render_text(report: dict[str, object]) -> str:
     if not _render_error(lines, source_section):
         source = _data(source_section)
         assert source is not None
+        debt_note = (
+            "all six retain one C source spelling"
+            if source["count"] == 0
+            else "normal relink already uses relocation-safe objects"
+        )
         lines.append(
             f"  remaining: {source['count']}/{source['initial_inventory']} "
-            "(normal relink already uses safe symbolic objects)"
+            f"({debt_note})"
         )
         for entry in source["entries"]:
             lines.append(

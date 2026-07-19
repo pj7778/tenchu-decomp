@@ -75,13 +75,11 @@ relocGameDir = buildDir </> "reloc-game"
 relocGameLinker = relocGameDir </> "main.exe.ld"
 relocGameSymbols = relocGameDir </> "symbols.main.exe.txt"
 
--- | Matching-only numeric address constructions remain in five exact C
--- objects.  The normal relink compiles the same sources under one build-wide
--- define into this isolated directory, where an ELF audit requires symbolic
--- HI16/LO16 relocations. ProcItemShinsoku's ordinary object is symbolic and
--- byte-exact already, so the same audit covers it without replacing it. A
--- separate substitution probe shifts game functions while preserving a
--- bounded retail-exact oracle.
+-- | The two allocator functions retain matching raw constants in their one C
+-- source. The normal lane compiles that same source into this isolated
+-- directory, then applies a bounded LUI/ORI-to-symbolic-LUI/ADDIU assembly
+-- transform. Ordinary exact symbolic objects are audited alongside it. No
+-- source-level build define or per-function compiler flag is involved.
 relocCLiteralDir :: FilePath
 relocCLiteralDir = shakeDir </> "reloc-c-literals"
 
@@ -95,15 +93,20 @@ mainRelocCLiteralMap = mainRelocCLiteralExe <.> "map"
 
 relocCLiteralNames :: [String]
 relocCLiteralNames =
-  [ "SelectCameraOwnerOption",
-    "FileOption",
-    "ActivateHumans",
-    "valloc",
+  [ "valloc",
     "vinit"
   ]
 
+relocAllocatorLiteralNames :: [String]
+relocAllocatorLiteralNames = ["valloc", "vinit"]
+
 ordinaryRelocCLiteralNames :: [String]
-ordinaryRelocCLiteralNames = ["ProcItemShinsoku"]
+ordinaryRelocCLiteralNames =
+  [ "ActivateHumans",
+    "SelectCameraOwnerOption",
+    "FileOption",
+    "ProcItemShinsoku"
+  ]
 
 relocCLiteralAuditNames :: [String]
 relocCLiteralAuditNames = relocCLiteralNames <> ordinaryRelocCLiteralNames
@@ -207,11 +210,10 @@ relocData75F64Asm :: FilePath
 relocData75F64Asm = relocDataAsm "75F64"
 
 -- | Growth-capable composition.  Unlike the retail-exact BSS oracle above,
--- this linker chain consumes the natural TENCHU_RELOCATABLE C objects without
--- restoring their size difference at the game/SDK boundary.  Canonical SDK
--- text and every later linker-owned boundary are therefore free to follow the
--- changed game layout. It remains separate so the ordinary matching artifact
--- and its exact compiler branches stay untouched.
+-- this linker chain consumes the reviewed symbolic allocator objects without
+-- pinning the game/SDK boundary.  Canonical SDK text and every later
+-- linker-owned boundary are therefore free to follow changed game layout. It
+-- remains separate so the ordinary matching artifact stays untouched.
 mainRelinkLogical, mainRelinkExe, mainRelinkElf, mainRelinkMap :: FilePath
 mainRelinkLogical = buildDir </> "tenchu" </> "main_relink.logical"
 mainRelinkExe = buildDir </> "tenchu" </> "main_relink.exe"
@@ -941,17 +943,22 @@ neededAsmDeps :: FilePath -> Action ()
 neededAsmDeps depFile =
   needed . map normaliseEx . concatMap snd . parseMakefile =<< liftIO (readFile depFile)
 
--- | Read the five variant objects and the ordinary ProcItemShinsoku object:
--- source/assembly text is useful for diagnosis, but ELF relocation records
--- are the normal-link contract.
-verifyRelocCLiteralObjects :: Action ()
-verifyRelocCLiteralObjects = do
+-- | Read the two transformed and four ordinary objects. The focused oracle
+-- pins exact offsets/sizes; the normal-link gate deliberately permits layout
+-- changes while retaining relocation, opcode, and raw-literal checks.
+verifyRelocCLiteralObjectsWith :: Bool -> Action ()
+verifyRelocCLiteralObjectsWith allowLayoutChanges = do
   let tool = "tools" </> "reloc_c_literals.py"
       objectArgs = concatMap
         (\name -> ["--object", name <> "=" <> relocCLiteralAuditObject name])
         relocCLiteralAuditNames
+      layoutArgs =
+        if allowLayoutChanges then ["--allow-layout-changes"] else []
   need $ [tool, ramLayoutTool, ramLayoutHeader] <> relocCLiteralAuditObjects
-  cmd_ "python3" tool ("verify-objects" : objectArgs)
+  cmd_ "python3" tool (["verify-objects"] <> layoutArgs <> objectArgs)
+
+verifyRelocCLiteralObjects :: Action ()
+verifyRelocCLiteralObjects = verifyRelocCLiteralObjectsWith False
 
 verifyRelocCLiteralLink :: Action ()
 verifyRelocCLiteralLink = do
@@ -1009,9 +1016,10 @@ main = do
             -- cc flag; command-line contents are not otherwise tracked.
             -- "6": compiler executable is now part of the per-object profile;
             -- the reused ADT object selects pinned GCC 2.8.0.
-            -- "7": the normal-link C replacement inventory is five explicit
-            -- objects, while ordinary ProcItemShinsoku is audited in place.
-            shakeVersion = "7"
+            -- "7": the normal-link C replacement inventory became explicit.
+            -- "8": the replacement recipe now transforms the two allocator
+            -- assembly streams; four exact symbolic objects are audited in place.
+            shakeVersion = "8"
           }
   shakeArgs opts rules
 
@@ -1028,9 +1036,9 @@ rules = do
 
 objRules :: Rules ()
 objRules = do
-  -- Compile the bounded normal-link C variant under one global define.  The
-  -- five source files choose natural symbolic expressions in this lane while
-  -- the ordinary processed/build directories retain their exact-match source.
+  -- Compile the same preprocessed source used by the matching lane.  The
+  -- allocator assembly rule below changes only the two reviewed constant
+  -- materialisations; every source-level spelling remains identical.
   relocCLiteralDir </> "*.i" %> \out -> do
     let name = takeBaseName out
         src = srcDir </> "main.exe" </> name <.> "c"
@@ -1043,8 +1051,7 @@ objRules = do
     withTempFile $ \makeOut -> do
       cmd_ cpp
         (cppFlags <>
-          [ "-DTENCHU_RELOCATABLE",
-            "-MMD", "-MF", makeOut,
+          [ "-MMD", "-MF", makeOut,
             "-I", takeDirectory header
           ])
         src out
@@ -1054,16 +1061,26 @@ objRules = do
     let name = takeBaseName out
         processed = relocCLiteralPreprocessed name
         src = srcDir </> "main.exe" </> name <.> "c"
+        tool = "tools" </> "reloc_c_literals.py"
     when (name `notElem` relocCLiteralNames) $
       fail $ "unexpected relocatable-C assembly " <> name
-    need [processed]
+    need [processed, tool, ramLayoutTool, ramLayoutHeader]
     gpFlags <- askOracle (GpFlags src)
     (ccExe, objectCc) <- askOracle (OriginalObjectCcProfile src)
-    withTempFile $ \ccOut -> do
-      cmd_ (FileStdin processed) (FileStdout ccOut)
-        ccExe (ccFlags <> objectCc)
-      cmd_ (FileStdin ccOut) (FileStdout out)
-        maspsx (maspsxFlags <> gpFlags)
+    withTempFile $ \ccOut ->
+      withTempFile $ \maspsxOut -> do
+        cmd_ (FileStdin processed) (FileStdout ccOut)
+          ccExe (ccFlags <> objectCc)
+        cmd_ (FileStdin ccOut) (FileStdout maspsxOut)
+          maspsx (maspsxFlags <> gpFlags)
+        if name `elem` relocAllocatorLiteralNames
+          then cmd_ "python3" tool
+            [ "relocate-allocator-assembly",
+              "--name", name,
+              "--input", maspsxOut,
+              "--output", out
+            ]
+          else copyFileChanged maspsxOut out
 
   relocCLiteralDir </> "*.o" %> \out -> do
     let name = takeBaseName out
@@ -1306,10 +1323,9 @@ mainExtraRules = do
     need [mainRelocGameElf]
     cmd_ objcopy objcopyFlags [mainRelocGameElf, mainRelocGameExe]
 
-  -- Substitute the five natural symbolic-C objects into the linker-owned game
-  -- lane.  Their text is 12 bytes smaller in total, so a file-backed boundary
-  -- pad keeps the not-yet-movable SDK at retail placement.  This is a linked
-  -- relocation probe, not the final arbitrary-growth layout.
+  -- Substitute the two exact-sized allocator objects into the linker-owned
+  -- game lane.  This focused link proves their symbolic instruction pairs at
+  -- retail placement; no compensating boundary pad is needed.
   relocCLiteralLinker %> \out -> do
     let tool = "tools" </> "reloc_c_literals.py"
         objectArgs = concatMap
@@ -1365,10 +1381,11 @@ mainExtraRules = do
     need [mainRelocCLiteralElf]
     cmd_ objcopy objcopyFlags [mainRelocCLiteralElf, mainRelocCLiteralExe]
 
-  -- The real normal-link composition uses the same audited C variant but does
-  -- not insert the retail proof's compensating boundary words.  The following
-  -- SDK transform therefore sees and relocates the layout produced by those C
-  -- objects, rather than an artificially restored retail address stream.
+  -- The real normal-link composition uses the same transformed allocator
+  -- objects, while allowing their compiler-produced layout to follow source
+  -- edits. The following SDK transform sees and relocates the
+  -- actual layout produced by ordinary source edits, with no artificial game/
+  -- SDK boundary restoration.
   normalRelinkCLinker %> \out -> do
     let tool = "tools" </> "reloc_c_literals.py"
         objectArgs = concatMap
@@ -1867,7 +1884,7 @@ phonyRules = do
   -- extension size. The relocation audit separately rejects any regression to
   -- movable ABS definitions or literal code/data pointers.
   phony "check-relink" $ do
-    verifyRelocCLiteralObjects
+    verifyRelocCLiteralObjectsWith True
     verifyNormalRelink
     let psxExeTool = "tools" </> "psxexe.py"
         auditTool = "tools" </> "reloc_audit.py"
@@ -1890,13 +1907,13 @@ phonyRules = do
     runRelinkGrowthProbe
     putInfo "check-relink: normal C/SDK/data/BSS/header composition is structurally valid"
 
-  -- Focused input gate for the first symbolic-C address constructions. Five
-  -- are separate globally-defined normal-link variants; ProcItemShinsoku is
-  -- audited directly from its byte-exact ordinary symbolic object.
+  -- Focused input gate for six compiler-produced address constructions. Two
+  -- allocator objects are transformed after cc1; four byte-exact ordinary
+  -- objects are audited directly. All six retain one source spelling.
   phony "check-reloc-c-literals" $ do
     verifyRelocCLiteralObjects
     verifyRelocCLiteralLink
-    putInfo "check-reloc-c-literals: five replacement objects and one ordinary object carry and apply linker relocations"
+    putInfo "check-reloc-c-literals: two transformed and four ordinary exact objects carry and apply linker relocations"
 
   -- Opt-in exact-at-retail gate for the normal linker-owned game-symbol lane.
   -- This deliberately does not claim that a grown image is runnable yet: raw

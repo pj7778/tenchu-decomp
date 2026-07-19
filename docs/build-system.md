@@ -95,7 +95,7 @@ works from anywhere in the tree.
 ./Build iso-relink      # auto-pack the normal-link executable into a disc image
 ./Build run-iso-relink  # boot that disc through the real launcher chain
 ./Build check-reloc-game      # focused exact linker-owned-game oracle
-./Build check-reloc-c-literals # focused symbolic-C relocation oracle
+./Build check-reloc-c-literals # focused compiler-object relocation oracle
 ./Build check-reloc-sdk       # complete canonical SDK retail/+4 oracle
 ./Build check-reloc-data      # 208 reviewed data pointers, three layouts
 ./Build check-reloc-bss       # exact linker-owned BSS/pool/header oracle
@@ -129,18 +129,18 @@ boundaries with a dynamic pool; see
 [`relocatable-build.md`](relocatable-build.md#bss-allocator-and-ps-x-header).
 
 `./Build relink` builds a distinct no-boundary-pad GNU-ld/finalizer artifact at
-`.shake/build/tenchu/main_relink.exe`. It consumes the globally defined natural
-C variants before the complete canonical SDK, ten reviewed loaded-data
-replacements, and linker-owned layout transforms instead of reusing the
-retail-exact BSS artifact. Existing functions may grow, and helper sources under
-`src/main.exe/reloc/` join the normal link. BSS follows the initialized image;
-the allocator keeps its fixed upper bound but advances its base and recomputes
-its word capacity after the retail headroom is consumed. The finalizer derives
-the PS-X entry/load/size fields from the actual result.
+`.shake/build/tenchu/main_relink.exe`. It consumes the ordinary exact symbolic C
+objects plus two transformed allocator objects before the complete canonical
+SDK, ten reviewed loaded-data replacements, and linker-owned layout transforms
+instead of reusing the retail-exact BSS artifact. Existing functions may grow,
+and helper sources under `src/main.exe/reloc/` join the normal link. BSS follows
+the initialized image; the allocator keeps its fixed upper bound but advances
+its base and recomputes its word capacity after the retail headroom is consumed.
+The finalizer derives the PS-X entry/load/size fields from the actual result.
 
 The normal generator also retains sections that an ordinary edit can newly
-introduce in both ordinary `*.c.o` game inputs and the five
-`TENCHU_RELOCATABLE` replacement `*.o` inputs. `.sdata` stays in the loaded
+introduce in both ordinary `*.c.o` game inputs and the two transformed allocator
+replacement `*.o` inputs. `.sdata` stays in the loaded
 gp-near extension; `.sbss`/`.scommon` stays in the gp-near BSS prefix; and
 `.bss.*`/GNU `COMMON` remains owned at BSS end. An integration test runs the
 pinned cc1/maspsx/assembler/linker chain over both families with small and large
@@ -161,14 +161,14 @@ counts, metadata validation, and heuristic limits are in
 
 `./Build shiftability-report` is the consolidated progress view for this work.
 It builds the current normal relink, reruns the input/final/compiler checks and
-the real `+0x10004` growth link, and prints one active blocker queue. It keeps
-safe-but-divergent exact source, intentional fixed PS1/cross-executable
-contracts, configurable RAM-budget policy, and proof limits out of that queue.
-Layout fields originate in `src/main.exe/ram_layout.h`; Python linker,
-finalizer, and audit tools parse those same definitions through
-`tools/ram_layout.py`. Generated extraction/config files can still contain
-retail literals as historical input oracles; they are not a second runtime
-policy source.
+the real `+0x10004` growth link, and prints one active blocker queue. It reports
+exact-vs-normal source variants separately (zero of the initial six in the
+current inventory) and keeps intentional fixed PS1/cross-executable contracts,
+configurable RAM-budget policy, and proof limits out of that queue. Layout
+fields originate in `src/main.exe/ram_layout.h`; Python linker, finalizer, and
+audit tools parse those same definitions through `tools/ram_layout.py`.
+Generated extraction/config files can still contain retail literals as
+historical input oracles; they are not a second runtime policy source.
 
 `./Build check-relink` verifies that composition without assuming a fixed
 extension size: it derives the game-text delta from the actual compiler
@@ -199,17 +199,27 @@ The same repacked image later reached relocated `OPEN06.STR` decode and
 was run to EOF and physical audio output remains unverified.
 
 `check-reloc-c-literals` is the focused compiler-input half of that lane. It
-builds five alternate normal-link objects under the single global
-`TENCHU_RELOCATABLE` variant, audits those objects plus ordinary symbolic
-`ProcItemShinsoku`, and
-requires their ELF HI16/LO16 records (including linker-derived
-`MemoryPoolCapacity` in both allocator paths). The controlled link substitutes
-only the five divergent objects; ProcItemShinsoku remains its ordinary input
-and resolves byte-identically under the retail CamState pin. The exact lane
-keeps per-source matching branches in three reconstruction debts; the two
-allocator functions share the centralized `VMEM_DEFAULT_*` interface in
-`vmemory.h`. Its bounded pad isolates this focused oracle only; `relink` has no
-such pad.
+audits four ordinary exact symbolic objects (`SelectCameraOwnerOption`,
+`FileOption`, `ActivateHumans`, and `ProcItemShinsoku`) plus two allocator
+replacement objects. The four ordinary objects use the same C and object in
+both lanes. `vinit` and `valloc` also have one raw-constant C source, but their
+normal objects pass through a fail-fast generated-assembly transform: exactly
+one reviewed `LUI`/`ORI` materialization for each of `MemoryPool` and
+`MemoryPoolCapacity` becomes a standard relocation-bearing `LUI`/`ADDIU` pair
+against that symbol. An unexpected pattern, count, symbol, or text size stops
+the focused exact oracle; there are no source conditionals, per-function
+compiler flags, or linker aliases. The normal `check-relink` path deliberately
+relaxes fixed offsets and exact text sizes while retaining the transform,
+relocation, opcode, and raw-literal safety checks, so an unrelated edit may move
+or grow either allocator.
+
+The controlled link substitutes only those two allocator objects and requires
+all six objects' ELF HI16/LO16 records, including the linker-derived capacity in
+both allocator paths. The transform preserves the exact allocator text sizes
+(`vinit` `0x54`, `valloc` `0x1cc`), so this focused lane needs neither a shrink
+allowance nor a boundary pad. Its source-debt inventory is zero of the initial
+six; the object audit inventory is two replacements plus four ordinary
+objects.
 
 ## The other five executables
 

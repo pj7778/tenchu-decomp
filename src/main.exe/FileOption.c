@@ -42,16 +42,15 @@
  * image re-init, SystemFlag toggle, music test by StageID, music-select menu,
  * engage-level presets, stock layout load.
  *
- * STATUS: MATCHING — pure C, all 1108 bytes / 277 instructions exact, with
+ * STATUS: MATCHED — pure C, all 1108 bytes / 277 instructions exact, with
  * the target's 13 conditional branches, 13 jumps, 21 calls, and 2 returns.
  * Everything derived and verified: menu-table struct copies, (s16) dispatch
- * with case 1 laid out before case 0, u8 buf[7000] scratch sharing, split-
+ * with case 1 laid out before case 0, the shared 7000-byte work area, split-
  * address (lui+lo_sum) symbol accesses [-msplit-addresses is ON in this cc1:
  * TARGET_DEFAULT includes MASK_SPLIT_ADDR — non-small extern symbols split,
- * small (≤ -G8) ones stay one-line macros], case-9's format pointer through a
- * `hi = (char *)0x80090000` variable (hi+0x7D70 per call), the case-9
- * terminator's base-first addu via a byte-cast shift index, the cross-jumped
- * leLayoutEnemy(0) tail, gp-relative SystemFlag (this TU defines it).
+ * small (≤ -G8) ones stay one-line macros], the case-9 terminator's base-first
+ * addu via a byte-cast shift index, the cross-jumped leLayoutEnemy(0) tail,
+ * and gp-relative SystemFlag (this TU defines it).
  *
  * The final scheduler tie closes by passing the byte that was just stored:
  * `load_layout(STAGE_LAYOUT_NUMBER[0])`.  cc1 store-forwards that read to the
@@ -63,8 +62,12 @@
  *
  * gp smalls of this TU: SystemFlag (Build.hs maspsxGpExterns + permute.py).
  * EngageLevel/StageID/D_80010058 are other TUs' smalls -> absolute macros.
- * `TENCHU_RELOCATABLE` selects a direct symbolic D_80097D70 expression for
- * the normal link; the numeric `hi` local exists only to preserve retail bytes.
+ * The FILE_WORK union expresses the retail stack reuse directly.  Its indexed
+ * targets/messages view is the human shape recorded in PSX.SYM (with larger
+ * retail bounds); loop.c derives the target's three walking pointers from it.
+ * That source shape also lets case 9 name D_80097D70 directly: cc1 keeps its
+ * `%hi` half loop-invariant while forming `%lo` at each call, producing both
+ * the retail instruction schedule and ordinary relocations.
  */
 
 typedef struct { debug_menu_choice e[20]; } MENU_FILE_TBL;      /* 0xA0 */
@@ -72,6 +75,13 @@ typedef struct { debug_menu_choice e[5];  } MENU_SAVELOAD_TBL;  /* 0x28 */
 typedef struct { debug_menu_choice e[18]; } MENU_FLAYOUT_TBL;   /* 0x90 */
 typedef struct { s32 e[11]; } MUSIC_TBL;                        /* 0x2C */
 typedef struct { debug_menu_choice e[5];  } MENU_STOCK_TBL;     /* 0x28 */
+typedef union {
+    u8 bytes[7000];
+    struct {
+        debug_menu_choice targets[162];
+        char msg[161][5];
+    } music;
+} FILE_WORK;
 
 /* gp-relative — defined by this (file-option) TU; Build.hs maspsxGpExterns */
 extern u32 SystemFlag;
@@ -122,16 +132,12 @@ void FileOption(void)
     s32 no;
     s32 k;
     s32 i;
-    debug_menu_choice *p;
-    debug_menu_choice *q;
-    char *s;
-#ifndef TENCHU_RELOCATABLE
-    char *hi;
-#endif
+    debug_menu_choice *targets;
+    char (*messages)[5];
     MENU_FILE_TBL m1;
     MENU_SAVELOAD_TBL m2;
     MENU_FLAYOUT_TBL m3;
-    u8 buf[7000];
+    FILE_WORK work;
 
     m1 = DEBUG_MENU_FILE_CHOICES;
     m2 = DEBUG_MENU_SAVE_LOAD_CHOICES;
@@ -158,9 +164,9 @@ void FileOption(void)
             no = AdtSelect(D_80014548, (debug_menu_choice *)&m3, 0x10);
             if (no != -1)
             {
-                lePackEnemyLayout(buf, 5000);
-                PackItemLayout(buf + 5000, 2000);
-                SaveSI(sel, no, buf, 7000);
+                lePackEnemyLayout(work.bytes, 5000);
+                PackItemLayout(work.bytes + 5000, 2000);
+                SaveSI(sel, no, work.bytes, 7000);
             }
         }
         break;
@@ -171,8 +177,8 @@ void FileOption(void)
         SystemFlag ^= 1;
         break;
     case 4:
-        *(MUSIC_TBL *)buf = D_80014554;
-        _PlayMusic(((s32 *)buf)[StageID], 1);
+        *(MUSIC_TBL *)work.bytes = D_80014554;
+        _PlayMusic(((s32 *)work.bytes)[StageID], 1);
         break;
     case 5:
         CdaStop();
@@ -188,26 +194,17 @@ void FileOption(void)
         break;
     case 9:
         i = 0;
-#ifndef TENCHU_RELOCATABLE
-        hi = (char *)0x80090000;
-#endif
-        q = (debug_menu_choice *)buf;
-        p = q;
-        s = (char *)(buf + 0x510);
+        targets = work.music.targets;
+        messages = work.music.msg;
         for (; i < 0xA1; i++)
         {
-#ifdef TENCHU_RELOCATABLE
-            sprintf(s, D_80097D70, i);
-#else
-            sprintf(s, hi + 0x7D70, i);
-#endif
-            p->choice_name = s;
-            p->choice_number = i;
-            p++;
-            s += 5;
+            sprintf(messages[i], D_80097D70, i);
+            targets[i].choice_name = messages[i];
+            targets[i].choice_number = i;
         }
-        ((debug_menu_choice *)((u8 *)q + (i << 3)))->choice_name = 0;
-        PlayMusicFormID(AdtSelect(D_8001423C, (debug_menu_choice *)buf, 0));
+        ((debug_menu_choice *)((u8 *)targets + (i << 3)))->choice_name = 0;
+        PlayMusicFormID(AdtSelect(
+            D_8001423C, (debug_menu_choice *)work.bytes, 0));
         break;
     case 0xA:
         EngageLevel = 3;
@@ -222,8 +219,8 @@ void FileOption(void)
         D_80010058 = 2;
         break;
     case 0xD:
-        *(MENU_STOCK_TBL *)buf = DEBUG_MENU_FILE_LOAD_STOCK_LAYOUT_CHOICES;
-        k = AdtSelect(D_800145A8, (debug_menu_choice *)buf, 0);
+        *(MENU_STOCK_TBL *)work.bytes = DEBUG_MENU_FILE_LOAD_STOCK_LAYOUT_CHOICES;
+        k = AdtSelect(D_800145A8, (debug_menu_choice *)work.bytes, 0);
         if (k < 0)
             break;
         STAGE_LAYOUT_NUMBER[0] = k;

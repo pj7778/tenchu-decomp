@@ -38,17 +38,24 @@
  * chosen Humanoid's model position.
  *
  * Matching notes:
- *  - The scoped union initializer is the source-level spelling of the
- *    original high-word address construction. A plain `(char *)0x80090000`
- *    gives GCC enough nonzero-bit information to replace `+ 0x7D70` with an
- *    `ori`; initializing the two 16-bit fields preserves the target's
- *    `lui s3,0x8009` followed by `addiu a1,s3,0x7D70`, with no stack object
- *    or emitted initialization overhead.
+ *  - The ordinary indexed `for` loop is important.  The demo's debug symbols
+ *    list only `i`, `targets`, and `msg`; the apparent `buffer`, HumanGroup
+ *    cursor, and target pointer in the disassembly are compiler-created
+ *    induction values, not source locals.  With all three expressions written
+ *    naturally, cc1 strength-reduces `msg[i]` and `HumanGroup[i]` but leaves
+ *    `targets[i]` as the target's fresh `sp+16+i*8` calculation.  Manually
+ *    spelling the first two walkers made a real loop reduce the third as well
+ *    and led to the misleading hand-written-goto reconstruction.
+ *  - That real loop also hoists `%hi(D_80097D70)` into s3 while leaving the
+ *    `%lo(D_80097D70)` addiu at the sprintf call.  Thus the same symbolic C
+ *    both resolves to the retail `lui s3,0x8009; addiu a1,s3,0x7D70` bytes and
+ *    carries the HI16/LO16 relocation pair required by a normal link.
  *  - Real retail layout differs from PSX.SYM's (earlier-build) recollection:
  *    the raw asm places `msg` at sp+0x130 (304), not PSX.SYM's sp+264, which
  *    means `targets` is 36 entries (0x120 bytes), matching Ghidra's own
- *    TAdtSelect[36] rather than PSX.SYM's [31] — the asm wins (frame
- *    0x2A8 = args/pad + targets 0x120 + msg 0x160 + 5 saved regs + pad).
+ *    TAdtSelect[36] rather than PSX.SYM's [31].  `msg[35][10]` occupies 350
+ *    bytes and its stack object rounds to 0x160, yielding the observed frame
+ *    (0x2A8 = args/pad + targets 0x120 + msg 0x160 + 5 saved regs + pad).
  *  - `CamState.Owner = (Humanoid *)AdtSelect(...)` writes the SAME address a
  *    different TU's small `CURRENTLY_SELECTED_CHARACTER_STATE_PTR` aliases
  *    (cookbook: cross-TU field aliasing) — write it as CamState.Owner, the
@@ -68,25 +75,11 @@
  *    Ghidra's reverse. Fixed a 6-instruction register-identity mismatch.
  *  - No %gp_rel symbols in this function (tools/gpsyms.py): Humans/
  *    HumanGroup are another TU's smalls, absolute here.
- *  - The inner do-while (Ghidra's do{...}while(iVar2<Humans)) is a
- *    HAND-ROLLED goto loop in source, not a real do-while: the target
- *    recomputes `&targets[i]` (sp+16+i*8) fresh every iteration rather than
- *    hoisting it to a preheader, which only happens when there are no loop
- *    notes for loop.c to act on (cookbook Loops: a hand-rolled goto loop
- *    "loses hoisting"; same lesson as PutNumber's /10 magic constant).
- *  - Ghidra's `iVar2`/`iVar3` are ONE variable, not two: they hold the same
- *    value at every point they're both live, and writing them as a single
- *    `iVar2` avoids an extra a3<->s0 copy-chain the real do-while's
- *    duplicate-name rendering would otherwise force into a separate pseudo.
  *  - `D_80097D70` (the "%d" format string) is a splat auto-name drifted -8
  *    bytes in this run (a whole D_80097D68..D_80097D90 chain shares the
  *    offset — verified against the .map). Bound a fresh
  *    `D_80097D70 = 0x80097D70;` in config/symbols.main.exe.txt per the
  *    cookbook's drifted-symbol recipe rather than fight the wrong auto-name.
- *
- * `TENCHU_RELOCATABLE` is a build-lane switch, not an original-source claim.
- * The reference lane retains the byte-matching high-half scaffold above; the
- * normal-link lane uses the ordinary symbolic `D_80097D70` expression.
  */
 typedef struct
 {
@@ -111,48 +104,19 @@ extern void sprintf(char *s, char *fmt, ...);
 
 void SelectCameraOwnerOption(void)
 {
-    Humanoid *pHVar1;
-    char *buffer;
-    int iVar2;
-    Humanoid **ppHVar4;
+    int i;
     debug_menu_choice targets[36];
-    char msg[352];
+    char msg[35][10];
 
     if (Humans < 0x23)
     {
-        iVar2 = 0;
-        if (0 < Humans)
+        for (i = 0; i < Humans; i++)
         {
-#ifndef TENCHU_RELOCATABLE
-            union
-            {
-                struct
-                {
-                    u32 low : 16;
-                    u32 high : 16;
-                } parts;
-                char *pointer;
-            } hi = {{0, 0x8009}};
-#endif
-
-            ppHVar4 = HumanGroup;
-            buffer = msg;
-        inner_loop:
-#ifdef TENCHU_RELOCATABLE
-            sprintf(buffer, D_80097D70, iVar2);
-#else
-            sprintf(buffer, hi.pointer + 0x7D70, iVar2);
-#endif
-            targets[iVar2].choice_name = buffer;
-            pHVar1 = *ppHVar4;
-            ppHVar4 = ppHVar4 + 1;
-            buffer = buffer + 10;
-            targets[iVar2].choice_number = (u32)pHVar1;
-            iVar2 = iVar2 + 1;
-            if (iVar2 < Humans)
-                goto inner_loop;
+            sprintf(msg[i], D_80097D70, i);
+            targets[i].choice_name = msg[i];
+            targets[i].choice_number = (u32)HumanGroup[i];
         }
-        targets[iVar2].choice_name = (char *)0;
+        targets[i].choice_name = (char *)0;
         CamState.Owner = (Humanoid *)AdtSelect(D_80014018, targets, 0);
         ViewInfo.vrx = CamState.Owner->model->locate.coord.t[0];
         ViewInfo.vry = CamState.Owner->model->locate.coord.t[1];

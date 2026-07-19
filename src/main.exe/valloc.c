@@ -86,11 +86,12 @@
  *    loop guard's delay slot; sprintf then receives `maxsize` raw.
  *  - The self-init branch duplicates vinit.c's `size == 0` arm literally
  *    (pool = 0x800DC000; vh.size = 0x47ffe; vh.next = 0) — no call, cc1
- *    2.8.1 does not inline. VMEM_DEFAULT_POOL/VMEM_DEFAULT_CAPACITY put the
- *    exact-literal vs linker-symbol representation choice in vmemory.h. Image
- *    growth consumes the retail gap first, then moves the pool base and shrinks
- *    its capacity without leaving either retail constant in normal-link code.
- *    The exact relocation counts are gated by tools/reloc_c_literals.py.
+ *    2.8.1 does not inline. VMEM_DEFAULT_POOL/VMEM_DEFAULT_CAPACITY retain that
+ *    human-looking exact source.  For the normal link, a bounded assembly
+ *    transform changes only those LUI/ORI pairs to standard symbolic
+ *    LUI/ADDIU pairs, preserving this function's exact 0x1cc-byte schedule.
+ *    Image growth can then move the pool base and derive its smaller capacity;
+ *    tools/reloc_c_literals.py gates the transform and relocation counts.
  *  - The request rounding is `if (size & 3) size += 4;` (NOT `(size+3)&~3`)
  *    — read off the raw immediate; keep the odd shape.
  *  - Both whole-struct stores (`*virtual_memory_pool = vh;`, `*(PoolBlock *)
