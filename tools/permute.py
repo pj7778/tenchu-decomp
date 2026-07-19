@@ -97,6 +97,9 @@ ORIGINAL_OBJECT_MEMBERS = {
     "GS_122.OBJ": (
         "GsGetTimInfo",
     ),
+    "GS_125.OBJ": (
+        "GsGetWorkBase",
+    ),
     "GS_107.OBJ": (
         "GsSetFlatLight", "GS_107_OBJ_444", "GS_107_OBJ_4B8",
         "GS_107_OBJ_51C",
@@ -115,6 +118,7 @@ ORIGINAL_OBJECT_CC_FLAGS = {
     "GS_113.OBJ": (),
     "GS_121.OBJ": (),
     "GS_122.OBJ": (),
+    "GS_125.OBJ": (),
     "GS_107.OBJ": ("-mno-split-addresses",),
     "ADT.OBJ": (),
 }

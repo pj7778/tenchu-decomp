@@ -742,6 +742,8 @@ segments:
       - { start: 0x55530, type: data, linker_section_order: .text }
       - [0x55534, c, GsGetTimInfo]
       - { start: 0x55618, type: data, linker_section_order: .text }
+      - [0x55704, c, GsGetWorkBase]
+      - { start: 0x55714, type: data, linker_section_order: .text }
       - [0x56304, c, dmyGsPrstF3NL]
       - [0x5634C, c, dmyGsPrstF3LFG]
       - [0x56394, c, dmyGsPrstF3L]

@@ -604,6 +604,14 @@ gs122ObjectMembers =
   [ "GsGetTimInfo"
   ]
 
+-- GS_125.OBJ is a complete one-public-member object too. The natural getter
+-- is byte-invariant between 2.7.2 and the default 2.8.1, so it needs no older
+-- compiler attribution or exceptional options.
+gs125ObjectMembers :: [String]
+gs125ObjectMembers =
+  [ "GsGetWorkBase"
+  ]
+
 originalObjectCcFlags :: FilePath -> [String]
 originalObjectCcFlags src
   | name `elem` libmcrdObjectMembers = ["-mno-split-addresses"]
@@ -613,6 +621,7 @@ originalObjectCcFlags src
   | name `elem` gs113ObjectMembers = []
   | name `elem` gs121ObjectMembers = []
   | name `elem` gs122ObjectMembers = []
+  | name `elem` gs125ObjectMembers = []
   | name `elem` gs107ObjectMembers = ["-mno-split-addresses"]
   | name `elem` adtObjectMembers = []
   | otherwise = []

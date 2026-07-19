@@ -137,6 +137,16 @@ tools such as PSYLIB and ASPSX; the PsyQ 4.5 `CC1PSX.EXE` currently aborts under
 wibo, so the deterministic native reconstructed compilers remain the build
 path.
 
+### GS_125.OBJ: compiler-invariant default profile
+
+PsyQ 4.5's `GS_125.OBJ` has one public member, `GsGetWorkBase`, and its complete
+16-byte text is byte-identical to Tenchu after relocation. The natural
+`return GsOUT_PACKET_P;` source produces the same four instructions with both
+GCC 2.7.2 and 2.8.1; their debug output has the same symbolic load followed by
+the return. The object therefore stays on the default compiler with no
+exceptional flags. It is still enumerated as a complete original object so a
+future option cannot accidentally become function-specific tuning.
+
 ### GS_107.OBJ: reconstructed libgs backend
 
 The stock libgs object `GS_107.OBJ` selects `cc1-281-gs107`, a GCC 2.8.1 build
