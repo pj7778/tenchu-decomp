@@ -130,8 +130,8 @@ The historical focused gates remain useful exact oracles:
 
 - `check-reloc-game` proves all game functions section-owned at the retail
   layout;
-- `check-reloc-c-literals` proves the compiler records for six matching-only
-  numeric-address constructions;
+- `check-reloc-c-literals` proves the compiler records for five matching-only
+  numeric-address variants and ordinary symbolic `ProcItemShinsoku`;
 - `check-reloc-sdk` proves the canonical SDK stream at retail and `+4`;
 - `check-reloc-data` proves every reviewed pointer at retail, `+4`, and
   `+0x10004`; and
@@ -144,16 +144,18 @@ the no-pad link, PS-X header, widened fixed-address audit, and a complete
 
 ## Compiler-produced C references
 
-Six otherwise matched C files constructed retail addresses numerically only to
-hold cc1's matching schedule. The normal lane compiles those same translation
-units with one build-wide `TENCHU_RELOCATABLE` definition and ordinary symbolic
-C. There are no function-specific compiler flags. The compiler currently emits
-and the gate requires:
+Five otherwise matched C files still construct retail addresses numerically to
+hold cc1's matching schedule. The normal lane compiles those translation units
+with one build-wide `TENCHU_RELOCATABLE` definition and ordinary symbolic C.
+`ProcItemShinsoku` has already collapsed to one ordinary symbolic source: its
+CamState relocations resolve to the exact retail words when the exact linker
+pins CamState. There are no function-specific compiler flags. The compiler
+currently emits and the gate requires:
 
 ```text
 SelectCameraOwnerOption  D_80097D70         HI16=1 LO16=1
 FileOption               D_80097D70         HI16=1 LO16=1
-ProcItemShinsoku         CamState            HI16=2 LO16=1
+ProcItemShinsoku         CamState            HI16=2 LO16=1  (ordinary object)
 ActivateHumans           StageChar           HI16=1 LO16=1
 vinit                    MemoryPool          HI16=1 LO16=1
 vinit                    MemoryPoolCapacity  HI16=1 LO16=1
@@ -164,10 +166,40 @@ valloc                   MemoryPoolCapacity  HI16=1 LO16=1
 `MemoryPoolCapacity` is a linker-defined scalar exposed through the usual
 embedded-C symbol-address idiom. The exact branch retains the retail address
 and `0x47ffe` word count; neither literal is present in the normal-link
-allocator paths. With the current sources these six natural objects shrink the
-game stream by 12 bytes, and the no-pad relink moves every later owned input by
-that amount. `check-relink` reports 3,739 unique section-owned SDK symbols
-following the change and resolves all eight target pairs in the final ELF.
+allocator paths. With the current sources the five replacement objects shrink
+the game stream by 12 bytes; ordinary `ProcItemShinsoku` has zero size delta.
+The no-pad relink moves every later owned input by that amount.
+`check-relink` reports 3,739 unique section-owned SDK symbols following the
+change and resolves all eight target pairs in the final ELF. Its fixed ordinary
+object contract additionally requires ProcItemShinsoku's CamState HI16 records
+at text offsets `0x394` and `0x40c` and its LO16 record at `0x410`.
+
+The five remaining source switches are not all the same kind of debt. The
+current direct symbolic forms of `SelectCameraOwnerOption`, `FileOption`, and
+`ActivateHumans` change cc1's register allocation, scheduling, or frame shape.
+Those forms do not match, but that is not proof that human-written symbolic C
+cannot match; they remain source-reconstruction problems and may be local
+minima created by the numeric scaffolds.
+
+`vinit` and `valloc` have a harder opcode conflict today. Retail constructs the
+pool pointer and capacity as integer literals with `LUI`/`ORI`, while a generic
+MIPS symbol address uses `R_MIPS_HI16`/`R_MIPS_LO16` with `LUI`/`ADDIU`. At the
+retail pool address, `vinit` has exactly these three linked word differences:
+
+```text
+text+0x0c  retail 3c02800d  symbolic 3c02800e
+text+0x10  retail 3442c000  symbolic 2442c000
+text+0x2c  retail 34427ffe  symbolic 24427ffe
+```
+
+The first symbolic high half carries because the low half `0xc000` is consumed
+by sign-extending `ADDIU`; the other two differences are `ORI` versus `ADDIU`.
+The linker can fill instruction immediates but cannot change an opcode.
+`valloc` also rematerializes the pool low half and grows by one instruction.
+Consequently those two functions cannot use their current generic symbolic C
+unconditionally while preserving retail bytes; removing their switches needs
+a genuinely different representation or an explicit decision to relax the
+exact lane, not merely more retail linker pins.
 
 ## Ordinary C output-section coverage
 
@@ -176,8 +208,8 @@ instructions. The generated retail linker enumerates each existing game
 object's base `.text`, `.rodata`, `.data`, and `.bss`, but cc1's pinned `-G8`
 pipeline can also emit new small/common sections when an edit adds a global.
 The normal-link generator therefore collects the missing sections from both
-compiler-produced game-object families: ordinary `*.c.o` inputs and the six
-`TENCHU_RELOCATABLE` replacement `*.o` inputs:
+compiler-produced game-object families: ordinary `*.c.o` inputs and the five
+explicitly enumerated `TENCHU_RELOCATABLE` replacement `*.o` inputs:
 
 - `.sdata`/`.sdata.*` joins the loaded extension near `_gp`;
 - `.sbss`/`.sbss.*`/`.scommon` joins the gp-near BSS prefix; and

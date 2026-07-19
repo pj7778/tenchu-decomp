@@ -138,7 +138,7 @@ its word capacity after the retail headroom is consumed. The finalizer derives
 the PS-X entry/load/size fields from the actual result.
 
 The normal generator also retains sections that an ordinary edit can newly
-introduce in both ordinary `*.c.o` game inputs and the six
+introduce in both ordinary `*.c.o` game inputs and the five
 `TENCHU_RELOCATABLE` replacement `*.o` inputs. `.sdata` stays in the loaded
 gp-near extension; `.sbss`/`.scommon` stays in the gp-near BSS prefix; and
 `.bss.*`/GNU `COMMON` remains owned at BSS end. An integration test runs the
@@ -187,12 +187,14 @@ The same repacked image later reached relocated `OPEN06.STR` decode and
 was run to EOF and physical audio output remains unverified.
 
 `check-reloc-c-literals` is the focused compiler-input half of that lane. It
-builds six matched sources under the single global `TENCHU_RELOCATABLE`
-variant, audits their ELF HI16/LO16 records (including linker-derived
-`MemoryPoolCapacity` in both allocator paths), substitutes them in a controlled
-link, and verifies the linked addresses. The exact lane keeps its matching
-branches. Its bounded pad isolates this focused oracle only; `relink` has no
-such pad.
+builds five matched sources under the single global `TENCHU_RELOCATABLE`
+variant, audits those objects plus ordinary symbolic `ProcItemShinsoku`, and
+requires their ELF HI16/LO16 records (including linker-derived
+`MemoryPoolCapacity` in both allocator paths). The controlled link substitutes
+only the five divergent objects; ProcItemShinsoku remains its ordinary input
+and resolves byte-identically under the retail CamState pin. The exact lane
+keeps matching branches only in the five still-divergent sources. Its bounded
+pad isolates this focused oracle only; `relink` has no such pad.
 
 ## The other five executables
 

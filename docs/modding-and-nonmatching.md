@@ -111,7 +111,7 @@ $ ./Build run-iso-relink   # full SLPS/MENU/MAIN boot
 ```
 
 The normal lane retains the pinned compiler's ordinary output sections for
-existing `*.c.o` game objects, all six replacement-C `.o` variants, and new
+existing `*.c.o` game objects, all five replacement-C `.o` variants, and new
 helper files. That includes small and large initialized/tentative globals,
 statics, const/float/double data,
 `.sdata`/`.sbss`/`.scommon`, `.bss.*`, and GNU `COMMON`; gp-small objects are

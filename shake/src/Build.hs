@@ -65,11 +65,13 @@ relocGameDir = buildDir </> "reloc-game"
 relocGameLinker = relocGameDir </> "main.exe.ld"
 relocGameSymbols = relocGameDir </> "symbols.main.exe.txt"
 
--- | Matching-only numeric address constructions remain in six exact C
+-- | Matching-only numeric address constructions remain in five exact C
 -- objects.  The normal relink compiles the same sources under one build-wide
 -- define into this isolated directory, where an ELF audit requires symbolic
--- HI16/LO16 relocations. A separate substitution probe shifts game functions
--- while preserving a bounded retail-exact oracle.
+-- HI16/LO16 relocations. ProcItemShinsoku's ordinary object is symbolic and
+-- byte-exact already, so the same audit covers it without replacing it. A
+-- separate substitution probe shifts game functions while preserving a
+-- bounded retail-exact oracle.
 relocCLiteralDir :: FilePath
 relocCLiteralDir = shakeDir </> "reloc-c-literals"
 
@@ -85,11 +87,16 @@ relocCLiteralNames :: [String]
 relocCLiteralNames =
   [ "SelectCameraOwnerOption",
     "FileOption",
-    "ProcItemShinsoku",
     "ActivateHumans",
     "valloc",
     "vinit"
   ]
+
+ordinaryRelocCLiteralNames :: [String]
+ordinaryRelocCLiteralNames = ["ProcItemShinsoku"]
+
+relocCLiteralAuditNames :: [String]
+relocCLiteralAuditNames = relocCLiteralNames <> ordinaryRelocCLiteralNames
 
 relocCLiteralPreprocessed, relocCLiteralAssembly, relocCLiteralObject :: String -> FilePath
 relocCLiteralPreprocessed name = relocCLiteralDir </> name <.> "i"
@@ -99,11 +106,19 @@ relocCLiteralObject name = relocCLiteralDir </> name <.> "o"
 relocCLiteralReferenceObject :: String -> FilePath
 relocCLiteralReferenceObject name = buildDir </> "main.exe" </> name <.> "c.o"
 
+relocCLiteralAuditObject :: String -> FilePath
+relocCLiteralAuditObject name
+  | name `elem` ordinaryRelocCLiteralNames = relocCLiteralReferenceObject name
+  | otherwise = relocCLiteralObject name
+
 relocCLiteralObjects :: [FilePath]
 relocCLiteralObjects = map relocCLiteralObject relocCLiteralNames
 
 relocCLiteralReferenceObjects :: [FilePath]
 relocCLiteralReferenceObjects = map relocCLiteralReferenceObject relocCLiteralNames
+
+relocCLiteralAuditObjects :: [FilePath]
+relocCLiteralAuditObjects = map relocCLiteralAuditObject relocCLiteralAuditNames
 
 -- | Bounded second relocation proof.  Splat emits every raw SDK text carve in
 -- 0x800601d4..0x80086764 as canonical assembly, preserving the existing C and
@@ -916,24 +931,26 @@ neededAsmDeps :: FilePath -> Action ()
 neededAsmDeps depFile =
   needed . map normaliseEx . concatMap snd . parseMakefile =<< liftIO (readFile depFile)
 
--- | Read the variant objects themselves: source/assembly text is useful for
--- diagnosis, but ELF relocation records are the normal-link contract.
+-- | Read the five variant objects and the ordinary ProcItemShinsoku object:
+-- source/assembly text is useful for diagnosis, but ELF relocation records
+-- are the normal-link contract.
 verifyRelocCLiteralObjects :: Action ()
 verifyRelocCLiteralObjects = do
   let tool = "tools" </> "reloc_c_literals.py"
       objectArgs = concatMap
-        (\name -> ["--object", name <> "=" <> relocCLiteralObject name])
-        relocCLiteralNames
-  need $ tool : relocCLiteralObjects
+        (\name -> ["--object", name <> "=" <> relocCLiteralAuditObject name])
+        relocCLiteralAuditNames
+  need $ tool : relocCLiteralAuditObjects
   cmd_ "python3" tool ("verify-objects" : objectArgs)
 
 verifyRelocCLiteralLink :: Action ()
 verifyRelocCLiteralLink = do
   let tool = "tools" </> "reloc_c_literals.py"
       objectArgs = concatMap
-        (\name -> ["--object", name <> "=" <> relocCLiteralObject name])
-        relocCLiteralNames
-  need [tool, mainRelocGameElf, mainRelocCLiteralElf, mainRelocCLiteralExe]
+        (\name -> ["--object", name <> "=" <> relocCLiteralAuditObject name])
+        relocCLiteralAuditNames
+  need $ [tool, mainRelocGameElf, mainRelocCLiteralElf, mainRelocCLiteralExe] <>
+    relocCLiteralAuditObjects
   cmd_ "python3" tool
     ([ "verify-linked",
        "--base-elf", mainRelocGameElf,
@@ -944,8 +961,8 @@ verifyNormalRelink :: Action ()
 verifyNormalRelink = do
   let tool = "tools" </> "reloc_c_literals.py"
       objectArgs = concatMap
-        (\name -> ["--object", name <> "=" <> relocCLiteralObject name])
-        relocCLiteralNames
+        (\name -> ["--object", name <> "=" <> relocCLiteralAuditObject name])
+        relocCLiteralAuditNames
       referenceArgs = concatMap
         (\name ->
           [ "--reference-object",
@@ -953,7 +970,7 @@ verifyNormalRelink = do
           ])
         relocCLiteralNames
   need $ [ tool, mainRelocBssElf, mainRelinkElf, normalRelinkCLinker ] <>
-    relocCLiteralObjects <> relocCLiteralReferenceObjects
+    relocCLiteralAuditObjects <> relocCLiteralReferenceObjects
   cmd_ "python3" tool
     ([ "verify-normal-link",
        "--base-elf", mainRelocBssElf,
@@ -980,7 +997,9 @@ main = do
             -- cc flag; command-line contents are not otherwise tracked.
             -- "6": compiler executable is now part of the per-object profile;
             -- the reused ADT object selects pinned GCC 2.8.0.
-            shakeVersion = "6"
+            -- "7": the normal-link C replacement inventory is five explicit
+            -- objects, while ordinary ProcItemShinsoku is audited in place.
+            shakeVersion = "7"
           }
   shakeArgs opts rules
 
@@ -998,7 +1017,7 @@ rules = do
 objRules :: Rules ()
 objRules = do
   -- Compile the bounded normal-link C variant under one global define.  The
-  -- six source files choose natural symbolic expressions in this lane while
+  -- five source files choose natural symbolic expressions in this lane while
   -- the ordinary processed/build directories retain their exact-match source.
   relocCLiteralDir </> "*.i" %> \out -> do
     let name = takeBaseName out
@@ -1275,7 +1294,7 @@ mainExtraRules = do
     need [mainRelocGameElf]
     cmd_ objcopy objcopyFlags [mainRelocGameElf, mainRelocGameExe]
 
-  -- Substitute the six natural symbolic-C objects into the linker-owned game
+  -- Substitute the five natural symbolic-C objects into the linker-owned game
   -- lane.  Their text is 12 bytes smaller in total, so a file-backed boundary
   -- pad keeps the not-yet-movable SDK at retail placement.  This is a linked
   -- relocation probe, not the final arbitrary-growth layout.
@@ -1597,9 +1616,12 @@ mainExtraRules = do
         "--old-tail-object", oldTailObject,
         "--new-tail-object", normalRelinkTailObject,
         "--extension-object-glob", tBuildDir </> "reloc" </> "*.c.o",
-        "--ordinary-c-object-glob", tBuildDir </> "*.c.o",
-        "--ordinary-c-object-glob", relocCLiteralDir </> "*.o"
-      ] <> replacementArgs
+        "--ordinary-c-object-glob", tBuildDir </> "*.c.o"
+      ] <>
+      concatMap
+        (\name -> ["--ordinary-c-object-glob", relocCLiteralObject name])
+        relocCLiteralNames <>
+      replacementArgs
 
   normalRelinkTailObject %> \out -> do
     need [normalRelinkTailAsm]
@@ -1818,13 +1840,13 @@ phonyRules = do
     runRelinkGrowthProbe
     putInfo "check-relink: normal C/SDK/data/BSS/header composition is structurally valid"
 
-  -- Focused input gate for the first six matching-C address constructions.
-  -- It deliberately audits a separate, globally-defined normal-link variant;
-  -- the retail `check` continues to compile the exact-match branches.
+  -- Focused input gate for the first symbolic-C address constructions. Five
+  -- are separate globally-defined normal-link variants; ProcItemShinsoku is
+  -- audited directly from its byte-exact ordinary symbolic object.
   phony "check-reloc-c-literals" $ do
     verifyRelocCLiteralObjects
     verifyRelocCLiteralLink
-    putInfo "check-reloc-c-literals: six symbolic-C objects carry and apply linker relocations"
+    putInfo "check-reloc-c-literals: five replacement objects and one ordinary object carry and apply linker relocations"
 
   -- Opt-in exact-at-retail gate for the normal linker-owned game-symbol lane.
   -- This deliberately does not claim that a grown image is runnable yet: raw

@@ -83,6 +83,20 @@ class ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(audit.AuditError, "HI16.*not LUI"):
             audit.verify_contract(elf, self.SPEC, "Example")
 
+    def test_rejects_relocation_at_wrong_fixed_offset(self) -> None:
+        spec = audit.ObjectSpec(
+            self.SPEC.targets,
+            self.SPEC.literal_high_halves,
+            {
+                "Target": {
+                    audit.R_MIPS_HI16: (4,),
+                    audit.R_MIPS_LO16: (0,),
+                }
+            },
+        )
+        with self.assertRaisesRegex(audit.AuditError, "offsets.*expected"):
+            audit.verify_contract(self.elf(), spec, "Example")
+
     def test_finds_matching_only_pool_capacity_materialisation(self) -> None:
         text = struct.pack("<II", 0x3C020004, 0x34427FFE)
         self.assertEqual(audit.find_literal_pool_capacity(text), [0])
@@ -92,9 +106,35 @@ class ContractTests(unittest.TestCase):
 
 
 class InventoryTests(unittest.TestCase):
+    def test_separates_replacement_and_ordinary_object_inventories(self) -> None:
+        self.assertNotIn("ProcItemShinsoku", audit.REPLACEMENT_OBJECT_SPECS)
+        self.assertEqual(
+            set(audit.ORDINARY_OBJECT_SPECS), {"ProcItemShinsoku"}
+        )
+        self.assertEqual(
+            set(audit.OBJECT_SPECS),
+            set(audit.REPLACEMENT_OBJECT_SPECS)
+            | set(audit.ORDINARY_OBJECT_SPECS),
+        )
+
     def test_requires_exact_fixed_inventory(self) -> None:
         with self.assertRaisesRegex(audit.AuditError, "object inventory differs"):
             audit.parse_objects(["FileOption=somewhere.o"])
+
+    def test_replacement_parser_rejects_ordinary_object(self) -> None:
+        mappings = [
+            f"{name}=somewhere/{name}.o"
+            for name in audit.REPLACEMENT_OBJECT_SPECS
+        ]
+        parsed = audit.parse_objects(
+            mappings, expected_specs=audit.REPLACEMENT_OBJECT_SPECS
+        )
+        self.assertEqual(set(parsed), set(audit.REPLACEMENT_OBJECT_SPECS))
+        with self.assertRaisesRegex(audit.AuditError, "extra ProcItemShinsoku"):
+            audit.parse_objects(
+                mappings + ["ProcItemShinsoku=ordinary.o"],
+                expected_specs=audit.REPLACEMENT_OBJECT_SPECS,
+            )
 
     def test_rejects_malformed_mapping(self) -> None:
         with self.assertRaisesRegex(audit.AuditError, "expected NAME=PATH"):
@@ -130,12 +170,15 @@ class MemoryPoolLayoutTests(unittest.TestCase):
 
 class LinkerRewriteTests(unittest.TestCase):
     def mappings(self, prefix: str) -> dict[str, Path]:
-        return {name: Path(prefix) / f"{name}.o" for name in audit.OBJECT_SPECS}
+        return {
+            name: Path(prefix) / f"{name}.o"
+            for name in audit.REPLACEMENT_OBJECT_SPECS
+        }
 
     def linker(self, references: dict[str, Path]) -> str:
         lines = ["SECTIONS\n", "{\n"]
         for section in (".data", ".text", ".rodata", ".bss"):
-            for name in audit.OBJECT_SPECS:
+            for name in audit.REPLACEMENT_OBJECT_SPECS:
                 lines.append(f"  {references[name]}({section});\n")
         lines.append(f"  {audit.FIRST_SDK_TEXT_INPUT}\n")
         lines.append("}\n")
@@ -151,7 +194,7 @@ class LinkerRewriteTests(unittest.TestCase):
             padding=audit.EXPECTED_TEXT_SHRINK,
         )
         self.assertTrue(output.startswith(audit.POOL_CAPACITY_PROVISION))
-        for name in audit.OBJECT_SPECS:
+        for name in audit.REPLACEMENT_OBJECT_SPECS:
             self.assertNotIn(str(references[name]), output)
             self.assertEqual(output.count(str(variants[name])), 4)
         self.assertEqual(
@@ -169,7 +212,7 @@ class LinkerRewriteTests(unittest.TestCase):
         output = audit.rewrite_linker(
             self.linker(references), references, variants, padding=0
         )
-        for name in audit.OBJECT_SPECS:
+        for name in audit.REPLACEMENT_OBJECT_SPECS:
             self.assertNotIn(str(references[name]), output)
             self.assertEqual(output.count(str(variants[name])), 4)
         self.assertNotIn("LONG(0x00000000);", output)

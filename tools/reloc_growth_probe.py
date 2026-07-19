@@ -90,7 +90,10 @@ SHIFTED_SYMBOLS = (
 
 C_OBJECTS = {
     name: Path(".shake/reloc-c-literals") / f"{name}.o"
-    for name in reloc_c_literals.OBJECT_SPECS
+    for name in reloc_c_literals.REPLACEMENT_OBJECT_SPECS
+} | {
+    name: Path(".shake/build/main.exe") / f"{name}.c.o"
+    for name in reloc_c_literals.ORDINARY_OBJECT_SPECS
 }
 
 

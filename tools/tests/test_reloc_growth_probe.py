@@ -38,6 +38,16 @@ class FakeElf:
 
 
 class RelocGrowthProbeTests(unittest.TestCase):
+    def test_c_object_inventory_uses_ordinary_proc_item_shinsoku(self) -> None:
+        self.assertEqual(
+            reloc_growth_probe.C_OBJECTS["ProcItemShinsoku"],
+            Path(".shake/build/main.exe/ProcItemShinsoku.c.o"),
+        )
+        self.assertEqual(
+            reloc_growth_probe.C_OBJECTS["FileOption"],
+            Path(".shake/reloc-c-literals/FileOption.o"),
+        )
+
     def test_extension_inputs_mirror_recursive_user_and_generated_union(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

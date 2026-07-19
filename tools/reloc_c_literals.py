@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Audit the first symbolic-C objects used by the normal relink lane.
+"""Audit the first symbolic-C address fixes used by the normal relink lane.
 
-The retail matching sources for six functions contain numeric address
-materialisation chosen solely to reproduce the shipped instruction schedule.
-With ``TENCHU_RELOCATABLE`` defined, those same translation units use ordinary
-symbolic C instead.  The allocator pair additionally consumes a linker-derived
-``MemoryPoolCapacity`` count, so neither the pool base nor its retail size is
-embedded in the normal-link code.  This verifier reads the resulting ELF
-objects directly and requires the expected MIPS HI16/LO16 relocation records.
-It also rejects unrelocated matching-only address high halves and the old
-``0x47ffe`` pool-capacity materialisation in these bounded objects.
+Five retail-matching sources still contain numeric address materialisation
+chosen solely to reproduce the shipped instruction schedule.  With
+``TENCHU_RELOCATABLE`` defined, those translation units use ordinary symbolic C
+instead.  ``ProcItemShinsoku`` now uses symbolic C in its ordinary object too:
+at the retail CamState address its relocations resolve byte-identically.  The
+allocator pair additionally consumes a linker-derived ``MemoryPoolCapacity``
+count, so neither the pool base nor its retail size is embedded in normal-link
+code.  This verifier reads all six ELF objects directly and requires the
+expected MIPS HI16/LO16 relocation records.  It also rejects unrelocated
+matching-only address high halves and the old ``0x47ffe`` pool-capacity
+materialisation in these bounded objects.
 
 This remains a bounded object/link-input gate.  The composed normal-link gate
 separately verifies the canonical SDK stream, reviewed loaded data, linker-owned
@@ -113,19 +115,15 @@ class Relocation:
 class ObjectSpec:
     targets: dict[str, dict[int, int]]
     literal_high_halves: tuple[int, ...]
+    relocation_offsets: dict[str, dict[int, tuple[int, ...]]] | None = None
 
 
-OBJECT_SPECS = {
+REPLACEMENT_OBJECT_SPECS = {
     "SelectCameraOwnerOption": ObjectSpec(
         {"D_80097D70": {R_MIPS_HI16: 1, R_MIPS_LO16: 1}}, (0x8009,)
     ),
     "FileOption": ObjectSpec(
         {"D_80097D70": {R_MIPS_HI16: 1, R_MIPS_LO16: 1}}, (0x8009,)
-    ),
-    # The compiler births CamState's high half on both sides of a call, then
-    # shares the one field load.  Both HI16 records are required evidence.
-    "ProcItemShinsoku": ObjectSpec(
-        {"CamState": {R_MIPS_HI16: 2, R_MIPS_LO16: 1}}, (0x8009,)
     ),
     "ActivateHumans": ObjectSpec(
         {"StageChar": {R_MIPS_HI16: 1, R_MIPS_LO16: 1}}, (0x8009,)
@@ -145,6 +143,25 @@ OBJECT_SPECS = {
         (0x800D,),
     ),
 }
+
+# ProcItemShinsoku's human-shaped CamState.Owner expression is already
+# byte-identical after the exact linker applies these records, so its ordinary
+# object is audited but never replaced.  The compiler births CamState's high
+# half on both sides of a call, then shares the one field load.
+ORDINARY_OBJECT_SPECS = {
+    "ProcItemShinsoku": ObjectSpec(
+        {"CamState": {R_MIPS_HI16: 2, R_MIPS_LO16: 1}},
+        (0x8009,),
+        {
+            "CamState": {
+                R_MIPS_HI16: (0x394, 0x40C),
+                R_MIPS_LO16: (0x410,),
+            }
+        },
+    ),
+}
+
+OBJECT_SPECS = {**REPLACEMENT_OBJECT_SPECS, **ORDINARY_OBJECT_SPECS}
 
 
 class AuditError(RuntimeError):
@@ -398,6 +415,25 @@ def verify_contract(elf: ElfObject, spec: ObjectSpec, description: str) -> str:
                 f"expected {expected}"
             )
 
+        if spec.relocation_offsets is not None:
+            for relocation_type, expected_offsets in spec.relocation_offsets.get(
+                symbol_name, {}
+            ).items():
+                actual_offsets = tuple(
+                    sorted(
+                        relocation.offset
+                        for relocation in relocations
+                        if relocation.symbol == symbol_name
+                        and relocation.type == relocation_type
+                    )
+                )
+                if actual_offsets != expected_offsets:
+                    raise AuditError(
+                        f"{description}: {symbol_name} relocation type "
+                        f"{relocation_type} offsets {actual_offsets}, expected "
+                        f"{expected_offsets}"
+                    )
+
         for relocation in relocations:
             if relocation.symbol != symbol_name:
                 continue
@@ -460,7 +496,7 @@ def rewrite_linker(
     # retail scalar value without pinning the composed relink: GNU ld's PROVIDE
     # is suppressed once reloc_bss_lane supplies the real derived definition.
     output = POOL_CAPACITY_PROVISION + source
-    for name in OBJECT_SPECS:
+    for name in REPLACEMENT_OBJECT_SPECS:
         old = str(reference_objects[name])
         new = str(variant_objects[name])
         count = output.count(old)
@@ -494,7 +530,7 @@ def text_shrink(
     variant_objects: dict[str, Path],
 ) -> int:
     shrink = 0
-    for name in OBJECT_SPECS:
+    for name in REPLACEMENT_OBJECT_SPECS:
         reference_size = ElfObject(reference_objects[name]).section(".text").size
         variant_size = ElfObject(variant_objects[name]).section(".text").size
         shrink += reference_size - variant_size
@@ -728,6 +764,14 @@ def verify_normal_link(
     if shrink % 4:
         raise AuditError(f"normal-C text change {shrink} is not word-aligned")
 
+    for name, path in objects.items():
+        count = linker_source.count(str(path))
+        if count != EXPECTED_LINKER_REFERENCES:
+            raise AuditError(
+                f"normal linker contains {count} references to {path} for {name}, "
+                f"expected {EXPECTED_LINKER_REFERENCES}"
+            )
+
     lines = linker_source.splitlines()
     markers = [index for index, line in enumerate(lines) if FIRST_SDK_TEXT_INPUT in line]
     if len(markers) != 1:
@@ -838,7 +882,12 @@ def verify_normal_link(
     return reports
 
 
-def parse_objects(values: list[str], *, option: str = "--object") -> dict[str, Path]:
+def parse_objects(
+    values: list[str],
+    *,
+    option: str = "--object",
+    expected_specs: dict[str, ObjectSpec] = OBJECT_SPECS,
+) -> dict[str, Path]:
     output: dict[str, Path] = {}
     for value in values:
         name, separator, raw_path = value.partition("=")
@@ -847,7 +896,7 @@ def parse_objects(values: list[str], *, option: str = "--object") -> dict[str, P
         if name in output:
             raise AuditError(f"duplicate {option} {name}")
         output[name] = Path(raw_path)
-    expected = set(OBJECT_SPECS)
+    expected = set(expected_specs)
     actual = set(output)
     if actual != expected:
         missing = ", ".join(sorted(expected - actual)) or "none"
@@ -861,7 +910,8 @@ def arguments(argv: list[str] | None = None) -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     verify_objects = subparsers.add_parser(
-        "verify-objects", help="audit the six compiler-produced ELF objects"
+        "verify-objects",
+        help="audit five replacement objects and one ordinary symbolic object",
     )
     verify_objects.add_argument(
         "--object",
@@ -925,13 +975,20 @@ def main(argv: list[str] | None = None) -> int:
                 verify_contract(ElfObject(objects[name]), OBJECT_SPECS[name], name)
                 for name in sorted(OBJECT_SPECS)
             ]
-            print("reloc-c-literals: verified six symbolic-C objects")
+            print(
+                "reloc-c-literals: verified five replacement objects and "
+                "one ordinary symbolic object"
+            )
             for report in reports:
                 print(f"  {report}")
         elif args.command == "generate-linker":
-            objects = parse_objects(args.object)
+            objects = parse_objects(
+                args.object, expected_specs=REPLACEMENT_OBJECT_SPECS
+            )
             references = parse_objects(
-                args.reference_object, option="--reference-object"
+                args.reference_object,
+                option="--reference-object",
+                expected_specs=REPLACEMENT_OBJECT_SPECS,
             )
             shrink = generate_linker(
                 args.linker_in,
@@ -942,12 +999,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             if args.no_boundary_pad:
                 print(
-                    "reloc-c-literals: substituted six symbolic-C objects; "
+                    "reloc-c-literals: substituted five symbolic-C objects; "
                     f"left compiler text delta {-shrink:+d} bytes linker-owned"
                 )
             else:
                 print(
-                    "reloc-c-literals: substituted six symbolic-C objects; "
+                    "reloc-c-literals: substituted five symbolic-C objects; "
                     f"restored SDK boundary with {shrink} bytes"
                 )
         elif args.command == "verify-linked":
@@ -961,7 +1018,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "verify-normal-link":
             objects = parse_objects(args.object)
             references = parse_objects(
-                args.reference_object, option="--reference-object"
+                args.reference_object,
+                option="--reference-object",
+                expected_specs=REPLACEMENT_OBJECT_SPECS,
             )
             reports = verify_normal_link(
                 ElfObject(args.base_elf),
