@@ -1,26 +1,29 @@
 #!/usr/bin/env python3
-"""Filter cc1 -gstabs output down to line records modern gdb can read.
+"""Patch cc1 -gstabs output so modern gdb reads it — keeping types and locals.
 
-gcc 2.8.1 emits STABS debug info, but modern gdb's STABS reader crashes
-(internal-error in create_range_type) on this compiler's builtin type
-idioms — self-referential integer ranges (``unsigned int:t4=r4;0;-1;``) and
-``size;0`` floats. Source-level stepping does not need those type
-definitions, though: the line-number records do.
+gcc 2.8.1 emits STABS debug info, but modern gdb's STABS reader
+internal-errors in create_range_type on three of its type encodings, whose
+index/range comes out zero-length:
 
-This keeps only the stabs gdb needs for address→source mapping and drops
-every type/variable stab that trips the crash:
+  1. self-referential unsigned ranges     ``unsigned int:t4=r4;0;-1;``
+  2. float/double size ranges             ``float:t12=r1;4;0;``
+  3. arrays with a type-0 index           ``…=ar0;0;N;elem``
 
-  keep  N_SO   (100) / N_SOL (132)  source file
-        N_FUN  (36)                 function
-        N_SLINE(68, via .stabn)     line → address
+Dropping the type definitions avoids the crash but leaves locals with no type
+(``<incomplete type>`` — no value in the debugger). Instead this *patches*
+only those three forms so the whole thing loads: gdb then has real types, and
+VSCode's Locals shows variables with values.
 
-  drop  N_LSYM (128), N_GSYM (32), N_STSYM (38), N_RSYM (64), N_PSYM (160),
-        and every other .stabs/.stabn — the type and variable descriptors.
+  1. unsigned ``0;-1`` → a width-correct upper bound (by builtin name;
+     other unsigned ranges fall back to the 32-bit max).
+  2. float/double ``;size;0;`` → an int32 range. Float locals therefore show
+     their raw 32-bit value, not a decimal float — a display-only compromise
+     (the PCSX-Redux Typed Debugger import has exact types); no crash.
+  3. array index type 0 → 1 (``int``), which is defined and non-zero-length,
+     preserving the element type and bounds.
 
-The result assembles to .stab/.stabstr sections whose N_SLINE addresses are
-exact (adding -gstabs was verified not to change .text), so gdb shows C
-source lines for matched functions. Types come from the PCSX-Redux Typed
-Debugger import instead (tools/redux_typed_debugger.py).
+-gstabs was verified not to change .text, and this only rewrites .stab
+strings, so addresses stay exact.
 
     tools/stabs_lines.py < in.s > out.s
     tools/stabs_lines.py --input in.s --output out.s
@@ -33,26 +36,28 @@ import re
 import sys
 from typing import Iterable
 
-# .stabs "str",TYPE,other,desc,value  — keep these type codes.
-KEEP_STABS_CODES = {100, 132, 36}
-_STABS = re.compile(r"^\s*\.stabs\b[^,]*,\s*(\d+),")
-_STABN = re.compile(r"^\s*\.stabn\b\s*(\d+),")
-N_SLINE = 68
+# (pattern, replacement) applied in order to each .stab line.
+_PATCHES = [
+    (re.compile(r"(unsigned char:t\d+=r\d+);0;-1;"), r"\1;0;255;"),
+    (re.compile(r"(short unsigned int:t\d+=r\d+);0;-1;"), r"\1;0;65535;"),
+    (re.compile(r"((?:long )?unsigned int:t\d+=r\d+);0;-1;"), r"\1;0;037777777777;"),
+    (re.compile(r"(long long (?:unsigned )?int:t\d+=r\d+);0;-1;"),
+     r"\1;0;01777777777777777777777;"),
+    # Any remaining self-referential unsigned range → 32-bit max.
+    (re.compile(r";0;-1;"), r";0;037777777777;"),
+    # Float/double size range (high == 0) → int32 range.
+    (re.compile(r"(=r\d+);\d+;0;"), r"\1;-2147483648;2147483647;"),
+    # Array indexed by the undefined type 0 → int (type 1).
+    (re.compile(r"=ar0;"), r"=ar1;"),
+]
 
 
-def filter_lines(lines: Iterable[str]) -> list[str]:
+def fixup_stabs(lines: Iterable[str]) -> list[str]:
     out = []
     for line in lines:
-        stabs = _STABS.match(line)
-        if stabs:
-            if int(stabs.group(1)) in KEEP_STABS_CODES:
-                out.append(line)
-            continue
-        stabn = _STABN.match(line)
-        if stabn:
-            if int(stabn.group(1)) == N_SLINE:
-                out.append(line)
-            continue
+        if ".stab" in line:
+            for pattern, replacement in _PATCHES:
+                line = pattern.sub(replacement, line)
         out.append(line)
     return out
 
@@ -62,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--input", type=argparse.FileType("r"), default=sys.stdin)
     parser.add_argument("--output", type=argparse.FileType("w"), default=sys.stdout)
     args = parser.parse_args(argv)
-    args.output.writelines(filter_lines(args.input))
+    args.output.writelines(fixup_stabs(args.input))
     return 0
 
 

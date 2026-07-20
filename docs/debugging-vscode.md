@@ -53,18 +53,33 @@ seconds); later runs are incremental. `./Build debug-gdb` /
 `debug-gdb-relink` build the script on their own if you want it without
 launching.
 
-### Why it is built this way
+### Why it is built this way, and the one compromise
 
 This project builds with the original 1997 `gcc 2.8.1`, which emits STABS
-(or DWARF 1). Modern gdb (17.1, and 12.1 — the bug is old) **crashes**
-reading gcc 2.8.1's builtin *type* stabs: an internal-error in
-`create_range_type` on its self-referential integer ranges
-(`unsigned int:t4=r4;0;-1;`) and `size;0` floats. A bit-older gdb does not
-help — tested. Source stepping only needs the *line* records, though, so
-`tools/stabs_lines.py` filters `-gstabs` output down to the
-`N_SO`/`N_FUN`/`N_SLINE` (file/function/line) records and drops every
-crash-inducing type descriptor. Types come from the Typed Debugger import
-(`tools/redux_typed_debugger.py`) instead.
+(or DWARF 1). Modern gdb (17.1, and 12.1 — the bug is old, and a bit-older
+gdb does not help; tested) **crashes** — an internal-error in
+`create_range_type`, not a graceful failure — reading three of gcc 2.8.1's
+otherwise-standard type encodings, each of which comes out zero-length:
+self-referential unsigned ranges (`unsigned int:t4=r4;0;-1;`), `size;0`
+floats/doubles, and arrays with a type-0 index. This is the fundamental
+issue: gdb abandoned its STABS reader, and this compiler predates DWARF 2.
+
+`tools/stabs_lines.py` patches only those three forms into ones the current
+reader accepts, keeping everything else — so gdb gets the real types and
+**Locals shows variables with values** (ints, pointers, structs, arrays),
+not just names. The single casualty: `float`/`double` are rewritten to
+int32 ranges, so a float local would show its raw 32-bit value rather than a
+decimal. In practice this costs nothing — the PS1 has no FPU and this game
+is fixed-point: there are **zero** float/double local variables in the game
+source. Exact types (including floats) are always available in the Typed
+Debugger import (`tools/redux_typed_debugger.py`).
+
+The fully robust fix — correct float display and no per-encoding patching —
+is to emit modern DWARF instead of STABS; gdb reads DWARF flawlessly. That is
+a larger tool and unbuilt; the patch approach covers this codebase well.
+Stack-resident locals additionally depend on gdb reading a 32-bit frame
+offset that it currently prints sign-oddly; register locals (most, under
+`-O2`) are exact.
 
 `-gstabs` was verified not to change `.text`, so each matched C file
 recompiles to a byte-identical `-gstabs` debug object under `.shake/main.exe-dbg/`.
