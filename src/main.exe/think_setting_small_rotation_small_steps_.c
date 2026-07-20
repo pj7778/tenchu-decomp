@@ -11,7 +11,7 @@
  * This translation unit reads Attrib unsigned, unlike main.exe.h's signed
  * declaration, so the small set of globals used here is declared locally.
  */
-extern character_state *Me_THINK_C;
+extern Humanoid *Me_THINK_C;
 extern u16 Attrib;
 extern s16 Degree;
 extern s32 Distance;
@@ -48,13 +48,13 @@ s16 think_setting_small_rotation_small_steps_(void)
     s16 result;
     u8 state;
     VECTOR *new_var;
-    character_state *self;
+    Humanoid *self;
 
     result = 0;
-    x_diff = Me_THINK_C->some_other_x_position -
-             Me_THINK_C->some_kind_of_current_position->vx;
-    z_diff = Me_THINK_C->some_other_z_position -
-             Me_THINK_C->some_kind_of_current_position->vz;
+    x_diff = Me_THINK_C->chase[0] -
+             Me_THINK_C->locate->vx;
+    z_diff = Me_THINK_C->chase[1] -
+             Me_THINK_C->locate->vz;
     state = Me_THINK_C->actscnt;
 
     if (state == 0)
@@ -182,7 +182,7 @@ s16 think_setting_small_rotation_small_steps_(void)
         s32 turnBits;
 
         direction = GetDirection(x_diff, z_diff,
-            Me_THINK_C->something_about_player_rotation_perhaps->character_rotation);
+            Me_THINK_C->rotate->vy);
         absoluteDirection = direction;
         turnBits = 0x2000;
         if (absoluteDirection > 0)
@@ -211,7 +211,7 @@ s16 think_setting_small_rotation_small_steps_(void)
                 s32 quotient;
 
                 self = Me_THINK_C;
-                quotient = 1000 / self->character_rotation_speed;
+                quotient = 1000 / self->turn;
                 self->field76_0xb0 = quotient |
                     (degree > 0 ? 0x80000000 : 0x20000000);
             }
@@ -251,9 +251,9 @@ s16 think_setting_small_rotation_small_steps_(void)
             Sound((Humanoid *)Me_THINK_C, soundId);
 
             type = AIDHumanType[StageID][rand() % 2];
-            rotation = (SVECTOR *)Me_THINK_C->something_about_player_rotation_perhaps;
+            rotation = (SVECTOR *)Me_THINK_C->rotate;
             newRotation = rotation->vy + direction;
-            new_var = Me_THINK_C->some_kind_of_current_position;
+            new_var = Me_THINK_C->locate;
             rotation->vy = newRotation;
             position = new_var;
             human = BreedLife(type, position->vx, position->vy, position->vz,
@@ -272,9 +272,9 @@ s16 think_setting_small_rotation_small_steps_(void)
             human->actcnt = 1;
             *(u16 *)&human->attribute |= 0x11;
 
-            human->chase[0] = Me_THINK_C->some_other_x_position +
+            human->chase[0] = Me_THINK_C->chase[0] +
                               (rand() % 5 - 2) * 500;
-            human->chase[1] = Me_THINK_C->some_other_z_position +
+            human->chase[1] = Me_THINK_C->chase[1] +
                               (rand() % 5 - 2) * 500;
             randomValue = rand();
             soundId = 10;
@@ -282,7 +282,7 @@ s16 think_setting_small_rotation_small_steps_(void)
             {
                 soundId = 9;
             }
-            self = (character_state *)human;
+            self = (Humanoid *)human;
             Sound((Humanoid *)self, soundId);
             StageEnemies++;
         }

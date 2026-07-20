@@ -1,6 +1,7 @@
 #include "common.h"
 #include <psxsdk/libgs.h>
 #include "game_types.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -31,7 +32,7 @@
  *    (same extended basic block) but a FRESH one for the third (past the
  *    if/else-if join's CODE_LABEL, outside cse's window).
  *  - The two GetAreaMapLevel calls each re-read
- *    `Me_THINK_C->some_kind_of_current_position` fresh (no cached pointer).
+ *    `Me_THINK_C->locate` fresh (no cached pointer).
  *  - The blocked-direction flag is D2 REUSED (one variable, double duty):
  *    the target keeps the flag in $v1 — the same register that holds d2 —
  *    and gcc 2.8.1 never splits a live range, so the source overwrote `d2`
@@ -65,7 +66,7 @@
  *    body, and an early-return body between them would break those cse
  *    windows (cse follows the fallthrough path only).
  */
-extern character_state *Me_THINK_C;
+extern Humanoid *Me_THINK_C;
 extern u16 Attrib;
 extern u16 Degree;
 extern s32 D_80097F10;
@@ -86,13 +87,13 @@ s16 turn_towards_player_(s32 x_diff, s32 z_diff)
     if (x_diff != 0 || z_diff != 0)
     {
         dir = GetDirection(x_diff, z_diff,
-                            Me_THINK_C->something_about_player_rotation_perhaps->character_rotation);
+                            Me_THINK_C->rotate->vy);
     }
     else
     {
         dir = Degree;
     }
-    turn = Me_THINK_C->character_rotation_speed;
+    turn = Me_THINK_C->turn;
     if (turn < (s16)dir)
     {
         result = 0x2000;
@@ -127,17 +128,17 @@ s16 turn_towards_player_(s32 x_diff, s32 z_diff)
                 s32 d1, d2;
 
                 GetMoveSpeed(&local,
-                             Me_THINK_C->something_about_player_rotation_perhaps->character_rotation,
-                             0, Me_THINK_C->field6_0xc);
+                             Me_THINK_C->rotate->vy,
+                             0, Me_THINK_C->width);
                 d1 = GetAreaMapLevel(GlobalAreaMap,
-                                     Me_THINK_C->some_kind_of_current_position->vx + local.vx,
-                                     Me_THINK_C->some_kind_of_current_position->vy - 500,
-                                     Me_THINK_C->some_kind_of_current_position->vz + local.vz,
+                                     Me_THINK_C->locate->vx + local.vx,
+                                     Me_THINK_C->locate->vy - 500,
+                                     Me_THINK_C->locate->vz + local.vz,
                                      0x1a);
                 d2 = GetAreaMapLevel(GlobalAreaMap,
-                                     Me_THINK_C->some_kind_of_current_position->vx - local.vx,
-                                     Me_THINK_C->some_kind_of_current_position->vy - 500,
-                                     Me_THINK_C->some_kind_of_current_position->vz - local.vz,
+                                     Me_THINK_C->locate->vx - local.vx,
+                                     Me_THINK_C->locate->vy - 500,
+                                     Me_THINK_C->locate->vz - local.vz,
                                      0x1a);
                 if ((result & 0x2000) && (d1 != cached))
                 {
