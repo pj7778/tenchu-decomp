@@ -12,8 +12,11 @@
 // reference/psxsym-types.h (the authors' own PSX.SYM) or item.h's official
 // structs, migrate call sites to the official type/name and delete the guess,
 // gating on byte-identical `./Build check`. Do not add new guessed duplicates
-// of something the recovered symbols already name. (Worked example:
-// character_state was the official Humanoid; see
+// of something the recovered symbols already name. (Completed example:
+// the guessed `character_state` cluster WAS item.h's official Humanoid and
+// has been fully retired — all Me_THINK_C derefs use `struct Humanoid` and
+// its official fields, and the ~314-line cluster was deleted from this file.
+// The offset-aligned field map is kept for reference:
 // reference/character_state-to-humanoid.tsv.)
 
 typedef u16 buttons_held;
