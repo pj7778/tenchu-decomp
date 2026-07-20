@@ -2475,12 +2475,22 @@ runPcsx :: [String] -> Action ()
 runPcsx baseArgs = do
   pcsx <- liftIO findPcsx
   extra <- liftIO $ maybe [] words <$> lookupEnv "PCSX_REDUX_ARGS"
+  -- TENCHU_GDB[=port] enables pcsx-redux's GDB server so VSCode (or a bare
+  -- gdb) can attach; default port 3333. See docs/debugging-vscode.md.
+  gdbEnv <- liftIO $ lookupEnv "TENCHU_GDB"
   let userChoseCpu = any (`elem` ["-interpreter", "-dynarec", "-bios"]) extra
       cpu = ["-interpreter" | not userChoseCpu]
-      argv = pcsx : (baseArgs <> cpu <> extra)
+      gdbArgs = case gdbEnv of
+        Nothing -> []
+        Just "" -> ["-gdb", "-gdb-port", "3333"]
+        Just "1" -> ["-gdb", "-gdb-port", "3333"]
+        Just port -> ["-gdb", "-gdb-port", port]
+      argv = pcsx : (baseArgs <> cpu <> gdbArgs <> extra)
   liftIO $ IO.createDirectoryIfMissing True shakeDir
   liftIO $ writeFile pendingLaunchFile (intercalate "\0" argv)
-  putInfo "launch deferred to the ./Build wrapper (build lock released first)"
+  if null gdbArgs
+    then putInfo "launch deferred to the ./Build wrapper (build lock released first)"
+    else putInfo "GDB server on; launch deferred to wrapper (attach from VSCode / mips-gdb)"
 
 -- | The pcsx-redux binary: @$PCSX_REDUX@, else on @$PATH@, else the usual checkout.
 findPcsx :: IO FilePath

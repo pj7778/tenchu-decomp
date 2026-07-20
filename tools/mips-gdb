@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# A gdb that speaks the PS1's MIPS R3000 (mips:3000), for attaching to
+# PCSX-Redux's GDB server. VSCode's launch.json points miDebuggerPath here.
+#
+# nixpkgs gdb 17.1 includes the mips target; we materialise it once behind a
+# gcroot symlink (.shake/mips-gdb) so it is stable and never garbage-collected,
+# then exec it. First run builds/downloads it; later runs are instant.
+set -e
+root=$(dirname "$(dirname "$(readlink -f "$0")")")
+gdb="$root/.shake/mips-gdb/bin/gdb"
+if [ ! -x "$gdb" ]; then
+  echo "mips-gdb: materialising gdb via nix (first run only)…" >&2
+  nix build "${TENCHU_NIXPKGS:-$HOME/programming/nixpkgs}#gdb" \
+      -o "$root/.shake/mips-gdb" >&2
+fi
+exec "$gdb" "$@"

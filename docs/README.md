@@ -55,6 +55,10 @@ decisions behind the toolchain. It's the reference companion to the terse
 - [building-an-iso.md](building-an-iso.md) — `iso`, `iso-mod`, and `iso-relink`:
   rebuild a bootable CD image (`.bin`/`.cue`) for pcsx-redux, plus the bounded
   direct/full-disc `tools/pcsx_smoke.py` runtime gate.
+- [debugging-vscode.md](debugging-vscode.md) — attach VSCode to the running
+  game via PCSX-Redux's GDB server and `tools/mips-gdb` (`TENCHU_GDB=1
+  ./Build run-relink` + the committed `.vscode/launch.json`); symbol-level
+  today, with the DWARF-line path for C source stepping scoped.
 - [permuter.md](permuter.md) — `tools/permute.py`: run decomp-permuter to
   byte-match register-allocation-hard functions.
 - [ghidra-bridge.md](ghidra-bridge.md) — pull decompiled C from your Ghidra
