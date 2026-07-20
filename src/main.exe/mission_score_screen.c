@@ -100,7 +100,7 @@ extern u_long *get_tim_from_archive(u_long *archive, s32 index);
 extern void InitSprite(GsIMAGE *image, GsSPRITE *sprite);
 extern void LoadTIM(u_long *tim);
 extern void _PlayMusic(s32 music, s32 mode);
-extern u32 GetRealPad(s32 port);
+extern s32 GetRealPad(s32 port);
 extern void StartDrawing(void);
 extern void DrawBG(void *background);
 extern void EndDrawing(s32 arg);

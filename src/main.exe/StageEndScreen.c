@@ -121,7 +121,7 @@ extern BackGround *FUN_8004f4f8(u_long *tim);
 extern void vfree(void *ptr);
 extern u_long *get_tim_from_archive(u_long *archive, s16 index);
 extern void _PlayMusic(s32 music, s32 mode);
-extern u16 GetRealPad(s32 port);
+extern s32 GetRealPad(s32 port);
 extern void StartDrawing(void);
 extern void DrawBG(BackGround *background);
 extern void FUN_800515b0(GsSPRITE *sprite, s32 value, s32 x, s32 y, s32 mode);

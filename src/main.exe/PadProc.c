@@ -58,26 +58,12 @@ typedef struct
     s32 release;
 } PadArrangeStruct;
 
-typedef struct
-{
-    u16 held;
-    s16 x;
-    s16 y;
-    u8 active;
-    u8 analog;
-    u8 act1;
-    u8 act2;
-    u8 actbuf[2];
-    u8 send;
-    u8 pad;
-} PadProcPort;
-
 extern PadArrangeStruct PadArrange;
 
 static inline void PadProcShock(s32 port, s32 value1, s32 value2)
 {
-    PadProcPort *p = (PadProcPort *)&PadPort[port >> 4][port & 3];
-    PadProcPort *q = p;
+    TPadPort *p = &PadPort[port >> 4][port & 3];
+    TPadPort *q = p;
 
     if (D_8001005D != 0)
     {

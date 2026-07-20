@@ -19,18 +19,15 @@
 // The offset-aligned field map is kept for reference:
 // reference/character_state-to-humanoid.tsv.)
 
-typedef u16 buttons_held;
-
 // One controller port's raw state — the official globals and PADCMD.C name
 // this TPadPort (reference/psxsym-globals.h: `struct TPadPort PadPort[2][4]`).
 // Retail inserted `active` at offset 6, making it 14 bytes vs the demo's 12
-// (ComPad.c documents this). Field 0 is `button` in the demo's debug symbols;
-// the retail decomp uses the descriptive `held`. GetRealPad indexes the
-// [port][slot] table and reads `held`.
+// (ComPad.c documents this). GetRealPad indexes the [port][slot] table and
+// reads `button`.
 typedef struct TPadPort TPadPort;
 struct TPadPort
 {
-    buttons_held held;  /* 0x0 (held buttons; demo symbol name: button) */
+    u16 button;         /* 0x0 (held buttons) */
     u16 x;              /* 0x2 */
     u16 y;              /* 0x4 */
     u8 active;          /* 0x6 (retail-inserted) */

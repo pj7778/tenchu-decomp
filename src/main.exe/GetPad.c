@@ -41,10 +41,10 @@
  */
 s16 GetPad(short no)
 {
-    buttons_held *held;
+    u16 *button;
     s32 port;
 
     port = no << 4;
-    held = &PadPort[port >> 4][port & 3].held;
-    return *held;
+    button = &PadPort[port >> 4][port & 3].button;
+    return *button;
 }

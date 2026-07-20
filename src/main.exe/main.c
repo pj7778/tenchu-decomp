@@ -111,7 +111,7 @@ extern void DoItemProc(void);
 extern void DoInfoViewProc(void);
 extern void DoMiscProc(void);
 extern void update_something_for_each_visible_enemy_(void);
-extern u32 GetPad(s32 port);
+extern s16 GetPad(s16 no);
 extern void *vgetfreesize(void);
 extern void *vgetmaxsize(void);
 extern void EndDrawing(s32 mode);

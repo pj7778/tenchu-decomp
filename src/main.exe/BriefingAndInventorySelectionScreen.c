@@ -18,12 +18,12 @@
  * 241 -> 94 -> 28 -> 0). The 28 residual register-tie diffs fell to six
  * levers, all in this file (permuter rounds 4-6 found 1/3/5, hand-derived
  * 4/6 from the gcc 2.8.1 local-alloc.c/global.c tie+preference conditions):
- *   1. `extern u32 GetRealPad(...)` -- the CALLER-side return type (the
- *      defining TU says buttons_held/u16). With a u16 return the (s16)pad
- *      ext for check_for_known_button_combination was emitted before the
- *      np xor/and chain via a0; with u32 it lands after, reusing the dying
- *      pad copy in v0 (permuter r4; `volatile unsigned int` scored the
- *      same -- the volatile is pycparser noise).
+ *   1. `extern s32 GetRealPad(...)` -- the CALLER-side return type must be
+ *      the official `long` (s32; u32 and `volatile unsigned int` score the
+ *      same -- the width matters, not the sign). With a u16 return the
+ *      (s16)pad ext for check_for_known_button_combination was emitted before
+ *      the np xor/and chain via a0; with the full-word return it lands after,
+ *      reusing the dying pad copy in v0 (permuter r4).
  *   2. Entry-clamp compare re-read `mx < cq->stock[n]` (for `mx < c`):
  *      byte-neutral (cse folds it back to c's reg) but the changed
  *      preference set makes global alloc tie the store address into n's
@@ -130,7 +130,7 @@ extern void PutItemCursor(int x, int y, int size, int rotdif);
 extern void DisposeBG(void *bg);
 extern int check_for_known_button_combination(s16 pad, s16 newpress);
 extern u_long *get_tim_from_archive(u_long *archive, int idx);
-extern u32 GetRealPad(s32 which);
+extern s32 GetRealPad(s32 which);
 extern void FUN_800519bc(void);
 
 /*
