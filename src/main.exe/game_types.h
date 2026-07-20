@@ -6,6 +6,15 @@
 // pushes it into the Ghidra program; `tools/ghidra/ExportSymbolsTypes.java`
 // exports Ghidra's version to reference/ghidra_types.h. `./Build check` is the
 // arbiter — a type here is proven only if the build stays byte-identical.
+//
+// OWNER DIRECTIVE: always prefer the OFFICIAL recovered types over hand-guessed
+// ones. When a type/field here duplicates a name recovered in
+// reference/psxsym-types.h (the authors' own PSX.SYM) or item.h's official
+// structs, migrate call sites to the official type/name and delete the guess,
+// gating on byte-identical `./Build check`. Do not add new guessed duplicates
+// of something the recovered symbols already name. (Worked example:
+// character_state was the official Humanoid; see
+// reference/character_state-to-humanoid.tsv.)
 
 typedef u16 buttons_held;
 
