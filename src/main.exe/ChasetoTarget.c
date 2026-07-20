@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -39,7 +40,7 @@ extern int rand(void);
 
 short ChasetoTarget(long length)
 {
-    character_state *me;
+    Humanoid *me;
     long target_x, target_z;
     long xx, zz;
     long *chase;
@@ -47,16 +48,16 @@ short ChasetoTarget(long length)
     short deg;
 
     me = Me_THINK_C;
-    chase = &me->some_other_x_position;
-    if (me->another_camera_related_perhaps == 0) {
+    chase = &me->chase[0];
+    if (me->target == 0) {
         return 0;
     }
 
-    target_x = me->another_camera_related_perhaps->position.x;
-    xx = target_x + me->some_other_x_position
-         - me->some_kind_of_current_position->vx;
-    target_z = me->another_camera_related_perhaps->position.z;
-    zz = target_z + chase[1] - me->some_kind_of_current_position->vz;
+    target_x = me->target->locate.coord.t[0];
+    xx = target_x + me->chase[0]
+         - me->locate->vx;
+    target_z = me->target->locate.coord.t[2];
+    zz = target_z + chase[1] - me->locate->vz;
 
     if (((xx >= 0 ? xx : -xx) < 500 &&
          (zz >= 0 ? zz : -zz) < 500) ||
@@ -65,10 +66,10 @@ short ChasetoTarget(long length)
     }
 
     if ((Attrib & 0xc000) != 0 ||
-        (me->some_other_x_position | chase[1]) == 0) {
+        (me->chase[0] | chase[1]) == 0) {
         deg = rand();
         vx = rcos(deg) * length >> 12;
-        me->some_other_x_position = vx;
+        me->chase[0] = vx;
         vz = rsin(deg) * length >> 12;
         chase[1] = vz;
     }
