@@ -23,7 +23,7 @@
  * run whether or not this final DrawAfterimage fires) and then recomputed
  * once more right after the call (the call clobbers the delay-slot copy).
  *
- * character_state's `model` (0x58) and `some_afterimage_1_0xa4`/
+ * Humanoid's `model` (0x58) and `some_afterimage_1_0xa4`/
  * `_2_0xa8` (0xa4/0xa8) fields were corrected here (see game_types.h) —
  * `model` was an unverified `char_state_related_camera_things *` guess
  * (nothing used it), and the afterimage pair were 8 separate u8 bytes; this
@@ -32,7 +32,7 @@
  * Humanoid.model, both agreeing at the same offsets.
  */
 extern s16 VISIBLE_ENEMIES_;
-extern character_state *VISIBLE_CHARACTERS_ON_STAGE_[];
+extern Humanoid *VISIBLE_CHARACTERS_ON_STAGE_[];
 extern s16 D_800BE768[];
 extern s32 DrawTMDmode;
 extern void DrawModelArchive(ModelArchiveType *model, s32 n);
@@ -42,28 +42,28 @@ extern void DrawAfterimage(void *afterimage, s32 flag);
 void update_something_for_each_visible_enemy_(void)
 {
     s16 i;
-    character_state *cs;
+    Humanoid *cs;
 
     for (i = 0; i < VISIBLE_ENEMIES_; i++)
     {
         cs = VISIBLE_CHARACTERS_ON_STAGE_[i];
         DrawTMDmode = D_800BE768[i];
         DrawModelArchive((ModelArchiveType *)cs->model, -i);
-        if (cs->right_hand_active_weapon_tmd != 0)
+        if (cs->weapon[0] != 0)
         {
-            DrawOrnament(cs->right_hand_active_weapon_tmd);
+            DrawOrnament(cs->weapon[0]);
         }
-        if (cs->left_hand_active_weapon_tmd != 0)
+        if (cs->weapon[1] != 0)
         {
-            DrawOrnament(cs->left_hand_active_weapon_tmd);
+            DrawOrnament(cs->weapon[1]);
         }
-        if (cs->some_afterimage_1_0xa4 != 0)
+        if (cs->illusion[0] != 0)
         {
-            DrawAfterimage(cs->some_afterimage_1_0xa4, 1);
+            DrawAfterimage(cs->illusion[0], 1);
         }
-        if (cs->some_afterimage_2_0xa8 != 0)
+        if (cs->illusion[1] != 0)
         {
-            DrawAfterimage(cs->some_afterimage_2_0xa8, 1);
+            DrawAfterimage(cs->illusion[1], 1);
         }
     }
 }

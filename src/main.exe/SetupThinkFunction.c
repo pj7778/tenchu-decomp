@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -31,7 +32,7 @@
 
 /*
  * SetupThinkFunction (0x8002f73c, 0xb8 bytes) — installs the four
- * think_settingN behaviour-function-pointer slots of a character_state
+ * think_settingN behaviour-function-pointer slots of a Humanoid
  * (game_types.h; think_setting0..3 proven @0x60-0x6C) from four lookup
  * tables keyed off nibbles of `type`, then sets or clears bit 4 of
  * some_character_marker_thing depending on whether `type` is one of three
@@ -61,22 +62,22 @@ extern some_char_state_function *Think2Func[];
 extern some_char_state_function *Think3Func[];
 extern some_char_state_function *Think4Func[];
 
-void SetupThinkFunction(character_state *human, s16 type)
+void SetupThinkFunction(Humanoid *human, s16 type)
 {
     s32 check;
     some_char_state_function **table2;
     some_char_state_function **table3;
 
-    human->think_setting0 = Think1Func[type & 0xF];
+    human->think[0] = Think1Func[type & 0xF];
     table2 = Think2Func;
-    human->think_setting1 = *(some_char_state_function **)((u8 *)table2 + ((((s32)type << 16) >> 18) & 0x3C));
+    human->think[1] = *(some_char_state_function **)((u8 *)table2 + ((((s32)type << 16) >> 18) & 0x3C));
     table3 = Think3Func;
-    human->think_setting2 = *(some_char_state_function **)((u8 *)table3 + ((((s32)type << 16) >> 22) & 0x3C));
-    human->think_setting3 = Think4Func[(u32)((s32)type << 16) >> 28];
+    human->think[2] = *(some_char_state_function **)((u8 *)table3 + ((((s32)type << 16) >> 22) & 0x3C));
+    human->think[3] = Think4Func[(u32)((s32)type << 16) >> 28];
     check = ((s32)type << 16) >> 16;
     if (check == 0 || check == 0x1111 || check == 0x2222) {
-        human->some_character_marker_thing &= 0xFFFB;
+        human->attribute &= 0xFFFB;
     } else {
-        human->some_character_marker_thing |= 4;
+        human->attribute |= 4;
     }
 }

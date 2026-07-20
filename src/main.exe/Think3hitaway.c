@@ -1,6 +1,7 @@
 #include "common.h"
 #include <psxsdk/libgs.h>
 #include "game_types.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -30,7 +31,7 @@
  *     extern short Attrib;
  * END PSX.SYM */
 
-extern character_state *Me_THINK_C;
+extern Humanoid *Me_THINK_C;
 extern s32 Distance;
 extern s16 Degree;
 extern s16 SR;
@@ -63,7 +64,7 @@ extern s16 turn_towards_player_(s32 x_diff, s32 z_diff);
  *  - `character_status` is read SIGNED (`lh`) at this one call site even
  *    though game_types.h proves the field itself `u16` (needed elsewhere
  *    to avoid a bad sign-extend) — reached via an offset-cast read,
- *    `*(s16 *)&Me_THINK_C->character_status`, matching the cookbook's
+ *    `*(s16 *)&Me_THINK_C->status`, matching the cookbook's
  *    "reach a divergent-width access via an offset cast off the same
  *    proven pointer" rule, rather than retyping the shared struct field.
  *  - The AttackFunc dispatch (SHORT body, one call + return) must be the
@@ -87,11 +88,11 @@ s16 Think3hitaway(void)
     {
         SR = 0;
     }
-    if (*(s16 *)&Me_THINK_C->character_status == 7)
+    if (*(s16 *)&Me_THINK_C->status == 7)
     {
         Me_THINK_C->actflg = 0;
-        Me_THINK_C->some_other_z_position = 0;
-        Me_THINK_C->some_other_x_position = 0;
+        Me_THINK_C->chase[1] = 0;
+        Me_THINK_C->chase[0] = 0;
         return SuccessionAttack(3000, 0x5dc);
     }
     else if (Me_THINK_C->actflg != 0)

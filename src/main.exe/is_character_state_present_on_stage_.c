@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /*
  * is_character_state_present_on_stage_ (0x800294dc, 0x50 bytes) — linear
@@ -7,7 +8,7 @@
  * returns whether it was found. Same "Humanoid control" TU as MoveHumanoid.c
  * (address-contiguous with GetHumanoid/MoveHumanoid/GetDirection/etc.).
  * Cross-TU callers (ProcItemDrop.c etc.) declare it `s32 f(Humanoid *h)` —
- * this TU's own view of the object is `character_state` (Me_THINK_C's type
+ * this TU's own view of the object is `Humanoid` (Me_THINK_C's type
  * in main.exe.h); the parameter is never dereferenced here (pure pointer
  * compare), so the type choice is cosmetic, but kept consistent with the
  * rest of this batch.
@@ -24,9 +25,9 @@
  * pointer (+4 each iteration) automatically; write the indexed form.
  */
 extern s16 Humans;
-extern character_state *HumanGroup[];
+extern Humanoid *HumanGroup[];
 
-s32 is_character_state_present_on_stage_(character_state *cs)
+s32 is_character_state_present_on_stage_(Humanoid *cs)
 {
     s32 i;
 
