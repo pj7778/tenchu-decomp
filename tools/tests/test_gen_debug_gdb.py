@@ -28,16 +28,18 @@ class ParseNmTests(unittest.TestCase):
 
 
 class BuildScriptTests(unittest.TestCase):
-    def test_emits_add_symbol_file_per_resolved_object(self) -> None:
+    def test_emits_absolute_paths_and_a_source_directory(self) -> None:
         symbols = {"ProcItemKusuri": 0x80040500, "PadProc": 0x8001ADA4}
         objs = [Path("d/ProcItemKusuri.c.o"), Path("d/PadProc.c.o"),
                 Path("d/Unresolved.c.o")]
-        script, count = g.build_script(symbols, objs, ".shake/main.exe-dbg")
+        script, count = g.build_script(symbols, objs, "d", "/repo")
         self.assertEqual(count, 2)  # Unresolved has no symbol
         self.assertTrue(script.startswith("set architecture mips:3000\n"))
+        self.assertIn("directory /repo\n", script)
+        # Object paths are absolute so gdb's cwd does not matter.
+        abs_dir = str(Path("d").resolve())
         self.assertIn(
-            "add-symbol-file .shake/main.exe-dbg/ProcItemKusuri.c.o "
-            "-s .text 0x80040500",
+            f"add-symbol-file {abs_dir}/ProcItemKusuri.c.o -s .text 0x80040500",
             script,
         )
         self.assertNotIn("Unresolved", script)
@@ -45,7 +47,7 @@ class BuildScriptTests(unittest.TestCase):
     def test_addresses_outside_main_ram_are_skipped(self) -> None:
         symbols = {"Sdk": 0x1F800000, "Game": 0x80020000}
         objs = [Path("d/Sdk.c.o"), Path("d/Game.c.o")]
-        script, count = g.build_script(symbols, objs, "d")
+        script, count = g.build_script(symbols, objs, "d", "/repo")
         self.assertEqual(count, 1)
         self.assertIn("Game.c.o", script)
         self.assertNotIn("Sdk.c.o", script)

@@ -25,6 +25,7 @@ from pathlib import Path
 import subprocess
 import sys
 
+ROOT = Path(__file__).resolve().parent.parent
 MAIN_RAM_LO = 0x80010000
 MAIN_RAM_HI = 0x80200000
 # nm one-letter classes whose symbols carry an address we can place text at.
@@ -49,8 +50,16 @@ def parse_nm(text: str) -> dict[str, int]:
 
 
 def build_script(symbols: dict[str, int], debug_objs: list[Path],
-                 obj_dir: str) -> tuple[str, int]:
-    lines = ["set architecture mips:3000"]
+                 obj_dir: str, source_root: str) -> tuple[str, int]:
+    # Absolute paths: VSCode's cppdbg runs gdb with an unspecified cwd, so
+    # relative object paths (and the relative source paths recorded in the
+    # stabs, e.g. "src/main.exe/X.c") would not resolve. `directory` gives
+    # gdb the tree to find those .c files under.
+    obj_dir = str(Path(obj_dir).resolve())
+    lines = [
+        "set architecture mips:3000",
+        f"directory {source_root}",
+    ]
     count = 0
     for obj in sorted(debug_objs):
         function = obj.name[:-4] if obj.name.endswith(".c.o") else obj.stem
@@ -79,7 +88,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     symbols = parse_nm(nm)
     debug_objs = sorted(args.debug_obj_dir.glob("*.c.o"))
-    script, count = build_script(symbols, debug_objs, str(args.debug_obj_dir))
+    script, count = build_script(
+        symbols, debug_objs, str(args.debug_obj_dir), str(ROOT)
+    )
     args.out.write_text(script)
     print(f"gen-debug-gdb: {count} source objects -> {args.out}")
     return 0
