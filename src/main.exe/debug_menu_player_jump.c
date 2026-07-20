@@ -38,7 +38,7 @@ extern char D_80014704[];
 
 extern void EndDrawing(s32 sync);
 extern void StartDrawing(void);
-extern u32 GetRealPad(s32 port);
+extern s32 GetRealPad(s32 port);
 extern s32 GetAreaMapLevel(u32 *area, s32 x, s32 y, s32 z, s32 mode);
 
 void debug_menu_player_jump(void)

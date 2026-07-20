@@ -119,7 +119,7 @@ extern char D_800125F0[];                   /* "select option" */
 extern char D_80097C40[];                   /* effect-menu title buffer */
 
 extern s32 AdtSelect(char *title, TAdtSelect *menu, s32 mode);
-extern s32 GetPad(s32 n);
+extern s16 GetPad(s16 no);
 extern void InitializeInfoView(void);
 extern void LayoutEnemyOption(void);
 extern void AddItem2(void);

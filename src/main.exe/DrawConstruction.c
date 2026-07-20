@@ -107,7 +107,7 @@ extern char D_80097AA0[];
 extern s32 IsVisible(s32 x, s32 y, s32 z, s32 range);
 extern void AdtMessageBox(char *message);
 extern void DrawTMD(GsDOBJ2 *obj, GsOT *ot, s32 mode);
-extern s32 GetPad(s32 port);
+extern s16 GetPad(s16 no);
 
 void DrawConstruction(void)
 {

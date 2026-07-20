@@ -48,7 +48,7 @@
  *    with the identical full-width assignments it keeps the target's
  *    `sh v0; move v1,v0` sequence instead of narrowing the copy to an `andi`
  *    or moving the store into a branch delay slot.
- *  - The second button test intentionally reloads `held`; the target contains
+ *  - The second button test intentionally reloads `button`; the target contains
  *    a fresh `lhu` there.
  *  - Capturing `actbuf` before the Send guard fixes the outer branch delay
  *    slot. The recovered `u8 *` PadSetActAlign argument and six-byte static
@@ -61,9 +61,15 @@ extern int PadSetAct(int port, u8 *data, int len);
 extern int PadSetActAlign(int port, u8 *data);
 extern u8 D_800976F0[6];
 
+/* Same 14-byte retail record as game_types.h's official TPadPort, but with
+ * SIGNED x/y: ComPad writes negative analog values (`pad->y = -0x2D`), which
+ * on a signed field emit the target's `addiu -0x2D` — an unsigned field would
+ * fold the constant to 0xffd3 and emit `ori` instead (different opcode). The
+ * canonical TPadPort keeps x/y unsigned so GetPadXY's reads stay `lhu`; this
+ * signedness split is why the two views coexist. */
 typedef struct
 {
-    u16 held;
+    u16 button;
     s16 x;
     s16 y;
     u8 active;
@@ -97,7 +103,7 @@ void ComPad(int port, u8 *rxbuf)
 
     if (rxbuf[0] != 0)
     {
-        pad->held = 0;
+        pad->button = 0;
         pad->x = 0;
         pad->y = 0;
         pad->active = 0;
@@ -112,7 +118,7 @@ void ComPad(int port, u8 *rxbuf)
     {
         int i;
 
-        pad->held = raw;
+        pad->button = raw;
         do
         {
         } while (0);
@@ -134,7 +140,7 @@ void ComPad(int port, u8 *rxbuf)
     {
         int i;
 
-        i = pad->held;
+        i = pad->button;
         if (i & 0x4000)
             pad->y = 0x2D;
         else if (i & 0x1000)
