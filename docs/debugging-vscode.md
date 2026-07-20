@@ -36,25 +36,36 @@ The ELF's symbol table names everything, so call stacks read as
 `PadProc → …` rather than raw addresses — the same names the in-emulator
 disassembly gets from `<artifact>.symbols.lua`.
 
-## The one limitation: no C source lines (yet)
+## C source lines
 
-Breakpoints, stepping, and stacks work at the **instruction/symbol** level,
-not the C source level, because this project builds with the original 1997
-`gcc 2.8.1`. That compiler emits only STABS or DWARF 1 debug info, and modern
-gdb (17.1) has abandoned both: its STABS reader hard-crashes on gcc 2.8.1's
-own type idioms (self-referential integer ranges, `size;0` floats), and
-DWARF 1 is unsupported. Adding `-gstabs` to the build was verified to keep
-`.text` **byte-identical** (so a parallel debug ELF's addresses match the
-running image), but gdb cannot consume the result.
+Source-level stepping is achievable, and the mechanism is proven. Two facts
+made it awkward, both now resolved:
 
-The viable path to source-level stepping is to **synthesise modern DWARF
-line tables** from the byte-identical `-gstabs` build: parse the assembled
-`.stab` section's `N_SLINE` (line→address) and `N_FUN`/`N_SO` records — whose
-addresses are exact because the text matches — and emit a `.debug_line`
-(plus a minimal `.debug_info`/`.debug_abbrev` compilation unit) into a debug
-ELF, sidestepping gdb's dead STABS reader. gdb reads DWARF line tables
-reliably. This is scoped but unbuilt; the inputs are proven. Until then, keep
-the C file open beside the disassembly and set breakpoints by function name.
+- This project builds with the original 1997 `gcc 2.8.1`, which emits STABS
+  (or DWARF 1). Modern gdb (17.1, and 12.1 — the bug is old) **crashes**
+  reading gcc 2.8.1's builtin type stabs: an internal-error in
+  `create_range_type` on its self-referential integer ranges
+  (`unsigned int:t4=r4;0;-1;`) and `size;0` floats. A bit-older gdb does not
+  help — tested.
+- But source-level stepping only needs the *line* records, not those type
+  descriptors. `tools/stabs_lines.py` filters `-gstabs` output down to the
+  `N_SO`/`N_FUN`/`N_SLINE` (file/function/line) records and drops every
+  crash-inducing type/variable stab. Modern gdb then reads it cleanly —
+  verified: `info line PadProc` → "Line 103 of PadProc.c", and `list` shows
+  the real C. Types are covered separately by the Typed Debugger import
+  (`tools/redux_typed_debugger.py`).
+
+Adding `-gstabs` was also verified not to change `.text` (byte-identical), so
+a **debug ELF** — the matched C objects recompiled `-gstabs`, filtered
+through `stabs_lines.py`, and linked with the normal script — has line info
+plus addresses that match the running image exactly. INCLUDE_ASM stubs carry
+no line info (instruction-level, as expected). Point `launch.json`'s
+`program` at that debug ELF and VSCode shows C source.
+
+Remaining: wiring the debug-ELF build as a `./Build` target (it must reuse
+each file's exact `maspsxGpExterns` / original-object compile flags, so it
+belongs in the build rules, not a standalone script). Until it lands, symbol
++ disassembly debugging is the default `launch.json` target.
 
 ## Notes
 
