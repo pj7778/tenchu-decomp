@@ -1,6 +1,7 @@
 #include "common.h"
 #include <psxsdk/libgs.h>
 #include "game_types.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -73,10 +74,10 @@
  * already copied into abs_degree's register, not re-read degree's).
  */
 
-extern character_state *Me_THINK_C;
+extern Humanoid *Me_THINK_C;
 extern u16 Attrib;
 extern s16 Degree;
-extern s32 ControlTraceLine(character_state *me);
+extern s32 ControlTraceLine(Humanoid *me);
 
 s16 Think1trace(void)
 {
@@ -91,7 +92,7 @@ s16 Think1trace(void)
         Me_THINK_C->actscnt = old_actscnt + 1;
         if (old_actscnt < 0x3C)
         {
-            character_state *self;
+            Humanoid *self;
             s32 turn;
             s32 degree;
             s32 abs_degree;
@@ -100,14 +101,14 @@ s16 Think1trace(void)
             {
                 self = Me_THINK_C;
                 degree = Degree;
-                turn = self->character_rotation_speed;
+                turn = self->turn;
                 abs_degree = degree;
             }
             else
             {
                 self = Me_THINK_C;
                 degree = Degree;
-                turn = self->character_rotation_speed;
+                turn = self->turn;
                 abs_degree = degree;
             }
             if (0 > degree)

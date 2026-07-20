@@ -1,6 +1,7 @@
 #include "common.h"
 #include <psxsdk/libgs.h>
 #include "game_types.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -23,10 +24,10 @@
  * Deliberately does NOT include main.exe.h: its `extern s16 Attrib;` would
  * conflict with the `u16` this file needs, so the handful of externs used
  * here are re-declared locally instead (game_types.h alone gives
- * `character_state`; libgs.h is the prerequisite main.exe.h itself needs
+ * `Humanoid`; libgs.h is the prerequisite main.exe.h itself needs
  * first).
  */
-extern character_state *Me_THINK_C;
+extern Humanoid *Me_THINK_C;
 extern int turn_towards_player_(int x_diff, int z_diff);
 extern u16 Attrib;
 extern s16 Degree;
