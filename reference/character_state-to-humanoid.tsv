@@ -1,0 +1,45 @@
+# character_state (guessed, game_types.h) -> Humanoid (official, item.h), by offset.
+# Verified: same struct layout. Fields marked = are identical names (no rename).
+# Migration: retype character_state* (incl. Me_THINK_C) to Humanoid*, add
+# #include "item.h", rename these field accesses, gate on ./Build check.
+# offset	character_state	Humanoid
+0x00	character_kind	type
+0x02	character_status	status
+0x04	some_character_marker_thing	attribute
+0x06	character_rotation_speed	turn
+0x08	current_health	life
+0x0a	max_health	lifemax
+0x0c	field6_0xc	width
+0x0e	field7_0xe	height
+0x10	buttons	pad
+0x20	map	map=
+0x28	attrib	attrib=
+0x38	some_kind_of_current_position	locate
+0x3c	something_about_player_rotation_perhaps	rotate
+0x40	some_rotation_vector_for_tmd	vector
+0x48	current_position	slocate
+0x58	model	model=
+0x5c	something_about_current_animation	motion
+0x60	think_setting0..3	think[0..3]
+0x70	field43_0x70..	trace
+0x74	another_camera_related_perhaps	target
+0x78	some_x_position	point[0]
+0x7c	some_z_position	point[1]
+0x80	some_other_x_position	chase[0]
+0x84	some_other_z_position	chase[1]
+0x88	actmode	actmode=
+0x89	actflg	actflg=
+0x8a	actcnt	actcnt=
+0x8b	actscnt	actscnt=
+0x8c	index_s32o_animation_collection	warid
+0x8e	weapon_kind	weapon_kind=
+0x94	right_hand_active_weapon_tmd	weapon[0]
+0x98	left_hand_active_weapon_tmd	weapon[1]
+0x9c	right_hand_inactive_weapon_tmd	weapon[2]
+0xa0	left_hand_inactive_weapon_tmd	weapon[3]
+0xa4	some_afterimage_1_0xa4	illusion[0]
+0xa8	some_afterimage_2_0xa8	illusion[1]
+0xac	character_kind_sound_mask	sound
+0xae	active_item	active_item=
+0xb0	field76_0xb0	field76_0xb0=
+0xb4	inventory	item[]
