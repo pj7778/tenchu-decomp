@@ -1,0 +1,23 @@
+#ifndef TENCHU_VMEMORY_H
+#define TENCHU_VMEMORY_H
+
+#include "ram_layout.h"
+
+typedef struct PoolBlock
+{
+    s32 size; /* word count, sign bit reserved as an in-use flag */
+    struct PoolBlock *next;
+} PoolBlock;
+
+extern PoolBlock *virtual_memory_pool;
+
+/* Compiler output proves the original used integer constants: these spellings
+ * produce retail's LUI/ORI pairs in both allocator functions.  The normal-link
+ * build does not change the C source; tools/reloc_c_literals.py replaces only
+ * this exact LUI/ORI materialisation with the ABI's relocation-bearing
+ * LUI/ADDIU spelling, preserving cc1's register allocation and schedule while
+ * following linker-owned pool policy. */
+#define VMEM_DEFAULT_POOL ((PoolBlock *)TENCHU_MEMORY_POOL_FLOOR)
+#define VMEM_DEFAULT_CAPACITY TENCHU_RETAIL_MEMORY_POOL_CAPACITY
+
+#endif /* TENCHU_VMEMORY_H */

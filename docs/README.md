@@ -29,13 +29,36 @@ decisions behind the toolchain. It's the reference companion to the terse
   (adopted 2026-07-16): why COP2/GTE has no C spelling, the `src/main.exe/gte.h`
   macro layer, the whitelist (`config/gte-allowlist.txt`), enforcement, and the
   family matching order.
+- [psyq-headers.md](psyq-headers.md) — the clean minimal PsyQ ABI shims, their
+  comparison against real 4.5 headers, and why the default build does not fetch
+  or vendor Sony's SDK.
+- [relocatable-build.md](relocatable-build.md) — why shiftability does not
+  require decompiling every PsyQ routine into C, how MGS/Silent Hill/SOTN handle
+  stock SDK code, the exact `GS_107.OBJ` relocation proof, the implemented
+  linker-owned game/SDK/data/BSS layout, dynamic pool, zero-finding audit, and
+  complete `+0x10004` GNU-ld growth proof.
+- [relocatable-data.md](relocatable-data.md) — the loaded-data pointer
+  inventory, exact-interior-label policy, and the manifest-driven
+  208-word `R_MIPS_32` set—including byte-packed and unaligned cases—with a
+  standalone retail/`+4`/`+0x10004` gate.
+- [psx-exe-finalizer.md](psx-exe-finalizer.md) — the PS-X EXE
+  finalizer/validator used by the normal-link BSS proof: ELF/map symbol
+  resolution, sector padding, regenerated PC/load/size fields, and header
+  invariants.
+- [psyq-object-lane.md](psyq-object-lane.md) — run the implemented, opt-in
+  `GS_107.OBJ` link audit against a user-supplied PsyQ 4.4–4.6 `LIBGS.LIB`.
 - [matching-get-held-buttons.md](matching-get-held-buttons.md) — a worked
   case study of trying to byte-match a real function, and what makes it hard.
 - [modding-and-nonmatching.md](modding-and-nonmatching.md) — building
-  non-matching binaries (behaviour changes, debug): what works (same-size edits)
-  and how to handle growth.
-- [building-an-iso.md](building-an-iso.md) — `./Build iso` / `iso-mod`: rebuild a
-  bootable CD image (`.bin`/`.cue`) for pcsx-redux with our `main.exe`.
+  non-matching binaries (behaviour changes, debug): fixed-slot edits versus the
+  implemented normal size-changing relink.
+- [building-an-iso.md](building-an-iso.md) — `iso`, `iso-mod`, and `iso-relink`:
+  rebuild a bootable CD image (`.bin`/`.cue`) for pcsx-redux, plus the bounded
+  direct/full-disc `tools/pcsx_smoke.py` runtime gate.
+- [debugging-vscode.md](debugging-vscode.md) — attach VSCode to the running
+  game via PCSX-Redux's GDB server and `tools/mips-gdb` (`TENCHU_GDB=1
+  ./Build run-relink` + the committed `.vscode/launch.json`); symbol-level
+  today, with the DWARF-line path for C source stepping scoped.
 - [permuter.md](permuter.md) — `tools/permute.py`: run decomp-permuter to
   byte-match register-allocation-hard functions.
 - [ghidra-bridge.md](ghidra-bridge.md) — pull decompiled C from your Ghidra
@@ -50,7 +73,7 @@ decisions behind the toolchain. It's the reference companion to the terse
   generator (`tools/objdiff-report.py` / `./Build report`) + `jp_report` CI
   workflow, and standing up a self-hosted instance against a (private) repo.
 
-## Current state (verified 2026-07-13)
+## Current state (verified 2026-07-19)
 
 The disassemble → reassemble round-trip **works and is byte-identical**:
 
@@ -65,10 +88,32 @@ BUILD GREEN (byte-identical)
   script; everything is reassembled with the GCC 2.8.1 cross toolchain + GNU
   `ld` back into a **byte-identical** `main.exe`
   (sha256 `0690a5c1…3558`).
-- 402 of 555 game-code functions are **fully decompiled C functions that
-  byte-match**, covering 191332 of 302824 game-code bytes (63.18%). Run
-  `tools/progress.py` for the authoritative current count; parallel matching
-  makes handwritten totals stale quickly.
+- 537 of 555 game-code functions are **fully decompiled C functions that
+  byte-match**, covering 296872 of 303244 game-code bytes (97.90%). The other
+  18 are canonical handwritten-assembly originals, so game code is 555/555
+  done. Run `tools/progress.py` for the authoritative current count; parallel
+  SDK work makes totals stale quickly.
+- The separate `./Build relink` lane is now a genuine normal GNU-ld link, not a
+  patch/trampoline scheme. Complete SDK text carries 7,540 relocations, the
+  reviewed data manifest carries 208 pointer relocations, movable ABS/raw
+  address findings are zero, BSS and allocator capacity are linker-derived,
+  ordinary and transformed-allocator small/common sections are retained near `_gp`,
+  unsupported allocatable sections fail loudly, and `relink` itself audits the
+  exact 731 map-loaded inputs for relocation-backed calls, address formation,
+  and data pointers with zero findings. The recursive user/generated extension
+  inventory is mirrored by the growth proof, and
+  `check-relink` proves a complete `+0x10004` growth with a regenerated PS-X
+  header. That exact grown image also passes the bounded PCSX-Redux probe both
+  by direct `-loadexe` and through an auto-packed
+  `SLPS_019.01 → MENU.EXE → MAIN.EXE` boot to moved `PadProc` and later VSyncs,
+  with no first-chance exception. The repacked image also reached relocated
+  `OPEN06.STR` decode and `STAGES.XA` setup/callback checkpoints; EOF, physical
+  XA audio output, and broad gameplay remain unproven.
+- `./Build shiftability-report` is the single progress/work-queue command for
+  that lane. It distinguishes active relocation blockers from exact-source
+  debt, intentional address contracts, configurable RAM policy, and bounded
+  proof claims. Fixed layout/policy values are centralized in
+  `src/main.exe/ram_layout.h`; movable game objects remain linker symbols.
 
 ## What was wrong, and what got fixed
 
@@ -90,14 +135,30 @@ latent bugs. Fixed in this batch of work (see `build-system.md` for detail):
 - **maspsx integrated** — `cpp | cc1-281 -G8 | maspsx | as`, so functions using
   integer division / `$gp`-relative globals can byte-match. wine dropped. See
   [toolchain.md](toolchain.md).
-- **`./Build mod`** — grow/modify functions runnably via trampolines + a mod
-  region. See [modding-and-nonmatching.md](modding-and-nonmatching.md).
+- **`./Build mod`** — compile selected mod sources and patch them into their
+  original slots. This is a same-size convenience lane, not the size-changing
+  normal relink. See
+  [modding-and-nonmatching.md](modding-and-nonmatching.md).
 - **`./Build iso` / `iso-mod`** — rebuild a bootable `.bin`/`.cue` for pcsx-redux.
   See [building-an-iso.md](building-an-iso.md).
+- **`./Build relink` / `check-relink` / `iso-relink`** — allow ordinary linked
+  layout changes, reject movable fixed-address regressions immediately after
+  `ld`, prove growth across a 64 KiB boundary, and package the result for direct
+  or full-boot testing. See
+  [relocatable-build.md](relocatable-build.md).
+- **`tools/pcsx_smoke.py`** — a bounded headless runtime gate whose direct and
+  auto-LBA full-disc modes both pass on the `+0x10004` artifact. It derives
+  entry/`main`/`PadProc` from the selected EXE/ELF and rejects first-chance CPU
+  exceptions; exact commands are in
+  [building-an-iso.md](building-an-iso.md#automated-grown-image-smoke).
 
 ## Next step
 
-Resume with the preflight and live-target selection in
-[`flywheel-handoff.md`](flywheel-handoff.md). Do not select work from this
-README's dated progress count or an old `NON_MATCHING` comment without checking
-the current source and `tools/triage.py` first.
+For shiftability, direct and auto-packed full-boot main-loop smoke plus
+representative STR decode and XA setup/callback smoke are complete. The next
+empirical gates are playback to EOF, physical XA audio output, and broader
+gameplay/executable transitions on a grown image. For source
+matching/provenance work, resume with the preflight and live-target selection
+in [`flywheel-handoff.md`](flywheel-handoff.md); do not select work from this
+README's dated count or an old `NON_MATCHING` comment without checking the
+current source and `tools/triage.py` first.

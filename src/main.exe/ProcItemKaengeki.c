@@ -87,20 +87,8 @@ typedef struct
     u8 Valiation;
 } KaengekiCameraStatus;
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-    s32 rz;
-    GsCOORDINATE2 *super;
-} KaengekiViewInfo;
-
 extern KaengekiCameraStatus CamState;
-extern KaengekiViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 
 extern s16 NowReturnNormal(Humanoid *human);
 extern void GetVectorRotation(VECTOR *from, VECTOR *to, s32 *rx, s32 *ry);

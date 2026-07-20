@@ -67,24 +67,10 @@
  * fence, pointer carriers, and the purported 15-byte allocation floor.
  */
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} LightningViewInfo;
-
-extern LightningViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern MATRIX GsWSMATRIX;
 extern GsOT *OTablePt;
 
-extern void SetTransMatrix(MATRIX *matrix);
-extern void SetRotMatrix(MATRIX *matrix);
-extern s32 RotTransPers(SVECTOR *vector, s32 *screen, void *p, void *flag);
-extern s32 SquareRoot0(s32 value);
 extern long abs(long value);
 extern int rand(void);
 extern void *memset(void *dst, int value, u32 size);
@@ -92,7 +78,7 @@ extern void GsSortLine(GsLINE *line, GsOT *ot, u16 priority);
 
 static inline void PrepareLightningScreenPosition(void)
 {
-    MATRIX *matrix = (MATRIX *)0x1F800000;
+    MATRIX *matrix = (MATRIX *)TENCHU_SCRATCHPAD_ADDRESS;
 
     matrix->t[0] = 0;
     matrix->t[1] = 0;
@@ -104,14 +90,14 @@ static inline void PrepareLightningScreenPosition(void)
 static inline void GetLightningScreenPosition(long x, long y, long z,
                                               SVECTOR *screen)
 {
-    SVECTOR *vector = (SVECTOR *)0x1F800080;
+    SVECTOR *vector = (SVECTOR *)TENCHU_SCRATCHPAD(0x80);
 
     vector->vx = x - (short)ViewInfo.vpx;
     vector->vy = y - (short)ViewInfo.vpy;
     vector->vz = z - (short)ViewInfo.vpz;
-    screen->vz = (s16)RotTransPers(vector, (s32 *)screen,
-                                   (void *)0x1F800000,
-                                   (void *)0x1F800010);
+    screen->vz = (s16)RotTransPers(
+        vector, (s32 *)screen, (void *)TENCHU_SCRATCHPAD_ADDRESS,
+        (void *)TENCHU_SCRATCHPAD(0x10));
 }
 
 void SetLightningI(VECTOR *start, VECTOR *end, int gen, short r, short g, short b)

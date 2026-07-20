@@ -5614,13 +5614,13 @@ sw $2,24($sp)
 
 
 class BuildConfigurationTests(unittest.TestCase):
-    def test_get_tpage_uses_one_full_width_sdk_prototype(self):
+    def test_get_tpage_uses_one_canonical_sdk_prototype(self):
         root = os.path.dirname(TOOLS)
-        header = os.path.join(root, "include", "psxsdk", "libgs.h")
+        header = os.path.join(root, "include", "psxsdk", "libgpu.h")
         with open(header) as f:
             declarations = f.read()
         self.assertIn(
-            "u16 GetTPage(s32 tp, s32 abr, s32 x, s32 y);",
+            "u_short GetTPage(int tp, int abr, int x, int y);",
             declarations,
         )
 
@@ -5668,6 +5668,16 @@ class BuildConfigurationTests(unittest.TestCase):
         re = __import__("re")
         groups = {
             "LIBMCRD.OBJ": "libmcrdObjectMembers",
+            "GS_105.OBJ": "gs105ObjectMembers",
+            "GS_106.OBJ": "gs106ObjectMembers",
+            "GS_110.OBJ": "gs110ObjectMembers",
+            "GS_111.OBJ": "gs111ObjectMembers",
+            "GS_113.OBJ": "gs113ObjectMembers",
+            "GS_119.OBJ": "gs119ObjectMembers",
+            "GS_121.OBJ": "gs121ObjectMembers",
+            "GS_122.OBJ": "gs122ObjectMembers",
+            "GS_123.OBJ": "gs123ObjectMembers",
+            "GS_125.OBJ": "gs125ObjectMembers",
             "GS_107.OBJ": "gs107ObjectMembers",
             "ADT.OBJ": "adtObjectMembers",
         }
@@ -5716,10 +5726,47 @@ class BuildConfigurationTests(unittest.TestCase):
             self.assertIn("-mno-split-addresses", permute.cc_flags_for(member))
         for member in permute.ORIGINAL_OBJECT_MEMBERS["GS_107.OBJ"]:
             self.assertIn("-mno-split-addresses", permute.cc_flags_for(member))
+        self.assertIn(
+            "-fsigned-char", permute.cc_flags_for("Gssub_make_matrix")
+        )
+        self.assertNotIn("-fsigned-char", permute.cc_flags_for("Other"))
         self.assertNotIn("-mno-split-addresses", permute.cc_flags_for("Other"))
         self.assertEqual(permute.cc_executable_for("AdtSelect"), "cc1-280")
         self.assertEqual(permute.cc_executable_for("AdtGetDisp"), "cc1-280")
+        self.assertEqual(
+            permute.cc_executable_for("GsSetProjection"), "cc1-272"
+        )
+        self.assertEqual(
+            permute.cc_executable_for("GsMapModelingData"), "cc1-281"
+        )
+        self.assertEqual(permute.cc_executable_for("GsSetAmbient"), "cc1-272")
+        self.assertEqual(permute.cc_executable_for("GsDrawOt"), "cc1-272")
+        self.assertEqual(permute.cc_executable_for("GsClearOt"), "cc1-272")
+        self.assertEqual(
+            permute.cc_executable_for("gte_rotate_z_matrix"), "cc1-281"
+        )
+        self.assertEqual(permute.cc_executable_for("gte_init"), "cc1-272")
+        self.assertEqual(permute.cc_executable_for("GsGetTimInfo"), "cc1-272")
+        self.assertEqual(
+            permute.cc_executable_for("Gssub_make_matrix"), "cc1-272"
+        )
+        self.assertEqual(permute.cc_executable_for("GsGetWorkBase"), "cc1-281")
+        for member in permute.ORIGINAL_OBJECT_MEMBERS["GS_107.OBJ"]:
+            self.assertEqual(
+                permute.cc_executable_for(member), "cc1-281-gs107"
+            )
         self.assertEqual(permute.cc_executable_for("Other"), "cc1-281")
+
+        # Compiler attribution is evidence about an original library object,
+        # never a one-function tuning knob. Keep direct member names out of the
+        # executable oracle and require the Python mirror to be object-keyed.
+        executable_block = build.split(
+            "originalObjectCcExecutable src", 1
+        )[1].split("-- | All varying compiler inputs", 1)[0]
+        for members in permute.ORIGINAL_OBJECT_MEMBERS.values():
+            for member in members:
+                self.assertNotIn(f'"{member}"', executable_block)
+                self.assertNotIn(member, permute.ORIGINAL_OBJECT_CC_EXECUTABLES)
 
         # Shake must depend on the executable and flags as one oracle value;
         # otherwise changing only cc1 can silently reuse a stale .s.

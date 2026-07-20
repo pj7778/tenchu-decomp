@@ -55,7 +55,7 @@
  * bumping StageEnemies/StageCitizens by +1/-1 when the new character is a
  * civilian-turned-enemy (character_kind & 0xF0 == 0x90).
  *
- * `human = (Humanoid *)Me_THINK_C;` bridges this TU's own `character_state *`
+ * `human = (Humanoid *)Me_THINK_C;` bridges this TU's own `Humanoid *`
  * view of the current character to the item-TU `Humanoid *` that
  * KillHumanoid/BreedLife/EquipWeapon/SetNowMotion all take — both describe
  * the same runtime object from different TUs (established convention; see
@@ -63,12 +63,12 @@
  *
  * `human_00->think[0..3] = Think1Func[4]/Think2Func[4]/Think3Func[4]/
  * Think4Func[4]` — item.h's Humanoid.think[4] (new field, this function's
- * own proof) at 0x60, matching game_types.h's character_state twin
+ * own proof) at 0x60, matching game_types.h's Humanoid twin
  * (think_setting0..3) and Ghidra's own independently-built Humanoid
  * (`pointer *think[4]` at the identical offset).
  *
  * The possession assignment intentionally updates the attribute through
- * character_state's unsigned twin (`some_character_marker_thing`), which
+ * Humanoid's unsigned twin (`some_character_marker_thing`), which
  * emits the target `lhu` against item.h's signed `s16 attribute` at the same
  * offset (the same cross-TU divergence as ControlAllHumanoid/HumanActionControl).
  *
@@ -104,11 +104,11 @@
  *    the address and value; the explicit pointer restores retail's address in
  *    $v0, `type` in $a0, StageID offset in $v1, and Me_THINK_C base in $a2.
  *  - Keep possession and the attribute flag as one assignment-expression
- *    lvalue: `(Me_THINK_C = (character_state *)human_00)->... |= 4`. Splitting
+ *    lvalue: `(Me_THINK_C = (Humanoid *)human_00)->... |= 4`. Splitting
  *    this through Ghidra's `uVar1` or into an independent global assignment
  *    loses the dependency that places retail's Me_THINK_C store between the
  *    halfword load and update, and exchanges the Think3/Think4 callback and
- *    attribute registers. The field is the character_state twin of Humanoid's
+ *    attribute registers. The field is the Humanoid twin of Humanoid's
  *    signed attribute, so the explicit `u16` temporary is unnecessary.
  *  - An empty one-shot loop between the Think1Func and Think2Func stores was a
  *    useful intermediate diagnostic: it restored the missing load-delay slot
@@ -117,7 +117,7 @@
  *    placed `move $a0,$s0` and the sole `nop` exactly. Always re-test and remove
  *    a scheduler fence after fixing the producer identities it was masking.
  */
-extern character_state *Me_THINK_C;
+extern Humanoid *Me_THINK_C;
 extern s32 Distance;
 extern s16 SR;
 extern s32 StageID;
@@ -165,10 +165,10 @@ short Think3callaid(void)
         type_ptr = (s16 *)((u8 *)aid + ((iVar4 % 2) * 2 + StageID * 4));
         type = *type_ptr;
         human_00 = BreedLife(type,
-                             Me_THINK_C->some_kind_of_current_position->vx,
-                             Me_THINK_C->some_kind_of_current_position->vy,
-                             Me_THINK_C->some_kind_of_current_position->vz,
-                             (s32)Me_THINK_C->something_about_player_rotation_perhaps->character_rotation + (s32)Degree);
+                             Me_THINK_C->locate->vx,
+                             Me_THINK_C->locate->vy,
+                             Me_THINK_C->locate->vz,
+                             (s32)Me_THINK_C->rotate->vy + (s32)Degree);
         human = (Humanoid *)Me_THINK_C;
         human_00->target = human->target;
         KillHumanoid(human);
@@ -177,13 +177,13 @@ short Think3callaid(void)
         human_00->think[2] = Think3Func[4];
         Pad = &human_00->pad;
         ppuVar2 = Think4Func[4];
-        (Me_THINK_C = (character_state *)human_00)->some_character_marker_thing |= 4;
+        (Me_THINK_C = (Humanoid *)human_00)->attribute |= 4;
         human_00->think[3] = ppuVar2;
         EquipWeapon(human_00, 1);
         SetNowMotion((Humanoid *)Me_THINK_C, 0x501, 1);
-        Attrib = Me_THINK_C->some_character_marker_thing | 2;
+        Attrib = Me_THINK_C->attribute | 2;
         sVar3 = 0;
-        if ((Me_THINK_C->character_kind & 0xF0) == 0x90)
+        if ((Me_THINK_C->type & 0xF0) == 0x90)
         {
             StageEnemies = StageEnemies + 1;
             StageCitizens = StageCitizens - 1;

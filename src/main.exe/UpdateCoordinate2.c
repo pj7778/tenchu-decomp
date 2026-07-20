@@ -23,7 +23,6 @@
  *     param $a0       struct ModelType * dim
  * END PSX.SYM */
 
-extern MATRIX *RotMatrix(SVECTOR *r, MATRIX *m);
 
 void UpdateCoordinate2(ModelType *dim)
 {

@@ -1,11 +1,12 @@
 #include <psxsdk/libgs.h>
 #include "game_types.h"
+#include "ram_layout.h"
 
 extern void PadProc(void);
 extern controller_input PadPort[][4];
 
 extern int turn_towards_player_(int x_diff, int z_diff);
-extern character_state *Me_THINK_C;
+extern struct Humanoid *Me_THINK_C;
 extern s16 SR;
 extern s16 Attrib;
 extern s32 FRAMES_UNTIL_END_OF_ALERT;

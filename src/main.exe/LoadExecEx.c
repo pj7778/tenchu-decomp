@@ -1,5 +1,7 @@
 #include "common.h"
 #include "main.exe.h"
+#include <psxsdk/libcd.h>
+#include <psxsdk/libgpu.h>
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -39,13 +41,11 @@ extern void FUN_8001b2b8(void);
 extern void CdaStop(void);
 extern void SsEnd(void);
 extern void FUN_8006ebe4(void);
-extern void ResetGraph(int mode);
 extern void PadStopCom(void);
 extern void MemCardStop(void);
 extern void MemCardEnd(void);
 extern void StopCallback(void);
 extern void FUN_8005e8f0(u8 *file, u32 stack, u32 size);
-extern void CdInit(void);
 extern void run_exec_file(u8 *name, u32 topaddr, s32 argc);
 extern char D_800111D4[]; /* "\\TENCHU\\RUN.EXE;1" */
 
@@ -62,5 +62,5 @@ void LoadExecEx(u8 *file, u32 stack, u32 size)
     StopCallback();
     FUN_8005e8f0(file, stack, size);
     CdInit();
-    run_exec_file(D_800111D4, 0x801ffff0, 0);
+    run_exec_file(D_800111D4, TENCHU_INITIAL_STACK_ADDRESS, 0);
 }

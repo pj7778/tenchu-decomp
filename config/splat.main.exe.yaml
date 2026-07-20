@@ -160,6 +160,8 @@ segments:
       # debug_menu_stage_option's switch jump table (vram 0x800147F0), same scheme.
       - { start: 0x3FF0, type: .rodata, name: debug_menu_stage_option, linker_section_order: .data }
       - [0x400C, data]
+      - { start: 0x4874, type: .rodata, name: Gssub_make_matrix, linker_section_order: .data }
+      - [0x4900, data]
       - [0x5934, c, InitPersistentState]
       - [0x5AA4, c, main]
       - [0x5CE0, c, DoBriefingAndInventorySelection]
@@ -716,18 +718,49 @@ segments:
       - [0x4F638, c, FUN_8005fe38]
       - [0x4F688, c, FUN_8005fe88]
       - [0x4F6CC, c, AdtSelect]
-      - { start: 0x4F9D4, type: data, linker_section_order: .text }
+      # The first CRT/PsyQ prefix is generated as canonical assembly instead
+      # of literal `.word` data.  GNU as therefore records real J/JAL and
+      # HI16/LO16 relocations; `./Build check-reloc-sdk` proves the retail link
+      # exact and then inserts a controlled four-byte probe before Exec.
+      - [0x4F9D4, asm, LIBAPI_4F9D4]
+      # PClseek is already a relocation-bearing canonical-assembly object via
+      # its existing guarded source, so keep that independently classified
+      # object between the two generated assembly carves.
       - [0x4FA24, c, PClseek]
-      - { start: 0x4FA48, type: data, linker_section_order: .text }
+      - [0x4FA48, asm, CRT_SDK_4FA48]
+      # GsSetLsMatrix and the existing C/canonical-object islands stay separate.
+      # Every remaining raw input in the SDK text stream is emitted as
+      # canonical assembly so GNU as can retain symbolic code relocations.
       - [0x54900, c, GsSetLsMatrix]
-      - { start: 0x5492C, type: data, linker_section_order: .text }
+      - [0x5492C, asm, SDK_TEXT_5492C]
       - [0x549F0, c, GsMulCoord0]
       - [0x54A80, c, GsMulCoord2]
       - [0x54B00, c, GsMulCoord3]
-      - { start: 0x54B80, type: data, linker_section_order: .text }
+      - [0x54B80, asm, SDK_TEXT_54B80]
+      - [0x54D54, c, GsMapModelingData]
+      - [0x54DC4, c, GsSetProjection]
+      - [0x54DE4, asm, SDK_TEXT_54DE4]
       - [0x5529C, c, GS_107_OBJ_4B8]
       - [0x55300, c, GS_107_OBJ_51C]
-      - { start: 0x5534C, type: data, linker_section_order: .text }
+      - [0x5534C, asm, SDK_TEXT_5534C]
+      - [0x553D4, c, GsSetFogParam]
+      - [0x55420, asm, SDK_TEXT_55420]
+      - [0x55424, c, GsSetAmbient]
+      - [0x5544C, asm, SDK_TEXT_5544C]
+      - [0x55454, c, GsDrawOt]
+      - [0x55478, asm, SDK_TEXT_55478]
+      - [0x55484, c, GsClearOt]
+      - [0x554DC, asm, SDK_TEXT_554DC]
+      - [0x554E4, c, gte_init]
+      - [0x55530, asm, SDK_TEXT_55530]
+      - [0x55534, c, GsGetTimInfo]
+      - [0x55618, asm, SDK_TEXT_55618]
+      - [0x55624, c, Gssub_make_matrix]
+      - [0x556EC, asm, SDK_TEXT_556EC]
+      - [0x55704, c, GsGetWorkBase]
+      - [0x55714, asm, SDK_TEXT_55714]
+      - [0x55CB4, c, gte_rotate_z_matrix]
+      - [0x55D68, asm, SDK_TEXT_55D68]
       - [0x56304, c, dmyGsPrstF3NL]
       - [0x5634C, c, dmyGsPrstF3LFG]
       - [0x56394, c, dmyGsPrstF3L]
@@ -836,14 +869,15 @@ segments:
       - [0x5808C, c, dmyGsPrstG3GL]
       - [0x580D4, c, dmyGsPrstG3GLFG]
       - [0x5811C, c, dmyGsPrstG3GNL]
-      - { start: 0x58164, type: data, linker_section_order: .text }
+      - [0x58164, asm, SDK_TEXT_58164]
       - [0x67B54, c, TransMatrix]
-      - { start: 0x67B78, type: data, linker_section_order: .text }
+      - [0x67B78, asm, SDK_TEXT_67B78]
       - [0x717EC, c, MemCardCallback]
-      - { start: 0x71800, type: data, linker_section_order: .text }
+      - [0x71800, asm, SDK_TEXT_71800]
       - [0x722B4, c, _card_clear]
-      - { start: 0x722E8, type: data, linker_section_order: .text }
+      - [0x722E8, asm, SDK_TEXT_722E8]
       - [0x72BB0, c, PAD_init]
       - [0x72C40, c, InitPAD]
-      - { start: 0x72CD0, type: data, linker_section_order: .text }
+      - [0x72CD0, asm, SDK_TEXT_72CD0]
+      - { start: 0x75F64, type: data, linker_section_order: .text }
   - [0x87800]

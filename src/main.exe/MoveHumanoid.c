@@ -25,8 +25,6 @@
  *     param $a2       short side
  * END PSX.SYM */
 
-extern s32 rsin(s32 a);
-extern s32 rcos(s32 a);
 
 /*
  * MoveHumanoid (0x8002952c) — set a character's velocity vector from an

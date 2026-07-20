@@ -1,6 +1,7 @@
 #include "common.h"
 #include "main.exe.h"
 #include "item.h"
+#include <psxsdk/libgpu.h>
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -128,10 +129,7 @@ extern void DrawShadow(Humanoid *human);
 extern void register_character_death(Humanoid *human);
 extern void death_camera_something_(Humanoid *human);
 extern void HumanActionControl(Humanoid *human);
-extern void GsGetLs(GsCOORDINATE2 *coord, MATRIX *mat);
-extern void GsSetLsMatrix(MATRIX *mat);
 extern s32 DrawClip(ModelType *model, s32 *xy);
-extern s32 FntPrint(char *format, ...);
 extern s16 PlayMotion(MotionManager *motion, s16 mode);
 extern void UpdateCoordinate(ModelType *model);
 extern s16 GetDirection(s32 dx, s32 dz, s16 roty);

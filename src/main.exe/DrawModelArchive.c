@@ -95,10 +95,7 @@
  *    short-counter idiom that suppresses loop.c's strength reduction).
  */
 
-extern void GsGetLs(GsCOORDINATE2 *coord, MATRIX *m);
-extern void GsSetLsMatrix(MATRIX *m);
 extern void DrawTMD(GsDOBJ2 *obj, GsOT *ot, s32 mode);
-extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 extern short SkipFrame;
 extern SVECTOR UnitVector;
 extern GsOT *OTablePt;

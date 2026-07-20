@@ -10,8 +10,6 @@
  * Otherwise identical: rotate m2's translation through m1 into a local VECTOR,
  * multiply, then add m1's own translation back component-wise.
  */
-extern void ApplyMatrixLV(MATRIX *m, VECTOR *v0, VECTOR *v1);
-extern void MulMatrix(MATRIX *m0, MATRIX *m1);
 
 void GsMulCoord3(MATRIX *m1, MATRIX *m2)
 {

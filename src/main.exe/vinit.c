@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "vmemory.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -61,15 +62,12 @@
  *    pointer is read directly (no separate `p` local caching it): it changes
  *    across the addr==0 branch, so cc1 cannot keep it live in a register
  *    across that join and reloads gp_rel fresh at the point of use.
+ *  - VMEM_DEFAULT_POOL/VMEM_DEFAULT_CAPACITY name the central retail policy
+ *    constants which compiler output proves were used here.  The normal-link
+ *    build keeps this one source and changes only the resulting LUI/ORI pairs
+ *    to standard relocation-bearing LUI/ADDIU pairs; the function's register
+ *    allocation, schedule, and 0x54-byte size stay unchanged.
  */
-
-typedef struct PoolBlock
-{
-    s32 size; /* word count, sign bit reserved as an in-use flag by valloc */
-    struct PoolBlock *next;
-} PoolBlock;
-
-extern PoolBlock *virtual_memory_pool;
 
 void vinit(void *adr, u32 size)
 {
@@ -77,12 +75,12 @@ void vinit(void *adr, u32 size)
 
     virtual_memory_pool = adr;
     if (adr == 0)
-        virtual_memory_pool = (PoolBlock *)0x800DC000;
+        virtual_memory_pool = VMEM_DEFAULT_POOL;
 
     if (size != 0)
         h.size = (size >> 2) - 2;
     else
-        h.size = 0x47ffe;
+        h.size = VMEM_DEFAULT_CAPACITY;
     h.next = 0;
     *virtual_memory_pool = h;
 }

@@ -1,5 +1,6 @@
 #include "common.h"
 #include "main.exe.h"
+#include "item.h"
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -50,14 +51,14 @@ typedef struct
 } BattleDBEntry;
 
 extern BattleDBEntry BattleDB[];
-extern s16 GetMotionID(something_about_current_animation *motion, s16 mid);
+extern s16 GetMotionID(MotionManager *motion, s16 mid);
 
-s16 GetAttackDBID(character_state *human, s16 mid)
+s16 GetAttackDBID(Humanoid *human, s16 mid)
 {
     s16 target;
     s16 i;
 
-    target = GetMotionID(human->something_about_current_animation, mid);
+    target = GetMotionID(human->motion, mid);
     i = 0;
     while (BattleDB[i].mid != -1)
     {

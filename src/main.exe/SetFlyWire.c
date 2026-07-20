@@ -35,7 +35,6 @@
  *     extern struct tag_EffectSlot EffectSlot[200];
  * END PSX.SYM */
 
-extern s32 SquareRoot0(s32 value);
 extern long abs(long value);
 extern void DrawFlyWire(TEffectSlot *ef);
 

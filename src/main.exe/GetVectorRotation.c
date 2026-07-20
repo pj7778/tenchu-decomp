@@ -40,8 +40,6 @@
  * (vy) — the deltas are computed in that order even though dy is consumed last.
  */
 
-extern s32 SquareRoot0(s32 x);
-extern s32 ratan2(s32 y, s32 x);
 
 void GetVectorRotation(VECTOR *start, VECTOR *end, s32 *rx, s32 *ry)
 {

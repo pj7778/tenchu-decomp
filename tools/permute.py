@@ -79,6 +79,36 @@ ORIGINAL_OBJECT_MEMBERS = {
         "MemCardCallback", "MemCardSync", "MemCardCreateFile",
         "MemCardFormat",
     ),
+    "GS_105.OBJ": (
+        "GsMapModelingData",
+    ),
+    "GS_106.OBJ": (
+        "GsSetProjection",
+    ),
+    "GS_110.OBJ": (
+        "GsSetAmbient",
+    ),
+    "GS_111.OBJ": (
+        "GsDrawOt",
+    ),
+    "GS_113.OBJ": (
+        "GsClearOt",
+    ),
+    "GS_119.OBJ": (
+        "gte_rotate_z_matrix",
+    ),
+    "GS_121.OBJ": (
+        "gte_init",
+    ),
+    "GS_122.OBJ": (
+        "GsGetTimInfo",
+    ),
+    "GS_123.OBJ": (
+        "Gssub_make_matrix",
+    ),
+    "GS_125.OBJ": (
+        "GsGetWorkBase",
+    ),
     "GS_107.OBJ": (
         "GsSetFlatLight", "GS_107_OBJ_444", "GS_107_OBJ_4B8",
         "GS_107_OBJ_51C",
@@ -91,10 +121,29 @@ ORIGINAL_OBJECT_MEMBERS = {
 }
 ORIGINAL_OBJECT_CC_FLAGS = {
     "LIBMCRD.OBJ": ("-mno-split-addresses",),
+    "GS_105.OBJ": (),
+    "GS_106.OBJ": (),
+    "GS_110.OBJ": (),
+    "GS_111.OBJ": (),
+    "GS_113.OBJ": (),
+    "GS_119.OBJ": (),
+    "GS_121.OBJ": (),
+    "GS_122.OBJ": (),
+    # Undo the game TU's global option for this complete vendor object.
+    "GS_123.OBJ": ("-fsigned-char",),
+    "GS_125.OBJ": (),
     "GS_107.OBJ": ("-mno-split-addresses",),
     "ADT.OBJ": (),
 }
 ORIGINAL_OBJECT_CC_EXECUTABLES = {
+    "GS_106.OBJ": "cc1-272",
+    "GS_110.OBJ": "cc1-272",
+    "GS_111.OBJ": "cc1-272",
+    "GS_113.OBJ": "cc1-272",
+    "GS_121.OBJ": "cc1-272",
+    "GS_122.OBJ": "cc1-272",
+    "GS_123.OBJ": "cc1-272",
+    "GS_107.OBJ": "cc1-281-gs107",
     "ADT.OBJ": "cc1-280",
 }
 CC_FLAGS_BY_OBJECT_MEMBER = {

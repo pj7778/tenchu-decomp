@@ -66,6 +66,10 @@
  *    and one after the effect call that clobbers v0.
  *  - The first mode-2 motion check dereferences `item->owner` directly; sharing
  *    the later pad-control `human` local changes a0 to a2 at all three loads.
+ *  - The human-shaped `CamState.Owner` access emits two CamState HI16
+ *    relocations around the effect call and one shared LO16 field load.  With
+ *    CamState pinned to its retail address, those relocations resolve to the
+ *    exact words formerly produced by the duplicated numeric-base scaffold.
  */
 
 typedef struct
@@ -87,6 +91,19 @@ typedef struct
 } ShinsokuMapVector;
 
 extern u_long *GlobalAreaMap;
+
+typedef struct
+{
+    VECTOR TargetVector;
+    Humanoid *Owner;
+    s32 Mode;
+    s16 DirectionRX;
+    s16 DirectionRY;
+    s32 OldMode;
+    u8 Valiation;
+} TCameraStatus;
+
+extern TCameraStatus CamState;
 
 extern s16 SetNowMotion(Humanoid *human, s16 mid, s16 move);
 extern void Sound(Humanoid *human, s32 sound);
@@ -192,7 +209,6 @@ void ProcItemShinsoku(tag_TItem *item)
         u16 buttons;
         s32 rotate;
         VECTOR *apos;
-        u32 *camera_base;
 
         if (item->owner->motion->mid != 0xf05)
         {
@@ -252,13 +268,8 @@ void ProcItemShinsoku(tag_TItem *item)
             ((VECTOR *)launch_buf)->vy -= 300;
             FUN_8003944c((VECTOR *)launch_buf, 0, 0x2000, 0x5000,
                          0x808080, 0, 0, -30, 0x10, 3);
-            camera_base = (u32 *)0x80090000;
         }
-        else
-        {
-            camera_base = (u32 *)0x80090000;
-        }
-        if (*(Humanoid **)((u8 *)camera_base - 0x6100) == item->owner)
+        if (CamState.Owner == item->owner)
         {
             SetCameraMode(0xb);
         }

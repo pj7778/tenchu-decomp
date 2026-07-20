@@ -1,6 +1,7 @@
 #include "common.h"
 #include "main.exe.h"
 #include "item.h"
+#include <psxsdk/libgpu.h>
 
 /*
  * debug_menu_player_jump (0x8005cbbc, 0x2b4 bytes) — lets the debug menu
@@ -27,21 +28,9 @@
  *    proxy score; authoritative full-link rescoring proved it byte-exact.
  */
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-    s32 rz;
-    GsCOORDINATE2 *super;
-} PlayerJumpViewInfo;
-
 extern Humanoid *StagePlayer;
 extern u32 *GlobalAreaMap;
-extern PlayerJumpViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern char D_800146DC[];
 extern char D_800146EC[];
 extern char D_800146F8[];
@@ -49,11 +38,8 @@ extern char D_80014704[];
 
 extern void EndDrawing(s32 sync);
 extern void StartDrawing(void);
-extern s32 FntPrint(char *fmt, ...);
-extern s32 FntFlush(s32 id);
 extern u32 GetRealPad(s32 port);
 extern s32 GetAreaMapLevel(u32 *area, s32 x, s32 y, s32 z, s32 mode);
-extern void GsSetRefView2(PlayerJumpViewInfo *view);
 
 void debug_menu_player_jump(void)
 {

@@ -73,30 +73,15 @@
 
 typedef struct
 {
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} WireViewInfo;
-
-typedef struct
-{
     GsCOORDINATE2 locate;
     SVECTOR rotate;
 } WireModel;
 
-extern WireViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern MATRIX GsWSMATRIX;
 extern GsOT *OTablePt;
 extern WireModel *ModelHook;
 
-extern void SetTransMatrix(MATRIX *matrix);
-extern void SetRotMatrix(MATRIX *matrix);
-extern s32 RotTransPers(SVECTOR *vector, s32 *screen, void *p, void *flag);
-extern s32 SquareRoot0(s32 value);
-extern s32 ratan2(s32 y, s32 x);
 extern long abs(long value);
 extern void GsSortLine(GsLINE *line, GsOT *ot, u16 priority);
 extern void UpdateCoordinate(WireModel *model);
@@ -105,8 +90,8 @@ extern void DrawModel(WireModel *model);
 static inline void GetWireScreenPosition(long x, long y, long z,
                                          SVECTOR *screen)
 {
-    MATRIX *matrix = (MATRIX *)0x1F800000;
-    SVECTOR *vector = (SVECTOR *)0x1F800020;
+    MATRIX *matrix = (MATRIX *)TENCHU_SCRATCHPAD_ADDRESS;
+    SVECTOR *vector = (SVECTOR *)TENCHU_SCRATCHPAD(0x20);
 
     matrix->t[0] = 0;
     matrix->t[1] = 0;
@@ -116,9 +101,9 @@ static inline void GetWireScreenPosition(long x, long y, long z,
     vector->vz = z - (short)ViewInfo.vpz;
     SetTransMatrix(matrix);
     SetRotMatrix(&GsWSMATRIX);
-    screen->vz = (s16)RotTransPers(vector, (s32 *)screen,
-                                   (void *)0x1F800028,
-                                   (void *)0x1F80002C);
+    screen->vz = (s16)RotTransPers(
+        vector, (s32 *)screen, (void *)TENCHU_SCRATCHPAD(0x28),
+        (void *)TENCHU_SCRATCHPAD(0x2c));
 }
 
 void SetWire(VECTOR *start, VECTOR *end, VECTOR *center, long len)

@@ -87,6 +87,18 @@ works from anywhere in the tree.
 ```console
 ./Build                 # build .shake/build/tenchu/main.exe
 ./Build check           # build + assert sha256 == disks/tenchu/main.exe
+./Build relink          # normal GNU-ld/finalized PS-X EXE; changed sizes allowed
+./Build check-relink    # relink + header + zero-findings audit + 0x10004 growth proof
+./Build shiftability-report # blocker/debt/contract dashboard + growth proof
+./Build check-relink-growth # run the full GNU-ld growth proof directly
+./Build run-relink      # fast emulator launch of the normal-link executable
+./Build iso-relink      # auto-pack the normal-link executable into a disc image
+./Build run-iso-relink  # boot that disc through the real launcher chain
+./Build check-reloc-game      # focused exact linker-owned-game oracle
+./Build check-reloc-c-literals # focused compiler-object relocation oracle
+./Build check-reloc-sdk       # complete canonical SDK retail/+4 oracle
+./Build check-reloc-data      # 208 reviewed data pointers, three layouts
+./Build check-reloc-bss       # exact linker-owned BSS/pool/header oracle
 ./Build all             # build all six executables
 ./Build check-all       # build + assert sha256 for all six
 ./Build clean           # remove .shake/{gen,build,processed}
@@ -97,6 +109,117 @@ Everything must run inside the devShell (`nix develop`, or `direnv allow` once).
 
 Cold `./Build` is ~25 s; cold `./Build check-all` ~35 s. `check` deliberately
 stays main-only because `tools/matchdiff.py` calls it once per iteration.
+
+`check-reloc-game` is an opt-in exact-at-retail proof lane. It generates a
+filtered symbol script and a linker script with section-relative anchors for
+all 555 game inputs, then writes
+`.shake/build/tenchu/main_reloc_game.exe{,.elf}`. It remains a useful bounded
+oracle, but `relink` is the complete size-changing composition; do not infer the
+current project state from the deliberately limited game-only artifact.
+
+`check-reloc-bss` composes with the game and complete SDK-text gates. It emits a
+logical initialized prefix at `.shake/build/tenchu/main_reloc_bss.logical` plus
+an ELF/map, then checks a real linker-owned NOLOAD BSS, an explicit retail
+NOLOAD `MemoryPool` reservation, and every known BSS symbol. The PS-X EXE finalizer reads
+`__SN_ENTRY_POINT` and `__load_start` from that ELF, derives the load size, and
+adds the required sector padding; the resulting
+`.shake/build/tenchu/main_reloc_bss.exe` is byte-exact at retail layout. This is
+intentionally the retail-address oracle. The normal relink uses the same owned
+boundaries with a dynamic pool; see
+[`relocatable-build.md`](relocatable-build.md#bss-allocator-and-ps-x-header).
+
+`./Build relink` builds a distinct no-boundary-pad GNU-ld/finalizer artifact at
+`.shake/build/tenchu/main_relink.exe`. It consumes the ordinary exact symbolic C
+objects plus two transformed allocator objects before the complete canonical
+SDK, ten reviewed loaded-data replacements, and linker-owned layout transforms
+instead of reusing the retail-exact BSS artifact. Existing functions may grow,
+and helper sources under `src/main.exe/reloc/` join the normal link. BSS follows
+the initialized image; the allocator keeps its fixed upper bound but advances
+its base and recomputes its word capacity after the retail headroom is consumed.
+The finalizer derives the PS-X entry/load/size fields from the actual result.
+
+The normal generator also retains sections that an ordinary edit can newly
+introduce in both ordinary `*.c.o` game inputs and the two transformed allocator
+replacement `*.o` inputs. `.sdata` stays in the loaded
+gp-near extension; `.sbss`/`.scommon` stays in the gp-near BSS prefix; and
+`.bss.*`/GNU `COMMON` remains owned at BSS end. An integration test runs the
+pinned cc1/maspsx/assembler/linker chain over both families with small and large
+initialized, tentative, static, const, float, and double objects. Unknown
+allocatable sections fail under `--orphan-handling=error` instead of being
+silently discarded. This is support for normal pinned-toolchain C sections,
+not arbitrary custom section attributes or growth beyond the RAM/linker
+assertions.
+
+The ELF/map rule runs `tools/reloc_input_audit.py` immediately after `ld`, so
+`./Build relink` itself rejects an unowned allocatable input or a canonical
+numeric MAIN call, address pair, or aligned data pointer before finalization.
+It reads the exact 731-object map `LOAD` inventory rather than a guessed glob;
+the current 767 owned allocatable PROGBITS sections and all 6,918 direct
+`J`/`JAL` instructions pass their relocation checks with zero findings. Exact
+counts, metadata validation, and heuristic limits are in
+[`relocatable-build.md`](relocatable-build.md#mandatory-input-object-relocation-audit).
+
+`./Build shiftability-report` is the consolidated progress view for this work.
+It builds the current normal relink, reruns the input/final/compiler checks and
+the real `+0x10004` growth link, and prints one active blocker queue. It reports
+exact-vs-normal source variants separately (zero of the initial six in the
+current inventory) and keeps intentional fixed PS1/cross-executable contracts,
+configurable RAM-budget policy, and proof limits out of that queue. Layout
+fields originate in `src/main.exe/ram_layout.h`; Python linker, finalizer, and
+audit tools parse those same definitions through `tools/ram_layout.py`.
+Generated extraction/config files can still contain retail literals as
+historical input oracles; they are not a second runtime policy source.
+
+`./Build check-relink` verifies that composition without assuming a fixed
+extension size: it derives the game-text delta from the actual compiler
+objects, requires every unique section-owned canonical-SDK symbol to follow,
+checks applied C HI/LO records and dynamic extension/BSS/pool boundaries, and
+validates the finalized PS-X EXE header. It then reruns the input-object gate,
+runs `tools/reloc_audit.py --fail-on-findings`, and runs the complete growth
+probe. The final-image audit has zero movable ABS definitions, literal jumps,
+adjacent HI/LO candidates, or literal loaded pointers. The default `0x10004`
+probe checks 7,706 section-owned layout symbols, all 208 manifest pointers, a
+real HI16 carry, dynamic pool shrinkage, and the regenerated header after a
+full GNU-ld link. Its extension inventory now mirrors the recursive union of
+user and generated `reloc/**/*.c` sources, including nested paths and
+same-relative-path overrides.
+
+The emulator is deliberately a separate, opt-in gate because it needs a local
+PCSX-Redux build and the user-supplied disc. `tools/pcsx_smoke.py` reads the
+selected PS-X header and ELF, then requires execution of the entry, `main`,
+repeated `PadProc`, post-loop VSyncs, and no first-chance CPU exception. With
+`.shake/build/reloc-growth-probe/main_growth.exe{,.elf}`, both its direct mode
+and `--repack` mode pass: the latter auto-packs the 620,544-byte EXE and follows
+`SLPS_019.01 → MENU.EXE → MAIN.EXE` to entry `0x80070260`, ELF-derived `main`
+at `0x800162a4`, and moved `PadProc` at `0x8002adac`. See the exact invocations
+and scope in [`building-an-iso.md`](building-an-iso.md#automated-grown-image-smoke).
+`check-relink` itself remains hermetic and does not launch an emulator.
+The same repacked image later reached relocated `OPEN06.STR` decode and
+`STAGES.XA` setup/callback checkpoints without a CPU exception; neither asset
+was run to EOF and physical audio output remains unverified.
+
+`check-reloc-c-literals` is the focused compiler-input half of that lane. It
+audits four ordinary exact symbolic objects (`SelectCameraOwnerOption`,
+`FileOption`, `ActivateHumans`, and `ProcItemShinsoku`) plus two allocator
+replacement objects. The four ordinary objects use the same C and object in
+both lanes. `vinit` and `valloc` also have one raw-constant C source, but their
+normal objects pass through a fail-fast generated-assembly transform: exactly
+one reviewed `LUI`/`ORI` materialization for each of `MemoryPool` and
+`MemoryPoolCapacity` becomes a standard relocation-bearing `LUI`/`ADDIU` pair
+against that symbol. An unexpected pattern, count, symbol, or text size stops
+the focused exact oracle; there are no source conditionals, per-function
+compiler flags, or linker aliases. The normal `check-relink` path deliberately
+relaxes fixed offsets and exact text sizes while retaining the transform,
+relocation, opcode, and raw-literal safety checks, so an unrelated edit may move
+or grow either allocator.
+
+The controlled link substitutes only those two allocator objects and requires
+all six objects' ELF HI16/LO16 records, including the linker-derived capacity in
+both allocator paths. The transform preserves the exact allocator text sizes
+(`vinit` `0x54`, `valloc` `0x1cc`), so this focused lane needs neither a shrink
+allowance nor a boundary pad. Its source-debt inventory is zero of the initial
+six; the object audit inventory is two replacements plus four ordinary
+objects.
 
 ## The other five executables
 
@@ -118,6 +241,26 @@ subsegment spanning the whole image: splat `.incbin`s it and the build reassembl
 it byte-identically. Carving a function out is then the `main.exe` workflow — the
 config grows `c` subsegments in the same shape. `newexe.py` refuses to overwrite a
 config that already has `c` subsegments unless you pass `--force`.
+
+`tools/scaffold_exe.py <name>...` is the next stage, applied to `menu.exe`,
+`ending.exe`, and `trial.exe` (2026-07-20): it rewrites the code segment into
+one `c` subsegment per known function start, so splat generates an
+INCLUDE_ASM stub TU for every function and the executable is decomp-ready in
+exactly main.exe's day-zero shape. Starts come from the composed name tables
+(`reference/xexe-<name>.tsv` — our transferred names plus demo placements),
+every `jal` target, and the header entry point; a bounded control-flow pass
+merges starts that a branch or local `j` proves to be mid-function
+(handwritten-SDK label entries keep their names as mid-file global labels via
+`config/symbols.<name>.txt`). Real text ends at the last `jr ra`; the tail
+becomes a `data` subsegment so splat can define referenced `D_*` labels, and
+`section_order` is rewritten text-first because splat lays subsegments out
+grouped by section, not by address. The symbols file also defines `_gp` (GNU
+ld resolves `R_MIPS_GPREL16` against it) and a definition for every
+gp-referenced data address. `config/functions.<name>.tsv` feeds the progress
+report, which gives each scaffolded executable its own decomp.dev category.
+Boundary imperfections cannot break bytes — INCLUDE_ASM stubs concatenate
+identically regardless — they only shape stub granularity, refinable later
+with `tools/reverse.py`.
 
 **`textbin`, not `data` — splat groups a segment's subsegments by section, not by
 address.** The output section for each subsegment is chosen by type (`c`/`asm` →

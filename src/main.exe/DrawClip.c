@@ -77,7 +77,6 @@
  *    DrawModel and DrawSprite needed.
  */
 
-extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 extern SVECTOR UnitVector;
 extern s32 DrawTMDmode;
 

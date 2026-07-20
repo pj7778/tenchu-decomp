@@ -21,30 +21,48 @@ On first use the disc is dumped once with `dumpsxiso` into `TENCHU_ISO_WORK`
 $ nix develop            # provides mkpsxiso + dumpsxiso (packaged in nix/mkpsxiso.nix)
 $ ./Build iso            # matching main.exe -> .shake/build/tenchu/tenchu.{bin,cue}
 $ ./Build iso-mod        # modded main.exe   -> .shake/build/tenchu/tenchu-mod.{bin,cue}
+$ ./Build iso-relink     # normal relink     -> .shake/build/tenchu/tenchu-relink.{bin,cue}
 $ ./Build run            # FAST: -loadexe main.exe over the original disc (no repack)
 $ ./Build run-iso        # FAITHFUL: repack the disc with main.exe and boot it
 $ ./Build run-mod        # fast, -loadexe the modded main.exe
 $ ./Build run-iso-mod    # FAITHFUL: repack the disc with the modded main.exe and boot it
+$ ./Build run-relink     # fast, -loadexe the normal-link main_relink.exe
+$ ./Build run-iso-relink # full boot from the auto-packed relink disc
 ```
 
 **Mods are patched in place, so the disc stays faithful.** `./Build mod`
 (tools/mkmod.py) compiles each `src/mod/main.exe/<fn>.c`, links it at the function's
 *original* address, and overwrites that function's bytes — the function has to fit in
 its original slot (up to the next symbol), so `main_mod.exe` is **exactly the same
-size** as `main.exe`. That matters because the disc is packed with **no free sectors**:
-`MAIN.EXE` is a 271-sector slot at LBA 319, immediately followed by `TRIAL/ENDING.EXE`,
-`DATA.VOL`, and the `MOVIE/*.STR` + `XA/*.XA` streams. A *bigger* `MAIN.EXE` would shove
-them all to new LBAs, and streamed cutscenes seek by absolute sector, so they'd read the
-wrong data and hang (right after the loading screen). Because the modded exe is the same
-size, mkiso keeps **forced LBAs** — the mod disc is byte-identical to the original except
-`MAIN.EXE`'s sectors, so the full `SLPS→MENU→MAIN` boot and every cutscene work, on any
-emulator or real hardware.
+size** as `main.exe`. That lets mkiso retain every dumped `offs=` placement: the
+rebuilt data track is byte-identical to the original except `MAIN.EXE`'s sectors.
+
+A larger relink cannot fit the original 271-sector `MAIN.EXE` slot.
+`iso-relink` uses `tools/mkiso.py`, which handles that mechanically by removing
+forced offsets and letting mkpsxiso auto-pack the data track.
+
+The static executable/media audit supports this design more strongly than a
+generic “LBAs might be embedded” warning:
+
+- RUN reads the fixed `0x80100000` handoff record and `Exec` starts the loaded
+  executable at the PC from its PS-X header; neither calls a fixed retail MAIN
+  entry address;
+- MAIN's AFS/XA paths use filenames and `CdSearchFile`/`CdlFILE` positions; and
+- MENU/SLPS/ENDING STR paths likewise search by filename and consume returned
+  file positions.
+
+That static model now has a bounded emulator result behind it: the current
+`+0x10004` growth artifact was auto-packed and reached the moved MAIN entry,
+current ELF-derived `main`, moved `PadProc`, and post-loop VSyncs through the
+real `SLPS→MENU→MAIN` chain without a first-chance exception. A later probe
+also reached relocated `OPEN06.STR` decode and `STAGES.XA` command/callback
+checkpoints described below.
 
 If a modded function outgrows its slot, `./Build mod` aborts and tells you by how many
 bytes — trim it (drop debug logging, simplify) until it fits. See
 [modding-and-nonmatching.md](modding-and-nonmatching.md).
 
-Two ways to launch:
+The matching and relink lanes each have a fast and a full-boot launch:
 
 - **`./Build run`** (fast) mounts the original disc and `-loadexe`s our `main.exe`
   over it — no ISO repack, so the edit→test loop is just `./Build run`. Because
@@ -54,11 +72,20 @@ Two ways to launch:
 - **`./Build run-iso`** (faithful) boots the repacked disc (our `MAIN.EXE` swapped
   in), running the real `SLPS_019.01 → … → MAIN.EXE`. You can also load `tenchu.cue`
   by hand (drag it into pcsx-redux, or *File → Open Disk Image*).
+- **`./Build run-relink`** is the same fast direct-load path for
+  `main_relink.exe`. The normal-link finalizer has already regenerated its
+  header PC/load/size fields.
+- **`./Build run-iso-relink`** boots `tenchu-relink.cue` through the real
+  launcher chain. When `main_relink.exe` outgrows retail, this is the
+  auto-packed path. The controlled `+0x10004` fixture has passed its launcher,
+  menu, MAIN entry, and main-loop smoke; use it plus representative media tests
+  for a particular mod.
 
-`tenchu.{bin,cue}` (and `tenchu-mod.{bin,cue}`) are real Shake targets, so `iso` /
-`run-iso` **repack only when the exe changed** — repeated `run-iso` launches don't
-rebuild the ~750 MB image. The one thing not tracked is a swap of the *original*
-disc (mkiso.py discovers it dynamically): `./Build clean` to force a repack then.
+`tenchu.{bin,cue}`, `tenchu-mod.{bin,cue}`, and
+`tenchu-relink.{bin,cue}` are real Shake targets, so the ISO launchers **repack
+only when their executable changed**—repeated launches do not rebuild the
+~750 MB image. The one thing not tracked is a swap of the *original* disc
+(`mkiso.py` discovers it dynamically): `./Build clean` to force a repack then.
 
 `run` finds the emulator via `$PCSX_REDUX`, then `pcsx-redux` on `PATH`, then
 `~/programming/pcsx-redux/pcsx-redux`; extra emulator flags go in `$PCSX_REDUX_ARGS`.
@@ -75,6 +102,68 @@ supply a real BIOS and opt in:
 `PCSX_REDUX_ARGS='-bios /path/scph.bin -dynarec' ./Build run` (any of `-dynarec`,
 `-bios`, `-interpreter` in `$PCSX_REDUX_ARGS` disables the forced default).
 
+## Automated grown-image smoke
+
+`tools/pcsx_smoke.py` provides the repeatable bounded proof. It discovers the
+original cue through `--cue`, `$TENCHU_CUE`, `disks/`, or `~/tenchu-iso/`, and
+PCSX-Redux through `--pcsx`, `$PCSX_REDUX`, `PATH`, or the usual
+`~/programming/pcsx-redux/pcsx-redux` checkout. First generate the controlled
+growth artifact:
+
+```console
+$ ./Build check-relink-growth
+```
+
+The direct `-loadexe` result was produced with:
+
+```console
+$ python3 tools/pcsx_smoke.py \
+    --exe .shake/build/reloc-growth-probe/main_growth.exe \
+    --elf .shake/build/reloc-growth-probe/main_growth.exe.elf \
+    --frames 5 --loop-hits 2 --timeout 30
+TENCHU_SMOKE armed entry=0x80070260 main=0x800162a4 loop=0x8002adac frames=5 loops=2
+TENCHU_SMOKE PASS entry=1 main=1 frames=5 loops=2 cycles=220072300ULL
+```
+
+The full auto-LBA result was produced with:
+
+```console
+$ nix develop -c python3 tools/pcsx_smoke.py \
+    --exe .shake/build/reloc-growth-probe/main_growth.exe \
+    --elf .shake/build/reloc-growth-probe/main_growth.exe.elf \
+    --repack --frames 5 --loop-hits 2 --timeout 150 --repack-timeout 120
+mkiso: main.exe grew (620544 > 555008) — using auto-LBA layout
+TENCHU_SMOKE armed entry=0x80070260 main=0x800162a4 loop=0x8002adac frames=5 loops=2
+TENCHU_SMOKE PASS entry=1 main=1 frames=5 loops=2 cycles=1528346866ULL
+```
+
+That run logged `execute \TENCHU\MENU.EXE;1` followed by
+`execute \TENCHU\MAIN.EXE;1`. The harness reads the executable entry from the
+grown PS-X header and resolves `main` and `PadProc` from its ELF. Since the
+fixture is inserted after `main.c.o`, `main` intentionally remains
+`0x800162a4`; the entry moved to `0x80070260` and `PadProc` to `0x8002adac`.
+
+The probe forces a debugger-enabled interpreter and software GPU, uses isolated
+temporary memory cards, cleans the temporary ~748 MB repack, and terminates the
+whole emulator process group on timeout. In `--repack` mode it supplies bounded
+START/CIRCLE/CROSS pulses to cross SLPS/MENU, fails on a first-chance CPU
+exception or unexpected pause, and counts VSyncs only after `PadProc` has run.
+It proves the boot/main-loop path.
+
+A subsequent representative-media run on the same auto-LBA `+0x10004` disc
+observed both files at their repacked positions:
+
+- `OPEN06.STR` was found at runtime LBA 46,593 rather than retail LBA 46,561
+  (`+32`), completed stream setup, called `StGetNext`/`get_stream`, and made 21
+  combined `DecDCTin`/`DecDCTout` calls by frame 1,381.
+- `STAGES.XA` was found at runtime LBA 119,130 rather than retail LBA 119,098
+  (`+32`), completed XA setup and `CdControl(0x1b)`, and made four `cbCheckCD`
+  callbacks by frame 3,557.
+
+There was no CPU exception. The run stopped at those checkpoints rather than
+EOF, so it does not prove complete playback, physical audio output, or broad
+gameplay.
+
 ## What you get
 
 - **`./Build iso`** points the disc's `TENCHU/MAIN.EXE` at the matching build and
@@ -89,6 +178,14 @@ supply a real BIOS and opt in:
   forced LBAs — the data track is byte-identical to the original except `main.exe`'s
   sectors, exactly like `./Build iso`. So the full boot chain and all streamed
   movies/XA work; `run-iso-mod` is the faithful way to play a mod.
+
+- **`./Build iso-relink`** puts `main_relink.exe` on the disc. A retail-sized
+  output retains forced placement; a larger output is auto-packed. Packaging is
+  implemented, static code inspection supports the relocated file positions,
+  and the controlled `+0x10004` image has passed the full launcher/menu/main-loop
+  smoke plus representative STR decode and XA setup/callback checkpoints.
+  Complete playback, physical XA audio output, and broad gameplay remain runtime
+  validation gates.
 
 ## How it works
 

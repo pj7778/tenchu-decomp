@@ -173,6 +173,87 @@
         install -m755 cc1 "$out/bin/cc1-281"
       '';
 
+      # The one-member stock libgs object GS_106.OBJ is byte-identical between
+      # Tenchu and PsyQ 4.5, including the older RA-only epilogue shape emitted
+      # by GCC 2.7.2. Keep this compiler available as an original-object
+      # profile; Build.hs never selects it by an ad-hoc per-function flag.
+      cc1-272 = pkgs.runCommandLocal "cc1-272"
+        {
+          src = pkgs.fetchurl {
+            url = "https://github.com/decompals/old-gcc/releases/download/0.17/gcc-2.7.2-psx.tar.gz";
+            sha256 = "500a459b3485e885a8d302cac23c2a4632f3900e03a09153f6190699fd723571";
+          };
+          dontFixup = true;
+        } ''
+        mkdir -p "$out/bin"
+        tar xzf "$src" cc1
+        install -m755 cc1 "$out/bin/cc1-272"
+      '';
+
+      # GS_107.OBJ was built by a libgs backend that differs from the released
+      # consumer cc1 in two compiler-output-proven places: its block-move split
+      # accepts symbolic addresses, and its RA-only epilogue uses the stack
+      # adjustment as the $ra load delay rather than the return delay. Together
+      # they reproduce both natural MATRIX assignments exactly. Build this
+      # evidence-backed variant from pinned GCC/decompals sources; select it for
+      # the whole original object in Build.hs, never for an individual function.
+      old-gcc-017 = pkgs.fetchFromGitHub {
+        owner = "decompals";
+        repo = "old-gcc";
+        rev = "b74211c9d959e9724802f3177c8229cd67202c87";
+        sha256 = "043dcgj39hqsl84kr874nl51pm3hgp49ixarnzjqxxzvibascm6d";
+      };
+      cc1-281-gs107 = pkgs.pkgsi686Linux.stdenv.mkDerivation {
+        pname = "cc1-281-gs107";
+        version = "2.8.1";
+        src = pkgs.fetchurl {
+          url = "https://ftp.gnu.org/gnu/gcc/gcc-2.8.1.tar.gz";
+          sha256 = "0k7aq8l8hnyi9yv2nydykvn0wyr6yd1l45qdv5rq6qiyz7yznc1v";
+        };
+        hardeningDisable = [ "all" ];
+
+        patchPhase = ''
+          runHook prePatch
+          sed -i 's/include <varargs.h>/include <stdarg.h>/g' ./*.c
+          patch -u -p1 obstack.h \
+            -i ${old-gcc-017}/patches/obstack-2.8.1.h.patch
+          patch -u -p1 config/mips/mips.h \
+            -i ${old-gcc-017}/patches/mips.patch
+          patch -su -p1 < ${old-gcc-017}/patches/psx.patch
+          patch -su -p1 < ${./nix/gcc-2.8.1-gs107-backend.patch}
+          runHook postPatch
+        '';
+
+        configurePhase = ''
+          runHook preConfigure
+          ./configure \
+            --target=mips-sony-psx \
+            --prefix="$out" \
+            --with-endian-little \
+            --with-gnu-as \
+            --disable-gprof \
+            --disable-gdb \
+            --disable-werror \
+            --host=i386-pc-linux \
+            --build=i386-pc-linux
+          runHook postConfigure
+        '';
+
+        buildPhase = ''
+          runHook preBuild
+          touch insn-config.h
+          make -j"$NIX_BUILD_CORES" cc1 CFLAGS="-std=gnu89"
+          runHook postBuild
+        '';
+
+        installPhase = ''
+          runHook preInstall
+          mkdir -p "$out/bin"
+          install -m755 cc1 "$out/bin/cc1-281-gs107"
+          runHook postInstall
+        '';
+      };
+
       # The reused ADT library object predates the game's default compiler. Its
       # eleven contiguous C members are byte-identical under GCC 2.8.0; 2.8.1's
       # changed reload-address retyping leaves AdtSelect nine bytes off. Keep the
@@ -192,6 +273,32 @@
 
       # mkpsxiso + dumpsxiso: dump/rebuild the game's CD image (`./Build iso`).
       mkpsxiso = pkgs.callPackage ./nix/mkpsxiso.nix { };
+
+      # Open-source PsyQ library/object readers for the opt-in original-object
+      # audit (`./Build check-psyq-gs107`).  This derivation contains no Sony
+      # files: the user supplies LIBGS.LIB locally and the audit hash-gates the
+      # archive/member before converting it under the ignored .shake tree.
+      psyq2elf-tools = pkgs.stdenv.mkDerivation {
+        pname = "psyq2elf-tools";
+        version = "2020-09-20-cba9b60";
+        src = pkgs.fetchurl {
+          url = "https://gitlab.com/jype/psyq2elf/-/archive/cba9b60d2f349a55e49530a28e01a10cae8771f1/psyq2elf-cba9b60d2f349a55e49530a28e01a10cae8771f1.tar.gz";
+          sha256 = "sha256-6TnZLGUmvHM08Y/B4r1HGs5JISUokgKxU7j/JhZbGms=";
+        };
+
+        installPhase = ''
+          runHook preInstall
+          mkdir -p "$out/bin"
+          install -m755 psyq2elf psyqdump "$out/bin/"
+          runHook postInstall
+        '';
+
+        meta = {
+          description = "Open-source converter and archive dumper for PsyQ objects";
+          homepage = "https://gitlab.com/jype/psyq2elf";
+          license = lib.licenses.mit;
+        };
+      };
 
       # decomp-permuter: randomly perturbs C to find the source that byte-matches
       # (register allocation / scheduling). tools/permute.py drives it.
@@ -221,7 +328,7 @@
     {
       legacyPackages = pkgs;
       packages = flake-utils.lib.flattenTree
-        { };
+        { inherit cc1-272 cc1-281-gs107 psyq2elf-tools; };
 
       apps = { };
 
@@ -239,6 +346,11 @@
           # glob, it skips .shake/ and .git by default, and it is what the tools
           # and docs assume from here on.
           pkgs.ripgrep
+          # Lightweight Win32 compatibility for inspecting original PsyQ
+          # tools. PSYLIB/ASPSX work; compilation itself stays on the pinned
+          # native cc1 profiles because PsyQ 4.5 CC1PSX currently aborts here.
+          pkgs.wibo
+          psyq2elf-tools
           pkgs.spimdisasm
           m2c-bin
           pkgs.splat
@@ -247,8 +359,10 @@
             ln -s "${pkgs.gcc}/bin/cpp" "$out"/bin 
           '')
           maspsx-bin
+          cc1-272
           cc1-280
           cc1-281
+          cc1-281-gs107
           mkpsxiso
           permuter
           # GHC with the Shake build tool's deps baked into its global package

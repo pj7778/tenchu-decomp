@@ -31,8 +31,6 @@
 /* Matching notes: RotateVector's SVECTOR-output twin — a direct transcription
  * of Ghidra's decompilation using the PSX.SYM local names, matched as-is. */
 extern void *memset(void *s, int c, u32 n);
-extern void RotMatrixYXZ(SVECTOR *r, MATRIX *m);
-extern SVECTOR *ApplyMatrixSV(MATRIX *m, SVECTOR *v0, SVECTOR *v1);
 
 void RotateVectorS(SVECTOR *vec, int rx, int ry, int rz)
 {

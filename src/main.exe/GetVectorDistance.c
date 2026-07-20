@@ -41,7 +41,6 @@
  *    delay-slot-filled `bgez` (the unconditional copy sits in the branch's
  *    delay slot); reassigning `v` in place compiles 8 bytes short.
  */
-extern s32 SquareRoot0(s32 x);
 extern long abs(long x);
 
 int GetVectorDistance(VECTOR *v1, VECTOR *v2)

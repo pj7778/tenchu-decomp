@@ -49,7 +49,7 @@
  *    so there is no room for a hidden 5th local here — this cast-through-sv
  *    shape is the only way to build `v` from just `v`/`sv`/`sv2`.
  *  - `sv2.vx/vy/vz = (s16)ViewInfo.vrx - (s16)ViewInfo.vpx` etc. are
- *    NARROWING uses of the s32 TViewInfo fields (result stores into a
+ *    NARROWING uses of the s32 GsRVIEW2 fields (result stores into a
  *    16-bit SVECTOR field) — cc1 emits `lhu`, not `lh`, for both operands.
  *  - `sv = sv2;` (plain SVECTOR struct assignment, align 2) reproduces the
  *    target's `lwl/lwr`+`swl/swr` copy immediately before the
@@ -76,12 +76,6 @@
 
 typedef struct
 {
-    s32 vpx, vpy, vpz;           /* 0x00 */
-    s32 vrx, vry, vrz;           /* 0x0C */
-} TViewInfo;
-
-typedef struct
-{
     VECTOR TargetVector;         /* 0x00 */
     Humanoid *Owner;             /* 0x10 */
     s32 Mode;                    /* 0x14 */
@@ -92,10 +86,9 @@ typedef struct
 } TCameraStatus;
 
 extern TCameraStatus CamState;
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern unsigned long *GlobalAreaMap;
 
-extern void VectorNormalSS(SVECTOR *v0, SVECTOR *v1);
 extern VECTOR *GetAreaMapPassage(unsigned long *area, VECTOR *pos, SVECTOR *vect, short n);
 
 void SnapCameraTargetVector(void)

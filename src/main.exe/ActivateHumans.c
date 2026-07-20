@@ -72,35 +72,24 @@ extern s32 GetAreaMapLevel(u_long *area, s32 x, s32 y, s32 z, s32 mode);
 /*
  * MATCHED — 1,608 bytes / 402 instructions, 0x68-byte frame, exact CFG.
  *
- * Every fence below is load-bearing: each was re-challenged at the exact match
- * and each removal costs bytes (measured).  Do NOT "clean up" any of them.
+ * This is one symbolic source for both the exact and normal links.  The direct
+ * StageChar array expressions are important: cc1's loop pass shares them as a
+ * long-lived HIGH/LO_SUM pair.  The object consequently records one
+ * R_MIPS_HI16 at text+0x144 and two R_MIPS_LO16 records at text+0x148 and
+ * text+0x3ec.  At the retail address they link to the target's
+ * `lui s5,%hi(StageChar)`, `addiu s3,s5,%lo(StageChar)`, and sentinel load.
  *
- * 1. Callee-saved order.  global-alloc priority = floor_log2(refs)*refs/live,
- *    which has TWO tunable inputs (an earlier "impossibility proof" wrongly
- *    held live_length fixed).  Retail's single total order is
- *      human > i > activate_distance > stage_char > target > stage_hi = $s0..$s5
- *    measured (regalloc.py, refs/live -> priority -> reg):
- *      human 39/214 -> 9112 -> $s0            i 7/251 -> 557 -> $s1
- *      activate_distance 7/298 -> 469 -> $s2  stage_char 5/246 -> 406 -> $s3
- *      target 6/303 -> 396 -> $s4             stage_hi 4/249 -> 321 -> $s5
- *      distance 5/84 -> $a3   VISIBLE_CHARACTERS_ base 3/24 -> $a2
- *    Three coupled levers hold that order; none works alone:
- *    - stage_hi 6 -> 4 refs: `i = 0; stage_hi = ...;` lives in ONE identical-arm
- *      fence `if (target) {arm} else {arm}` at the n-clamp join, so the clamp
- *      arms carry only `n = 3;` / `n = 6;`.  The duplicate def also fences
- *      cse1/cse2, preserving the $s5-derived StageChar base
- *      (`lui s5,0x8009; addiu s3,s5,-6436`); a single join def folds to
- *      `li 0x8008E6DC`.  Collapsing the fence -> 1612 bytes.
- *    - `do { i++; } while (0);` restores i's 7th weighted ref.  Unwrap -> 12 bytes.
- *    - the TRIPLE do{}while(0) on the 13000 def only: nesting depth n gives ref
- *      weight n+1 and adds NO live_length (loop notes are not counted), so
- *      activate_distance goes 4 -> 7 refs at live 298.  Unwrap -> 16 bytes.
- *      It must sit on the 13000 def: fencing either `distance < activate_distance`
- *      use swaps $a2/$a3 (loop notes are sched barriers on distance's live
- *      range), and fencing the 26000 def blocks reorg from stealing
- *      `li s2,26000` into the delay slot at 0x8003b878 (-> 1612).
- * 2. The double do{}while(0) around `if (human == target)`.  Unwrap -> 10 bytes.
- * 3. The `active`/`final` join at 0x8003baec (retail `move v0,v1`).  `active`
+ * The current global-allocation evidence (tools/regalloc.py) is:
+ *   human 77/217 -> $s0, i 9/251 -> $s1,
+ *   activate_distance 9/297 -> $s2, StageChar base 8/498 -> $s3,
+ *   target 6/302 -> $s4, StageChar high 4/500 -> $s5.
+ * The single-iteration loop boundary around the StageChar match block supplies the
+ * base's eighth weighted reference.  Removing it leaves 7/498, swaps the base
+ * and target between $s3/$s4, and differs by ten bytes.  This is evidence about
+ * this cc1 graph, not a claim that the original author used the same spelling.
+ *
+ * The `active`/`final` join at 0x8003baec (retail `move v0,v1`) is another
+ * compiler-sensitive boundary. `active`
  *    must be SImode: narrow locals are genuine QI/HI pseudos here (no
  *    PROMOTE_MODE), so a narrow `active` always widens via sll/andi and can
  *    never yield a bare move (s8 -> `sll v0,v1,0x18`, u8 -> `andi v0,v1,0xff`;
@@ -134,8 +123,6 @@ void ActivateHumans(void)
     s32 n;
     s32 level;
     s16 j;
-    StageCharType *stage_char;
-    StageCharType *stage_hi;
     ModelType *model;
 
     target = CamState.Owner;
@@ -169,34 +156,24 @@ void ActivateHumans(void)
     {
         n = 6;
     }
-    if (target)
-    {
-        i = 0;
-        stage_hi = (StageCharType *)0x80090000;
-    }
-    else
-    {
-        i = 0;
-        stage_hi = (StageCharType *)0x80090000;
-    }
-
-    stage_char = (StageCharType *)((u8 *)stage_hi - 0x1924);
+    i = 0;
     D_80097F44 = n;
     D_80097F42 = 0;
-human_loop:
-    if ((s16)i >= Humans)
+    while (1)
     {
-        return;
-    }
-    human = HumanGroup[(s16)i];
-    do {
-      do {
-        if (human == target)
+        if ((s16)i >= Humans)
         {
-            goto next_human;
+            return;
         }
-      } while (0);
-    } while (0);
+        human = HumanGroup[(s16)i];
+        do {
+            do {
+                if (human == target)
+                {
+                    goto next_human;
+                }
+            } while (0);
+        } while (0);
 
     distance = GetVectorDistance(human->locate, &camera);
     if (distance >= 17001)
@@ -299,19 +276,18 @@ active_done:
         human->type == 0x83)
     {
         j = 0;
-        if (*(s16 *)((u8 *)stage_hi - 0x1924) != -1)
+        while (StageChar[(s16)j].stage != -1)
         {
-            do
-            {
-                if (stage_char[(s16)j].stage == StageID + 1 &&
-                    stage_char[(s16)j].chrid == human->type)
+            do {
+                if (StageChar[(s16)j].stage == StageID + 1 &&
+                    StageChar[(s16)j].chrid == human->type)
                 {
-                    human->model->locate.coord.t[0] = stage_char[(s16)j].position.vx * 1000;
-                    human->model->locate.coord.t[1] = stage_char[(s16)j].position.vy * 1000;
-                    human->model->locate.coord.t[2] = stage_char[(s16)j].position.vz * 1000;
+                    human->model->locate.coord.t[0] = StageChar[(s16)j].position.vx * 1000;
+                    human->model->locate.coord.t[1] = StageChar[(s16)j].position.vy * 1000;
+                    human->model->locate.coord.t[2] = StageChar[(s16)j].position.vz * 1000;
                 }
-                j++;
-            } while (stage_char[(s16)j].stage != -1);
+            } while (0);
+            j++;
         }
         if (human->type == 0x83 && human->life == 0)
         {
@@ -344,7 +320,7 @@ active_done:
 
 next_human:
     do { i++; } while (0);
-    goto human_loop;
+    }
 }
 
 // Ghidra decompilation (reference):

@@ -49,12 +49,6 @@
 
 typedef struct
 {
-    s32 vpx, vpy, vpz;           /* 0x00 */
-    s32 vrx, vry, vrz;           /* 0x0C */
-} TViewInfo;
-
-typedef struct
-{
     ModelType *model;            /* 0x00 */
     VECTOR position;             /* 0x04 */
     SVECTOR offset;              /* 0x14 */
@@ -64,7 +58,7 @@ typedef struct
     u8 pad[0x10];                /* 0x68 */
 } ConflictObjectType;            /* 0x78 */
 
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern ConflictObjectType ConflictObject[];
 extern s16 InsertConflict(ModelType *m);
 extern s32 abs(s32 x);
@@ -74,7 +68,7 @@ static void UpdateItemState(void)
     ConflictObjectType *object;
     ConflictObjectType *conflicts;
     tag_TItem *item;
-    TViewInfo *view;
+    GsRVIEW2 *view;
     s32 i;
     s32 hit;
     s32 sz, ofsY;

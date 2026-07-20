@@ -64,8 +64,6 @@
  * `if (cond) goto nested; <else-body>; goto skip; nested: <then-body>`.
  * Both changes together match; each alone left a residual.
  */
-extern s32 ratan2(s32 a, s32 b);
-extern s32 SquareRoot0(s32 x);
 
 long GetTargetDistance(Humanoid *human, short *deg)
 {

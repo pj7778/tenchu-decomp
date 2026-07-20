@@ -67,8 +67,6 @@ extern Humanoid *StagePlayer;
 extern u32 *GlobalAreaMap;
 extern SearchSight searchsight[];
 
-extern s32 SquareRoot0(s32 value);
-extern s32 ratan2(s32 y, s32 x);
 extern VECTOR *GetAreaMapPassage(u32 *area, VECTOR *pos, SVECTOR *vect,
                                  s16 n);
 

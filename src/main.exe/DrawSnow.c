@@ -29,24 +29,13 @@ typedef struct
     GsSPRITE sprite;      /* +0x68 */
 } EffectSprite3D;
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} EffectViewInfo;
-
-extern EffectViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern u_long *GlobalAreaMap;
 extern GsOT *OTablePt;
 extern EffectSprite3D *D_80097F2C[];
 extern s32 abs(s32 value);
 extern s32 GetAreaMapLevel(u_long *area, s32 x, s32 y, s32 z, s32 mode);
 extern void GetScreenPosition(s32 x, s32 y, s32 z, SVECTOR *screen);
-extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, s32 priority);
 
 /*
  * Naming: retail added this pair after the demo build. SetSnow is called only

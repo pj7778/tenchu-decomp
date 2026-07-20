@@ -87,12 +87,6 @@
 
 typedef struct
 {
-    s32 vpx, vpy, vpz;           /* 0x00 */
-    s32 vrx, vry, vrz;           /* 0x0C */
-} TViewInfo;
-
-typedef struct
-{
     VECTOR TargetVector;         /* 0x00 */
     Humanoid *Owner;             /* 0x10 (lw @80031980) */
     s32 Mode;                    /* 0x14 (sw @800319c8) */
@@ -103,7 +97,7 @@ typedef struct
 } TCameraStatus;
 
 extern TCameraStatus CamState;
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 /* Critical-hit camera placements: 4 poses x 4 SVECTORs each. */
 extern SVECTOR D_80089F50[][4];
 /* Scratchpad work objects (0x1F800040 rotation SVECTOR, 0x1F800080 MATRIX
@@ -117,10 +111,6 @@ extern s32 scratch_trans_1f800094[2];
 extern void GetVectorRotation(VECTOR *start, VECTOR *end, s32 *rx, s32 *ry);
 extern short FUN_8002fd9c(Humanoid *h);
 extern int FUN_80039ddc(VECTOR *a, VECTOR *b, int c, int d);
-extern void RotMatrixYXZ(SVECTOR *r, MATRIX *m);
-extern void SetRotMatrix(MATRIX *m);
-extern void SetTransMatrix(MATRIX *m);
-extern void RotTrans(SVECTOR *v0, VECTOR *v1, long *flag);
 
 
 void SetCameraMode(s32 mode)
@@ -162,13 +152,14 @@ void SetCameraMode(s32 mode)
             scratch_rot_1f800040.vx = rot->vx + FUN_8002fd9c(cs->Owner);
             scratch_rot_1f800040.vy = rot->vy;
             scratch_rot_1f800040.vz = rot->vz;
-            RotMatrixYXZ((SVECTOR *)0x1F800040, (MATRIX *)0x1F800080);
+            RotMatrixYXZ((SVECTOR *)TENCHU_SCRATCHPAD(0x40),
+                         (MATRIX *)TENCHU_SCRATCHPAD(0x80));
         } while (0);
         scratch_trans_1f800094[0] = pos->vx;
         scratch_trans_1f800094[1] = pos->vy;
         scratch_trans_1f800094[2] = pos->vz;
-        SetRotMatrix((MATRIX *)0x1F800080);
-        SetTransMatrix((MATRIX *)0x1F800080);
+        SetRotMatrix((MATRIX *)TENCHU_SCRATCHPAD(0x80));
+        SetTransMatrix((MATRIX *)TENCHU_SCRATCHPAD(0x80));
         do {
             RotTrans(p, &va, fp);
             RotTrans(p + 1, &vb, fp);

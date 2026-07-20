@@ -58,7 +58,6 @@ extern void _PlayMusic(s32 music, s32 mode);
 extern void StartDrawing(void);
 extern short DrawBG(BackGround *background);
 extern s32 GetRealPad(s32 port);
-extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, s32 priority);
 extern void FUN_80056910(Sprite3D *sprite, s16 shade);
 extern void vfree(void *ptr);
 extern void DisposeBG(BackGround *background);
@@ -116,7 +115,7 @@ void start_demo_(void)
     PadShockAR(0, 0, 0, 0);
 
     i = 0;
-    persistent = (u8 *)0x80010000;
+    persistent = (u8 *)TENCHU_PERSISTENT_STATE_ADDRESS;
     do {
         chr_offset = CHOSEN_CHARACTER * 0x20;
         persistent[0x27 + i] = persistent[(i + chr_offset) + 0x40c];
@@ -139,7 +138,7 @@ void start_demo_(void)
     suffix = 'r';
     fade_sprite->sprite.attribute |= 0x60000000;
 
-    language_state = (PersistentState *)0x80010000;
+    language_state = (PersistentState *)TENCHU_PERSISTENT_STATE_ADDRESS;
     if (CHOSEN_CHARACTER != 0)
     {
         suffix = 'a';

@@ -239,16 +239,6 @@ typedef struct
     u8 Valiation;                /* 0x20 */
 } TCameraStatus;
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} TViewInfo;
-
 /* tag_TItem.param viewed as the napalm payload (psxsym param_napalm). */
 typedef struct
 {
@@ -257,7 +247,7 @@ typedef struct
 } param_napalm;
 
 extern TCameraStatus CamState;
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern Humanoid *CURRENTLY_SELECTED_CHARACTER_STATE_PTR[]; /* == CamState.Owner */
 extern s32 SOME_FIRST_PERSONISH_VIEW_RELATED_CAMERA_STATUS_[]; /* == CamState.Mode */
 extern s32 COUNTER_FOR_ITEM_ARRAY_;

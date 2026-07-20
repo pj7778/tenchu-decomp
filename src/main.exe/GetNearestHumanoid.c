@@ -59,7 +59,6 @@
  * distance use. Flattening the guard loses that lifetime and coalesces the
  * abs input/output in v0.
  */
-extern s32 SquareRoot0(s32 val);
 
 extern s16 Humans;
 extern Humanoid *HumanGroup[];

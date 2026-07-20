@@ -77,7 +77,7 @@
  * base first, `(&p->arr[0])[i]` puts the index first, the extern-symbol form
  * puts the (hoisted) %hi base first.
  */
-#define PSTATE ((PersistentState *)0x80010000)
+#define PSTATE ((PersistentState *)TENCHU_PERSISTENT_STATE_ADDRESS)
 
 typedef struct
 {
@@ -130,7 +130,6 @@ extern void PutItemCursor(int x, int y, int size, int rotdif);
 extern void DisposeBG(void *bg);
 extern int check_for_known_button_combination(s16 pad, s16 newpress);
 extern u_long *get_tim_from_archive(u_long *archive, int idx);
-extern void GsSortSprite(GsSPRITE *sp, GsOT *ot, int pri);
 extern u32 GetRealPad(s32 which);
 extern void FUN_800519bc(void);
 
@@ -205,7 +204,7 @@ void BriefingAndInventorySelectionScreen(void)
     for (j = 0; j < 0x14; j++) {
         PSTATE->counts[j] = 0;
     }
-    q = (PersistentState *)0x80010000;
+    q = (PersistentState *)TENCHU_PERSISTENT_STATE_ADDRESS;
     uid = StageConfig[q->stage].uid;
     q->counts[0] = 0xFF;
     if (uid == 0) {
@@ -240,7 +239,8 @@ void BriefingAndInventorySelectionScreen(void)
     harc = LoadHelpArchive(q);
 
     {
-        PersistentState *cq = (PersistentState *)0x80010000;
+        PersistentState *cq =
+            (PersistentState *)TENCHU_PERSISTENT_STATE_ADDRESS;
         for (ci = 0; ci < 0x13; ci++) {
             int n = SHOP_ITEM_DEFAULTS[ci].itemIndex + CHOSEN_CHARACTER * 0x20;
             u8 c = cq->stock[n];
@@ -251,7 +251,7 @@ void BriefingAndInventorySelectionScreen(void)
         }
     }
 
-    ps = (PersistentState *)0x80010000;
+    ps = (PersistentState *)TENCHU_PERSISTENT_STATE_ADDRESS;
     do {
         rand();
         np = pad.u;
@@ -281,7 +281,8 @@ void BriefingAndInventorySelectionScreen(void)
                 }
             }
             {
-                PersistentState *cq = (PersistentState *)0x80010000;
+                PersistentState *cq =
+                    (PersistentState *)TENCHU_PERSISTENT_STATE_ADDRESS;
                 for (ci = 0; ci < 0x13; ci++) {
                     int n = SHOP_ITEM_DEFAULTS[ci].itemIndex + CHOSEN_CHARACTER * 0x20;
                     u8 c = cq->stock[n];

@@ -77,7 +77,6 @@ extern void DeleteConflict(ModelType *model);
 extern s16 SoundEx(VECTOR *loc, s16 id);
 extern s16 InsertConflict(ModelType *model);
 extern s16 GetConflictResult(ModelType *model, s32 n);
-extern s32 ratan2(s32 y, s32 x);
 
 void ProcMiscDoor(tag_TMisc *m, enum TMiscMessage msg)
 {

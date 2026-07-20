@@ -3,17 +3,22 @@
 You don't always want a byte-match — modifying behaviour, adding debug output,
 cheats, etc. This documents what works today and how to make deviations run.
 
-## Building a non-matching binary
+## Choose the build contract
 
-`./Build` already builds regardless of matching — only `./Build check` compares
-the sha256. So the mod workflow is just:
+The default and relink commands have deliberately different jobs:
 
 ```console
-$ # edit src/main.exe/<fn>.c however you like
-$ ./Build            # produces .shake/build/tenchu/main.exe (no hash gate)
+$ ./Build             # reference layout/matching branches; same-size edits only
+$ ./Build mod         # patch selected same-slot sources into main_mod.exe
+$ ./Build relink      # normal GNU-ld layout; functions/data/BSS may move
+$ ./Build check-relink # structural audit plus full +0x10004 growth proof
+$ ./Build shiftability-report # current blocker queue and composed proofs
 ```
 
-`check` is only for verifying a decomp still matches; ignore it while modding.
+`./Build check` is only for verifying that the reference decomp still matches
+retail. It is not the size-changing mod gate. For a normal source edit, build
+`main_relink.exe` and launch it with `run-relink` or package it with
+`iso-relink`.
 
 ## What works: same-size edits (verified)
 
@@ -28,32 +33,29 @@ Same-size covers a lot: changing constants/immediates, swapping a branch
 condition, changing which register/field is used, reordering independent ops,
 tweaking arithmetic. Prefer these when you want a drop-in behaviour change.
 
-## What breaks: size-changing edits (and why)
+## Why size changes break the reference lane
 
 Adding or removing instructions (e.g. a `printf` debug line, an extra call)
 **changes the function's size**. Verified: adding a second call to
 `get_held_buttons` grew the binary by 8 bytes and made ~68% of the file differ —
 because everything laid out **after** the edited function shifts down by 8.
 
-The build still succeeds (it links), but the result is **not runnable as-is**,
-because this is a *partial* decomp with a fixed memory layout:
+The reference build may still link, but that artifact is **not the right
+runtime contract** for a size change:
 
 - The linker script places sections **sequentially** from `0x80011000`, so a
   function that grows pushes every later function and data block down.
-- The data is a **mix**: splat has resolved ~1300+ pointers in the first data
-  block alone to **symbolic** references (jump tables, function pointers) that
-  the linker relocates — but thousands of other words are still **raw** bytes,
-  including pointers it hasn't symbolised yet, plus a set of **fixed** addresses
-  in `config/symbols.main.exe.txt` / `undefined_symbols_auto`.
+- The reference data is a mix of symbolic directives and retail raw bytes, and
+  its symbol scripts intentionally retain fixed retail assignments.
 - When code shifts, the symbolic references move with it but the raw/fixed ones
   don't. The two disagree → the binary is internally inconsistent → it crashes.
 - The PS-EXE header's `.text` size (`0x00087000`, hardcoded in the generated
   `header.s`) also no longer matches the grown image.
 
-In short: a fixed-layout partial decomp can absorb *substitutions* but not
-*insertions*.
+In short: the exact reference lane can absorb *substitutions* but is not the
+normal-link lane for *insertions*.
 
-## Making a mod run: `./Build mod` — patch in place
+## Existing convenience lane: `./Build mod` — patch in place
 
 Non-matching behaviour changes (a decompiled function edited however you like) are
 handled by **overwriting the function in place**, wired in as the `mod` target:
@@ -80,14 +82,11 @@ same size, PS-EXE header untouched — so the disc rebuild keeps forced LBAs and
 on any emulator or real hardware. `src/main.exe/` (the matching decomp) is untouched;
 mods live only in `src/mod/main.exe/`.
 
-**Why in place and not relocated.** A grown function shifts every later address, and
-there's nowhere safe to put relocated code: right after the image (`0x80098000`) is the
-game's bss (globals → `HEAP_START = 0x800cdbac`, then heap, then stack `0x801ffff0`),
-which crt0 zeroes and the game writes; there's no reusable hole inside the 2 MB image
-(even the 17 KB zero run at `0x80089fed` is the live `EffectSlot`/`ModelSlot` buffers);
-and the disc is packed with no free sectors, so a bigger `MAIN.EXE` shifts the streamed
-movies/XA and hangs the cutscenes (see [building-an-iso.md](building-an-iso.md)). So the
-one edit a fixed-layout partial decomp can absorb is a **same-slot substitution**.
+This target is intentionally in-place. It remains useful for a minimal
+byte-faithful disc diff, but it is not the architecture for size-changing edits and it does
+not use trampolines or a hidden mod region. A genuine relink can move code,
+loaded data, BSS, and linker-derived boundaries within the executable's RAM
+budget.
 
 **If it doesn't fit**, `./Build mod` aborts with the overage, e.g.:
 
@@ -100,13 +99,146 @@ Trim the function — drop debug/log calls, simplify Ghidra-isms — until it fi
 worked example `ProcItemKusuri.c` drops the original's `AdtMessageBox("item dispose
 fail…")` diagnostic, which is never hit in normal play, to make room.)
 
-### Later: grow in place by decompiling more
+## Size-changing normal relink
 
-Once the data around a function is fully symbolic (no raw pointers / fixed addresses
-into that region), a uniform shift of everything after it becomes self-consistent, and
-functions can grow without fitting the original slot. That's the natural end-state of
-the decomp — not required for same-slot mods, just where genuinely-larger changes
-become possible.
+The static normal-link path is implemented, and there are two equivalent ways
+to change a function:
+
+- **Override lane (keeps `./Build check` green).** Copy the function's file to
+  `src/mod-relink/main.exe/<Name>.c` and edit the copy. Only the normal relink
+  reads that directory: the file is compiled by the identical
+  `cpp | cc1-281 | maspsx | as` pipeline and its object replaces the original
+  at the original position in the link order, so the function grows or
+  shrinks in place while the matched tree and the byte-identical reference
+  build stay pristine. A misspelled name fails script generation with
+  "override target … is not a linker input"; `vinit`/`valloc` are rejected
+  because their normal-lane objects carry the reviewed allocator relocation
+  transform (change `src/main.exe/ram_layout.h` policy instead).
+- **In-place edit.** Edit `src/main.exe/<Name>.c` directly. Same result in the
+  relink lane, but `./Build check` is red until you revert, since the exact
+  lane compiles the same file.
+
+Brand-new translation units (helpers, new subsystems) go under
+`src/main.exe/reloc/` in both cases. Then run:
+
+```console
+$ ./Build check-relink
+$ ./Build run-relink       # fast direct MAIN.EXE launch
+$ ./Build iso-relink       # package the actual normal-link executable
+$ ./Build run-iso-relink   # full SLPS/MENU/MAIN boot
+```
+
+To verify a mod's behavior mechanically, `tools/pcsx_smoke.py` accepts
+`--watch-counter SYMBOL` (u32 must be nonzero and increasing once the main
+loop runs) and `--watch-equals SYMBOL=VALUE` (u32 must hold VALUE), with the
+addresses resolved from the relinked ELF. The worked end-to-end example — a
+grown `PadProc` calling a new TU, booted through the full disc chain — is in
+[relocatable-build.md](relocatable-build.md#real-grown-function-edit-proof).
+
+The normal lane retains the pinned compiler's ordinary output sections for
+existing `*.c.o` game objects, the two transformed allocator `.o` inputs, and
+new helper files. Those allocator objects come from the same C source as the
+matching lane; only their generated address pairs are made symbolic. The
+retained sections include small and large initialized/tentative globals,
+statics, const/float/double data,
+`.sdata`/`.sbss`/`.scommon`, `.bss.*`, and GNU `COMMON`; gp-small objects are
+kept within signed GPREL16 reach. “Whatever C” is scoped to those normal
+toolchain sections and available PS1 RAM. A custom allocatable section causes
+an explicit orphan-section link failure instead of being silently discarded;
+arbitrary section attributes and unlimited data are not supported.
+
+`./Build relink` also audits the exact map-loaded input objects immediately
+after `ld`. Numeric casts or canonical assembly that hard-code a movable MAIN
+call, address pair, or aligned data pointer fail unless the corresponding MIPS
+relocation exists; unowned allocatable sections fail even when empty.
+`check-relink` reruns this gate and adds the final-image and growth audits. The
+input scan is intentionally heuristic for arbitrary register arithmetic and
+unaligned opaque packed data, whose current known cases are covered by the
+reviewed manifest and shifted growth proof. See the
+[exact coverage](relocatable-build.md#mandatory-input-object-relocation-audit).
+
+The composed linker owns all 555 game inputs, the complete CRT/SDK stream,
+initialized data, `_gp`, BSS, allocator boundaries, and the PS-X header. The
+reviewed data transform supplies 208 `R_MIPS_32` pointer records. The widened
+audit reports zero movable absolute symbols, literal jumps, adjacent address
+pairs, or data pointers.
+
+`check-relink` also performs a real GNU-ld link with `0x10004` bytes inserted
+after `main.c.o`. That proof checks 7,706 owned symbols, all 208 loaded pointers,
+HI16 carry behavior, BSS movement, dynamic allocator shrinkage, and a changed
+PS-X entry/load size. The linker chose PC `0x80070260` and `t_size=0x97000` for
+the grown fixture; no per-function slot, cave, trampoline, or fixed downstream
+address is involved. Its extension list mirrors the normal link's recursive
+user/generated source union, so nested `src/main.exe/reloc/` helpers participate
+in the same proof.
+
+Run `./Build shiftability-report` when deciding what to fix next. A BLOCKER is
+a failed relocation, ownership, or layout proof. DEBT means the normal link
+already uses a safe symbolic object but the byte-matching and normal source
+shapes have not converged; CONTRACT and POLICY entries are intentional
+boundaries, not stale pointers. Fixed contracts and configurable RAM-budget
+values are centralized in `src/main.exe/ram_layout.h`. `HEAP_START` itself is
+linker-derived as BSS end plus four, so it is intentionally not another numeric
+constant. Section-owned globals are deliberately not offsets from a numeric
+“game globals base”: ordinary source must name their linker symbols so they
+follow layout changes.
+
+The current controlled growth artifact also passes the bounded PCSX-Redux
+runtime probe in both modes: direct `-loadexe` and an auto-LBA repack through
+`SLPS_019.01 → MENU.EXE → MAIN.EXE`. The harness reached entry `0x80070260`,
+ELF-derived `main` at `0x800162a4`, moved `PadProc` at `0x8002adac`, and later
+VSyncs without a first-chance exception. The same repacked image also reached
+relocated `OPEN06.STR` decode and `STAGES.XA` setup/callback checkpoints. This
+establishes representative media paths, not complete playback, physical XA
+audio output, every gameplay path, or every arbitrary edit. Growth remains
+bounded by the PS1 RAM map, the fixed cross-executable handoff,
+allocator/stack space, and MIPS relocation ranges. See
+[relocatable-build.md](relocatable-build.md) and
+[the exact smoke commands](building-an-iso.md#automated-grown-image-smoke).
+
+## Debugger symbols in PCSX-Redux
+
+Every `./Build run*` launcher passes a generated `-dofile` that
+`PCSX.insertSymbol()`s the launched artifact's complete symbol table, so the
+debugger's disassembly, breakpoints, and call stacks are named out of the
+box. The names come from the artifact's own ELF
+(`<artifact>.symbols.lua` beside it, built by `tools/pcsx_symbols.py`), so
+the exact, in-place-mod, and relink layouts each get their own correct
+addresses — including moved symbols in grown relink images. `main_mod.exe`
+is patched in place and shares `main.exe`'s symbols. For the scaffolded
+sibling executables, `tools/pcsx_symbols.py --tsv
+config/functions.menu.exe.tsv` produces a loader you can `-dofile` manually
+when debugging MENU.EXE (loading two executables' symbol sets at once is
+deliberately not automatic: they share the same RAM addresses).
+
+That same address→name map can also be pushed to an **already-running**
+instance over its web server (enable it with `-webserver`, default port
+8080): `POST /api/v1/assembly/symbols?function=upload` with a body of
+`ADDRESS NAME` lines (hex address, space-separated), or `?function=reset` to
+clear. It writes the same `m_symbols` map as the Lua loader, so it is an
+alternative for live updates without relaunching; the `-dofile` path is what
+the launchers use because it needs no server or port.
+
+## Typed Debugger: data types and typed function arguments
+
+The Typed Debugger (Debug → Typed Debugger) shows memory through recovered
+struct layouts and typed function arguments. It has its own import format,
+separate from the symbol map above, and — unlike the symbol map — **no Lua or
+web-server hook**, so it is imported through its two file dialogs (once per
+session). The build keeps the two files fresh next to each artifact and the
+`run*` launcher prints their paths:
+
+- `<artifact>.redux_data_types.txt` — recovered struct layouts from
+  `reference/psxsym-types.h`, with exact per-field sizes (consecutive offset
+  deltas). Layout-independent.
+- `<artifact>.redux_funcs.txt` — recovered prototypes from
+  `reference/psxsym-protos.h`, addressed from the launched ELF, so the
+  addresses match the running layout.
+
+`tools/redux_typed_debugger.py` generates them; it normalises types to the
+widget's resolver rules (bare struct names so nesting resolves, `Base *`
+pointers, single-token primitives). In the widget, click **Import data
+types** then **Import functions** and pick those two files.
 
 ## Running a modified exe
 
@@ -118,3 +250,11 @@ your function (see [building-an-iso.md](building-an-iso.md)):
 - `./Build run-iso-mod` — **faithful**: repacks the disc with `main_mod.exe` (forced
   LBAs, streamed cutscenes intact) and runs the full `SLPS→MENU→MAIN` boot. Use this
   to actually play a mod.
+
+For a size-changing normal link, use `run-relink` for the fast direct launch and
+`run-iso-relink` for the full launcher/media path. Those commands consume
+`main_relink.exe`, not the fixed-slot mod artifact. For a bounded automated
+check, point `tools/pcsx_smoke.py` at that executable and its ELF; add
+`--repack` to exercise the launcher/menu path. A real mod should still exercise
+its changed behavior and relevant STR/XA content rather than treating the boot
+smoke as comprehensive coverage.

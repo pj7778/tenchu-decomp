@@ -82,7 +82,7 @@ typedef struct
     BackGround *background;         /* sp+0xbc */
 } StageEndScreenStack;
 
-#define PSTATE ((PersistentState *)0x80010000)
+#define PSTATE ((PersistentState *)TENCHU_PERSISTENT_STATE_ADDRESS)
 
 extern u8 CHOSEN_CHARACTER;
 extern u8 CHOSEN_STAGE;
@@ -125,9 +125,6 @@ extern u16 GetRealPad(s32 port);
 extern void StartDrawing(void);
 extern void DrawBG(BackGround *background);
 extern void FUN_800515b0(GsSPRITE *sprite, s32 value, s32 x, s32 y, s32 mode);
-extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, s32 priority);
-extern s32 rsin(s32 angle);
-extern s32 rcos(s32 angle);
 extern void EndDrawing(s32 mode);
 extern void DisposeBG(BackGround *background);
 extern void FUN_80052ea8(PersistentState *state, StageScoreResult *result);
@@ -298,7 +295,7 @@ void StageEndScreen(void)
     {
         u8 *state;
 
-        state = (u8 *)0x80010000;
+        state = (u8 *)TENCHU_PERSISTENT_STATE_ADDRESS;
         *(s32 *)(state + 0x46c) |= 1 << (item_index - 1);
         if (state[5] == 7 && state[0x5e] == 0)
         {
@@ -309,7 +306,7 @@ void StageEndScreen(void)
     init_score_stats(&stack.stats);
     score = calculate_score(&stack.stats, CHOSEN_STAGE);
     stack.current = *score;
-    *(StageScoreStats *)0x8001004c = stack.stats;
+    *(StageScoreStats *)(TENCHU_PERSISTENT_STATE_ADDRESS + 0x4c) = stack.stats;
 
     {
         StageScoreStats *base_record;
@@ -317,9 +314,10 @@ void StageEndScreen(void)
         u32 stage_offset;
         u8 *state;
 
-        state = (u8 *)0x80010000;
+        state = (u8 *)TENCHU_PERSISTENT_STATE_ADDRESS;
         character_offset = (u32)state[4] * 0x1d4;
-        stage_offset = (u32)state[5] * 0x24 + 0x80010064;
+        stage_offset = (u32)state[5] * 0x24 +
+                       TENCHU_PERSISTENT_STATE_ADDRESS + 0x64;
         base_record = (StageScoreStats *)(character_offset + stage_offset);
         record = (StageScoreStats *)((u8 *)base_record +
             (u32)state[6] * 0xc);
@@ -354,7 +352,7 @@ void StageEndScreen(void)
                 {
                     do
                     {
-                        best_x = 0x80010000;
+                        best_x = TENCHU_PERSISTENT_STATE_ADDRESS;
                     } while (0);
                 } while (0);
             } while (0);
@@ -640,7 +638,7 @@ number_1:
 
     if (D_8001005C != 0)
     {
-        dispatch = 0x80010000;
+        dispatch = TENCHU_PERSISTENT_STATE_ADDRESS;
         dispatch = *(volatile u8 *)(dispatch + 5);
         if (dispatch != 7)
         {
@@ -662,7 +660,7 @@ number_1:
             u8 *next_stage;
             u32 layout_base;
 
-            layout_base = 0x80010064;
+            layout_base = TENCHU_PERSISTENT_STATE_ADDRESS + 0x64;
             next_stage = (u8 *)D_8008EA78;
             PSTATE->stage = next_stage[StageEndNextStageOffset(
                 StageConfig[PSTATE->stage].uid)];
@@ -696,7 +694,7 @@ layout_done:
         {
             u8 *state;
 
-            state = (u8 *)0x80010000;
+            state = (u8 *)TENCHU_PERSISTENT_STATE_ADDRESS;
             state[0x48] |= 1;
         }
         break;

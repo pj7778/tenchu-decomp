@@ -72,15 +72,15 @@
  *    (weaker) name — `frames_since_animation_start`@0x2 is `count`.
  *    `some_other_x_position`/`some_other_z_position` (0x80/0x84) are
  *    item.h Humanoid's `chase[0]`/`chase[1]` under this TU's name (first
- *    function to prove chase[] through the character_state view).
+ *    function to prove chase[] through the Humanoid view).
  */
 
-extern character_state *Me_THINK_C;
+extern Humanoid *Me_THINK_C;
 extern u16 Attrib;
 extern s16 SR;
 extern s32 FRAMES_UNTIL_END_OF_ALERT;
 extern s16 turn_towards_player_(s32 x_diff, s32 z_diff);
-extern void Sound(character_state *cs, int seid);
+extern void Sound(Humanoid *cs, int seid);
 extern s16 SetNowMotion(Humanoid *human, s16 mid, s16 move);
 extern int rand(void);
 
@@ -90,14 +90,14 @@ s16 Think4abandon(void)
     s16 result;
 
     uVar4 = Attrib & 0xFFEC;
-    Me_THINK_C->some_other_z_position = 0;
-    Me_THINK_C->some_other_x_position = 0;
-    if ((Me_THINK_C->character_kind & 0xF0) == 0x80)
+    Me_THINK_C->chase[1] = 0;
+    Me_THINK_C->chase[0] = 0;
+    if ((Me_THINK_C->type & 0xF0) == 0x80)
     {
         if ((u16)(SR - 1) < 2)
         {
             Attrib = uVar4 | 2;
-            if (Me_THINK_C->something_about_current_animation->frames_since_animation_start == 0)
+            if (Me_THINK_C->motion->count == 0)
             {
                 s32 r;
 

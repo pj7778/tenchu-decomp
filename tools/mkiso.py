@@ -5,9 +5,9 @@ Rebuilds the original disc with mkpsxiso, pointing TENCHU/MAIN.EXE at our build:
   * same-size main.exe (matching build or a same-size mod): the forced-LBA layout
     reproduces the original disc byte-for-byte except main.exe's sectors — it
     boots exactly like the original;
-  * grown main.exe (from `./Build mod`): falls back to auto-LBA layout (files
-    after main.exe shift). Fine for file-name-based access; streaming assets that
-    hardcode LBAs (some movies/XA) may glitch — the game logic still runs.
+  * a larger explicitly supplied main.exe: falls back to auto-LBA layout (files
+    after main.exe shift). Packaging is supported, but the complete boot chain,
+    STR playback, and XA playback still need runtime validation for a grown image.
 
 You must provide the ORIGINAL disc (it's copyrighted). Point TENCHU_CUE at its
 .cue, or drop the .cue (+ .bin) under disks/ or ~/tenchu-iso/. The disc is dumped
@@ -76,7 +76,8 @@ def main():
         # mkpsxiso auto-packs (files after main.exe shift).
         xml = re.sub(r'\s+offs="\d+"', '', xml)
         print(f"mkiso: main.exe grew ({new_size} > {orig_size}) — using auto-LBA "
-              "layout (streaming assets that hardcode LBAs may glitch).")
+              "layout (validated by the boot smoke and check-relink-gameplay; "
+              "see docs/relocatable-build.md for the open runtime gates).")
 
     build_xml = os.path.join(WORK, "tenchu.build.xml")
     open(build_xml, "w").write(xml)

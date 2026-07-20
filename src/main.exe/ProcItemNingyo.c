@@ -68,8 +68,6 @@ extern s32 GetVectorDistance(VECTOR *v1, VECTOR *v2);
 extern void SetBleeds(VECTOR *pos, short grange, short srange, short n,
                       int time, long col);
 extern void DrawModel(ModelType *model);
-extern MATRIX *RotMatrixYXZ(SVECTOR *r, MATRIX *m);
-extern MATRIX *ScaleMatrix(MATRIX *m, VECTOR *v);
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see

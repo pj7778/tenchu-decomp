@@ -257,7 +257,7 @@ typedef struct
     u8 command;
 } TCdaStatus;
 
-#define PSTATE ((PersistentState *)0x80010000)
+#define PSTATE ((PersistentState *)TENCHU_PERSISTENT_STATE_ADDRESS)
 
 extern u8 CHOSEN_CHARACTER;
 extern u8 STAGE_LAYOUT_NUMBER;
@@ -280,7 +280,6 @@ extern void FUN_8004f6c0(s32 arg0);
 extern void StartDrawing(void);
 extern void _PlayMusic(s32 music, s32 mode);
 extern s32 CdaGetCurrentLength(void);
-extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, s32 depth);
 extern void DrawBG(BackGround *bg);
 extern void FUN_80038c0c(u8 *ot, s32 r, s32 g, s32 b);
 extern void EndDrawing(s16 sync);

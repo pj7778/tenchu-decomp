@@ -51,30 +51,14 @@
  *   it as a distinct int local from the outer long coordinate.
  */
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-    s32 rz;
-    GsCOORDINATE2 *super;
-} TViewInfo;
-
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern MATRIX GsWSMATRIX;
 extern GsSPRITE sprSplash;
 extern GsOT *OTablePt;
 extern SVECTOR D_80097A50[];
 
-extern void SetTransMatrix(MATRIX *matrix);
-extern void SetRotMatrix(MATRIX *matrix);
-extern s32 RotTransPers(SVECTOR *vector, s32 *screen, void *p, void *flag);
 extern void SetBleedsDir(VECTOR *pos, SVECTOR *vec, short grange, short n,
                          int time, long col);
-extern void GsSortSprite(GsSPRITE *sprite, GsOT *ot, int priority);
 extern void *memset(void *dst, int value, u32 size);
 
 void DrawSplash(TEffectSlot *ef)
@@ -94,17 +78,19 @@ void DrawSplash(TEffectSlot *ef)
     y = *(s32 *)&param->py;
     z = *(s32 *)&param->pz;
 
-    *(s32 *)0x1F800014 = 0;
-    *(s32 *)0x1F800018 = 0;
-    *(s32 *)0x1F80001C = 0;
-    *(s16 *)0x1F800020 = x - (s16)ViewInfo.vpx;
-    *(s16 *)0x1F800022 = y - (s16)ViewInfo.vpy;
-    *(s16 *)0x1F800024 = z - (s16)ViewInfo.vpz;
-    SetTransMatrix((MATRIX *)0x1F800000);
+    *(s32 *)TENCHU_SCRATCHPAD(0x14) = 0;
+    *(s32 *)TENCHU_SCRATCHPAD(0x18) = 0;
+    *(s32 *)TENCHU_SCRATCHPAD(0x1c) = 0;
+    *(s16 *)TENCHU_SCRATCHPAD(0x20) = x - (s16)ViewInfo.vpx;
+    *(s16 *)TENCHU_SCRATCHPAD(0x22) = y - (s16)ViewInfo.vpy;
+    *(s16 *)TENCHU_SCRATCHPAD(0x24) = z - (s16)ViewInfo.vpz;
+    SetTransMatrix((MATRIX *)TENCHU_SCRATCHPAD_ADDRESS);
     SetRotMatrix(&GsWSMATRIX);
     screenp = &screen;
-    screenp->vz = (s16)RotTransPers((SVECTOR *)0x1F800020, (s32 *)screenp,
-                                    (void *)0x1F800028, (void *)0x1F80002C);
+    screenp->vz = (s16)RotTransPers(
+        (SVECTOR *)TENCHU_SCRATCHPAD(0x20), (s32 *)screenp,
+        (void *)TENCHU_SCRATCHPAD(0x28),
+        (void *)TENCHU_SCRATCHPAD(0x2c));
     {
         s32 z;
 

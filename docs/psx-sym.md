@@ -247,6 +247,43 @@ failure mode is functions differing *only* in a masked immediate: it happily equ
 `SpuRead` and `SpuWrite`. Uniqueness on both sides plus the PSX.SYM provenance filter
 keeps that out of the proposals, but do not lower those guards.
 
+### Naming the other executables (no decompilation required)
+
+`tools/xexe.py --target menu.exe --merged-tsv reference/xexe-menu.exe.tsv`
+composes two sources for a symbol-less executable, with strict precedence:
+every main.exe function found by normalized identity is copied under **our
+current adopted name** (splat C names and `config/symbols` overlaid onto the
+Ghidra snapshot), and demo `PSX.EXE` names only fill target ranges no main.exe
+function claims. Same-span name disagreements are printed for review, never
+resolved silently — the residual list is exactly the `SpuRead`/`SpuWrite`
+class plus boricj-propagation variants. Demo rows carry a
+`psxsym`/`ghidra` provenance column; `DEAD_*`/`FUN_*`/`LAB_*` demo rows are
+discarded as information-free.
+
+The committed tables (`reference/xexe-menu.exe.tsv`, 636 rows;
+`reference/xexe-ending.exe.tsv`, 654 rows) name the shared engine/SDK core
+plus demo-only helpers such as the `St*` CD-stream ring API and the
+`GsTMDfast*` renderers.
+
+Evolved bodies that resist identity go through `--place-by-calls`, a
+`callmatch`-style pass run after composition: candidate function starts come
+from the target's own `jal` graph (extents capped at the next known start;
+data-word false starts self-filter below the three-distinct-named-callees
+threshold), demo callee multisets are restricted to names the target side
+already knows, and the search iterates to a fixpoint so each accepted
+placement widens the vocabulary — the OPMOVIE.C family names its own
+siblings. Two tiers: `calls-exact` is callmatch's unique-multiset rule;
+`calls-contain` additionally bounds extra calls and size gap, rejects
+Pareto-dominated fits, and rejects candidates that a second demo signature
+also fits (the historical `SetCDVolume`/`InitSoundEffect` coin flip is
+dropped as contested, not guessed). This placed `open_stream`,
+`close_stream`, and `strInit` in both MENU.EXE and ENDING.EXE — the
+OPMOVIE.C movie-player entry points the runtime movie gate needs — plus
+`ComPad`/`SetupSoundEffect` in ENDING.EXE and a solid `InitGraphicsSystem`
+containment in both. `Opening`/`PutMoji`/`strNext` remain unplaced: their
+remaining callees stay below the evidence threshold, honest ground for a
+future pass once more anchors exist.
+
 ### Verify before you adopt
 
 ```console

@@ -21,7 +21,7 @@
  * tables in the same .rodata pool (0x800147xx).
  */
 
-typedef struct { debug_menu_choice e[11]; } MENU_STAGE_TBL;   /* 0x58 */
+typedef struct { TAdtSelect e[11]; } MENU_STAGE_TBL;   /* 0x58 */
 
 /* init_score_stats' scratch/output (byte fields + a capped-GameClock word). */
 typedef struct
@@ -47,7 +47,7 @@ typedef struct
     u16 grade;    /* 0xA */
 } ScoreResult;    /* 0xC */
 
-#define PSTATE ((PersistentState *)0x80010000)
+#define PSTATE ((PersistentState *)TENCHU_PERSISTENT_STATE_ADDRESS)
 
 extern MENU_STAGE_TBL DEBUG_MENU_STAGE_OPTIONS;
 extern char D_80014648[];  /* "stage option" (AdtSelect title) */
@@ -60,7 +60,7 @@ extern u8 STAGE_LAYOUT_NUMBER;
 extern u8 CHOSEN_LANGUAGE;
 extern u32 SystemFlag; /* gp-relative — defined by this TU */
 
-extern s32 AdtSelect(char *title, debug_menu_choice *menu, s32 mode);
+extern s32 AdtSelect(char *title, TAdtSelect *menu, s32 mode);
 extern void StageEndScreen(void);
 extern void SelectStage(PersistentState *ps);
 extern void FUN_8004f6c0(s32 arg);

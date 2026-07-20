@@ -64,6 +64,52 @@ CATEGORIES = [
     ("sdk", "PsyQ SDK (LIBCD/LIBSPU/CRT...)"),
 ]
 
+# Scaffolded sibling executables: one progress category each, so per-exe
+# progress is visible the moment functions start matching. Reported only
+# when the committed per-target inventory exists.
+EXTRA_TARGETS = [
+    ("menu", "MENU.EXE", "menu.exe"),
+    ("ending", "ENDING.EXE", "ending.exe"),
+    ("trial", "TRIAL.EXE (Mission Editor)", "trial.exe"),
+]
+
+
+def load_target_units(target: str):
+    """[(addr, size, name)], matched addr set, and addr->cfile for one
+    scaffolded executable, using the same carved-and-no-INCLUDE_ASM rule as
+    main.exe."""
+    tsv = f"config/functions.{target}.tsv"
+    if not os.path.exists(tsv):
+        return None
+    funcs = []
+    for line in open(tsv):
+        if line.startswith("#"):
+            continue
+        addr, size, name = line.rstrip("\n").split("\t")
+        funcs.append((int(addr, 16), int(size), name))
+    sym_addr = {}
+    for line in open(f"config/symbols.{target}.txt"):
+        m = re.match(r"([A-Za-z_$][\w$]*)\s*=\s*(0x[0-9A-Fa-f]+)\s*;", line)
+        if m:
+            sym_addr[m.group(1)] = int(m.group(2), 16)
+    for addr, _size, name in funcs:      # FUN_ stubs are not in the symbols file
+        sym_addr.setdefault(name, addr)
+    carved = set(re.findall(r"^\s+- \[0x[0-9A-Fa-f]+,\s*c,\s*(\S+)\]",
+                            open(f"config/splat.{target}.yaml").read(), re.M))
+    src = f"src/{target}"
+    matched_addrs, addr_to_cfile = set(), {}
+    if os.path.isdir(src):
+        for f in sorted(os.listdir(src)):
+            name = f[:-2]
+            if not f.endswith(".c") or name not in carved or name not in sym_addr:
+                continue
+            if re.search(r"^\s*INCLUDE_ASM",
+                         open(os.path.join(src, f)).read(), re.M):
+                continue
+            matched_addrs.add(sym_addr[name])
+            addr_to_cfile[sym_addr[name]] = f"{src}/{f}"
+    return funcs, matched_addrs, addr_to_cfile
+
 
 def resolve_inventory(explicit):
     """Pick a function inventory without mutating the reviewed snapshot."""
@@ -180,13 +226,17 @@ def measures(total_code, matched_code, fuzzy_weight, complete_code, total_funcs,
     return m
 
 
-def build_report(funcs, matched_addrs, addr_to_cfile, fuzzy_by_addr, include_sdk):
+def build_report(funcs, matched_addrs, addr_to_cfile, fuzzy_by_addr, include_sdk,
+                 extra_targets=()):
     units = []
     # accumulator: [total_code, matched_code, fuzzy_weight, complete_code,
     #               total_funcs, matched_funcs, total_units, complete_units]
     # matched_code sums the per-unit ROUNDED bytes, and fuzzy_weight sums
     # fuzzy·size, so each aggregate is the exact sum of its units.
-    acc = {cid: [0, 0, 0.0, 0, 0, 0, 0, 0] for cid, _ in CATEGORIES}
+    all_categories = list(CATEGORIES) + [
+        (cid, cname) for cid, cname, _target, _data in extra_targets
+    ]
+    acc = {cid: [0, 0, 0.0, 0, 0, 0, 0, 0] for cid, _ in all_categories}
     tot = [0, 0, 0.0, 0, 0, 0, 0, 0]
 
     for addr, size, name in funcs:
@@ -235,8 +285,44 @@ def build_report(funcs, matched_addrs, addr_to_cfile, fuzzy_by_addr, include_sdk
             "metadata": meta,
         })
 
+    for cid, _cname, target, data in extra_targets:
+        t_funcs, t_matched, t_cfiles = data
+        for addr, size, name in t_funcs:
+            complete = 1 if addr in t_matched else 0
+            matched_code = size if complete else 0
+            for bucket in (acc[cid], tot):
+                bucket[0] += size
+                bucket[1] += matched_code
+                bucket[2] += (100.0 if complete else 0.0) * size
+                bucket[3] += matched_code
+                bucket[4] += 1
+                bucket[5] += complete
+                bucket[6] += 1
+                bucket[7] += complete
+            meta = {
+                "complete": bool(complete),
+                "progress_categories": [cid],
+                "auto_generated": False,
+            }
+            if addr in t_cfiles:
+                meta["source_path"] = t_cfiles[addr]
+            units.append({
+                "name": f"{target}/{name}",
+                "measures": measures(size, matched_code,
+                                     (100.0 if complete else 0.0) * size,
+                                     matched_code, 1, complete, 1, complete),
+                "sections": [],
+                "functions": [{
+                    "name": name,
+                    "size": str(size),
+                    "fuzzy_match_percent": 100.0 if complete else 0.0,
+                    "address": str(addr),
+                }],
+                "metadata": meta,
+            })
+
     categories = []
-    for cid, cname in CATEGORIES:
+    for cid, cname in all_categories:
         a = acc[cid]
         if a[4] == 0:  # no units (total_functions) in this category (e.g. sdk omitted)
             continue
@@ -269,8 +355,13 @@ def main():
     fuzzy_by_addr, fuzzy_src = ({}, {}) if args.no_fuzzy else load_fuzzy(sym_addr)
     # A matched (byte-exact) .c wins over a draft .c at the same address.
     source_by_addr = {**fuzzy_src, **addr_to_cfile}
+    extra_targets = []
+    for cid, cname, target in EXTRA_TARGETS:
+        data = load_target_units(target)
+        if data is not None:
+            extra_targets.append((cid, cname, target, data))
     report = build_report(funcs, matched_addrs, source_by_addr, fuzzy_by_addr,
-                          args.include_sdk)
+                          args.include_sdk, extra_targets)
 
     text = json.dumps(report, indent=1)
     if args.stdout:
@@ -280,20 +371,39 @@ def main():
         with open(args.out, "w") as fh:
             fh.write(text)
 
+    # Per-binary breakdown, then the total: categories map 1:1 onto
+    # binaries except main.exe, whose game/sdk split stays visible.
+    labels = {
+        "game": "main.exe (game)",
+        "sdk": "main.exe (sdk)",
+    }
+    labels.update({cid: target for cid, _, target, _ in extra_targets})
+    partials = {}
+    for unit in report["units"]:
+        if 0.0 < unit["functions"][0]["fuzzy_match_percent"] < 100.0:
+            for cid in unit["metadata"]["progress_categories"]:
+                partials[cid] = partials.get(cid, 0) + 1
+
+    def line(label, m, partial):
+        total_code = int(m.get("total_code", 0))
+        complete_code = int(m.get("complete_code", 0))
+        pct = 100.0 * complete_code / total_code if total_code else 0.0
+        fuzzy = 100.0 * int(m.get("matched_code", 0)) / total_code \
+            if total_code else 0.0
+        extra = f", fuzzy {fuzzy:.2f}% (+{partial} partial)" if partial else ""
+        funcs = (f"{m.get('matched_functions', 0)}/"
+                 f"{m.get('total_functions', 0)}")
+        code = f"{complete_code}/{total_code}B"
+        return f"  {label:<18} {funcs:>9} funcs  {code:>17} = {pct:6.2f}%{extra}"
+
+    for category in report["categories"]:
+        cid = category["id"]
+        print(line(labels.get(cid, cid), category["measures"],
+                   partials.get(cid, 0)), file=sys.stderr)
     tm = report["measures"]
-    tc = int(tm.get("total_code", 0))
-    mc = int(tm.get("matched_code", 0))          # fuzzy-weighted
-    cc = int(tm.get("complete_code", 0))          # byte-exact
-    fpct = 100.0 * mc / tc if tc else 0.0
-    cpct = 100.0 * cc / tc if tc else 0.0
-    scope = "game+sdk" if args.include_sdk else "game"
-    npart = sum(1 for u in report["units"]
-                if 0.0 < u["functions"][0]["fuzzy_match_percent"] < 100.0)
-    print(f"report ({scope}): {len(report['units'])} units, "
-          f"complete {tm.get('matched_functions', 0)}/{tm.get('total_functions', 0)} funcs "
-          f"({cc}/{tc}B = {cpct:.2f}%), fuzzy {fpct:.2f}% "
-          f"(+{npart} partial) -> {'stdout' if args.stdout else args.out}",
-          file=sys.stderr)
+    print(line("total", tm, sum(partials.values())), file=sys.stderr)
+    print(f"report: {len(report['units'])} units -> "
+          f"{'stdout' if args.stdout else args.out}", file=sys.stderr)
 
 
 if __name__ == "__main__":

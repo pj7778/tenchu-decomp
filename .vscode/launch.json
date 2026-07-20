@@ -1,0 +1,86 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Attach: PCSX-Redux (main.exe / exact)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/.shake/build/tenchu/main.exe.elf",
+            "cwd": "${workspaceFolder}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "${workspaceFolder}/tools/mips-gdb",
+            "miDebuggerServerAddress": "localhost:3333",
+            "stopAtConnect": true,
+            "externalConsole": false,
+            "setupCommands": [
+                {
+                    "text": "set architecture mips:3000"
+                },
+                {
+                    "text": "set sysroot none"
+                },
+                {
+                    "text": "source ${workspaceFolder}/.shake/build/tenchu/main.exe.debug.gdb",
+                    "description": "load per-function C source line info (main.exe.debug.gdb); run ./Build debug-gdb[-relink] first"
+                }
+            ],
+            "logging": {
+                "engineLogging": false
+            }
+        },
+        {
+            "name": "Attach: PCSX-Redux (main_relink.exe / relink)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/.shake/build/tenchu/main_relink.exe.elf",
+            "cwd": "${workspaceFolder}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "${workspaceFolder}/tools/mips-gdb",
+            "miDebuggerServerAddress": "localhost:3333",
+            "stopAtConnect": true,
+            "externalConsole": false,
+            "setupCommands": [
+                {
+                    "text": "set architecture mips:3000"
+                },
+                {
+                    "text": "set sysroot none"
+                },
+                {
+                    "text": "source ${workspaceFolder}/.shake/build/tenchu/main_relink.exe.debug.gdb",
+                    "description": "load per-function C source line info (main_relink.exe.debug.gdb); run ./Build debug-gdb[-relink] first"
+                }
+            ],
+            "logging": {
+                "engineLogging": false
+            }
+        },
+        {
+            "name": "Attach: PCSX-Redux (main_mod.exe / same-slot mod)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/.shake/build/tenchu/main.exe.elf",
+            "cwd": "${workspaceFolder}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "${workspaceFolder}/tools/mips-gdb",
+            "miDebuggerServerAddress": "localhost:3333",
+            "stopAtConnect": true,
+            "externalConsole": false,
+            "setupCommands": [
+                {
+                    "text": "set architecture mips:3000"
+                },
+                {
+                    "text": "set sysroot none"
+                },
+                {
+                    "text": "source ${workspaceFolder}/.shake/build/tenchu/main.exe.debug.gdb",
+                    "description": "load per-function C source line info (main.exe.debug.gdb); run ./Build debug-gdb[-relink] first"
+                }
+            ],
+            "logging": {
+                "engineLogging": false
+            }
+        }
+    ]
+}

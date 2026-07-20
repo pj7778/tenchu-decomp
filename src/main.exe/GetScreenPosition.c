@@ -40,7 +40,7 @@
  * written to arg3's second word (`arg3[1]`, i.e. +4 bytes) — identical tail
  * to the twin.
  *
- * ViewInfo.vpx/vpy/vpz: item.h-style proven TViewInfo fields (s32, matching
+ * ViewInfo.vpx/vpy/vpz: canonical GsRVIEW2 `long` fields (s32 on PsyQ,
  * Ghidra's own independently-built GsRVIEW2 — see ReqItemDefault.c/
  * GetScreenPositionS.c). SetTransMatrix/SetRotMatrix each take a single MATRIX*
  * (PrepareGetScreenPositionS.c proves both signatures); the OTHER a-registers still
@@ -57,26 +57,13 @@
  *    GetScreenPositionS.c precedent).
  */
 
-typedef struct
-{
-    s32 vpx;
-    s32 vpy;
-    s32 vpz;
-    s32 vrx;
-    s32 vry;
-    s32 vrz;
-} TViewInfo;
-
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern MATRIX GsWSMATRIX;
-extern void SetTransMatrix(MATRIX *m);
-extern void SetRotMatrix(MATRIX *m);
-extern s32 RotTransPers(SVECTOR *v0, s32 *sxy, void *p, void *flg);
 
 void GetScreenPosition(s32 x, s32 y, s32 z, SVECTOR *scr)
 {
-    MATRIX *m = (MATRIX *)0x1F800000;
-    SVECTOR *sv = (SVECTOR *)0x1F800020;
+    MATRIX *m = (MATRIX *)TENCHU_SCRATCHPAD_ADDRESS;
+    SVECTOR *sv = (SVECTOR *)TENCHU_SCRATCHPAD(0x20);
 
     m->t[0] = 0;
     m->t[1] = 0;
@@ -86,5 +73,7 @@ void GetScreenPosition(s32 x, s32 y, s32 z, SVECTOR *scr)
     sv->vz = z - (short)ViewInfo.vpz;
     SetTransMatrix(m);
     SetRotMatrix(&GsWSMATRIX);
-    scr->vz = RotTransPers(sv, (s32 *)scr, (void *)0x1F800028, (void *)0x1F80002C);
+    scr->vz = RotTransPers(sv, (s32 *)scr,
+                           (void *)TENCHU_SCRATCHPAD(0x28),
+                           (void *)TENCHU_SCRATCHPAD(0x2c));
 }

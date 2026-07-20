@@ -140,8 +140,6 @@ extern void GetMoveSpeed(SVECTOR *vect, s16 ry, s16 order, s16 side);
 extern s16 SetNowMotion(Humanoid *human, s16 mid, s16 move);
 extern void SetCameraMode(s32 mode);
 extern s16 Sound(Humanoid *human, s16 id);
-extern s32 rsin(s32 angle);
-extern s32 rcos(s32 angle);
 extern int ReqItemMakibishi(PARAM_ITEM_USE *item);
 extern int ReqItemFire(PARAM_ITEM_USE *item);
 extern int ReqItemSmoke(PARAM_ITEM_USE *item);

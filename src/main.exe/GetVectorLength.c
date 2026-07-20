@@ -54,7 +54,6 @@
  *    in place instead produces a shorter, wrong-shaped `addiu` with no
  *    delay-slot move.
  */
-extern s32 SquareRoot0(s32 x);
 extern long abs(long x);
 
 long GetVectorLength(long dx, long dy, long dz)

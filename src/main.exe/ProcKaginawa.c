@@ -78,12 +78,6 @@
 
 typedef struct
 {
-    s32 vpx, vpy, vpz;           /* 0x00 */
-    s32 vrx, vry, vrz;           /* 0x0C */
-} TViewInfo;
-
-typedef struct
-{
     VECTOR TargetVector;         /* 0x00 */
     Humanoid *Owner;             /* 0x10 */
     s32 Mode;                    /* 0x14 */
@@ -98,11 +92,10 @@ extern void RotateVector(VECTOR *vec, int rx, int ry, int rz);
 extern s32 FUN_80039ddc(VECTOR *from, VECTOR *to, VECTOR *out, u32 flag);
 extern s32 GetVectorDistance(VECTOR *a, VECTOR *b);
 extern void SetCameraMode(int mode);
-extern void GsSortSprite(GsSPRITE *sp, GsOT *ot, int pri);
 extern GsOT *OTablePt;
 extern GsSPRITE TargetSprite;
 extern TCameraStatus CamState;
-extern TViewInfo ViewInfo;
+extern GsRVIEW2 ViewInfo;
 extern VECTOR D_80012238;
 
 void ProcKaginawa(tag_TItem *item)

@@ -41,6 +41,18 @@
  *    directly above it; reorg fills that slot every time — our build does exactly
  *    that, which is the whole 4-byte length difference. No C makes cc1 decline.
  *
+ * COMPILER-PROVENANCE CHALLENGE (2026-07-19). The natural three-temp body was
+ * compiled with every locally available Sony/MIPS backend: GCC 2.6.3, 2.7.2,
+ * 2.8.0, 2.8.1, 2.91.66 and 2.95.2, plus the narrowly patched 2.8.1 backend that
+ * reproduces GS_107.OBJ's block-move delay slot. The first four and the patched
+ * backend all emit the same v1/a0/a1 homes shown above; the two newer compilers
+ * use v1/a2/a3. Every optimized backend fills the final store into `jr ra`, and
+ * none uses t0/t1/t2. With 2.8.1, -O1 and -O2 agree; -O0 instead spills the
+ * arguments and all three locals to a frame. The even more obvious direct-field
+ * spelling (`m->t[0] = v->vx;` etc.) interleaves each load with its store. Thus
+ * neither a stock SDK compiler revision, optimization level, the GS_107 backend
+ * quirk, nor the two ordinary human spellings explains the target.
+ *
  * SCOPE OF THIS CLAIM — read this before citing the file. The two tells above are
  * measured and they are about THIS FUNCTION. They do NOT establish a class. It is
  * tempting to say "PsyQ's libgte primitives were hand-written assembly, so the

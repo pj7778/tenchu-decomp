@@ -96,7 +96,6 @@ extern s32 D_80097F1C;
 extern u8 D_80010058;
 
 extern s16 GetDirection(s32 dx, s32 dz, s16 roty);
-extern s32 SquareRoot0(s32 value);
 extern s16 SearchTarget(Humanoid *human, s32 *distance, s16 *degree);
 extern void GetMoveSpeed(SVECTOR *vect, s16 ry, s16 order, s16 side);
 extern s32 GetAreaMapLevel(u32 *area, s32 x, s32 y, s32 z, u16 mode);

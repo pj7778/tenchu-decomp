@@ -88,14 +88,6 @@ extern ModelType *D_80097F34;
 extern VECTOR *GetAbsolutePosition(ModelType *model, s32 x, s32 y, s32 z);
 extern void FUN_80037e0c(Humanoid *human, s32 mode);
 extern void DrawSplash(TEffectSlot *ef);
-extern MATRIX *RotMatrixYXZ(SVECTOR *rotation, MATRIX *matrix);
-extern MATRIX *ScaleMatrix(MATRIX *matrix, VECTOR *scale);
-extern void GsGetLs(GsCOORDINATE2 *coord, MATRIX *matrix);
-extern void GsSetLsMatrix(MATRIX *matrix);
-extern s32 RotTransPers(SVECTOR *vector, s32 *screen, s32 *p, s32 *flag);
-extern void GsSortObject4(GsDOBJ2 *object, GsOT *ot, s32 priority,
-                          u_long *scratch);
-
 void DrawShadow(Humanoid *human)
 {
     VECTOR scale;
@@ -238,7 +230,7 @@ void DrawShadow(Humanoid *human)
         if ((depth << 16) >> 18 < 0x4e2)
         {
             GsSortObject4(&D_80097F34->object, OTablePt, 2,
-                          (u_long *)0x1f800000);
+                          (u_long *)TENCHU_SCRATCHPAD_ADDRESS);
         }
     }
 }

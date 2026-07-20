@@ -44,8 +44,6 @@
  * the branch delay slot. The former separate idx/sentinel/value scaffold was
  * the cause of the apparent 10-byte floor.
  */
-extern s32 SquareRoot0(s32 val);
-extern s32 ratan2(s32 y, s32 x);
 
 short ControlTraceLine(Humanoid *human)
 {

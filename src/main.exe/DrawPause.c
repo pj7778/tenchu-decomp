@@ -83,7 +83,6 @@ extern u32 SystemFlag;
 
 extern GsIMAGE *GetImage(s32 id);
 extern void SetupImageToPolyGT4(GsIMAGE *image, void *quad, s32 w, s32 h);
-extern s32 rsin(s32 a);
 
 void DrawPause(int frame)
 {

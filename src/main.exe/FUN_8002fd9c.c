@@ -32,9 +32,6 @@ typedef struct
     s16 division;
 } CameraAreaNode;
 
-extern s32 rsin(s32 angle);
-extern s32 rcos(s32 angle);
-extern s32 ratan2(s32 y, s32 x);
 
 s32 FUN_8002fd9c(Humanoid *human)
 {

@@ -2,7 +2,9 @@
 
 > **Status: maspsx is integrated.** The pipeline is `cpp | object-profile cc1
 > -G8 | maspsx --aspsx-version=2.77 -G8 | as -G0 | ld`: GCC 2.8.1 is the
-> default, and the reused ADT object selects GCC 2.8.0. wine has been removed
+> default, the proven GS_106/110/111 wrapper objects select GCC 2.7.2, the
+> reused ADT object selects GCC 2.8.0, and GS_107.OBJ selects the reconstructed
+> GS_107 libgs backend described below. wine has been removed
 > from the devShell. `./Build check` stays byte-identical. The "Recipe" section
 > below is kept as the rationale/record.
 
@@ -16,7 +18,7 @@ decomp uses (SOTN, Silent Hill, MediEvil, Soul Reaver, Croc, Spyro):
 
 | PSY-Q tool (path A, needs wine/DOS) | This repo (path B, native Linux) |
 |---|---|
-| `CC1PSX.EXE` (compiler)             | `cc1-281` by default; `cc1-280` for the reused ADT object (both nix-pinned) |
+| `CC1PSX.EXE` (compiler)             | `cc1-281` by default; nix-pinned original-object profiles for GS_106/110/111, ADT, and GS_107 |
 | `ASPSX.EXE` + `psyq-obj-parser`     | **maspsx** + `mipsel-…-as`  ← missing piece |
 | `PSYLINK`                           | `mipsel-…-ld` + `main.exe.ld` |
 
@@ -101,6 +103,136 @@ huge-frame `lw a3,0(a3)` self-tie. 2.8.1 unconditionally retypes that case to
 `RELOAD_FOR_OPERAND_ADDRESS`, whose shared conflict bit forces a second reload
 register. This supersedes the earlier conclusion that the human indexed loop
 was unreachable.
+
+### GS_106/110/111/113/121/122: stock GCC 2.7.2
+
+`GS_106.OBJ`, `GS_110.OBJ`, `GS_111.OBJ`, `GS_113.OBJ`, `GS_121.OBJ`, and
+`GS_122.OBJ`
+select the pinned `cc1-272` profile. These are original-object attributions,
+despite each object having one public member: running PsyQ's Win32
+`PSYLIB.EXE` under nixpkgs `wibo` lists only `GsSetProjection`,
+`GsSetAmbient`, `GsDrawOt`, `GsClearOt`, `gte_init`, and `GsGetTimInfo`
+respectively, and extracting each complete object produces the same text as
+Tenchu. Their natural sources are ordinary projection, ambient-light,
+ordering-table, geometry-init, and TIM-image operations. In particular,
+`GsClearOt` stores `offset` and `point`, computes
+`ot->org + (1 << ot->length) - 1`, and calls `ClearOTagR` with the same
+power-of-two length. `GsGetTimInfo` follows the TIM block lengths directly with
+`pixel = image + (*image >> 2)` and copies the two optional CLUT and pixel
+rectangles through the canonical `GsIMAGE` fields.
+
+Released GCC 2.8.x fills `GsClearOt`'s `jr $ra` delay slot with the stack
+adjustment and reuses the first length load; GCC 2.7.2's RTL keeps the target's
+second length load. The normal maspsx 2.77 pipeline emits the extracted
+objects' exact return sequences, including `GsGetTimInfo`'s local return label.
+`gte_init` is the direct SDK initializer: `InitGeom`, zero far colour and
+geometry offset, then clear `GsORGOFSY` and `GsORGOFSX` in that order.
+
+This does not infer a compiler from archive adjacency: both the actual object
+bytes and the compiler's debug output were checked. All six objects are
+enumerated separately and completely in the profile oracle, and receive no
+exceptional flags.
+The dev shell includes nixpkgs `wibo` for compatible original Win32 archive
+tools such as PSYLIB and ASPSX; the PsyQ 4.5 `CC1PSX.EXE` currently aborts under
+wibo, so the deterministic native reconstructed compilers remain the build
+path.
+
+### GS_119.OBJ: default GCC 2.8.x profile
+
+PsyQ 4.3, 4.4, 4.5, and 4.6 contain an identical `GS_119.OBJ`. It has one
+public member, `gte_rotate_z_matrix`, three call relocations, and `0xC0` bytes
+of text: a `0xB4`-byte function followed by three alignment words. Linking the
+converted complete object at Tenchu's addresses reproduces all `0xC0` bytes.
+
+The matching source computes sine and cosine from `angle / 360`, fills a local
+`MATRIX` as an ordinary row-major Z rotation when the angle is nonzero, then
+calls `MulMatrix`. That human ordering is codegen-significant: rewriting the
+assignments in disassembly store order removes the live sine copy and produces
+a shorter nonmatch. Both GCC 2.8.0 and the default GCC 2.8.1 emit all `0xB4`
+function bytes exactly; GCC 2.7.2 uses the older empty return-delay-slot
+epilogue. The complete object therefore stays on the default compiler with no
+exceptional flags.
+
+### GS_123.OBJ: stock GCC 2.7.2 with signed `char`
+
+`GS_123.OBJ` has one public member, `Gssub_make_matrix`, plus private switch
+labels, a 35-entry jump table, and alignment padding. The converted object's
+relocation-normalised `.text` and `.rdata` are identical to Tenchu. Its natural
+source copies `GsIDMATRIX`, then switches on `X`/`Y`/`Z` (and lowercase) to
+replace the appropriate sine/cosine matrix elements.
+
+This complete object selects `cc1-272` and `-fsigned-char`. The latter undoes
+the game's global `-funsigned-char`; it represents the stock compiler's normal
+signed-`char` semantics for this vendor source file, not a function-specific
+tuning flag. With an ordinary `char axis`, compiler RTL performs the target's
+in-place sign extension before the switch. GCC 2.7.2 then emits all 200 text
+bytes and 140 jump-table bytes exactly. GCC 2.8.1 changes the block-copy
+registers, table-base materialisation, and shared-return branches, leaving 117
+differing bytes despite identical semantics.
+
+### GS_105.OBJ and GS_125.OBJ: compiler-invariant default profiles
+
+PsyQ 4.5's `GS_105.OBJ` has one public member, `GsMapModelingData`, and its
+complete relocation-free 0x70-byte text is byte-identical to Tenchu. The
+natural implementation marks the TMD header as mapped, takes the object count
+with `count = *model++`, and rebases the canonical `TMD_STRUCT` vertex, normal,
+and primitive pointers. GCC 2.7.2, 2.8.0, and 2.8.1 all emit the same symbolic
+instruction stream for this source, so the object stays on the default compiler
+with no exceptional flags.
+
+PsyQ 4.5's `GS_125.OBJ` has one public member, `GsGetWorkBase`, and its complete
+16-byte text is byte-identical to Tenchu after relocation. The natural
+`return GsOUT_PACKET_P;` source produces the same four instructions with both
+GCC 2.7.2 and 2.8.1; their debug output has the same symbolic load followed by
+the return. The object therefore stays on the default compiler with no
+exceptional flags. It is still enumerated as a complete original object so a
+future option cannot accidentally become function-specific tuning.
+
+### GS_107.OBJ: reconstructed libgs backend
+
+The stock libgs object `GS_107.OBJ` selects `cc1-281-gs107`, a GCC 2.8.1 build
+with two minimal, measured MIPS backend changes. Its block-move delay-slot split
+accepts `address_operand` for both BLK addresses instead of requiring
+`register_operand`. Its RA-only epilogue places the stack adjustment before the
+backend blockage, filling the `$ra` load delay and leaving the return slot
+empty. The Nix derivation pins upstream GCC 2.8.1, the
+decompals/old-gcc 0.17 PSX patch set at commit
+`b74211c9d959e9724802f3177c8229cd67202c87`, and the
+[complete local delta](../nix/gcc-2.8.1-gs107-backend.patch).
+
+This is a backend reconstruction from compiler evidence, not a claim that the
+patch is the exact historical Sony source. The released consumer 2.8.1
+compiler keeps each natural 32-byte `MATRIX` assignment as one
+`movstrsi_internal` with a symbolic address. In the delay-slot dump, reorg
+reports one instruction needing a slot and zero filled slots: its own split
+rejects the symbolic BLK address. Changing only those two predicates makes reorg
+split the final store and produces the target's exact 3+3+2 load/store batches.
+It independently closes both symmetric helpers from ordinary human C:
+
+- `GS_107_OBJ_4B8`: `_LC = *m; SetColorMatrix(m);`, with the final store in the
+  `jal SetColorMatrix` delay slot.
+- `GS_107_OBJ_51C`: `*m = _LC;`, with the final store in the `jr ra` delay slot.
+
+The epilogue delta is independently visible before reorg: 4B8's sched2 RTL is
+already `lw ra; addiu sp; return`, but the released backend moves the stack
+adjustment into the return delay slot and its final printer must then insert a
+load-delay `nop`. Across the linked executable, the target's
+`lw ra; addiu sp; jr; nop` signature occurs 98 times in the SDK region (plus
+SDK-style `DrawTMD`), while all 63 instances of the released compiler's
+`lw ra; nop; jr; addiu sp` signature are in game code. This is not a blanket
+empty-return-slot rule: `GsSetFlatLight`, in the same object, saves `s0..s4` and
+correctly retains its stack adjustment in the `jr` delay slot. The reconstructed
+backend therefore changes the order only for RA-only frames.
+
+The source and destination cases matching independently is the guard against a
+one-function coincidence. The stock object is also identical in the PsyQ 4.5
+and 4.6 archives even though those kits place it beside different released cc1
+binaries, so archive adjacency cannot identify the internal compiler that built
+the library. The build therefore applies the variant only through the complete
+`GS_107.OBJ` profile (`GsSetFlatLight`, `GS_107_OBJ_444`,
+`GS_107_OBJ_4B8`, and `GS_107_OBJ_51C`). Tests forbid direct function names in
+the compiler oracle; future C carves inherit the same object attribution
+automatically.
 
 ## Recipe: add maspsx to the pipeline (done — kept as the record)
 

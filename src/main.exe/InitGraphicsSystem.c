@@ -1,6 +1,7 @@
 #include "common.h"
 #include "main.exe.h"
 #include "item.h"
+#include <psxsdk/libgpu.h>
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -53,7 +54,7 @@ extern void UpdateCoordinate(ModelType *dim);
 extern GsFOGPARAM Fog;
 extern GsRVIEW2 ViewInfo;
 extern GsOT OTable[2];
-extern struct GsOT_TAG ZSortTable[2][2048];
+extern GsOT_TAG ZSortTable[2][2048];
 extern s32 DrawTMDmode;
 extern s32 DepthPoint;
 extern s32 SlightPoint;
@@ -71,19 +72,9 @@ extern s32 SlightPoint;
  * read-modified-and-reread across a call wants a raw address literal, not
  * a named extern").
  */
-#define STARTING_RNG_SEED (*(s32 *)0x80010e70)
+#define STARTING_RNG_SEED (*(s32 *)TENCHU_PERSISTENT_RNG_ADDRESS)
 
-extern void SetDispMask(s32 mask);
-extern void GsInitGraph(s32 w, s32 h, s32 mode, s32 dith, s32 mask);
-extern void GsDefDispBuff(s32 x0, s32 y0, s32 x1, s32 y1);
-extern void GsInit3D(void);
-extern void GsInitCoordinate2(GsCOORDINATE2 *super, GsCOORDINATE2 *base);
 extern void SetDepthQ(s32 dqa, s32 dqb);
-extern void GsSetFogParam(GsFOGPARAM *fog);
-extern void GsSetLightMode(s32 mode);
-extern void GsSetAmbient(s32 r, s32 g, s32 b);
-extern void GsSetProjection(s32 dist);
-extern void GsSetRefView2(GsRVIEW2 *view);
 extern void GsSetNearClip(s32 near);
 extern void AdtFntLoad(int tx, int ty);
 extern void AdtFntOpen(int x, int y, int w, int h, int isbg, int n);

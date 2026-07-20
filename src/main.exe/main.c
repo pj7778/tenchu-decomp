@@ -1,6 +1,7 @@
 #include "common.h"
 #include "main.exe.h"
 #include "item.h"
+#include <psxsdk/libgpu.h>
 
 /* BEGIN PSX.SYM — the original source's own facts, from the demo disc's
  * debug symbols. Regenerate with `tools/symnote.py --write`; see
@@ -113,8 +114,6 @@ extern void update_something_for_each_visible_enemy_(void);
 extern u32 GetPad(s32 port);
 extern void *vgetfreesize(void);
 extern void *vgetmaxsize(void);
-extern void FntPrint(char *fmt, ...);
-extern void FntFlush(s32 id);
 extern void EndDrawing(s32 mode);
 
 int main(void)
@@ -144,7 +143,7 @@ int main(void)
     InitSoundEffect();
     DemoPatchInit();
     InitPersistentState();
-    ps = (PersistentState *)0x80010000;
+    ps = (PersistentState *)TENCHU_PERSISTENT_STATE_ADDRESS;
     D_800976F6 = ps->field_0x5f[0];
     CreateStage(ps->stage, ps->chr);
     FUN_8001b4bc();
@@ -186,4 +185,3 @@ int main(void)
         EndDrawing(-2);
     } while (1);
 }
-

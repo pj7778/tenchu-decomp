@@ -36,7 +36,7 @@
  *
  * Humanoid's weapon[4] array (equipped melee/ranged ornaments — reference/
  * ghidra_types.h's fuller independently-built Humanoid struct, "right/left
- * active + right/left inactive" per game_types.h's character_state sibling
+ * active + right/left inactive" per game_types.h's Humanoid sibling
  * comment) was hidden inside item.h's opaque pad2b span; extended item.h
  * to reveal it (report: item.h's Humanoid.pad2b[0x34]@0x78 split into
  * pad2b[0x1C]@0x78 + weapon[4]@0x94 + illusion[2]@0xA4, matching

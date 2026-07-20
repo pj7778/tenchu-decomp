@@ -8,7 +8,7 @@ import qualified Data.Aeson as A
 import Data.Binary (Binary)
 import Data.Functor ((<&>))
 import Data.Hashable (Hashable)
-import Data.List (sort)
+import Data.List (intercalate, isPrefixOf, sort)
 import qualified Data.Set as Set
 import qualified Data.UUID as UUID
 import Data.UUID.V4 (nextRandom)
@@ -37,6 +37,16 @@ mainGen = genDir </> "main.exe.done"
 configDir :: FilePath
 configDir = "config"
 
+ramLayoutHeader, ramLayoutTool :: FilePath
+ramLayoutHeader = srcDir </> "main.exe" </> "ram_layout.h"
+ramLayoutTool = "tools" </> "ram_layout.py"
+
+ramLayoutValue :: String -> Action String
+ramLayoutValue field = do
+  need [ramLayoutTool, ramLayoutHeader]
+  StdoutTrim value <- cmd "python3" ramLayoutTool field
+  pure value
+
 asmDir :: FilePath
 asmDir = "asm"
 
@@ -52,6 +62,272 @@ processedDir = shakeDir </> "processed"
 
 mainExe :: FilePath
 mainExe = buildDir </> "tenchu" </> "main.exe"
+
+-- | Opt-in source-level debugging for VSCode/gdb. Each matched C file is
+-- recompiled with @-gstabs@ (byte-identical @.text@) and filtered to the
+-- line-only stabs modern gdb can read (tools/stabs_lines.py). GNU ld collapses
+-- N_FUN records when merging hundreds of @.stab@ sections, so instead of one
+-- merged debug ELF we emit a gdb script that @add-symbol-file@s each per-object
+-- debug object at its address in the launched layout (tools/gen_debug_gdb.py).
+-- The debug objects are byte-identical in @.text@; only the resolved addresses
+-- differ per layout, so one object set serves exact/mod/relink. Deliberately
+-- outside buildDir so its @*.c.o@ rule cannot collide with the generic
+-- @buildDir//*.c.o@ object rule. See docs/debugging-vscode.md.
+debugObjDir :: FilePath
+debugObjDir = shakeDir </> "main.exe-dbg"
+
+-- | Per-layout gdb source-line scripts, sourced by .vscode/launch.json.
+mainDebugGdb, mainRelinkDebugGdb :: FilePath
+mainDebugGdb = mainExe <.> "debug.gdb"
+mainRelinkDebugGdb = mainRelinkExe <.> "debug.gdb"
+
+-- | Opt-in proof link where the 555 game inputs own their public symbols.
+-- It is retail-sized and byte-exact; SDK/header/BSS relocation is later work.
+mainRelocGameExe, mainRelocGameElf, mainRelocGameMap :: FilePath
+mainRelocGameExe = buildDir </> "tenchu" </> "main_reloc_game.exe"
+mainRelocGameElf = mainRelocGameExe <.> "elf"
+mainRelocGameMap = buildDir </> "tenchu" </> "main_reloc_game.exe.map"
+
+relocGameDir, relocGameLinker, relocGameSymbols :: FilePath
+relocGameDir = buildDir </> "reloc-game"
+relocGameLinker = relocGameDir </> "main.exe.ld"
+relocGameSymbols = relocGameDir </> "symbols.main.exe.txt"
+
+-- | The two allocator functions retain matching raw constants in their one C
+-- source. The normal lane compiles that same source into this isolated
+-- directory, then applies a bounded LUI/ORI-to-symbolic-LUI/ADDIU assembly
+-- transform. Ordinary exact symbolic objects are audited alongside it. No
+-- source-level build define or per-function compiler flag is involved.
+relocCLiteralDir :: FilePath
+relocCLiteralDir = shakeDir </> "reloc-c-literals"
+
+relocCLiteralLinker :: FilePath
+relocCLiteralLinker = relocCLiteralDir </> "main.exe.ld"
+
+mainRelocCLiteralExe, mainRelocCLiteralElf, mainRelocCLiteralMap :: FilePath
+mainRelocCLiteralExe = buildDir </> "tenchu" </> "main_reloc_c_literals.exe"
+mainRelocCLiteralElf = mainRelocCLiteralExe <.> "elf"
+mainRelocCLiteralMap = mainRelocCLiteralExe <.> "map"
+
+relocCLiteralNames :: [String]
+relocCLiteralNames =
+  [ "valloc",
+    "vinit"
+  ]
+
+relocAllocatorLiteralNames :: [String]
+relocAllocatorLiteralNames = ["valloc", "vinit"]
+
+ordinaryRelocCLiteralNames :: [String]
+ordinaryRelocCLiteralNames =
+  [ "ActivateHumans",
+    "SelectCameraOwnerOption",
+    "FileOption",
+    "ProcItemShinsoku"
+  ]
+
+relocCLiteralAuditNames :: [String]
+relocCLiteralAuditNames = relocCLiteralNames <> ordinaryRelocCLiteralNames
+
+relocCLiteralPreprocessed, relocCLiteralAssembly, relocCLiteralObject :: String -> FilePath
+relocCLiteralPreprocessed name = relocCLiteralDir </> name <.> "i"
+relocCLiteralAssembly name = relocCLiteralDir </> name <.> "s"
+relocCLiteralObject name = relocCLiteralDir </> name <.> "o"
+
+relocCLiteralReferenceObject :: String -> FilePath
+relocCLiteralReferenceObject name = buildDir </> "main.exe" </> name <.> "c.o"
+
+relocCLiteralAuditObject :: String -> FilePath
+relocCLiteralAuditObject name
+  | name `elem` ordinaryRelocCLiteralNames = relocCLiteralReferenceObject name
+  | otherwise = relocCLiteralObject name
+
+relocCLiteralObjects :: [FilePath]
+relocCLiteralObjects = map relocCLiteralObject relocCLiteralNames
+
+relocCLiteralReferenceObjects :: [FilePath]
+relocCLiteralReferenceObjects = map relocCLiteralReferenceObject relocCLiteralNames
+
+relocCLiteralAuditObjects :: [FilePath]
+relocCLiteralAuditObjects = map relocCLiteralAuditObject relocCLiteralAuditNames
+
+-- | User function overrides for the normal relink lane.  A file
+-- @src/mod-relink/main.exe/\<Name\>.c@ replaces the matched translation unit
+-- of the same name in @./Build relink@ only: it is compiled by the identical
+-- cpp|cc1|maspsx|as pipeline into an isolated directory, and every generated
+-- linker reference to the original object is rewritten to the override, so
+-- the function grows or shrinks in place in the retail input order.  The
+-- exact matching lanes never read these objects, so @./Build check@ stays
+-- byte-identical while a mod is present.  Brand-new translation units belong
+-- in @src/main.exe/reloc/@ instead.  See docs/modding-and-nonmatching.md.
+modRelinkSrcDir :: FilePath
+modRelinkSrcDir = srcDir </> "mod-relink" </> "main.exe"
+
+modRelinkDir :: FilePath
+modRelinkDir = shakeDir </> "mod-relink"
+
+modRelinkPreprocessed, modRelinkAssembly, modRelinkObject :: String -> FilePath
+modRelinkPreprocessed name = modRelinkDir </> name <.> "i"
+modRelinkAssembly name = modRelinkDir </> name <.> "s"
+modRelinkObject name = modRelinkDir </> name <.> "o"
+
+-- | Committed real-edit regression lane: replay the PadProc+mod_probe grown
+-- edit through the override machinery in an isolated composition, without
+-- touching src/.  The gate proves the modding contract stays runnable.
+realeditFixtureDir :: FilePath
+realeditFixtureDir = "tools" </> "fixtures" </> "relink-realedit"
+
+realeditDir :: FilePath
+realeditDir = shakeDir </> "relink-realedit"
+
+realeditLayoutDir :: FilePath
+realeditLayoutDir = realeditDir </> "layout"
+
+realeditLinker, realeditSymbols, realeditUndefined :: FilePath
+realeditLinker = realeditLayoutDir </> "main.exe.ld"
+realeditSymbols = realeditLayoutDir </> "symbols.main.exe.txt"
+realeditUndefined = realeditLayoutDir </> "undefined_symbols_auto.main.exe.txt"
+
+realeditTailAsm, realeditTailObject :: FilePath
+realeditTailAsm = realeditDir </> "generated" </> "75F64.bss.s"
+realeditTailObject = realeditDir </> "obj" </> "75F64.bss.s.o"
+
+realeditOverridePreprocessed, realeditOverrideAssembly, realeditOverrideObject :: FilePath
+realeditOverridePreprocessed = realeditDir </> "PadProc.i"
+realeditOverrideAssembly = realeditDir </> "PadProc.s"
+realeditOverrideObject = realeditDir </> "PadProc.o"
+
+realeditExtDir :: FilePath
+realeditExtDir = realeditDir </> "ext"
+
+realeditExtPreprocessed, realeditExtAssembly, realeditExtObject :: FilePath
+realeditExtPreprocessed = realeditExtDir </> "mod_probe.i"
+realeditExtAssembly = realeditExtDir </> "mod_probe.s"
+realeditExtObject = realeditExtDir </> "mod_probe.c.o"
+
+realeditElf, realeditMap, realeditLogical, realeditExe :: FilePath
+realeditElf = realeditDir </> "main_realedit.exe.elf"
+realeditMap = realeditDir </> "main_realedit.exe.map"
+realeditLogical = realeditDir </> "main_realedit.logical"
+realeditExe = realeditDir </> "main_realedit.exe"
+
+-- | Overriding the allocator sources would silently bypass their reviewed
+-- normal-lane relocation transform, so reject those names with guidance.
+modRelinkOverrideNames :: Action [String]
+modRelinkOverrideNames = do
+  sources <- getDirectoryFiles modRelinkSrcDir ["*.c"]
+  let names = map dropExtension sources
+      forbidden = filter (`elem` relocCLiteralNames) names
+  when (not (null forbidden)) $
+    fail $
+      "src/mod-relink cannot override the allocator sources "
+        <> show forbidden
+        <> "; their normal-lane objects carry the reviewed pool/capacity "
+        <> "relocation transform (docs/relocatable-build.md). Adjust "
+        <> "src/main.exe/ram_layout.h policy or edit the originals instead."
+  pure names
+
+-- | Bounded second relocation proof.  Splat emits every raw SDK text carve in
+-- 0x800601d4..0x80086764 as canonical assembly, preserving the existing C and
+-- canonical-object islands between them.  The base link is retail-exact; a
+-- controlled +4 link before Exec audits ordinary J/JAL and HI16/LO16 relocation.
+mainRelocSdkExe, mainRelocSdkElf, mainRelocSdkMap :: FilePath
+mainRelocSdkExe = buildDir </> "tenchu" </> "main_reloc_sdk.exe"
+mainRelocSdkElf = mainRelocSdkExe <.> "elf"
+mainRelocSdkMap = buildDir </> "tenchu" </> "main_reloc_sdk.exe.map"
+
+mainRelocSdkShiftExe, mainRelocSdkShiftElf, mainRelocSdkShiftMap :: FilePath
+mainRelocSdkShiftExe = buildDir </> "tenchu" </> "main_reloc_sdk_shift4.exe"
+mainRelocSdkShiftElf = mainRelocSdkShiftExe <.> "elf"
+mainRelocSdkShiftMap = buildDir </> "tenchu" </> "main_reloc_sdk_shift4.exe.map"
+
+relocSdkDir, relocSdkBaseDir, relocSdkShiftDir :: FilePath
+relocSdkDir = buildDir </> "reloc-sdk"
+relocSdkBaseDir = relocSdkDir </> "base"
+relocSdkShiftDir = relocSdkDir </> "shift4"
+
+relocSdkBaseLinker, relocSdkBaseSymbols :: FilePath
+relocSdkBaseLinker = relocSdkBaseDir </> "main.exe.ld"
+relocSdkBaseSymbols = relocSdkBaseDir </> "symbols.main.exe.txt"
+
+relocSdkShiftLinker, relocSdkShiftSymbols :: FilePath
+relocSdkShiftLinker = relocSdkShiftDir </> "main.exe.ld"
+relocSdkShiftSymbols = relocSdkShiftDir </> "symbols.main.exe.txt"
+
+-- | Opt-in proof link where initialized data, BSS, and the virtual-memory pool
+-- are separate linker-owned regions.  The binary output is deliberately named
+-- "logical": it stops at initialized data, before the retail PS-X EXE's 0x150
+-- bytes of sector padding.  This lane proves ownership/layout only; it is not
+-- yet the final size-changing executable path.
+mainRelocBssLogical, mainRelocBssExe, mainRelocBssElf, mainRelocBssMap :: FilePath
+mainRelocBssLogical = buildDir </> "tenchu" </> "main_reloc_bss.logical"
+mainRelocBssExe = buildDir </> "tenchu" </> "main_reloc_bss.exe"
+mainRelocBssElf = buildDir </> "tenchu" </> "main_reloc_bss.exe.elf"
+mainRelocBssMap = buildDir </> "tenchu" </> "main_reloc_bss.exe.map"
+
+relocBssDir, relocBssLinker, relocBssSymbols, relocBssUndefined :: FilePath
+relocBssDir = buildDir </> "reloc-bss"
+relocBssLinker = relocBssDir </> "main.exe.ld"
+relocBssSymbols = relocBssDir </> "symbols.main.exe.txt"
+relocBssUndefined = relocBssDir </> "undefined_symbols_auto.main.exe.txt"
+
+relocBssTailAsm, relocBssTailObject :: FilePath
+relocBssTailAsm = relocBssDir </> "generated" </> "75F64.bss.s"
+-- Keep this below an extra directory so the ordinary generated-asm wildcard
+-- cannot mistake it for a splat-owned target input.
+relocBssTailObject = relocBssDir </> "obj" </> "75F64.bss.s.o"
+
+-- Reviewed pointer-bearing data copies used by the composed normal relink.
+-- 75F64 is transformed here first, then the BSS lane applies its NOBITS split
+-- to that copy so both transformations survive in one object.
+relocIntegratedDataDir :: FilePath
+relocIntegratedDataDir = relocBssDir </> "data"
+
+relocDataNames :: [String]
+relocDataNames =
+  [ "E58", "1160", "1490", "207C", "2EB0", "33C4", "37A8", "400C", "4900",
+    "75F64"
+  ]
+
+relocDataTargetNames :: [String]
+relocDataTargetNames = filter (/= "75F64") relocDataNames
+
+relocDataAsm, relocDataObject :: String -> FilePath
+relocDataAsm name = relocIntegratedDataDir </> name <.> "data.s"
+relocDataObject name = relocBssDir </> "obj" </> name <.> "data.s.o"
+
+relocDataAsms, relocDataObjects :: [FilePath]
+relocDataAsms = map relocDataAsm relocDataNames
+relocDataObjects = map relocDataObject relocDataTargetNames
+
+relocData75F64Asm :: FilePath
+relocData75F64Asm = relocDataAsm "75F64"
+
+-- | Growth-capable composition.  Unlike the retail-exact BSS oracle above,
+-- this linker chain consumes the reviewed symbolic allocator objects without
+-- pinning the game/SDK boundary.  Canonical SDK text and every later
+-- linker-owned boundary are therefore free to follow changed game layout. It
+-- remains separate so the ordinary matching artifact stays untouched.
+mainRelinkLogical, mainRelinkExe, mainRelinkElf, mainRelinkMap :: FilePath
+mainRelinkLogical = buildDir </> "tenchu" </> "main_relink.logical"
+mainRelinkExe = buildDir </> "tenchu" </> "main_relink.exe"
+mainRelinkElf = buildDir </> "tenchu" </> "main_relink.exe.elf"
+mainRelinkMap = buildDir </> "tenchu" </> "main_relink.exe.map"
+
+normalRelinkDir, normalRelinkCLinker, normalRelinkSdkLinker :: FilePath
+normalRelinkDir = buildDir </> "relink"
+normalRelinkCLinker = normalRelinkDir </> "c" </> "main.exe.ld"
+normalRelinkSdkLinker = normalRelinkDir </> "sdk" </> "main.exe.ld"
+
+normalRelinkSdkSymbols, normalRelinkLinker, normalRelinkSymbols :: FilePath
+normalRelinkSdkSymbols = normalRelinkDir </> "sdk" </> "symbols.main.exe.txt"
+normalRelinkLinker = normalRelinkDir </> "layout" </> "main.exe.ld"
+normalRelinkSymbols = normalRelinkDir </> "layout" </> "symbols.main.exe.txt"
+
+normalRelinkUndefined, normalRelinkTailAsm, normalRelinkTailObject :: FilePath
+normalRelinkUndefined = normalRelinkDir </> "layout" </> "undefined_symbols_auto.main.exe.txt"
+normalRelinkTailAsm = normalRelinkDir </> "layout" </> "75F64.bss.s"
+normalRelinkTailObject = normalRelinkDir </> "obj" </> "75F64.bss.s.o"
 
 -- | The modded (non-matching) build: hooked functions patched in place by
 -- tools/mkmod.py, so it stays the same size as main.exe (disc rebuild is faithful).
@@ -98,13 +374,16 @@ tgSymbols t = configDir </> "symbols." <> tgName t <> ".txt"
 tgBuildDir t = buildDir </> tgName t
 tgSrcDir t = srcDir </> tgName t
 
--- | Bootable disc images repacked from our exe. The matching build and the mod
--- build get distinct names so they can each be their own Shake target.
-tenchuBin, tenchuCue, tenchuModBin, tenchuModCue :: FilePath
+-- | Bootable disc images repacked from our exe. Matching, same-slot mod, and
+-- normal-relink builds get distinct names so each can be a real Shake target.
+tenchuBin, tenchuCue, tenchuModBin, tenchuModCue,
+  tenchuRelinkBin, tenchuRelinkCue :: FilePath
 tenchuBin = buildDir </> "tenchu" </> "tenchu.bin"
 tenchuCue = buildDir </> "tenchu" </> "tenchu.cue"
 tenchuModBin = buildDir </> "tenchu" </> "tenchu-mod.bin"
 tenchuModCue = buildDir </> "tenchu" </> "tenchu-mod.cue"
+tenchuRelinkBin = buildDir </> "tenchu" </> "tenchu-relink.bin"
+tenchuRelinkCue = buildDir </> "tenchu" </> "tenchu-relink.cue"
 
 cross :: String -> FilePath
 cross t = "mipsel-unknown-linux-gnu-" <> t
@@ -563,9 +842,93 @@ gs107ObjectMembers =
     "GS_107_OBJ_51C"
   ]
 
+-- GS_105.OBJ is a complete one-public-member object. The natural TMD mapper is
+-- byte-invariant across the pinned 2.7.2, 2.8.0, and default 2.8.1 compilers,
+-- so it needs neither an older compiler attribution nor exceptional options.
+gs105ObjectMembers :: [String]
+gs105ObjectMembers =
+  [ "GsMapModelingData"
+  ]
+
+-- PsyQ's archive table proves GS_106.OBJ has exactly this one public member;
+-- wibo-extracting the real object proves its complete text is byte-identical to
+-- Tenchu. Its natural wrapper source has the same older epilogue under 2.7.2.
+gs106ObjectMembers :: [String]
+gs106ObjectMembers =
+  [ "GsSetProjection"
+  ]
+
+-- These are likewise complete one-public-member objects in the real archive.
+-- Their extracted text is byte-identical to Tenchu, and natural SDK C
+-- reproduces it under the same released 2.7.2 compiler as GS_106.OBJ.
+gs110ObjectMembers :: [String]
+gs110ObjectMembers =
+  [ "GsSetAmbient"
+  ]
+
+gs111ObjectMembers :: [String]
+gs111ObjectMembers =
+  [ "GsDrawOt"
+  ]
+
+gs113ObjectMembers :: [String]
+gs113ObjectMembers =
+  [ "GsClearOt"
+  ]
+
+-- GS_119.OBJ has one public member and one private return label. Its natural
+-- row-major Z-rotation source reproduces the complete function with the
+-- default 2.8.x compiler profile and no exceptional options.
+gs119ObjectMembers :: [String]
+gs119ObjectMembers =
+  [ "gte_rotate_z_matrix"
+  ]
+
+-- GS_121.OBJ has one public member and its complete 0x50-byte text is
+-- Tenchu's gte_init slot. The natural initializer uses the same 2.7.2
+-- epilogue as the neighbouring proven libgs objects.
+gs121ObjectMembers :: [String]
+gs121ObjectMembers =
+  [ "gte_init"
+  ]
+
+-- GS_122.OBJ also has one public member. Its complete 0xF0-byte text,
+-- including the local return label and trailing alignment, is Tenchu's slot.
+gs122ObjectMembers :: [String]
+gs122ObjectMembers =
+  [ "GsGetTimInfo"
+  ]
+
+-- GS_123.OBJ has one public member. Its private switch labels and jump table
+-- remain part of the same object/profile, never function-level tuning.
+gs123ObjectMembers :: [String]
+gs123ObjectMembers =
+  [ "Gssub_make_matrix"
+  ]
+
+-- GS_125.OBJ is a complete one-public-member object too. The natural getter
+-- is byte-invariant between 2.7.2 and the default 2.8.1, so it needs no older
+-- compiler attribution or exceptional options.
+gs125ObjectMembers :: [String]
+gs125ObjectMembers =
+  [ "GsGetWorkBase"
+  ]
+
 originalObjectCcFlags :: FilePath -> [String]
 originalObjectCcFlags src
   | name `elem` libmcrdObjectMembers = ["-mno-split-addresses"]
+  | name `elem` gs105ObjectMembers = []
+  | name `elem` gs106ObjectMembers = []
+  | name `elem` gs110ObjectMembers = []
+  | name `elem` gs111ObjectMembers = []
+  | name `elem` gs113ObjectMembers = []
+  | name `elem` gs119ObjectMembers = []
+  | name `elem` gs121ObjectMembers = []
+  | name `elem` gs122ObjectMembers = []
+  -- Undo the game-wide -funsigned-char for this complete vendor object. The
+  -- source's ordinary char axis is signed under the SDK object's defaults.
+  | name `elem` gs123ObjectMembers = ["-fsigned-char"]
+  | name `elem` gs125ObjectMembers = []
   | name `elem` gs107ObjectMembers = ["-mno-split-addresses"]
   | name `elem` adtObjectMembers = []
   | otherwise = []
@@ -593,6 +956,14 @@ adtObjectMembers =
 
 originalObjectCcExecutable :: FilePath -> FilePath
 originalObjectCcExecutable src
+  | takeBaseName src `elem` gs106ObjectMembers = "cc1-272"
+  | takeBaseName src `elem` gs110ObjectMembers = "cc1-272"
+  | takeBaseName src `elem` gs111ObjectMembers = "cc1-272"
+  | takeBaseName src `elem` gs113ObjectMembers = "cc1-272"
+  | takeBaseName src `elem` gs121ObjectMembers = "cc1-272"
+  | takeBaseName src `elem` gs122ObjectMembers = "cc1-272"
+  | takeBaseName src `elem` gs123ObjectMembers = "cc1-272"
+  | takeBaseName src `elem` gs107ObjectMembers = "cc1-281-gs107"
   | takeBaseName src `elem` adtObjectMembers = "cc1-280"
   | otherwise = ccDefault
 
@@ -666,6 +1037,60 @@ neededAsmDeps :: FilePath -> Action ()
 neededAsmDeps depFile =
   needed . map normaliseEx . concatMap snd . parseMakefile =<< liftIO (readFile depFile)
 
+-- | Read the two transformed and four ordinary objects. The focused oracle
+-- pins exact offsets/sizes; the normal-link gate deliberately permits layout
+-- changes while retaining relocation, opcode, and raw-literal checks.
+verifyRelocCLiteralObjectsWith :: Bool -> Action ()
+verifyRelocCLiteralObjectsWith allowLayoutChanges = do
+  let tool = "tools" </> "reloc_c_literals.py"
+      objectArgs = concatMap
+        (\name -> ["--object", name <> "=" <> relocCLiteralAuditObject name])
+        relocCLiteralAuditNames
+      layoutArgs =
+        if allowLayoutChanges then ["--allow-layout-changes"] else []
+  need $ [tool, ramLayoutTool, ramLayoutHeader] <> relocCLiteralAuditObjects
+  cmd_ "python3" tool (["verify-objects"] <> layoutArgs <> objectArgs)
+
+verifyRelocCLiteralObjects :: Action ()
+verifyRelocCLiteralObjects = verifyRelocCLiteralObjectsWith False
+
+verifyRelocCLiteralLink :: Action ()
+verifyRelocCLiteralLink = do
+  let tool = "tools" </> "reloc_c_literals.py"
+      objectArgs = concatMap
+        (\name -> ["--object", name <> "=" <> relocCLiteralAuditObject name])
+        relocCLiteralAuditNames
+  need $ [ tool, ramLayoutTool, ramLayoutHeader, mainRelocGameElf,
+           mainRelocCLiteralElf, mainRelocCLiteralExe ] <>
+    relocCLiteralAuditObjects
+  cmd_ "python3" tool
+    ([ "verify-linked",
+       "--base-elf", mainRelocGameElf,
+       "--variant-elf", mainRelocCLiteralElf
+     ] <> objectArgs)
+
+verifyNormalRelink :: Action ()
+verifyNormalRelink = do
+  let tool = "tools" </> "reloc_c_literals.py"
+      objectArgs = concatMap
+        (\name -> ["--object", name <> "=" <> relocCLiteralAuditObject name])
+        relocCLiteralAuditNames
+      referenceArgs = concatMap
+        (\name ->
+          [ "--reference-object",
+            name <> "=" <> relocCLiteralReferenceObject name
+          ])
+        relocCLiteralNames
+  need $ [ tool, ramLayoutTool, ramLayoutHeader, mainRelocBssElf,
+           mainRelinkElf, normalRelinkCLinker ] <>
+    relocCLiteralAuditObjects <> relocCLiteralReferenceObjects
+  cmd_ "python3" tool
+    ([ "verify-normal-link",
+       "--base-elf", mainRelocBssElf,
+       "--variant-elf", mainRelinkElf,
+       "--linker", normalRelinkCLinker
+     ] <> referenceArgs <> objectArgs)
+
 main :: IO ()
 main = do
   topD <- getProjectRoot
@@ -685,7 +1110,10 @@ main = do
             -- cc flag; command-line contents are not otherwise tracked.
             -- "6": compiler executable is now part of the per-object profile;
             -- the reused ADT object selects pinned GCC 2.8.0.
-            shakeVersion = "6"
+            -- "7": the normal-link C replacement inventory became explicit.
+            -- "8": the replacement recipe now transforms the two allocator
+            -- assembly streams; four exact symbolic objects are audited in place.
+            shakeVersion = "8"
           }
   shakeArgs opts rules
 
@@ -702,6 +1130,164 @@ rules = do
 
 objRules :: Rules ()
 objRules = do
+  -- Compile the same preprocessed source used by the matching lane.  The
+  -- allocator assembly rule below changes only the two reviewed constant
+  -- materialisations; every source-level spelling remains identical.
+  relocCLiteralDir </> "*.i" %> \out -> do
+    let name = takeBaseName out
+        src = srcDir </> "main.exe" </> name <.> "c"
+        header = srcDir </> "main.exe" </> "main.exe.h"
+    when (name `notElem` relocCLiteralNames) $
+      fail $ "unexpected relocatable-C input " <> name
+    need [src]
+    orderOnly [header]
+    liftIO $ IO.createDirectoryIfMissing True relocCLiteralDir
+    withTempFile $ \makeOut -> do
+      cmd_ cpp
+        (cppFlags <>
+          [ "-MMD", "-MF", makeOut,
+            "-I", takeDirectory header
+          ])
+        src out
+      neededMakefileDependencies makeOut
+
+  relocCLiteralDir </> "*.s" %> \out -> do
+    let name = takeBaseName out
+        processed = relocCLiteralPreprocessed name
+        src = srcDir </> "main.exe" </> name <.> "c"
+        tool = "tools" </> "reloc_c_literals.py"
+    when (name `notElem` relocCLiteralNames) $
+      fail $ "unexpected relocatable-C assembly " <> name
+    need [processed, tool, ramLayoutTool, ramLayoutHeader]
+    gpFlags <- askOracle (GpFlags src)
+    (ccExe, objectCc) <- askOracle (OriginalObjectCcProfile src)
+    withTempFile $ \ccOut ->
+      withTempFile $ \maspsxOut -> do
+        cmd_ (FileStdin processed) (FileStdout ccOut)
+          ccExe (ccFlags <> objectCc)
+        cmd_ (FileStdin ccOut) (FileStdout maspsxOut)
+          maspsx (maspsxFlags <> gpFlags)
+        if name `elem` relocAllocatorLiteralNames
+          then cmd_ "python3" tool
+            [ "relocate-allocator-assembly",
+              "--name", name,
+              "--input", maspsxOut,
+              "--output", out
+            ]
+          else copyFileChanged maspsxOut out
+
+  relocCLiteralDir </> "*.o" %> \out -> do
+    let name = takeBaseName out
+        assembly = relocCLiteralAssembly name
+    when (name `notElem` relocCLiteralNames) $
+      fail $ "unexpected relocatable-C object " <> name
+    need [assembly]
+    trackAllow ["include/*.inc"]
+    withTempFile $ \depFile -> do
+      cmd_ as asFlags ["--MD", depFile, "-o", out, assembly]
+      neededAsmDeps depFile
+
+  -- Normal-relink function overrides: the same pipeline as matched game C,
+  -- compiled from src/mod-relink/main.exe into an isolated directory so the
+  -- exact lanes keep their pristine objects.
+  modRelinkDir </> "*.i" %> \out -> do
+    let name = takeBaseName out
+        src = modRelinkSrcDir </> name <.> "c"
+        header = srcDir </> "main.exe" </> "main.exe.h"
+    need [src]
+    orderOnly [header]
+    liftIO $ IO.createDirectoryIfMissing True modRelinkDir
+    withTempFile $ \makeOut -> do
+      cmd_ cpp
+        (cppFlags <>
+          [ "-MMD", "-MF", makeOut,
+            "-I", takeDirectory header
+          ])
+        src out
+      neededMakefileDependencies makeOut
+
+  modRelinkDir </> "*.s" %> \out -> do
+    let name = takeBaseName out
+        processed = modRelinkPreprocessed name
+        src = modRelinkSrcDir </> name <.> "c"
+    need [processed]
+    gpFlags <- askOracle (GpFlags src)
+    (ccExe, objectCc) <- askOracle (OriginalObjectCcProfile src)
+    withTempFile $ \ccOut -> do
+      cmd_ (FileStdin processed) (FileStdout ccOut) ccExe (ccFlags <> objectCc)
+      cmd_ (FileStdin ccOut) (FileStdout out) maspsx (maspsxFlags <> gpFlags)
+
+  modRelinkDir </> "*.o" %> \out -> do
+    let name = takeBaseName out
+        assembly = modRelinkAssembly name
+    need [assembly]
+    trackAllow ["include/*.inc"]
+    withTempFile $ \depFile -> do
+      cmd_ as asFlags ["--MD", depFile, "-o", out, assembly]
+      neededAsmDeps depFile
+
+  -- Debug-ELF C objects: the same per-file pipeline as the retail object
+  -- (same cpp output, gp-extern list, and original-object cc profile), but
+  -- cc1 gets -gstabs and the maspsx output is filtered to line-only stabs.
+  -- -gstabs does not change code, so these are byte-identical in .text.
+  debugObjDir <//> "*.c.o" %> \out -> do
+    let cRel = dropExtension (makeRelative debugObjDir out)   -- e.g. ProcItemKusuri.c
+        processed = processedDir </> "main.exe" </> cRel      -- cpp output (.c)
+        src = srcDir </> "main.exe" </> cRel
+        filterTool = "tools" </> "stabs_lines.py"
+    need [processed, filterTool]
+    gpFlags <- askOracle (GpFlags src)
+    (ccExe, objectCc) <- askOracle (OriginalObjectCcProfile src)
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    trackAllow ["include/*.inc"]
+    withTempFile $ \ccOut ->
+      withTempFile $ \masOut ->
+        withTempFile $ \filtered -> do
+          cmd_ (FileStdin processed) (FileStdout ccOut) ccExe
+            (ccFlags <> objectCc <> ["-gstabs"])
+          cmd_ (FileStdin ccOut) (FileStdout masOut) maspsx (maspsxFlags <> gpFlags)
+          cmd_ (FileStdin masOut) (FileStdout filtered) "python3" [filterTool]
+          withTempFile $ \depFile -> do
+            cmd_ (FileStdin filtered) as asFlags ["--MD", depFile, "-o", out]
+            neededAsmDeps depFile
+
+  -- Real-edit regression fixture objects: the committed grown PadProc and its
+  -- new translation unit, compiled by the identical pipeline into the
+  -- isolated realedit lane.
+  let realeditCompile srcName preprocessed assembly object = do
+        preprocessed %> \out -> do
+          let src = realeditFixtureDir </> srcName
+              header = srcDir </> "main.exe" </> "main.exe.h"
+          need [src]
+          orderOnly [header]
+          liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+          withTempFile $ \makeOut -> do
+            cmd_ cpp
+              (cppFlags <>
+                [ "-MMD", "-MF", makeOut,
+                  "-I", takeDirectory header
+                ])
+              src out
+            neededMakefileDependencies makeOut
+        assembly %> \out -> do
+          let src = realeditFixtureDir </> srcName
+          need [preprocessed]
+          gpFlags <- askOracle (GpFlags src)
+          (ccExe, objectCc) <- askOracle (OriginalObjectCcProfile src)
+          withTempFile $ \ccOut -> do
+            cmd_ (FileStdin preprocessed) (FileStdout ccOut) ccExe (ccFlags <> objectCc)
+            cmd_ (FileStdin ccOut) (FileStdout out) maspsx (maspsxFlags <> gpFlags)
+        object %> \out -> do
+          need [assembly]
+          trackAllow ["include/*.inc"]
+          withTempFile $ \depFile -> do
+            cmd_ as asFlags ["--MD", depFile, "-o", out, assembly]
+            neededAsmDeps depFile
+  realeditCompile "PadProc.c"
+    realeditOverridePreprocessed realeditOverrideAssembly realeditOverrideObject
+  realeditCompile "mod_probe.c"
+    realeditExtPreprocessed realeditExtAssembly realeditExtObject
+
   [buildDir </> "*" </> "data" <//> "*.s.o", buildDir </> "*" </> "*.s.o"] |%> \out -> do
     let fileComponent = makeRelative buildDir out
         target = takeDirectory1 fileComponent
@@ -877,6 +1463,613 @@ exeRules t = do
 -- | Things that only make sense for the executable we are actually decompiling.
 mainExtraRules :: Rules ()
 mainExtraRules = do
+  -- Source-line gdb scripts: add-symbol-file each -gstabs debug object at its
+  -- address in the given layout's ELF. All matched debug objects are needed;
+  -- gen_debug_gdb.py resolves the per-layout addresses from that ELF.
+  let debugGdbRule out elf = do
+        let t = mainTarget
+            gen = tgGen t
+            genD = tgGenDir t
+            tool = "tools" </> "gen_debug_gdb.py"
+        _generatedFiles <- getGeneratedFiles gen
+        cFiles <- liftIO $ do
+          hasSrc <- IO.doesDirectoryExist (tgSrcDir t)
+          userFiles <- if hasSrc
+            then Set.fromList <$> getDirectoryFilesIO (tgSrcDir t) ["//*.c"]
+            else pure Set.empty
+          genFiles <- Set.fromList <$> getDirectoryFilesIO (genD </> "src") ["//*.c"]
+          pure $ Set.toList (userFiles <> genFiles)
+        let debugCObjs = map (\f -> debugObjDir </> f <.> "o") cFiles
+        need ([elf, tool, "tools" </> "stabs_lines.py"] <> debugCObjs)
+        liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+        cmd_ "python3" tool
+          [ "--elf", elf,
+            "--debug-obj-dir", debugObjDir,
+            "--out", out
+          ]
+
+  mainDebugGdb %> \out -> debugGdbRule out (mainExe <.> "elf")
+  mainRelinkDebugGdb %> \out -> debugGdbRule out mainRelinkElf
+
+  -- `debug-gdb` builds the exact-layout source-line script (retail addresses,
+  -- shared by run/run-mod/run-iso*); `debug-gdb-relink` the relink layout.
+  phony "debug-gdb" $ need [mainDebugGdb]
+  phony "debug-gdb-relink" $ need [mainRelinkDebugGdb]
+
+
+  -- First normal-link shiftability gate. Splat already places all inputs
+  -- sequentially, but config/symbols.main.exe.txt overwrites the game objects'
+  -- symbols with retail absolute addresses. Generate alternate scripts which
+  -- remove those game-range assignments and add `name = .` before each of the
+  -- 555 artificial one-function inputs. The latter also exports original
+  -- `static` leaves across our artificial object split without changing C.
+  [relocGameLinker, relocGameSymbols] &%> \_outs -> do
+    let t = mainTarget
+        gen = tgGen t
+        baseLinker = tgGenDir t </> linkerDir </> tgName t <.> "ld"
+        tool = "tools" </> "reloc_game_lane.py"
+    _generatedFiles <- getGeneratedFiles gen
+    need [baseLinker, tgSymbols t, tool]
+    liftIO $ IO.createDirectoryIfMissing True relocGameDir
+    cmd_ "python3" tool
+      [ "--linker-in", baseLinker,
+        "--symbols-in", tgSymbols t,
+        "--linker-out", relocGameLinker,
+        "--symbols-out", relocGameSymbols
+      ]
+
+  mainRelocGameElf %> \out -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedSymbols = genD </> metaDir </> "undefined_symbols_auto.main.exe.txt"
+        undefinedFunctions = genD </> metaDir </> "undefined_functions_auto.main.exe.txt"
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    sFiles <- liftIO $ getDirectoryFilesIO (genD </> asmDir) ["*.s", "data/*.s"]
+    cFiles <- liftIO $ do
+      userFiles <- Set.fromList <$> getDirectoryFilesIO (tgSrcDir t) ["//*.c"]
+      genFiles <- Set.fromList <$> getDirectoryFilesIO (genD </> srcDir) ["//*.c"]
+      pure $ Set.toList (userFiles <> genFiles)
+    assetFiles <- liftIO $ getDirectoryFilesIO (genD </> assetsDir) ["//*.bin"]
+    let oFiles = map (\f -> tBuildDir </> f <.> "o") (cFiles <> sFiles <> assetFiles)
+        sFilesExp = map (\f -> genD </> asmDir </> f) sFiles
+        assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
+    need $ sFilesExp <> assetFilesExp <> oFiles <>
+      [relocGameLinker, relocGameSymbols, undefinedSymbols, undefinedFunctions]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    cmd_ ld ldFlags
+      [ "-o", out,
+        "-Map", mainRelocGameMap,
+        "-T", relocGameLinker,
+        "-T", relocGameSymbols,
+        "-T", undefinedSymbols,
+        "-T", undefinedFunctions,
+        "--no-check-sections",
+        "-nostdlib"
+      ]
+
+  mainRelocGameExe %> \_out -> do
+    need [mainRelocGameElf]
+    cmd_ objcopy objcopyFlags [mainRelocGameElf, mainRelocGameExe]
+
+  -- Substitute the two exact-sized allocator objects into the linker-owned
+  -- game lane.  This focused link proves their symbolic instruction pairs at
+  -- retail placement; no compensating boundary pad is needed.
+  relocCLiteralLinker %> \out -> do
+    let tool = "tools" </> "reloc_c_literals.py"
+        objectArgs = concatMap
+          (\name -> ["--object", name <> "=" <> relocCLiteralObject name])
+          relocCLiteralNames
+        referenceArgs = concatMap
+          (\name ->
+            [ "--reference-object",
+              name <> "=" <> relocCLiteralReferenceObject name
+            ])
+          relocCLiteralNames
+    need $ [relocGameLinker, tool, ramLayoutTool, ramLayoutHeader] <>
+      relocCLiteralObjects <> relocCLiteralReferenceObjects
+    cmd_ "python3" tool
+      ([ "generate-linker",
+         "--linker-in", relocGameLinker,
+         "--linker-out", out
+       ] <> referenceArgs <> objectArgs)
+
+  mainRelocCLiteralElf %> \out -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedSymbols = genD </> metaDir </> "undefined_symbols_auto.main.exe.txt"
+        undefinedFunctions = genD </> metaDir </> "undefined_functions_auto.main.exe.txt"
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    sFiles <- liftIO $ getDirectoryFilesIO (genD </> asmDir) ["*.s", "data/*.s"]
+    cFiles <- liftIO $ do
+      userFiles <- Set.fromList <$> getDirectoryFilesIO (tgSrcDir t) ["//*.c"]
+      genFiles <- Set.fromList <$> getDirectoryFilesIO (genD </> srcDir) ["//*.c"]
+      pure $ Set.toList (userFiles <> genFiles)
+    assetFiles <- liftIO $ getDirectoryFilesIO (genD </> assetsDir) ["//*.bin"]
+    let oFiles = map (\f -> tBuildDir </> f <.> "o") (cFiles <> sFiles <> assetFiles)
+        sFilesExp = map (\f -> genD </> asmDir </> f) sFiles
+        assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
+    need $ sFilesExp <> assetFilesExp <> oFiles <> relocCLiteralObjects <>
+      [ relocCLiteralLinker, relocGameSymbols,
+        undefinedSymbols, undefinedFunctions
+      ]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    cmd_ ld ldFlags
+      [ "-o", out,
+        "-Map", mainRelocCLiteralMap,
+        "-T", relocCLiteralLinker,
+        "-T", relocGameSymbols,
+        "-T", undefinedSymbols,
+        "-T", undefinedFunctions,
+        "--no-check-sections",
+        "-nostdlib"
+      ]
+
+  mainRelocCLiteralExe %> \_out -> do
+    need [mainRelocCLiteralElf]
+    cmd_ objcopy objcopyFlags [mainRelocCLiteralElf, mainRelocCLiteralExe]
+
+  -- The real normal-link composition uses the same transformed allocator
+  -- objects, while allowing their compiler-produced layout to follow source
+  -- edits. The following SDK transform sees and relocates the
+  -- actual layout produced by ordinary source edits, with no artificial game/
+  -- SDK boundary restoration.
+  normalRelinkCLinker %> \out -> do
+    let tool = "tools" </> "reloc_c_literals.py"
+        objectArgs = concatMap
+          (\name -> ["--object", name <> "=" <> relocCLiteralObject name])
+          relocCLiteralNames
+        referenceArgs = concatMap
+          (\name ->
+            [ "--reference-object",
+              name <> "=" <> relocCLiteralReferenceObject name
+            ])
+          relocCLiteralNames
+    need $ [relocGameLinker, tool, ramLayoutTool, ramLayoutHeader] <>
+      relocCLiteralObjects <> relocCLiteralReferenceObjects
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    cmd_ "python3" tool
+      ([ "generate-linker",
+         "--linker-in", relocGameLinker,
+         "--linker-out", out,
+         "--no-boundary-pad"
+       ] <> referenceArgs <> objectArgs)
+
+  [normalRelinkSdkLinker, normalRelinkSdkSymbols] &%> \_outs -> do
+    let tool = "tools" </> "reloc_sdk_lane.py"
+    need [normalRelinkCLinker, relocGameSymbols, tool]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory normalRelinkSdkLinker)
+    cmd_ "python3" tool
+      [ "generate",
+        "--linker-in", normalRelinkCLinker,
+        "--symbols-in", relocGameSymbols,
+        "--linker-out", normalRelinkSdkLinker,
+        "--symbols-out", normalRelinkSdkSymbols
+      ]
+
+  [relocSdkBaseLinker, relocSdkBaseSymbols] &%> \_outs -> do
+    let tool = "tools" </> "reloc_sdk_lane.py"
+    need [relocGameLinker, relocGameSymbols, tool]
+    liftIO $ IO.createDirectoryIfMissing True relocSdkBaseDir
+    cmd_ "python3" tool
+      [ "generate",
+        "--linker-in", relocGameLinker,
+        "--symbols-in", relocGameSymbols,
+        "--linker-out", relocSdkBaseLinker,
+        "--symbols-out", relocSdkBaseSymbols
+      ]
+
+  [relocSdkShiftLinker, relocSdkShiftSymbols] &%> \_outs -> do
+    let tool = "tools" </> "reloc_sdk_lane.py"
+    need [relocGameLinker, relocGameSymbols, tool]
+    liftIO $ IO.createDirectoryIfMissing True relocSdkShiftDir
+    cmd_ "python3" tool
+      [ "generate",
+        "--linker-in", relocGameLinker,
+        "--symbols-in", relocGameSymbols,
+        "--linker-out", relocSdkShiftLinker,
+        "--symbols-out", relocSdkShiftSymbols,
+        "--pad", "4"
+      ]
+
+  [mainRelocSdkElf, mainRelocSdkShiftElf] |%> \out -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedSymbols = genD </> metaDir </> "undefined_symbols_auto.main.exe.txt"
+        undefinedFunctions = genD </> metaDir </> "undefined_functions_auto.main.exe.txt"
+        shifted = out == mainRelocSdkShiftElf
+        linkerScript = if shifted then relocSdkShiftLinker else relocSdkBaseLinker
+        symbolScript = if shifted then relocSdkShiftSymbols else relocSdkBaseSymbols
+        mapFile = if shifted then mainRelocSdkShiftMap else mainRelocSdkMap
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    sFiles <- liftIO $ getDirectoryFilesIO (genD </> asmDir) ["*.s", "data/*.s"]
+    cFiles <- liftIO $ do
+      userFiles <- Set.fromList <$> getDirectoryFilesIO (tgSrcDir t) ["//*.c"]
+      genFiles <- Set.fromList <$> getDirectoryFilesIO (genD </> srcDir) ["//*.c"]
+      pure $ Set.toList (userFiles <> genFiles)
+    assetFiles <- liftIO $ getDirectoryFilesIO (genD </> assetsDir) ["//*.bin"]
+    let oFiles = map (\f -> tBuildDir </> f <.> "o") (cFiles <> sFiles <> assetFiles)
+        sFilesExp = map (\f -> genD </> asmDir </> f) sFiles
+        assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
+    need $ sFilesExp <> assetFilesExp <> oFiles <>
+      [linkerScript, symbolScript, undefinedSymbols, undefinedFunctions]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    cmd_ ld ldFlags
+      [ "-o", out,
+        "-Map", mapFile,
+        "-T", linkerScript,
+        "-T", symbolScript,
+        "-T", undefinedSymbols,
+        "-T", undefinedFunctions,
+        "--no-check-sections",
+        "-nostdlib"
+      ]
+
+  [mainRelocSdkExe, mainRelocSdkShiftExe] |%> \out -> do
+    let input = if out == mainRelocSdkShiftExe
+          then mainRelocSdkShiftElf
+          else mainRelocSdkElf
+    need [input]
+    cmd_ objcopy objcopyFlags [input, out]
+
+  relocDataAsms &%> \_outs -> do
+    let t = mainTarget
+        dataDir = tgGenDir t </> asmDir </> "data"
+        manifest = configDir </> "reloc-data.main.exe.json"
+        tool = "tools" </> "reloc_data.py"
+        inputs = map (dataDir </>) $ map (<.> "data.s") relocDataNames
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    need $ [manifest, tool] <> inputs
+    cmd_ "python3" tool
+      [ "--manifest", manifest,
+        "--input-dir", dataDir,
+        "--output-dir", relocIntegratedDataDir
+      ]
+
+  relocDataObjects |%> \out -> do
+    let name = takeWhile (/= '.') (takeFileName out)
+        source = relocDataAsm name
+    need [source]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    withTempFile $ \depFile -> do
+      cmd_ as asFlags ["--MD", depFile, "-o", out, source]
+      neededAsmDeps depFile
+
+  -- Second normal-link proof: turn the zero-filled end of 75F64 into a real
+  -- NOBITS input, move every C .bss input into a following NOLOAD output, and
+  -- reserve the fixed virtual-memory pool explicitly. Inputs are generated
+  -- from the canonical SDK-prefix lane, which already composes with the
+  -- linker-owned game lane, so this artifact carries all three proofs.
+  [relocBssLinker, relocBssSymbols, relocBssUndefined, relocBssTailAsm] &%> \_outs -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedSymbols = genD </> metaDir </> "undefined_symbols_auto.main.exe.txt"
+        tailSource = relocData75F64Asm
+        oldTailObject = tgBuildDir t </> "data" </> "75F64.data.s.o"
+        replacementArgs = concatMap
+          (\name ->
+            [ "--replace-object",
+              (tgBuildDir t </> "data" </> name <.> "data.s.o") <>
+                "=" <> relocDataObject name
+            ])
+          relocDataTargetNames
+        tool = "tools" </> "reloc_bss_lane.py"
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    need [ relocSdkBaseLinker, relocSdkBaseSymbols, undefinedSymbols,
+           tailSource, tool, ramLayoutTool, ramLayoutHeader ]
+    liftIO $ IO.createDirectoryIfMissing True relocBssDir
+    cmd_ "python3" tool $
+      [ "generate",
+        "--linker-in", relocSdkBaseLinker,
+        "--symbols-in", relocSdkBaseSymbols,
+        "--undefined-in", undefinedSymbols,
+        "--tail-in", tailSource,
+        "--linker-out", relocBssLinker,
+        "--symbols-out", relocBssSymbols,
+        "--undefined-out", relocBssUndefined,
+        "--tail-out", relocBssTailAsm,
+        "--old-tail-object", oldTailObject,
+        "--new-tail-object", relocBssTailObject,
+        "--extension-object-glob", tBuildDir </> "reloc" </> "*.c.o"
+      ] <> replacementArgs
+
+  relocBssTailObject %> \out -> do
+    need [relocBssTailAsm]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    withTempFile $ \depFile -> do
+      cmd_ as asFlags ["--MD", depFile, "-o", out, relocBssTailAsm]
+      neededAsmDeps depFile
+
+  mainRelocBssElf %> \out -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedFunctions = genD </> metaDir </> "undefined_functions_auto.main.exe.txt"
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    sFiles <- liftIO $ getDirectoryFilesIO (genD </> asmDir) ["*.s", "data/*.s"]
+    userFiles <- Set.fromList <$> getDirectoryFiles (tgSrcDir t) ["//*.c"]
+    genFiles <- Set.fromList <$> getDirectoryFiles (genD </> srcDir) ["//*.c"]
+    let cFiles = Set.toList (userFiles <> genFiles)
+    assetFiles <- liftIO $ getDirectoryFilesIO (genD </> assetsDir) ["//*.bin"]
+    let oFiles = map (\f -> tBuildDir </> f <.> "o") (cFiles <> sFiles <> assetFiles)
+        extensionObjects =
+          map (\f -> tBuildDir </> f <.> "o") $
+            filter (\f -> ["reloc"] `isPrefixOf` splitDirectories f) cFiles
+        sFilesExp = map (\f -> genD </> asmDir </> f) sFiles
+        assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
+    need $ sFilesExp <> assetFilesExp <> oFiles <>
+      [ relocBssLinker, relocBssSymbols, relocBssUndefined,
+        relocBssTailObject, undefinedFunctions
+      ] <> relocDataObjects
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    cmd_ ld ldFlags
+      [ "-o", out,
+        "-Map", mainRelocBssMap,
+        "-T", relocBssLinker,
+        "-T", relocBssSymbols,
+        "-T", relocBssUndefined,
+        "-T", undefinedFunctions,
+        "--no-check-sections",
+        "-nostdlib"
+      ] extensionObjects
+
+  mainRelocBssLogical %> \out -> do
+    need [mainRelocBssElf]
+    cmd_ objcopy objcopyFlags [mainRelocBssElf, out]
+
+  -- Finalize the normal link downstream of ld. Entry and load addresses come
+  -- from section-owned ELF symbols; payload size comes from the actual logical
+  -- output and is padded to a PS-X sector by the finalizer.
+  mainRelocBssExe %> \out -> do
+    let tool = "tools" </> "psxexe.py"
+    stack <- ramLayoutValue "initial_stack_address"
+    need [mainRelocBssLogical, mainRelocBssElf, tool]
+    cmd_ "python3" tool
+      [ "finalize", mainRelocBssLogical,
+        "-o", out,
+        "--elf", mainRelocBssElf,
+        "--entry-symbol", "__SN_ENTRY_POINT",
+        "--load-symbol", "__load_start",
+        "--set", "sp=" <> stack,
+        "--expect", "gp=0",
+        "--expect", "sp=" <> stack
+      ]
+
+  -- Compose the no-pad C/SDK chain with reviewed loaded-data relocations and
+  -- relative initialized/BSS layout.  This is intentionally a separate output
+  -- from main_reloc_bss: the latter remains byte-exact and can keep serving as
+  -- the retail structural oracle.
+  [ normalRelinkLinker, normalRelinkSymbols,
+    normalRelinkUndefined, normalRelinkTailAsm
+    ] &%> \_outs -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedSymbols = genD </> metaDir </> "undefined_symbols_auto.main.exe.txt"
+        oldTailObject = tBuildDir </> "data" </> "75F64.data.s.o"
+        replacementArgs = concatMap
+          (\name ->
+            [ "--replace-object",
+              (tBuildDir </> "data" </> name <.> "data.s.o") <>
+                "=" <> relocDataObject name
+            ])
+          relocDataTargetNames
+        tool = "tools" </> "reloc_bss_lane.py"
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    overrideNames <- modRelinkOverrideNames
+    let overrideArgs = concatMap
+          (\name ->
+            [ "--override-object",
+              (tBuildDir </> name <.> "c.o") <> "=" <> modRelinkObject name
+            ])
+          overrideNames
+        overrideSectionArgs = concatMap
+          (\name -> ["--ordinary-c-object-glob", modRelinkObject name])
+          overrideNames
+    need [ normalRelinkSdkLinker, normalRelinkSdkSymbols, undefinedSymbols,
+           relocData75F64Asm, tool, ramLayoutTool, ramLayoutHeader ]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory normalRelinkLinker)
+    cmd_ "python3" tool $
+      [ "generate",
+        "--linker-in", normalRelinkSdkLinker,
+        "--symbols-in", normalRelinkSdkSymbols,
+        "--undefined-in", undefinedSymbols,
+        "--tail-in", relocData75F64Asm,
+        "--dynamic-pool",
+        "--strict-orphans",
+        "--linker-out", normalRelinkLinker,
+        "--symbols-out", normalRelinkSymbols,
+        "--undefined-out", normalRelinkUndefined,
+        "--tail-out", normalRelinkTailAsm,
+        "--old-tail-object", oldTailObject,
+        "--new-tail-object", normalRelinkTailObject,
+        "--extension-object-glob", tBuildDir </> "reloc" </> "*.c.o",
+        "--ordinary-c-object-glob", tBuildDir </> "*.c.o"
+      ] <>
+      concatMap
+        (\name -> ["--ordinary-c-object-glob", relocCLiteralObject name])
+        relocCLiteralNames <>
+      overrideSectionArgs <>
+      replacementArgs <>
+      overrideArgs
+
+  normalRelinkTailObject %> \out -> do
+    need [normalRelinkTailAsm]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    withTempFile $ \depFile -> do
+      cmd_ as asFlags ["--MD", depFile, "-o", out, normalRelinkTailAsm]
+      neededAsmDeps depFile
+
+  [mainRelinkElf, mainRelinkMap] &%> \_outs -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedFunctions = genD </> metaDir </> "undefined_functions_auto.main.exe.txt"
+        inputAuditTool = "tools" </> "reloc_input_audit.py"
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    sFiles <- liftIO $ getDirectoryFilesIO (genD </> asmDir) ["*.s", "data/*.s"]
+    userFiles <- Set.fromList <$> getDirectoryFiles (tgSrcDir t) ["//*.c"]
+    genFiles <- Set.fromList <$> getDirectoryFiles (genD </> srcDir) ["//*.c"]
+    let cFiles = Set.toList (userFiles <> genFiles)
+    assetFiles <- liftIO $ getDirectoryFilesIO (genD </> assetsDir) ["//*.bin"]
+    overrideNames <- modRelinkOverrideNames
+    let oFiles = map (\f -> tBuildDir </> f <.> "o") (cFiles <> sFiles <> assetFiles)
+        extensionObjects =
+          map (\f -> tBuildDir </> f <.> "o") $
+            filter (\f -> ["reloc"] `isPrefixOf` splitDirectories f) cFiles
+        sFilesExp = map (\f -> genD </> asmDir </> f) sFiles
+        assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
+    need $ sFilesExp <> assetFilesExp <> oFiles <> relocCLiteralObjects <>
+      map modRelinkObject overrideNames <>
+      [ normalRelinkLinker, normalRelinkSymbols, normalRelinkUndefined,
+        normalRelinkTailObject, undefinedFunctions, inputAuditTool,
+        ramLayoutTool, ramLayoutHeader, tgSymbols mainTarget
+      ] <> relocDataObjects
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory mainRelinkElf)
+    cmd_ ld ldFlags
+      [ "-o", mainRelinkElf,
+        "-Map", mainRelinkMap,
+        "-T", normalRelinkLinker,
+        "-T", normalRelinkSymbols,
+        "-T", normalRelinkUndefined,
+        "-T", undefinedFunctions,
+        "--orphan-handling=error",
+        "--no-check-sections",
+        "-nostdlib"
+      ] extensionObjects
+    -- Keep the artifact available to the composed dashboard even when this
+    -- diagnostic finds a new blocker. Public `relink` and `check-relink`
+    -- immediately rerun the same audit strictly.
+    cmd_ "python3" inputAuditTool ["--allow-findings"]
+
+  mainRelinkLogical %> \out -> do
+    need [mainRelinkElf]
+    cmd_ objcopy objcopyFlags [mainRelinkElf, out]
+
+  mainRelinkExe %> \out -> do
+    let tool = "tools" </> "psxexe.py"
+    stack <- ramLayoutValue "initial_stack_address"
+    need [mainRelinkLogical, mainRelinkElf, tool]
+    cmd_ "python3" tool
+      [ "finalize", mainRelinkLogical,
+        "-o", out,
+        "--elf", mainRelinkElf,
+        "--entry-symbol", "__SN_ENTRY_POINT",
+        "--load-symbol", "__load_start",
+        "--set", "sp=" <> stack,
+        "--expect", "gp=0",
+        "--expect", "sp=" <> stack
+      ]
+
+  -- Real-edit regression lane: the same composition as the normal relink,
+  -- but with the committed fixture override/extension in place of any user
+  -- mods.  The gate proves the grown-function modding contract end to end
+  -- without touching src/.
+  [realeditLinker, realeditSymbols, realeditUndefined, realeditTailAsm] &%> \_outs -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedSymbols = genD </> metaDir </> "undefined_symbols_auto.main.exe.txt"
+        oldTailObject = tBuildDir </> "data" </> "75F64.data.s.o"
+        replacementArgs = concatMap
+          (\name ->
+            [ "--replace-object",
+              (tBuildDir </> "data" </> name <.> "data.s.o") <>
+                "=" <> relocDataObject name
+            ])
+          relocDataTargetNames
+        tool = "tools" </> "reloc_bss_lane.py"
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    need [ normalRelinkSdkLinker, normalRelinkSdkSymbols, undefinedSymbols,
+           relocData75F64Asm, tool, ramLayoutTool, ramLayoutHeader ]
+    liftIO $ IO.createDirectoryIfMissing True realeditLayoutDir
+    cmd_ "python3" tool $
+      [ "generate",
+        "--linker-in", normalRelinkSdkLinker,
+        "--symbols-in", normalRelinkSdkSymbols,
+        "--undefined-in", undefinedSymbols,
+        "--tail-in", relocData75F64Asm,
+        "--dynamic-pool",
+        "--strict-orphans",
+        "--linker-out", realeditLinker,
+        "--symbols-out", realeditSymbols,
+        "--undefined-out", realeditUndefined,
+        "--tail-out", realeditTailAsm,
+        "--old-tail-object", oldTailObject,
+        "--new-tail-object", realeditTailObject,
+        "--extension-object-glob", realeditExtDir </> "*.c.o",
+        "--ordinary-c-object-glob", tBuildDir </> "*.c.o"
+      ] <>
+      concatMap
+        (\name -> ["--ordinary-c-object-glob", relocCLiteralObject name])
+        relocCLiteralNames <>
+      [ "--ordinary-c-object-glob", realeditOverrideObject ] <>
+      replacementArgs <>
+      [ "--override-object",
+        (tBuildDir </> "PadProc.c.o") <> "=" <> realeditOverrideObject
+      ]
+
+  realeditTailObject %> \out -> do
+    need [realeditTailAsm]
+    liftIO $ IO.createDirectoryIfMissing True (takeDirectory out)
+    withTempFile $ \depFile -> do
+      cmd_ as asFlags ["--MD", depFile, "-o", out, realeditTailAsm]
+      neededAsmDeps depFile
+
+  [realeditElf, realeditMap] &%> \_outs -> do
+    let t = mainTarget
+        genD = tgGenDir t
+        tBuildDir = tgBuildDir t
+        undefinedFunctions = genD </> metaDir </> "undefined_functions_auto.main.exe.txt"
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    sFiles <- liftIO $ getDirectoryFilesIO (genD </> asmDir) ["*.s", "data/*.s"]
+    userFiles <- Set.fromList <$> getDirectoryFiles (tgSrcDir t) ["//*.c"]
+    genFiles <- Set.fromList <$> getDirectoryFiles (genD </> srcDir) ["//*.c"]
+    let cFiles = Set.toList (userFiles <> genFiles)
+    assetFiles <- liftIO $ getDirectoryFilesIO (genD </> assetsDir) ["//*.bin"]
+    let oFiles = map (\f -> tBuildDir </> f <.> "o") (cFiles <> sFiles <> assetFiles)
+        sFilesExp = map (\f -> genD </> asmDir </> f) sFiles
+        assetFilesExp = map (\f -> genD </> assetsDir </> f) assetFiles
+    need $ sFilesExp <> assetFilesExp <> oFiles <> relocCLiteralObjects <>
+      [ realeditLinker, realeditSymbols, realeditUndefined,
+        realeditTailObject, realeditOverrideObject, realeditExtObject,
+        undefinedFunctions, tgSymbols mainTarget
+      ] <> relocDataObjects
+    cmd_ ld ldFlags
+      [ "-o", realeditElf,
+        "-Map", realeditMap,
+        "-T", realeditLinker,
+        "-T", realeditSymbols,
+        "-T", realeditUndefined,
+        "-T", undefinedFunctions,
+        "--orphan-handling=error",
+        "--no-check-sections",
+        "-nostdlib",
+        realeditExtObject
+      ]
+
+  realeditLogical %> \out -> do
+    need [realeditElf]
+    cmd_ objcopy objcopyFlags [realeditElf, out]
+
+  realeditExe %> \out -> do
+    let tool = "tools" </> "psxexe.py"
+    stack <- ramLayoutValue "initial_stack_address"
+    need [realeditLogical, realeditElf, tool]
+    cmd_ "python3" tool
+      [ "finalize", realeditLogical,
+        "-o", out,
+        "--elf", realeditElf,
+        "--entry-symbol", "__SN_ENTRY_POINT",
+        "--load-symbol", "__load_start",
+        "--set", "sp=" <> stack,
+        "--expect", "gp=0",
+        "--expect", "sp=" <> stack
+      ]
+
   -- Non-matching build: mkmod patches hooked functions in place. It reads main.exe's
   -- symbol table (via nm on the elf), compiles every src/mod/main.exe/*.c, and aborts
   -- if one outgrows its slot -- so depend on the exe+elf, the mod sources, AND the
@@ -893,21 +2086,86 @@ mainExtraRules = do
   -- dynamically ($TENCHU_CUE / disks/ / ~/tenchu-iso/), so a disc swap isn't a
   -- tracked input: `./Build clean` (or touch the exe) to force a repack then.
   [tenchuBin, tenchuCue] &%> \_out -> do
-    need [mainExe]
-    cmd_ "tools/mkiso.py"
+    let tool = "tools" </> "mkiso.py"
+    need [mainExe, tool]
+    cmd_ tool
 
   [tenchuModBin, tenchuModCue] &%> \_out -> do
-    need [mainModExe]
-    cmd_ "tools/mkiso.py" ["--exe", mainModExe,
-                           "--out", buildDir </> "tenchu" </> "tenchu-mod"]
+    let tool = "tools" </> "mkiso.py"
+    need [mainModExe, tool]
+    cmd_ tool ["--exe", mainModExe,
+               "--out", buildDir </> "tenchu" </> "tenchu-mod"]
+
+  [tenchuRelinkBin, tenchuRelinkCue] &%> \_out -> do
+    let tool = "tools" </> "mkiso.py"
+    need [mainRelinkExe, tool]
+    cmd_ tool ["--exe", mainRelinkExe,
+               "--out", buildDir </> "tenchu" </> "tenchu-relink"]
+
+  -- Debugger symbol loaders for the run* launchers: <artifact>.symbols.lua
+  -- is generated from <artifact>.elf, so names always match the launched
+  -- layout.
+  buildDir </> "tenchu" </> "*.symbols.lua" %> \out -> do
+    let elf = dropExtension (dropExtension out) <.> "elf"
+        tool = "tools" </> "pcsx_symbols.py"
+    need [elf, tool]
+    cmd_ "python3" tool ["--elf", elf, "-o", out]
+
+  -- PCSX-Redux Typed Debugger import files. Function addresses come from the
+  -- launched ELF (layout-correct); data types are recovered struct layouts
+  -- and are layout-independent. The widget imports them via its own file
+  -- dialogs (no Lua/CLI hook), so the build keeps them fresh next to the
+  -- artifact and the run launcher prints their paths.
+  buildDir </> "tenchu" </> "*.redux_funcs.txt" %> \out -> do
+    let elf = dropExtension (dropExtension out) <.> "elf"
+        tool = "tools" </> "redux_typed_debugger.py"
+    need [elf, tool, "reference" </> "psxsym-protos.h",
+          "reference" </> "psxsym-types.h"]
+    cmd_ "python3" tool ["--elf", elf, "--funcs-out", out]
+
+  buildDir </> "tenchu" </> "*.redux_data_types.txt" %> \out -> do
+    let tool = "tools" </> "redux_typed_debugger.py"
+    need [tool, "reference" </> "psxsym-types.h"]
+    cmd_ "python3" tool ["--types-out", out]
 
 phonyRules :: Rules ()
 phonyRules = do
+  let runRelinkGrowthProbe = do
+        let tool = "tools" </> "reloc_growth_probe.py"
+            undefinedFunctions = tgGenDir mainTarget </> metaDir </>
+              "undefined_functions_auto.main.exe.txt"
+        need
+          [ mainRelinkExe, mainRelinkElf, mainRelinkLogical,
+            normalRelinkLinker, normalRelinkSymbols, normalRelinkUndefined,
+            undefinedFunctions, configDir </> "reloc-data.main.exe.json",
+            tool, "tools" </> "psxexe.py", "tools" </> "reloc_audit.py",
+            "tools" </> "reloc_c_literals.py", ramLayoutTool, ramLayoutHeader
+          ]
+        cmd_ "python3" tool
+
+      runShiftabilityReport = do
+        let tool = "tools" </> "shiftability_report.py"
+            undefinedFunctions = tgGenDir mainTarget </> metaDir </>
+              "undefined_functions_auto.main.exe.txt"
+        need $
+          [ mainRelinkExe, mainRelinkElf, mainRelinkMap, mainRelinkLogical,
+            mainRelocBssElf, normalRelinkLinker, normalRelinkCLinker,
+            normalRelinkSymbols, normalRelinkUndefined, undefinedFunctions,
+            configDir </> "reloc-data.main.exe.json", tool,
+            "tools" </> "reloc_input_audit.py",
+            "tools" </> "reloc_audit.py",
+            "tools" </> "reloc_c_literals.py",
+            "tools" </> "reloc_growth_probe.py",
+            "tools" </> "reloc_data.py", "tools" </> "psxexe.py",
+            ramLayoutTool, ramLayoutHeader, tgSymbols mainTarget
+          ] <> relocCLiteralAuditObjects <> relocCLiteralReferenceObjects
+        cmd_ "python3" tool
+
   phony "clean" $ do
     liftIO $
       removeFiles
         "."
-        [genDir, buildDir, processedDir]
+        [genDir, buildDir, processedDir, relocCLiteralDir]
 
   phony "extract_main.exe" $ do
     need [mainGen]
@@ -915,11 +2173,12 @@ phonyRules = do
   -- Each of these is just a `need` on a real file target now, so the exe/mod/iso
   -- are (re)built only when their inputs change — `run-iso` no longer repacks the
   -- ~750 MB image every launch. `mod` -> main_mod.exe; `iso`/`iso-mod` -> the
-  -- bootable .bin/.cue (matching vs grown build). See docs/modding-and-nonmatching.md
+  -- bootable .bin/.cue (matching vs same-slot mod). See docs/modding-and-nonmatching.md
   -- and docs/building-an-iso.md.
   phony "mod" $ need [mainModExe]
   phony "iso" $ need [tenchuCue]
   phony "iso-mod" $ need [tenchuModCue]
+  phony "iso-relink" $ need [tenchuRelinkCue]
 
   -- `run` / `run-mod`: fast path — mount the original disc and `-loadexe` our exe
   -- over it, no ISO repack. Tenchu boots SLPS_019.01 -> ... -> MAIN.EXE, so this
@@ -933,19 +2192,27 @@ phonyRules = do
     need [mainModExe]
     launchLoadExe [] mainModExe
 
+  phony "run-relink" $ do
+    need [mainRelinkExe]
+    launchLoadExe [] mainRelinkExe
+
   -- `run-iso` / `run-iso-mod`: faithful — boot the repacked disc (built by the file
   -- rules above only when the exe changed), so the real SLPS_019.01 -> ... -> MAIN.EXE
   -- chain runs.
   phony "run-iso" $ do
     need [tenchuCue]
-    launchIso [] tenchuCue
+    launchIso [] tenchuCue mainExe
 
   -- main_mod.exe is patched in place (same size as main.exe), so the mod disc keeps
-  -- forced LBAs and is byte-faithful except our function — streamed cutscenes and the
-  -- full SLPS→MENU→MAIN boot all work. See docs/modding-and-nonmatching.md.
+  -- the dumped file layout and is byte-faithful except our function. See
+  -- docs/modding-and-nonmatching.md.
   phony "run-iso-mod" $ do
     need [tenchuModCue]
-    launchIso [] tenchuModCue
+    launchIso [] tenchuModCue mainModExe
+
+  phony "run-iso-relink" $ do
+    need [tenchuRelinkCue]
+    launchIso [] tenchuRelinkCue mainRelinkExe
 
   -- Verify a target reproduces its original image byte for byte. The reference sha
   -- is pinned so a swapped/corrupt base image is caught, rather than merely proving
@@ -967,6 +2234,240 @@ phonyRules = do
   -- The matching gate: main.exe only, so it stays fast (matchdiff runs ./Build once
   -- per function). `check-all` verifies every executable on the disc.
   phony "check" $ checkTarget mainTarget
+
+  -- Normal GNU-ld output. Unlike the same-slot `mod` target this allows sections
+  -- to grow and accepts new sources under src/main.exe/reloc/. `check-relink`
+  -- runs the structural/header/static-address gates; `check-reloc-bss` remains
+  -- the byte-exact retail-layout oracle.
+  phony "relink" $ do
+    let inputAuditTool = "tools" </> "reloc_input_audit.py"
+    need [mainRelinkExe, mainRelinkMap, inputAuditTool, tgSymbols mainTarget]
+    cmd_ "python3" inputAuditTool
+
+  -- A user/agent-facing dashboard rather than another independent audit: it
+  -- composes the mandatory input scan, final-image scan, compiler-object
+  -- contracts, current layout budget, and the real +0x10004 growth proof. It
+  -- labels exact-source variants and intentional fixed PS1/game contracts
+  -- separately so neither is mistaken for a stale-address blocker.
+  phony "shiftability-report" runShiftabilityReport
+
+  phony "check-relink-growth" runRelinkGrowthProbe
+
+  -- Deep-runtime gate: boot the grown auto-LBA disc unattended into a real
+  -- mission and require mission construction, a running character
+  -- simulation, and sustained CD/XA callbacks.  Opt-in: needs pcsx-redux,
+  -- the original disc, and several minutes of wall clock.
+  phony "check-relink-gameplay" $ do
+    let tool = "tools" </> "pcsx_gameplay.py"
+    runRelinkGrowthProbe
+    need [ tool, "tools" </> "pcsx-gameplay.lua",
+           "tools" </> "pcsx_smoke.py", "tools" </> "psxexe.py" ]
+    cmd_ "python3" tool ["--repack"]
+
+  -- Replay the committed grown-PadProc fixture through the override
+  -- machinery in an isolated composition and verify code growth, the
+  -- relocated call, loaded data, a zero-finding input audit, and (unless
+  -- TENCHU_REALEDIT_NO_SMOKE=1) an emulator boot with observed behavior.
+  phony "check-relink-realedit" $ do
+    let tool = "tools" </> "relink_realedit.py"
+    need
+      [ realeditExe, realeditElf, realeditMap, realeditLinker,
+        mainRelocBssElf, tool,
+        "tools" </> "reloc_input_audit.py", "tools" </> "psxexe.py",
+        "tools" </> "reloc_c_literals.py",
+        "tools" </> "pcsx_smoke.py", "tools" </> "pcsx-smoke.lua"
+      ]
+    cmd_ "python3" tool
+
+  -- Structural integration gate for the real no-pad artifact.  The compiler
+  -- object delta is measured, every unique canonical-SDK symbol must follow
+  -- it, and extension/BSS/header bounds are checked without requiring a fixed
+  -- extension size. The relocation audit separately rejects any regression to
+  -- movable ABS definitions or literal code/data pointers.
+  phony "check-relink" $ do
+    verifyRelocCLiteralObjectsWith True
+    verifyNormalRelink
+    let psxExeTool = "tools" </> "psxexe.py"
+        auditTool = "tools" </> "reloc_audit.py"
+        inputAuditTool = "tools" </> "reloc_input_audit.py"
+    stack <- ramLayoutValue "initial_stack_address"
+    need
+      [ mainRelinkExe, mainRelinkElf, mainRelinkMap, psxExeTool, auditTool,
+        inputAuditTool, ramLayoutTool, ramLayoutHeader, tgSymbols mainTarget
+      ]
+    cmd_ "python3" psxExeTool
+      [ "validate", mainRelinkExe,
+        "--elf", mainRelinkElf,
+        "--entry-symbol", "__SN_ENTRY_POINT",
+        "--load-symbol", "__load_start",
+        "--expect", "gp=0",
+        "--expect", "sp=" <> stack
+      ]
+    cmd_ "python3" auditTool ["--fail-on-findings"]
+    cmd_ "python3" inputAuditTool
+    runRelinkGrowthProbe
+    putInfo "check-relink: normal C/SDK/data/BSS/header composition is structurally valid"
+
+  -- Focused input gate for six compiler-produced address constructions. Two
+  -- allocator objects are transformed after cc1; four byte-exact ordinary
+  -- objects are audited directly. All six retain one source spelling.
+  phony "check-reloc-c-literals" $ do
+    verifyRelocCLiteralObjects
+    verifyRelocCLiteralLink
+    putInfo "check-reloc-c-literals: two transformed and four ordinary exact objects carry and apply linker relocations"
+
+  -- Opt-in exact-at-retail gate for the normal linker-owned game-symbol lane.
+  -- This deliberately does not claim that a grown image is runnable yet: raw
+  -- SDK code, the fixed PS-EXE header, and fixed BSS symbols are later stages.
+  phony "check-reloc-game" $ do
+    verifyRelocCLiteralObjects
+    verifyRelocCLiteralLink
+    need [mainRelocGameExe, tgImage mainTarget]
+    StdoutTrim ref <- cmd "sha256sum" (tgImage mainTarget)
+    StdoutTrim ours <- cmd "sha256sum" mainRelocGameExe
+    let refSha = head $ words ref
+        ourSha = head $ words ours
+    when (refSha /= tgSha mainTarget) $
+      fail $ unwords ["Reference", tgImage mainTarget, "has sha256", refSha,
+                      "but expected known-good", tgSha mainTarget,
+                      "- wrong/corrupt base image?"]
+    when (ourSha /= refSha) $
+      fail $ unwords ["Expected", mainRelocGameExe, "to have sha256 of", refSha,
+                      "but it's", ourSha]
+    putInfo "check-reloc-game: linker-owned game symbols are retail-exact; symbolic-C inputs verified"
+
+  -- Bounded canonical-assembly proof for the complete SDK/CRT text stream
+  -- through UnitVector2. The retail-address link must still match; a controlled
+  -- +4 link before Exec audits final linked J/JAL and HI/LO words plus ownership
+  -- of every emitted text alias. The composed relink owns later data/BSS and
+  -- the PS-X EXE header.
+  phony "check-reloc-sdk" $ do
+    let tool = "tools" </> "reloc_sdk_lane.py"
+        sdkNames =
+          [ "LIBAPI_4F9D4",
+            "CRT_SDK_4FA48",
+            "SDK_TEXT_5492C",
+            "SDK_TEXT_54B80",
+            "SDK_TEXT_54DE4",
+            "SDK_TEXT_5534C",
+            "SDK_TEXT_55420",
+            "SDK_TEXT_5544C",
+            "SDK_TEXT_55478",
+            "SDK_TEXT_554DC",
+            "SDK_TEXT_55530",
+            "SDK_TEXT_55618",
+            "SDK_TEXT_556EC",
+            "SDK_TEXT_55714",
+            "SDK_TEXT_55D68",
+            "SDK_TEXT_58164",
+            "SDK_TEXT_67B78",
+            "SDK_TEXT_71800",
+            "SDK_TEXT_722E8",
+            "SDK_TEXT_72CD0"
+          ]
+        sdkObjects = map (\name -> tgBuildDir mainTarget </> name <.> "s" <.> "o") sdkNames
+        sdkSources = map (\name -> tgGenDir mainTarget </> asmDir </> name <.> "s") sdkNames
+        sdkObjectArgs = concatMap (\object -> ["--sdk-object", object]) sdkObjects
+        sdkSourceArgs = concatMap (\source -> ["--sdk-source", source]) sdkSources
+    need [ mainRelocSdkExe, mainRelocSdkShiftExe, tgImage mainTarget,
+           tool, tgSymbols mainTarget ]
+    need $ sdkObjects <> sdkSources
+    StdoutTrim ref <- cmd "sha256sum" (tgImage mainTarget)
+    StdoutTrim ours <- cmd "sha256sum" mainRelocSdkExe
+    let refSha = head $ words ref
+        ourSha = head $ words ours
+    when (refSha /= tgSha mainTarget) $
+      fail $ unwords ["Reference", tgImage mainTarget, "has sha256", refSha,
+                      "but expected known-good", tgSha mainTarget,
+                      "- wrong/corrupt base image?"]
+    when (ourSha /= refSha) $
+      fail $ unwords ["Expected", mainRelocSdkExe, "to have sha256 of", refSha,
+                      "but it's", ourSha]
+    cmd_ "python3" tool $
+      [ "verify",
+        "--base-elf", mainRelocSdkElf,
+        "--shifted-elf", mainRelocSdkShiftElf,
+        "--symbols-in", tgSymbols mainTarget,
+        "--delta", "4"
+      ] <> sdkObjectArgs <> sdkSourceArgs
+    putInfo "check-reloc-sdk: canonical SDK text is retail-exact and +4-relocatable"
+
+  -- Opt-in exact-at-retail ownership proof for BSS boundaries and the fixed
+  -- virtual-memory pool. objcopy emits only the logical initialized prefix;
+  -- the finalizer derives entry/load/size from the link and emits sector
+  -- padding, while the validator checks every known BSS symbol and both NOBITS
+  -- reservations. It intentionally does not claim a grown image is runnable.
+  phony "check-reloc-bss" $ do
+    let t = mainTarget
+        undefinedSymbols = tgGenDir t </> metaDir </> "undefined_symbols_auto.main.exe.txt"
+        tool = "tools" </> "reloc_bss_lane.py"
+    need ["check-reloc-data"]
+    need [ mainRelocBssLogical, mainRelocBssExe, mainRelocBssElf,
+           tgImage t, relocSdkBaseSymbols,
+           undefinedSymbols, tool, ramLayoutTool, ramLayoutHeader ]
+    StdoutTrim ref <- cmd "sha256sum" (tgImage t)
+    StdoutTrim finalized <- cmd "sha256sum" mainRelocBssExe
+    let refSha = head $ words ref
+        finalizedSha = head $ words finalized
+    when (refSha /= tgSha t) $
+      fail $ unwords ["Reference", tgImage t, "has sha256", refSha,
+                      "but expected known-good", tgSha t,
+                      "- wrong/corrupt base image?"]
+    when (finalizedSha /= refSha) $
+      fail $ unwords ["Expected finalized", mainRelocBssExe,
+                      "to have sha256 of", refSha, "but it's", finalizedSha]
+    cmd_ "python3" tool
+      [ "validate",
+        "--logical", mainRelocBssLogical,
+        "--reference", tgImage t,
+        "--elf", mainRelocBssElf,
+        "--symbols-in", relocSdkBaseSymbols,
+        "--undefined-in", undefinedSymbols
+      ]
+    putInfo "check-reloc-bss: linker-owned BSS/pool and finalized PS-X EXE are retail-exact"
+
+  -- Standalone loaded-data proof.  The manifest transformer works on copies of
+  -- Splat output, so the matching build remains untouched.  The verifier
+  -- requires one R_MIPS_32 at every reviewed source word and links the touched
+  -- data inputs at retail, +4, and +0x10004 addresses.
+  phony "check-reloc-data" $ do
+    let t = mainTarget
+        dataDir = tgGenDir t </> asmDir </> "data"
+        manifest = configDir </> "reloc-data.main.exe.json"
+        transform = "tools" </> "reloc_data.py"
+        tool = "tools" </> "reloc_data_lane.py"
+        inputs = map (dataDir </>) $ map (<.> "data.s") relocDataNames
+    _generatedFiles <- getGeneratedFiles (tgGen t)
+    need $ [manifest, transform, tool, "include" </> "macro.inc"] <> inputs
+    cmd_ "python3" tool
+      [ "--manifest", manifest,
+        "--input-dir", dataDir,
+        "--work-dir", buildDir </> "reloc-data"
+      ]
+    putInfo "check-reloc-data: reviewed pointer tables are retail-exact and shift-relocatable"
+
+  -- Optional, evidence-preserving lane for the complete stock GS_107.OBJ.
+  -- Nothing proprietary is fetched or tracked: point this one target at a
+  -- local PsyQ LIBGS.LIB.  The tool verifies both archive and member hashes,
+  -- links the converted member as one relocatable object, preserves its BSS in
+  -- a NOLOAD section, then requires the full executable to remain identical.
+  -- The ordinary `check` target does not inspect this variable or run the lane.
+  phony "check-psyq-gs107" $ do
+    archive <- liftIO $ lookupEnv "TENCHU_PSYQ_LIBGS"
+    libgs <- case archive of
+      Just path -> pure path
+      Nothing -> fail $ unlines
+        [ "check-psyq-gs107 needs a user-supplied PsyQ LIBGS.LIB.",
+          "Set TENCHU_PSYQ_LIBGS=/path/to/LIBGS.LIB; the normal ./Build check does not need it."
+        ]
+    let manifest = configDir </> "psyq-objects.main.exe.json"
+        tool = "tools" </> "psyq_object_lane.py"
+        ldFile = tgGenDir mainTarget </> "linker" </> "main.exe.ld"
+        undefinedSymbols = tgGenDir mainTarget </> "meta" </> "undefined_symbols_auto.main.exe.txt"
+        undefinedFunctions = tgGenDir mainTarget </> "meta" </> "undefined_functions_auto.main.exe.txt"
+    need [ mainExe, tgImage mainTarget, libgs, manifest, tool, ldFile,
+           tgSymbols mainTarget, undefinedSymbols, undefinedFunctions ]
+    cmd_ tool ["--archive", libgs, "--manifest", manifest]
 
   phony "check-all" $ mapM_ checkTarget targets
 
@@ -992,16 +2493,63 @@ launchLoadExe :: [String] -> FilePath -> Action ()
 launchLoadExe extra exe = do
   disc <- liftIO $ findDisc >>= IO.makeAbsolute
   exeAbs <- liftIO $ IO.makeAbsolute exe
-  runPcsx (["-run", "-iso", disc, "-loadexe", exeAbs] <> extra)
+  symbols <- symbolArgs exe
+  runPcsx (["-run", "-iso", disc, "-loadexe", exeAbs] <> symbols <> extra)
 
--- | Launch a repacked disc image (the faithful full boot). @extra@ as 'launchLoadExe'.
-launchIso :: [String] -> FilePath -> Action ()
-launchIso extra cue = do
+-- | Launch a repacked disc image (the faithful full boot). @extra@ as
+-- 'launchLoadExe'; @symbolsFor@ names the executable whose debugger symbols
+-- the disc's MAIN.EXE slot carries.
+launchIso :: [String] -> FilePath -> FilePath -> Action ()
+launchIso extra cue symbolsFor = do
   cueAbs <- liftIO $ IO.makeAbsolute cue
-  runPcsx (["-run", "-iso", cueAbs] <> extra)
+  symbols <- symbolArgs symbolsFor
+  runPcsx (["-run", "-iso", cueAbs] <> symbols <> extra)
 
--- | Run pcsx-redux with the given base args plus any @$PCSX_REDUX_ARGS@. It falls
--- back to OpenBIOS when no BIOS is configured, so no BIOS is required.
+-- | Debugger symbols for a launched executable: a generated Lua loader that
+-- PCSX.insertSymbol()s every name from the artifact's own ELF, so call
+-- stacks and disassembly are named in every layout (exact, mod, relink).
+-- main_mod.exe is patched in place, so it shares main.exe's ELF symbols.
+-- The Typed Debugger's import files are generated alongside and their paths
+-- printed: the widget imports them through its own file dialogs (it exposes
+-- no Lua/CLI hook), so the build keeps them fresh and the user imports once
+-- per session.
+symbolArgs :: FilePath -> Action [String]
+symbolArgs exe = do
+  let base = if exe == mainModExe then mainExe else exe
+      lua = base <.> "symbols.lua"
+      dataTypes = base <.> "redux_data_types.txt"
+      funcs = base <.> "redux_funcs.txt"
+  need [lua, dataTypes, funcs]
+  [luaAbs, dataTypesAbs, funcsAbs] <-
+    liftIO $ mapM IO.makeAbsolute [lua, dataTypes, funcs]
+  -- When the GDB server is on, build the matching source-line script for this
+  -- layout so VSCode's launch.json can source a fresh one — no separate
+  -- `./Build debug-gdb` step. mod shares main.exe's addresses.
+  gdbEnv <- liftIO $ lookupEnv "TENCHU_GDB"
+  gdbInfo <- if gdbEnv == Nothing
+    then pure ""
+    else do
+      let debugGdb = if base == mainRelinkExe then mainRelinkDebugGdb else mainDebugGdb
+      need [debugGdb]
+      debugGdbAbs <- liftIO $ IO.makeAbsolute debugGdb
+      pure $ "\n  source lines (VSCode sources this): " <> debugGdbAbs
+  putInfo $
+    "Typed Debugger imports (Debug -> Typed Debugger -> Import):\n"
+      <> "  data types: " <> dataTypesAbs <> "\n"
+      <> "  functions:  " <> funcsAbs
+      <> gdbInfo
+  pure ["-dofile", luaAbs]
+
+-- | Where a @run*@ target records the resolved emulator argv. The @./Build@
+-- wrapper execs it after Shake exits, so the emulator does not run inside the
+-- Shake session and the global build lock is released for the whole play
+-- session (only the build steps up to the launch hold it).
+pendingLaunchFile :: FilePath
+pendingLaunchFile = shakeDir </> "pending-launch"
+
+-- | Record a pcsx-redux launch with the given base args plus any
+-- @$PCSX_REDUX_ARGS@. It falls back to OpenBIOS when no BIOS is configured, so
+-- no BIOS is required.
 --
 -- We force @-interpreter@ by default: pcsx-redux's x64 dynarec crashes
 -- (\"Unrecoverable error while running recompiler\") with OpenBIOS — a regression
@@ -1009,13 +2557,29 @@ launchIso extra cue = do
 -- memory-system rework since). Since we default to OpenBIOS, the dynarec is
 -- unusable here. The user opts back into the dynarec (with a real BIOS) by putting
 -- @-dynarec@/@-bios@/@-interpreter@ in @$PCSX_REDUX_ARGS@.
+--
+-- The argv is written NUL-delimited (disc paths contain spaces) and the
+-- launch is deferred to the wrapper rather than run via @cmd_@ here.
 runPcsx :: [String] -> Action ()
 runPcsx baseArgs = do
   pcsx <- liftIO findPcsx
   extra <- liftIO $ maybe [] words <$> lookupEnv "PCSX_REDUX_ARGS"
+  -- TENCHU_GDB[=port] enables pcsx-redux's GDB server so VSCode (or a bare
+  -- gdb) can attach; default port 3333. See docs/debugging-vscode.md.
+  gdbEnv <- liftIO $ lookupEnv "TENCHU_GDB"
   let userChoseCpu = any (`elem` ["-interpreter", "-dynarec", "-bios"]) extra
       cpu = ["-interpreter" | not userChoseCpu]
-  cmd_ pcsx (baseArgs <> cpu <> extra)
+      gdbArgs = case gdbEnv of
+        Nothing -> []
+        Just "" -> ["-gdb", "-gdb-port", "3333"]
+        Just "1" -> ["-gdb", "-gdb-port", "3333"]
+        Just port -> ["-gdb", "-gdb-port", port]
+      argv = pcsx : (baseArgs <> cpu <> gdbArgs <> extra)
+  liftIO $ IO.createDirectoryIfMissing True shakeDir
+  liftIO $ writeFile pendingLaunchFile (intercalate "\0" argv)
+  if null gdbArgs
+    then putInfo "launch deferred to the ./Build wrapper (build lock released first)"
+    else putInfo "GDB server on; launch deferred to wrapper (attach from VSCode / mips-gdb)"
 
 -- | The pcsx-redux binary: @$PCSX_REDUX@, else on @$PATH@, else the usual checkout.
 findPcsx :: IO FilePath

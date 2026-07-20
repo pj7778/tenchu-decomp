@@ -7,6 +7,22 @@ future tasks as well as mark things already done etc. The developer docs index
 is docs/README.md — read it before non-trivial work; it explains the build,
 toolchain decisions, modding, ISO/emulator flow, and the Ghidra bridge.
 
+For normal-link shiftability work, start with `./Build shiftability-report`.
+Its BLOCKERS section is the current user/agent work queue; DEBT must remain at
+zero exact-vs-normal source variants, and CONTRACT/POLICY records intentional
+RAM boundaries. The initial six variants have one source each:
+`ActivateHumans`, `FileOption`, `SelectCameraOwnerOption`, and
+`ProcItemShinsoku` are ordinary exact C objects with real relocations; `vinit`
+and `valloc` retain their human-shaped exact C while the normal lane applies a
+bounded, fail-fast LUI/ORI-to-symbolic-LUI/ADDIU rewrite to compiler output.
+Do not reintroduce per-source `TENCHU_RELOCATABLE` branches, per-function
+compiler flags, or linker encoding aliases. Fixed MAIN.EXE contracts and
+allocator policy have one authority in `src/main.exe/ram_layout.h`, which the
+linker tools consume through `tools/ram_layout.py`. Do not turn section-owned
+globals such as `StageChar`, `CamState`, or `D_80097D70` into numeric
+base-plus-offset constants: their linker symbols must move when code or data
+grows.
+
 Record durable knowledge — build/env gotchas, toolchain decisions, reusable
 lessons, tool facts — in the relevant `docs/` file (the shared repo), NOT in
 private agent memory, so humans and agents on other machines benefit too.

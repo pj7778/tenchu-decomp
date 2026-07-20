@@ -6,6 +6,18 @@
 // pushes it into the Ghidra program; `tools/ghidra/ExportSymbolsTypes.java`
 // exports Ghidra's version to reference/ghidra_types.h. `./Build check` is the
 // arbiter — a type here is proven only if the build stays byte-identical.
+//
+// OWNER DIRECTIVE: always prefer the OFFICIAL recovered types over hand-guessed
+// ones. When a type/field here duplicates a name recovered in
+// reference/psxsym-types.h (the authors' own PSX.SYM) or item.h's official
+// structs, migrate call sites to the official type/name and delete the guess,
+// gating on byte-identical `./Build check`. Do not add new guessed duplicates
+// of something the recovered symbols already name. (Completed example:
+// the guessed `character_state` cluster WAS item.h's official Humanoid and
+// has been fully retired — all Me_THINK_C derefs use `struct Humanoid` and
+// its official fields, and the ~314-line cluster was deleted from this file.
+// The offset-aligned field map is kept for reference:
+// reference/character_state-to-humanoid.tsv.)
 
 typedef u16 buttons_held;
 
@@ -17,17 +29,14 @@ typedef struct
     u16 unk_2[6];
 } controller_input;
 
-typedef struct
+/* AdtSelect's menu row — the demo's own debug symbols name this TAdtSelect
+ * (the PSX.SYM stack-variable records in FileOption/DoInfoViewProc/etc. call
+ * these arrays `struct TAdtSelect [N]`). */
+typedef struct TAdtSelect TAdtSelect;
+struct TAdtSelect
 {
-    char *choice_name;
-    u32 choice_number;
-} debug_menu_choice;
-
-typedef struct some_tmd_map_link_struct some_tmd_map_link_struct;
-struct some_tmd_map_link_struct
-{
-    GsCOORDINATE2 gscoord2;
-    GsDOBJ2 gsdobj;
+    char *name;    /* 0x0 */
+    u32 value;     /* 0x4 */
 };
 
 // Ghidra's own independently-built Humanoid struct (reference/ghidra_types.h)
@@ -216,286 +225,6 @@ enum stage_rank
     RANK_GRAND_MASTER = 0x04,
 };
 
-// typedef enum chosen_stage chosen_stage;
-// enum chosen_stage
-// {
-//     PUNISH_THE_EVIL_MERCHANT = 0x01,
-//     DELIVER_THE_SECRET_MESSAGE = 0x02,
-//     RESCUE_THE_CAPTIVE_NINJA = 0x03,
-//     INFILTRATE_THE_MANJI_CULT = 0x04,
-//     DESTROY_THE_FOREIGN_PIRATES = 0x05,
-//     CURE_THE_PRINCESS = 0x06,
-//     RECLAIM_THE_CASTLE = 0x07,
-//     FREE_THE_PRINCESS = 0x08,
-//     TRAINING = 0x09,
-//     CROSS_THE_CHECKPOs32 = 0x0a,
-//     EXECUTE_THE_CORRUPT_MINISTER = 0x0b,
-//     NOT_CHOSEN = 0xffff,
-// };
-
-typedef enum chosen_stage_ix chosen_stage_ix;
-enum chosen_stage_ix
-{
-    PUNISH_THE_EVIL_MERCHANT = 0x00,
-    DELIVER_THE_SECRET_MESSAGE = 0x01,
-    RESCUE_THE_CAPTIVE_NINJA = 0x02,
-    INFILTRATE_THE_MANJI_CULT = 0x03,
-    DESTROY_THE_FOREIGN_PIRATES = 0x04,
-    CURE_THE_PRINCESS = 0x05,
-    RECLAIM_THE_CASTLE = 0x06,
-    FREE_THE_PRINCESS = 0x07,
-    TRAINING = 0x08,
-    CROSS_THE_CHECKPOs32 = 0x09,
-    EXECUTE_THE_CORRUPT_MINISTER = 0x0a,
-};
-
-typedef enum button_mask button_mask;
-enum button_mask
-{
-    NOTHING = 0x00,
-    L2 = 0x01,
-    R2 = 0x02,
-    L1 = 0x04,
-    R1 = 0x08,
-    TRIANGLE = 0x10,
-    CIRCLE = 0x20,
-    CROSS = 0x40,
-    SQUARE = 0x80,
-    SELECT = 0x100,
-    L3 = 0x200,
-    R3 = 0x400,
-    START = 0x800,
-    UP = 0x1000,
-    RIGHT = 0x2000,
-    DOWN = 0x4000,
-    LEFT = 0x8000,
-    DUMMY_MASK = 0xffff,
-};
-
-typedef struct some_character_button_values some_character_button_values;
-struct some_character_button_values
-{
-    u16 currently_pressed;   // enum button_mask, stored as 2 bytes
-    u16 pressed_last_frame;
-    u16 newly_pressed;
-    s16 frames_since_new_input;
-    u16 buttons_pressed_in_s16_succession[4];
-};
-
-typedef struct xyz xyz;
-struct xyz
-{
-    s32 x;
-    s32 y;
-    s32 z;
-};
-
-typedef struct xyz_s xyz_s;
-struct xyz_s
-{
-    s16 x;
-    s16 y;
-    s16 z;
-};
-
-typedef struct something_about_player_rotation_perhaps something_about_player_rotation_perhaps;
-struct something_about_player_rotation_perhaps
-{
-    u8 field0_0x0;
-    u8 field1_0x1;
-    s16 character_rotation;
-};
-
-typedef struct some_animation_kind_ptr some_animation_kind_ptr;
-struct some_animation_kind_ptr
-{
-    s16 animation_kind;
-    s16 field1_0x2;
-    void *data_ptr;
-};
-
-typedef struct char_state_related_camera_things char_state_related_camera_things;
-struct char_state_related_camera_things
-{
-    u8 field0_0x0;
-    u8 field1_0x1;
-    u8 field2_0x2;
-    u8 field3_0x3;
-    u8 field4_0x4;
-    u8 field5_0x5;
-    u8 field6_0x6;
-    u8 field7_0x7;
-    u8 field8_0x8;
-    u8 field9_0x9;
-    u8 field10_0xa;
-    u8 field11_0xb;
-    u8 field12_0xc;
-    u8 field13_0xd;
-    u8 field14_0xe;
-    u8 field15_0xf;
-    u8 field16_0x10;
-    u8 field17_0x11;
-    u8 field18_0x12;
-    u8 field19_0x13;
-    u8 field20_0x14;
-    u8 field21_0x15;
-    u8 field22_0x16;
-    u8 field23_0x17;
-    xyz position;
-    u8 field25_0x24;
-    u8 field26_0x25;
-    u8 field27_0x26;
-    u8 field28_0x27;
-    u8 field29_0x28;
-    u8 field30_0x29;
-    u8 field31_0x2a;
-    u8 field32_0x2b;
-    u8 field33_0x2c;
-    u8 field34_0x2d;
-    u8 field35_0x2e;
-    u8 field36_0x2f;
-    u8 field37_0x30;
-    u8 field38_0x31;
-    u8 field39_0x32;
-    u8 field40_0x33;
-    u8 field41_0x34;
-    u8 field42_0x35;
-    u8 field43_0x36;
-    u8 field44_0x37;
-    u8 field45_0x38;
-    u8 field46_0x39;
-    u8 field47_0x3a;
-    u8 field48_0x3b;
-    u8 field49_0x3c;
-    u8 field50_0x3d;
-    u8 field51_0x3e;
-    u8 field52_0x3f;
-    u8 field53_0x40;
-    u8 field54_0x41;
-    u8 field55_0x42;
-    u8 field56_0x43;
-    u8 field57_0x44;
-    u8 field58_0x45;
-    u8 field59_0x46;
-    u8 field60_0x47;
-    u8 field61_0x48;
-    u8 field62_0x49;
-    u8 field63_0x4a;
-    u8 field64_0x4b;
-    u8 field65_0x4c;
-    u8 field66_0x4d;
-    u8 field67_0x4e;
-    u8 field68_0x4f;
-    xyz_s fpv_camera_rotation;
-    u8 field70_0x56;
-    u8 field71_0x57;
-    u8 field72_0x58;
-    u8 field73_0x59;
-    u8 field74_0x5a;
-    u8 field75_0x5b;
-    u8 field76_0x5c;
-    u8 field77_0x5d;
-    u8 field78_0x5e;
-    u8 field79_0x5f;
-    u8 field80_0x60;
-    u8 field81_0x61;
-    u8 field82_0x62;
-    u8 field83_0x63;
-    s16 some_num_of_things_in_something_about_current_animation;
-    u8 field85_0x66;
-    u8 field86_0x67;
-    u8 field87_0x68;
-    u8 field88_0x69;
-    u8 field89_0x6a;
-    u8 field90_0x6b;
-    u8 field91_0x6c;
-    u8 field92_0x6d;
-    u8 field93_0x6e;
-    u8 field94_0x6f;
-    u8 field95_0x70;
-    u8 field96_0x71;
-    u8 field97_0x72;
-    u8 field98_0x73;
-    u8 field99_0x74;
-    u8 field100_0x75;
-    u8 field101_0x76;
-    u8 field102_0x77;
-};
-
-typedef struct player_item_counts_by_name player_item_counts_by_name;
-struct player_item_counts_by_name
-{
-    u8 picbn_kaginawa;
-    u8 picbn_shuriken;
-    u8 picbn_makibisi;
-    u8 picbn_kusuri;
-    u8 picbn_fire;
-    u8 picbn_smoke;
-    u8 picbn_jirai;
-    u8 picbn_dokudango;
-    u8 picbn_gosikimai;
-    u8 picbn_nemurigusuri;
-    u8 picbn_kawarimi;
-    u8 picbn_hensin;
-    u8 picbn_goshinfuda;
-    u8 picbn_shinsoku;
-    u8 picbn_rikimarukochan;
-    u8 picbn_happou;
-    u8 picbn_ninken;
-    u8 picbn_kaengeki;
-    u8 picbn_manebue;
-    u8 picbn_armour;
-};
-
-typedef struct special_item_counts_by_name special_item_counts_by_name;
-struct special_item_counts_by_name
-{
-    u8 sicbn_gun;
-    u8 sicbn_yumi;
-    u8 sicbn_kaen;
-    u8 sicbn_lightning_bolt;
-    u8 sicbn_the_world;
-};
-
-typedef union player_item_counts player_item_counts;
-
-union player_item_counts
-{
-    player_item_counts_by_name pic_by_name;
-    u8 pic_by_index[20];
-};
-
-typedef union special_item_counts special_item_counts;
-union special_item_counts
-{
-    special_item_counts_by_name sic_by_name;
-    u8 sic_by_index[5];
-};
-
-typedef struct something_about_current_animation something_about_current_animation;
-struct something_about_current_animation
-{
-    s16 animation_state_perhaps;
-    s16 frames_since_animation_start;   // target loads with lh (signed)
-    s16 seconds_elapsed;
-    u16 num_of_some_things_in_offs_24;
-    s16 field4_0x8;
-    s16 field5_0xa;
-    char_state_related_camera_things *char_state_related_camera_things;
-    u8 *field7_0x10;
-    some_animation_kind_ptr *animations;
-    void *field9_0x18;
-};
-
-typedef struct inventory_item_counts inventory_item_counts;
-struct inventory_item_counts
-{
-    player_item_counts player_item_counts;
-    special_item_counts special_item_counts;
-};
-
-typedef s32 (*some_char_state_function)(void);
-
 typedef enum item_kind2 item_kind2;
 enum item_kind2
 {
@@ -527,135 +256,7 @@ enum item_kind2
 
     ITEM_KIND_2_EXTEND = 0xffff,
 };
-
-typedef struct character_state character_state;
-struct character_state
-{
-    u16 character_kind;   // enum character_kind, stored as 2 bytes
-    u16 character_status; // enum character_status, stored as 2 bytes
-    u16 some_character_marker_thing;
-    s16 character_rotation_speed;
-    u16 current_health;
-    u16 max_health;
-    s16 field6_0xc;
-    s16 field7_0xe;
-    some_character_button_values buttons;
-    MapVector map;
-    // Was two separate `u8 field17_0x28;`/`u8 field18_0x29;` placeholders —
-    // ThinkBasicHuman1.c PROVES a single `lhu` (unsigned halfword) reads both
-    // bytes together and tests bit 0x200, which can't fit in one byte; no
-    // matched function reads either byte individually, so this merges them
-    // into one proven u16 (Ghidra's own decompilation of the same offset
-    // guesses the name "attrib", though it wrongly nests it under `map` —
-    // the raw asm reads it directly off character_state+0x28, not through
-    // MapVector, which is separately proven 8 bytes/level+height only).
-    u16 attrib;
-    u8 field19_0x2a;
-    u8 field20_0x2b;
-    u8 field21_0x2c;
-    u8 field22_0x2d;
-    u8 field23_0x2e;
-    u8 field24_0x2f;
-    void *field25_0x30;
-    void *field26_0x34;
-    VECTOR *some_kind_of_current_position;
-    something_about_player_rotation_perhaps *something_about_player_rotation_perhaps;
-    xyz_s some_rotation_vector_for_tmd;
-    u8 field30_0x46;
-    u8 field31_0x47;
-    xyz current_position;
-    u8 field33_0x54;
-    u8 field34_0x55;
-    u8 field35_0x56;
-    u8 field36_0x57;
-    // Was typed `char_state_related_camera_things *camera_related` (an
-    // unverified guess — nothing dereferenced it). update_something_for_-
-    // each_visible_enemy_.c passes this exact offset straight to
-    // DrawModelArchive(); item.h's (cross-TU) Humanoid.model AND Ghidra's own
-    // independently-built Humanoid struct (reference/ghidra_types.h) both
-    // put a `ModelArchiveType *model` at this same 0x58 — three independent
-    // sources agree. Kept `void *` here (not ModelArchiveType*) so this
-    // shared header doesn't need to pull in item.h; cast at the use site.
-    void *model;
-    something_about_current_animation *something_about_current_animation;
-    some_char_state_function *think_setting0;
-    some_char_state_function *think_setting1;
-    some_char_state_function *think_setting2;
-    some_char_state_function *think_setting3;
-    u8 field43_0x70;
-    u8 field44_0x71;
-    u8 field45_0x72;
-    u8 field46_0x73;
-    char_state_related_camera_things *another_camera_related_perhaps;
-    s32 some_x_position;
-    s32 some_z_position;
-    s32 some_other_x_position;
-    s32 some_other_z_position;
-    // Was `field52_0x88` — AttackAnimal.c proves this is `actmode`: the raw
-    // `lbu`/`sb` plus a `+1` arithmetic op right before an actmode-gated
-    // dispatch ladder, matching Ghidra's own independently-built Humanoid
-    // struct's actmode/actflg/actcnt/actscnt run (reference/ghidra_types.h)
-    // at this exact offset — the same struct that already anchored the
-    // actflg/actcnt/actscnt names below.
-    u8 actmode;
-    // Was `field53_0x89` — Think1watch.c proves this is `actflg`: Ghidra's
-    // own (independent) decompilation of Think1watch names this exact
-    // offset `actflg` (tested `!= 0`, later assigned `rand() & 1`), matching
-    // Ghidra's own independently-built Humanoid struct
-    // (reference/ghidra_types.h)'s actmode/actflg/actcnt/actscnt run.
-    u8 actflg;
-    // Was `byte` (signed char) — Think1trace.c proves both BY THE LOAD/COMPARE
-    // INSTRUCTIONS: `lbu` (not `lb`) loads each field, and actscnt is compared
-    // with `sltiu` (unsigned) against 0x3C/0x1E, not a signed `slti`/`slt`.
-    // Matches Ghidra's own independently-built Humanoid struct
-    // (reference/ghidra_types.h), which types this same pair `uchar actcnt;
-    // uchar actscnt;` right after actmode/actflg (field52/53 above) — an
-    // "action state machine" nibble: mode/flag/count/subcount.
-    u8 actcnt;
-    u8 actscnt;
-    s16 index_s32o_animation_collection;
-    u16 weapon_kind; // enum weapon_kind, stored as 2 bytes (see the
-                      // character_kind/character_status precedent above —
-                      // the pinned cc1 has no -fshort-enums, so the bare
-                      // enum typedef would compile 4 bytes wide and shift
-                      // every field after it)
-    u8 field58_0x90;
-    u8 field59_0x91;
-    u8 field60_0x92;
-    u8 field61_0x93;
-    // Ghidra's own (fuller, independently-built) `Humanoid` struct in
-    // reference/ghidra_types.h types this run of 4 pointers `OrnamentType
-    // *weapon[4]` (right/left active + right/left inactive, matching this
-    // struct's guessed names) — update_something_for_each_visible_enemy_.c
-    // reads weapon[0]/[1] and passes them straight to DrawOrnament(), which
-    // works unchanged through the existing pointer type (width was already
-    // right; only the two fields below needed widening).
-    some_tmd_map_link_struct *right_hand_active_weapon_tmd;
-    some_tmd_map_link_struct *left_hand_active_weapon_tmd;
-    some_tmd_map_link_struct *right_hand_inactive_weapon_tmd;
-    some_tmd_map_link_struct *left_hand_inactive_weapon_tmd;
-    // Was 8 separate u8 fields; update_something_for_each_visible_enemy_.c
-    // proves each is really one 4-byte pointer (`lw`/passed whole to
-    // DrawAfterimage) — matches Ghidra's `pointer illusion[2]` at this same
-    // offset in its own Humanoid struct (reference/ghidra_types.h).
-    void *some_afterimage_1_0xa4;
-    void *some_afterimage_2_0xa8;
-    u16 character_kind_sound_mask;
-    u16 active_item; // enum item_kind2, stored as 2 bytes (same bare-enum-
-                      // is-4-bytes-without-fshort-enums fix as weapon_kind
-                      // above)
-    // A packed flags/hint word (NOT a function pointer despite Ghidra's
-    // `code *`/`undefined *` guess from a stale type — think_setting_go_-
-    // towards_player.c and turn_towards_player_.c both only test it against
-    // 0 and store whole-word constants like 0x80000008/0x20000008/(kind|
-    // 0x1e), proven by `lw`/`sw` at this offset, never a call through it).
-    s32 field76_0xb0;
-    inventory_item_counts inventory;
-    u8 field81_0xcd;
-    u8 field82_0xce;
-    u8 field83_0xcf;
-};
-// s32 AdtSelect(char *screen_header, debug_menu_choice *choices, char *param_3);
+// s32 AdtSelect(char *screen_header, TAdtSelect *choices, char *param_3);
 
 // The persistent game state blob at 0x80010000 (below the exe image; survives
 // across screens). Offsets proven by BriefingAndInventorySelectionScreen.
